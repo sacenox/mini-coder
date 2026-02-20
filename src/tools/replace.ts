@@ -4,7 +4,7 @@ import type { ToolDef } from "../llm-api/types.ts";
 import { generateDiff } from "./diff.ts";
 import { findLineByHash } from "./hashline.ts";
 
-const EditSchema = z.object({
+const ReplaceSchema = z.object({
 	path: z.string().describe("File path to edit (absolute or relative to cwd)"),
 	startAnchor: z
 		.string()
@@ -23,9 +23,9 @@ const EditSchema = z.object({
 		),
 });
 
-type EditInput = z.infer<typeof EditSchema> & { cwd?: string };
+type ReplaceInput = z.infer<typeof ReplaceSchema> & { cwd?: string };
 
-export interface EditOutput {
+export interface ReplaceOutput {
 	path: string;
 	diff: string;
 }
@@ -33,7 +33,7 @@ export interface EditOutput {
 const HASH_NOT_FOUND_ERROR =
 	"Hash not found. Re-read the file to get current anchors.";
 
-export const replaceTool: ToolDef<EditInput, EditOutput> = {
+export const replaceTool: ToolDef<ReplaceInput, ReplaceOutput> = {
 	name: "replace",
 	description:
 		"Replace or delete a range of lines in an existing file using hashline anchors. " +
@@ -41,7 +41,7 @@ export const replaceTool: ToolDef<EditInput, EditOutput> = {
 		"Provide startAnchor alone to target a single line, or add endAnchor for a range. " +
 		"Set newContent to the replacement text, or omit it to delete the range. " +
 		"To create a file use `create`. To insert without replacing any lines use `insert`.",
-	schema: EditSchema,
+	schema: ReplaceSchema,
 	execute: async (input) => {
 		const cwd = input.cwd ?? process.cwd();
 		const filePath = input.path.startsWith("/")

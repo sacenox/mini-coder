@@ -458,7 +458,8 @@ export async function renderTurn(
 }
 
 // ─── Status bar ───────────────────────────────────────────────────────────────
-// Rendered to stderr so it doesn't pollute stdout / pipes.
+// Rendered to stdout so it appears on the same stream as the prompt, guaranteeing
+// it is flushed before readline draws the input line.
 // Format:  model  provider  cwd  ⎇branch  ↑in ↓out
 
 export function renderStatusBar(opts: {
@@ -472,12 +473,12 @@ export function renderStatusBar(opts: {
 	contextTokens: number;
 	contextWindow: number | null;
 }): void {
-	const cols = (process.stderr as NodeJS.WriteStream).columns ?? 80;
+	const cols = (process.stdout as NodeJS.WriteStream).columns ?? 80;
 
 	// Build segments from right priority (rightmost items drop first)
 	const left: string[] = [c.cyan(opts.model)];
 	if (opts.provider && opts.provider !== "zen") left.push(c.dim(opts.provider));
-	left.push(c.dim(opts.sessionId));
+	left.push(c.dim(opts.sessionId.slice(0, 8)));
 
 	const right: string[] = [];
 	if (opts.inputTokens > 0 || opts.outputTokens > 0) {
@@ -514,7 +515,7 @@ export function renderStatusBar(opts: {
 
 	const out = visible.length > cols ? truncateAnsi(full, cols - 1) : full;
 
-	process.stderr.write(`\r\x1B[2K${out}\n`);
+	process.stdout.write(`${out}\n`);
 }
 
 // ─── Banner ───────────────────────────────────────────────────────────────────

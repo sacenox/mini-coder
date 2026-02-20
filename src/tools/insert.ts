@@ -31,7 +31,7 @@ export const insertTool: ToolDef<InsertInput, InsertOutput> = {
 		"Insert new lines before or after an anchor line in an existing file. " +
 		"The anchor line itself is not modified. " +
 		'Anchors come from the `read` or `grep` tools (format: "line:hash", e.g. "11:a3"). ' +
-		"To replace or delete lines use `edit`. To create a file use `write`.",
+		"To replace or delete lines use `replace`. To create a file use `create`.",
 	schema: InsertSchema,
 	execute: async (input) => {
 		const cwd = input.cwd ?? process.cwd();
@@ -44,7 +44,7 @@ export const insertTool: ToolDef<InsertInput, InsertOutput> = {
 		const file = Bun.file(filePath);
 		if (!(await file.exists())) {
 			throw new Error(
-				`File not found: "${relPath}". To create a new file use the \`write\` tool.`,
+				`File not found: "${relPath}". To create a new file use the \`create\` tool.`,
 			);
 		}
 

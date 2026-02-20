@@ -45,7 +45,6 @@ const ZEN_GOOGLE_MODELS = new Set([
 
 let _zenAnthropic: ReturnType<typeof createAnthropic> | null = null;
 let _zenOpenAI: ReturnType<typeof createOpenAI> | null = null;
-const _zenGoogle: ReturnType<typeof createGoogleGenerativeAI> | null = null;
 let _zenCompat: ReturnType<typeof createOpenAICompatible> | null = null;
 
 function getZenApiKey(): string {

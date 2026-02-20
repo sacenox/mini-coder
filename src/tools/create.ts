@@ -4,26 +4,26 @@ import { z } from "zod";
 import type { ToolDef } from "../llm-api/types.ts";
 import { generateDiff } from "./diff.ts";
 
-const WriteSchema = z.object({
+const CreateSchema = z.object({
 	path: z.string().describe("File path to write (absolute or relative to cwd)"),
 	content: z.string().describe("Full content to write to the file"),
 });
 
-type WriteInput = z.infer<typeof WriteSchema> & { cwd?: string };
+type CreateInput = z.infer<typeof CreateSchema> & { cwd?: string };
 
-export interface WriteOutput {
+export interface CreateOutput {
 	path: string;
 	diff: string;
 	created: boolean;
 }
 
-export const createTool: ToolDef<WriteInput, WriteOutput> = {
+export const createTool: ToolDef<CreateInput, CreateOutput> = {
 	name: "create",
 	description:
 		"Create a new file or fully overwrite an existing file with the given content. " +
 		"Use this only for new files. " +
 		"For targeted line edits on existing files, **use `replace` or `insert` instead**.",
-	schema: WriteSchema,
+	schema: CreateSchema,
 	execute: async (input) => {
 		const cwd = input.cwd ?? process.cwd();
 		const filePath = input.path.startsWith("/")

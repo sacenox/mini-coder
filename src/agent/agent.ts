@@ -327,11 +327,13 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 			turnIndex = 1;
 			totalIn = 0;
 			totalOut = 0;
+			lastContextTokens = 0;
 		},
 	};
 	const spinner = new Spinner();
 	let totalIn = 0;
 	let totalOut = 0;
+	let lastContextTokens = 0;
 
 	// ── Handle initial prompt (non-interactive) ────────────────────────────────
 	if (opts.initialPrompt) {
@@ -340,6 +342,10 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 
 	// ── REPL ──────────────────────────────────────────────────────────────────
 	while (true) {
+		// Render the status bar to stdout before drawing the prompt so both are on
+		// the same stream, guaranteeing correct ordering (no stderr/stdout race).
+		await renderStatusBarForSession();
+
 		let input: InputResult;
 		try {
 			input = await readline({ cwd });
@@ -455,9 +461,12 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 
 		totalIn += inputTokens;
 		totalOut += outputTokens;
+		lastContextTokens = contextTokens;
 		touchActiveSession(session);
+	}
 
-		// Render status bar
+	// ── Render status bar (called before each prompt) ──────────────────────────
+	async function renderStatusBarForSession(): Promise<void> {
 		const branch = await getGitBranch(cwd);
 		const provider = currentModel.split("/")[0] ?? "";
 		const modelShort = currentModel.split("/").slice(1).join("/");
@@ -471,9 +480,9 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 			cwd: cwdDisplay,
 			gitBranch: branch,
 			sessionId: session.id,
-			inputTokens,
-			outputTokens,
-			contextTokens,
+			inputTokens: totalIn,
+			outputTokens: totalOut,
+			contextTokens: lastContextTokens,
 			contextWindow: getContextWindow(currentModel),
 		});
 	}
