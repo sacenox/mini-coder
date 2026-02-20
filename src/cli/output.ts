@@ -1,9 +1,23 @@
+import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
+
 import * as c from "yoctocolors";
 import type { TurnEvent } from "../llm-api/types.ts";
 import { renderLine } from "./markdown.ts";
 
 const HOME = homedir();
+const PACKAGE_VERSION = (() => {
+	try {
+		const raw = readFileSync(
+			new URL("../../package.json", import.meta.url),
+			"utf8",
+		);
+		const data = JSON.parse(raw) as { version?: string };
+		return data.version ?? "unknown";
+	} catch {
+		return "unknown";
+	}
+})();
 
 // ─── Terminal restore ─────────────────────────────────────────────────────────
 
@@ -625,6 +639,7 @@ export function renderStatusBar(opts: {
 	const middle = c.dim(cwdDisplay);
 	const sep = c.dim("  ");
 	const full = [...left, middle, ...right.reverse()].join(sep);
+
 	const visible = stripAnsi(full);
 
 	const out = visible.length > cols ? truncateAnsi(full, cols - 1) : full;
@@ -636,7 +651,7 @@ export function renderStatusBar(opts: {
 
 export function renderBanner(model: string, cwd: string): void {
 	writeln();
-	writeln(`  ${c.cyan("mc")}  ${c.dim("mini-coder · v0.1.0")}`);
+	writeln(`  ${c.cyan("mc")}  ${c.dim(`mini-coder · v${PACKAGE_VERSION}`)}`);
 	writeln(`  ${c.dim(model)}  ${c.dim("·")}  ${c.dim(cwd)}`);
 	writeln(`  ${c.dim("/help for commands  ·  ctrl+d to exit")}`);
 	writeln();

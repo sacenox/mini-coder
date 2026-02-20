@@ -1,7 +1,3 @@
-Plan mode needs a different prompt arrowA when is on
-
----
-
 # Fix implementation error
 
 1. The DB only saves text — agent.ts:412–429 strips tool parts before writing to SQLite. That's the right design for persistence, but coreHistory in memory is never trimmed.
@@ -9,6 +5,8 @@ Plan mode needs a different prompt arrowA when is on
 - Refactor sessions table to include content, tool call pairs and everything we need to remake
 the history on resume. This breaks the schema, this is ok, we generate a new one.
 - Ensure we don't break message format expected by the sdks.
+
+Error now when resuling a session:
 
 ```sh
 mini-coder on  main
@@ -84,8 +82,6 @@ Besides undoing the conversation turn, it should restore some snapshot, using gi
 ---
 
 # Tools output
-
-Insert/read/edit/write/grep all were changed with the hashline feature, outputs needs to be re-done to match our style of nice formatted data and diffs.
 
 Subagent needs visibity on the ui somehow... that accounts for multiple in parallel... Needs planning, maybe a tree view showing the subagent's tool calls before the output.
 
