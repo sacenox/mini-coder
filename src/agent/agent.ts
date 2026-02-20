@@ -368,6 +368,9 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 					writeln(c.dim("Goodbye."));
 					return;
 				}
+				if (result.type === "inject-user-message") {
+					await processUserInput(result.text);
+				}
 				continue;
 			}
 

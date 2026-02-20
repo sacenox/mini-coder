@@ -8,7 +8,8 @@ import {
 	listMcpServers,
 	upsertMcpServer,
 } from "../session/db.ts";
-import { PREFIX, renderError, renderInfo, writeln } from "./output.ts";
+import { renderMarkdown } from "./markdown.ts";
+import { PREFIX, renderError, renderInfo, write, writeln } from "./output.ts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -31,7 +32,8 @@ export interface CommandContext {
 export type CommandResult =
 	| { type: "handled" }
 	| { type: "unknown"; command: string }
-	| { type: "exit" };
+	| { type: "exit" }
+	| { type: "inject-user-message"; text: string };
 
 // ─── Command handlers ─────────────────────────────────────────────────────────
 
@@ -268,7 +270,10 @@ Only review the changed code, not pre-existing code.
 - End with a short **Summary** of the most important items.
 `;
 
-async function handleReview(ctx: CommandContext, args: string): Promise<void> {
+async function handleReview(
+	ctx: CommandContext,
+	args: string,
+): Promise<CommandResult> {
 	const focus = args.trim();
 	writeln(
 		`${PREFIX.info} ${c.cyan("review")} ${c.dim("— spawning review subagent…")}`,
@@ -278,13 +283,18 @@ async function handleReview(ctx: CommandContext, args: string): Promise<void> {
 	try {
 		const { result } = await ctx.runSubagent(REVIEW_PROMPT(ctx.cwd, focus));
 
-		// Stream the result line-by-line for readable output
-		for (const line of result.split("\n")) {
-			writeln(`  ${line}`);
-		}
+		// Show review results.
+		write(renderMarkdown(result));
 		writeln();
+
+		// Send results to LLM as well.
+		return {
+			type: "inject-user-message",
+			text: `Code review output:\n\n${result}\n\n<system-message>Review the findings and summarize them to the user.</system-message>`,
+		};
 	} catch (e) {
 		writeln(`${PREFIX.error} review failed: ${String(e)}`);
+		return { type: "handled" };
 	}
 }
 
@@ -357,8 +367,7 @@ export async function handleCommand(
 			return { type: "handled" };
 
 		case "review":
-			await handleReview(ctx, args);
-			return { type: "handled" };
+			return await handleReview(ctx, args);
 
 		case "help":
 		case "?":
