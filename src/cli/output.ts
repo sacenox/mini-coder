@@ -86,6 +86,11 @@ export function write(text: string): void {
 	process.stdout.write(text);
 }
 
+/** Strip the `linenum:hash| ` prefix that hashline-formatted tool outputs include. */
+function stripHashlinePrefix(text: string): string {
+	return text.replace(/^\d+:[0-9a-f]{2}\| /, "");
+}
+
 // ─── Glyph vocabulary ─────────────────────────────────────────────────────────
 // All from the 16-color ANSI palette — inherits terminal theme.
 
@@ -117,7 +122,8 @@ export const G = {
 function toolGlyph(name: string): string {
 	if (name === "glob" || name === "grep") return G.search;
 	if (name === "read") return G.read;
-	if (name === "edit") return G.write;
+	if (name === "create" || name === "replace" || name === "insert")
+		return G.write;
 	if (name === "shell") return G.run;
 	if (name === "subagent") return G.agent;
 	if (name.startsWith("mcp_")) return G.mcp;
@@ -151,13 +157,19 @@ function toolCallLine(name: string, args: unknown): string {
 			line || count ? c.dim(`:${line ?? 1}${count ? `+${count}` : ""}`) : "";
 		return `${G.read} ${c.dim("read")} ${String(a.path ?? "")}${range}`;
 	}
-	if (name === "edit") {
-		const verb = !a.startAnchor
-			? "create"
-			: a.insertPosition
-				? "insert"
-				: "edit";
-		return `${G.write} ${c.dim(verb)} ${c.bold(String(a.path ?? ""))}`;
+	if (name === "create") {
+		return `${G.write} ${c.dim("create")} ${c.bold(String(a.path ?? ""))}`;
+	}
+	if (name === "replace") {
+		const range = a.endAnchor
+			? c.dim(` ${a.startAnchor}–${a.endAnchor}`)
+			: c.dim(` ${a.startAnchor}`);
+		const verb =
+			a.newContent === undefined || a.newContent === "" ? "delete" : "replace";
+		return `${G.write} ${c.dim(verb)} ${c.bold(String(a.path ?? ""))}${range}`;
+	}
+	if (name === "insert") {
+		return `${G.write} ${c.dim(`insert ${a.position ?? ""}`)} ${c.bold(String(a.path ?? ""))}${c.dim(` @ ${a.anchor}`)}`;
 	}
 	if (name === "shell") {
 		const cmd = String(a.command ?? "");
@@ -250,7 +262,9 @@ export function renderToolResult(
 				? c.dim(" ".repeat(m.file.length + 1))
 				: c.dim(`${m.file}:`);
 			seen.add(key);
-			writeln(`    ${fileLabel}${c.dim(String(m.line))}  ${m.text.trim()}`);
+			writeln(
+				`    ${fileLabel}${c.dim(String(m.line))}  ${stripHashlinePrefix(m.text).trim()}`,
+			);
 			shown++;
 		}
 		const rest = r.matches.length - shown;
@@ -279,10 +293,19 @@ export function renderToolResult(
 		return;
 	}
 
-	if (toolName === "edit") {
+	if (toolName === "create") {
 		const r = result as { path: string; diff: string; created: boolean };
-		const verb = r.created ? c.green("created") : c.dim("edited");
+		const verb = r.created ? c.green("created") : c.dim("overwritten");
 		writeln(`    ${G.ok} ${verb} ${r.path}`);
+		renderDiff(r.diff);
+		return;
+	}
+
+	if (toolName === "replace" || toolName === "insert") {
+		const r = result as { path: string; diff: string; deleted?: boolean };
+		const verb =
+			toolName === "insert" ? "inserted" : r.deleted ? "deleted" : "replaced";
+		writeln(`    ${G.ok} ${c.dim(verb)} ${r.path}`);
 		renderDiff(r.diff);
 		return;
 	}

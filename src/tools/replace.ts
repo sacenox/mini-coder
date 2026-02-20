@@ -28,6 +28,7 @@ type ReplaceInput = z.infer<typeof ReplaceSchema> & { cwd?: string };
 export interface ReplaceOutput {
 	path: string;
 	diff: string;
+	deleted: boolean;
 }
 
 const HASH_NOT_FOUND_ERROR =
@@ -99,7 +100,7 @@ export const replaceTool: ToolDef<ReplaceInput, ReplaceOutput> = {
 		await Bun.write(filePath, updated);
 
 		const diff = generateDiff(relPath, original, updated);
-		return { path: relPath, diff };
+		return { path: relPath, diff, deleted: replacement.length === 0 };
 	},
 };
 
