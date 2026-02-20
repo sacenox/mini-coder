@@ -1,0 +1,287 @@
+import { createAnthropic } from "@ai-sdk/anthropic";
+import { createOpenAI } from "@ai-sdk/openai";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { createOllama } from "ollama-ai-provider";
+import type { LanguageModel } from "ai";
+
+// ─── Zen endpoint constants ────────────────────────────────────────────────────
+
+const ZEN_BASE = "https://opencode.ai/zen/v1";
+
+// Models that use the Anthropic messages endpoint on Zen
+const ZEN_ANTHROPIC_MODELS = new Set([
+  "claude-opus-4-6",
+  "claude-opus-4-5",
+  "claude-opus-4-1",
+  "claude-sonnet-4-6",
+  "claude-sonnet-4-5",
+  "claude-sonnet-4",
+  "claude-haiku-4-5",
+  "claude-3-5-haiku",
+]);
+
+// Models that use the OpenAI responses endpoint on Zen
+const ZEN_OPENAI_MODELS = new Set([
+  "gpt-5.2",
+  "gpt-5.2-codex",
+  "gpt-5.1",
+  "gpt-5.1-codex",
+  "gpt-5.1-codex-max",
+  "gpt-5.1-codex-mini",
+  "gpt-5",
+  "gpt-5-codex",
+  "gpt-5-nano",
+]);
+
+// Models that use the Google generative AI endpoint on Zen
+const ZEN_GOOGLE_MODELS = new Set([
+  "gemini-3.1-pro",
+  "gemini-3-pro",
+  "gemini-3-flash",
+]);
+
+// ─── Lazy provider factories (created on first use) ───────────────────────────
+
+let _zenAnthropic: ReturnType<typeof createAnthropic> | null = null;
+let _zenOpenAI: ReturnType<typeof createOpenAI> | null = null;
+let _zenGoogle: ReturnType<typeof createGoogleGenerativeAI> | null = null;
+let _zenCompat: ReturnType<typeof createOpenAICompatible> | null = null;
+
+function getZenApiKey(): string {
+  const key = process.env["OPENCODE_API_KEY"];
+  if (!key) throw new Error("OPENCODE_API_KEY is not set");
+  return key;
+}
+
+function zenAnthropic() {
+  if (!_zenAnthropic) {
+    // @ai-sdk/anthropic appends /messages automatically — baseURL is the v1 root
+    _zenAnthropic = createAnthropic({
+      apiKey: getZenApiKey(),
+      baseURL: ZEN_BASE,
+    });
+  }
+  return _zenAnthropic;
+}
+
+function zenOpenAI() {
+  if (!_zenOpenAI) {
+    // @ai-sdk/openai appends /responses automatically — baseURL is the v1 root
+    _zenOpenAI = createOpenAI({
+      apiKey: getZenApiKey(),
+      baseURL: ZEN_BASE,
+    });
+  }
+  return _zenOpenAI;
+}
+
+function zenGoogle(modelId: string) {
+  // @ai-sdk/google constructs its own path; we pass the base up to /models
+  return createGoogleGenerativeAI({
+    apiKey: getZenApiKey(),
+    baseURL: `${ZEN_BASE}/models`,
+  });
+}
+
+function zenCompat() {
+  if (!_zenCompat) {
+    // @ai-sdk/openai-compatible appends /chat/completions — baseURL is the v1 root
+    _zenCompat = createOpenAICompatible({
+      name: "zen-compat",
+      apiKey: getZenApiKey(),
+      baseURL: ZEN_BASE,
+    });
+  }
+  return _zenCompat;
+}
+
+// ─── Direct provider factories ────────────────────────────────────────────────
+
+let _directAnthropic: ReturnType<typeof createAnthropic> | null = null;
+let _directOpenAI: ReturnType<typeof createOpenAI> | null = null;
+let _directGoogle: ReturnType<typeof createGoogleGenerativeAI> | null = null;
+
+function directAnthropic() {
+  if (!_directAnthropic) {
+    const key = process.env["ANTHROPIC_API_KEY"];
+    if (!key) throw new Error("ANTHROPIC_API_KEY is not set");
+    _directAnthropic = createAnthropic({ apiKey: key });
+  }
+  return _directAnthropic;
+}
+
+function directOpenAI() {
+  if (!_directOpenAI) {
+    const key = process.env["OPENAI_API_KEY"];
+    if (!key) throw new Error("OPENAI_API_KEY is not set");
+    _directOpenAI = createOpenAI({ apiKey: key });
+  }
+  return _directOpenAI;
+}
+
+function directGoogle() {
+  if (!_directGoogle) {
+    const key = process.env["GOOGLE_API_KEY"] ?? process.env["GEMINI_API_KEY"];
+    if (!key) throw new Error("GOOGLE_API_KEY or GEMINI_API_KEY is not set");
+    _directGoogle = createGoogleGenerativeAI({ apiKey: key });
+  }
+  return _directGoogle;
+}
+
+// ─── Public API ───────────────────────────────────────────────────────────────
+
+/**
+ * Resolve a model string to a LanguageModel.
+ *
+ * Format:  "<provider>/<model-id>"
+ *
+ * Providers:
+ *   zen/<model-id>      – OpenCode Zen (requires OPENCODE_API_KEY)
+ *   anthropic/<model>   – Direct Anthropic (requires ANTHROPIC_API_KEY)
+ *   openai/<model>      – Direct OpenAI (requires OPENAI_API_KEY)
+ *   google/<model>      – Direct Google (requires GOOGLE_API_KEY or GEMINI_API_KEY)
+ *   ollama/<model>      – Local Ollama
+ */
+export function resolveModel(modelString: string): LanguageModel {
+  const slashIdx = modelString.indexOf("/");
+  if (slashIdx === -1) {
+    throw new Error(
+      `Invalid model string "${modelString}". Expected format: "<provider>/<model-id>"`
+    );
+  }
+
+  const provider = modelString.slice(0, slashIdx);
+  const modelId = modelString.slice(slashIdx + 1);
+
+  switch (provider) {
+    case "zen": {
+      if (ZEN_ANTHROPIC_MODELS.has(modelId)) {
+        return zenAnthropic()(modelId);
+      }
+      if (ZEN_OPENAI_MODELS.has(modelId)) {
+        return zenOpenAI()(modelId);
+      }
+      if (ZEN_GOOGLE_MODELS.has(modelId)) {
+        return zenGoogle(modelId)(modelId);
+      }
+      // Fallback: assume OpenAI-compatible (MiniMax, GLM, Kimi, Qwen, etc.)
+      return zenCompat()(modelId);
+    }
+
+    case "anthropic":
+      return directAnthropic()(modelId);
+
+    case "openai":
+      return directOpenAI()(modelId);
+
+    case "google":
+      return directGoogle()(modelId);
+
+    case "ollama": {
+      const baseURL =
+        process.env["OLLAMA_BASE_URL"] ?? "http://localhost:11434";
+      const ollamaProvider = createOllama({ baseURL });
+      // ollama-ai-provider returns LanguageModelV1; cast to LanguageModel
+      return ollamaProvider(modelId) as unknown as LanguageModel;
+    }
+
+    default:
+      throw new Error(
+        `Unknown provider "${provider}". Supported: zen, anthropic, openai, google, ollama`
+      );
+  }
+}
+
+/**
+ * Auto-discover a usable provider from the environment.
+ * Returns the first available (provider, defaultModel) pair.
+ */
+export function autoDiscoverModel(): string {
+  if (process.env["OPENCODE_API_KEY"]) return "zen/claude-sonnet-4-6";
+  if (process.env["ANTHROPIC_API_KEY"]) return "anthropic/claude-sonnet-4-5-20250929";
+  if (process.env["OPENAI_API_KEY"]) return "openai/gpt-4o";
+  if (process.env["GOOGLE_API_KEY"] ?? process.env["GEMINI_API_KEY"])
+    return "google/gemini-2.0-flash";
+  // Always fall back to Ollama (may fail at request time if not running)
+  return "ollama/llama3.2";
+}
+
+/**
+ * List all providers that appear to be configured via ENV.
+ */
+export function availableProviders(): string[] {
+  const providers: string[] = [];
+  if (process.env["OPENCODE_API_KEY"]) providers.push("zen");
+  if (process.env["ANTHROPIC_API_KEY"]) providers.push("anthropic");
+  if (process.env["OPENAI_API_KEY"]) providers.push("openai");
+  if (process.env["GOOGLE_API_KEY"] ?? process.env["GEMINI_API_KEY"])
+    providers.push("google");
+  providers.push("ollama"); // always listed (local)
+  return providers;
+}
+
+// ─── Live model listing ───────────────────────────────────────────────────────
+
+export interface LiveModel {
+  id: string;
+  displayName: string;
+  provider: string;
+  context?: number | undefined;
+  free?: boolean | undefined;
+}
+
+/** Fetch live model list from OpenCode Zen */
+async function fetchZenModels(): Promise<LiveModel[]> {
+  const key = process.env["OPENCODE_API_KEY"];
+  if (!key) return [];
+  try {
+    const res = await fetch(`${ZEN_BASE}/models`, {
+      headers: { Authorization: `Bearer ${key}` },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return [];
+    const json = await res.json() as { data?: Array<{ id: string; context_window?: number }> };
+    const models = json.data ?? [];
+    return models.map((m) => ({
+      id: `zen/${m.id}`,
+      displayName: m.id,
+      provider: "zen",
+      context: m.context_window,
+      free: m.id.endsWith("-free") || m.id === "gpt-5-nano" || m.id === "big-pickle",
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/** Fetch live model list from local Ollama */
+async function fetchOllamaModels(): Promise<LiveModel[]> {
+  const base = process.env["OLLAMA_BASE_URL"] ?? "http://localhost:11434";
+  try {
+    const res = await fetch(`${base}/api/tags`, {
+      signal: AbortSignal.timeout(3000),
+    });
+    if (!res.ok) return [];
+    const json = await res.json() as { models?: Array<{ name: string; details?: { parameter_size?: string } }> };
+    return (json.models ?? []).map((m) => ({
+      id: `ollama/${m.name}`,
+      displayName: m.name + (m.details?.parameter_size ? ` (${m.details.parameter_size})` : ""),
+      provider: "ollama",
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Fetch live model lists from all configured providers.
+ * Falls back to an empty array per provider on error.
+ */
+export async function fetchAvailableModels(): Promise<LiveModel[]> {
+  const [zen, ollama] = await Promise.all([
+    fetchZenModels(),
+    fetchOllamaModels(),
+  ]);
+  return [...zen, ...ollama];
+}
