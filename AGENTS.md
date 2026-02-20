@@ -6,3 +6,4 @@
 - Write minimal tests, focused on our code's logic. Never test dependencies. Never use mock servers or stubs.
 - Keep the repo pristine: no failing tests, no lint, no build issues, no `nolint:` comments.
 - Use `bun run typecheck && bun run format && bun run lint && bun test` to check your changes.
+- We care about performance.
