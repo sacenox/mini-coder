@@ -3,16 +3,12 @@ import { z } from "zod";
 import type { ToolDef } from "../llm-api/types.ts";
 import { formatHashLine } from "./hashline.ts";
 
-const GrepInput = z.object({
+const GrepSchema = z.object({
 	pattern: z.string().describe("Regular expression to search for"),
 	include: z
 		.string()
 		.optional()
 		.describe("Glob pattern to filter files, e.g. '*.ts' or '*.{ts,tsx}'"),
-	cwd: z
-		.string()
-		.optional()
-		.describe("Directory to search in (defaults to process.cwd())"),
 	contextLines: z
 		.number()
 		.int()
@@ -25,7 +21,7 @@ const GrepInput = z.object({
 	maxResults: z.number().int().min(1).max(200).optional().default(50),
 });
 
-type GrepInput = z.infer<typeof GrepInput>;
+type GrepInput = z.infer<typeof GrepSchema> & { cwd?: string };
 
 export interface GrepMatch {
 	file: string;
@@ -56,7 +52,7 @@ export const grepTool: ToolDef<GrepInput, GrepOutput> = {
 	description:
 		"Search for a regex pattern across files. Returns file paths, line numbers, and context. " +
 		"Use this to find code patterns, function definitions, or specific text.",
-	schema: GrepInput,
+	schema: GrepSchema,
 	execute: async (input) => {
 		const cwd = input.cwd ?? process.cwd();
 		const flags = input.caseSensitive ? "" : "i";

@@ -2,12 +2,8 @@ import { z } from "zod";
 import { restoreTerminal } from "../cli/output.ts";
 import type { ToolDef } from "../llm-api/types.ts";
 
-const ShellInput = z.object({
+const ShellSchema = z.object({
 	command: z.string().describe("Shell command to execute"),
-	cwd: z
-		.string()
-		.optional()
-		.describe("Working directory for the command (defaults to process.cwd())"),
 	timeout: z
 		.number()
 		.int()
@@ -22,7 +18,7 @@ const ShellInput = z.object({
 		.describe("Additional environment variables to set"),
 });
 
-type ShellInput = z.infer<typeof ShellInput>;
+type ShellInput = z.infer<typeof ShellSchema> & { cwd?: string };
 
 export interface ShellOutput {
 	stdout: string;
@@ -40,7 +36,7 @@ export const shellTool: ToolDef<ShellInput, ShellOutput> = {
 		"Execute a shell command. Returns stdout, stderr, and exit code. " +
 		"Use this for running tests, builds, git commands, and other CLI operations. " +
 		"Prefer non-interactive commands. Avoid commands that run indefinitely.",
-	schema: ShellInput,
+	schema: ShellSchema,
 	execute: async (input) => {
 		const cwd = input.cwd ?? process.cwd();
 		const timeout = input.timeout ?? 30_000;

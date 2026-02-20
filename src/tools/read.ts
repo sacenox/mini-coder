@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { ToolDef } from "../llm-api/types.ts";
 import { formatHashLine } from "./hashline.ts";
 
-const ReadInput = z.object({
+const ReadSchema = z.object({
 	path: z.string().describe("File path to read (absolute or relative to cwd)"),
 	line: z
 		.number()
@@ -18,13 +18,9 @@ const ReadInput = z.object({
 		.max(500)
 		.optional()
 		.describe("Lines to read (default: 500, max: 500)"),
-	cwd: z
-		.string()
-		.optional()
-		.describe("Working directory for resolving relative paths"),
 });
 
-type ReadInput = z.infer<typeof ReadInput>;
+type ReadInput = z.infer<typeof ReadSchema> & { cwd?: string };
 
 export interface ReadOutput {
 	path: string;
@@ -44,7 +40,7 @@ export const readTool: ToolDef<ReadInput, ReadOutput> = {
 		"`count` sets how many lines to read (default 500, max 500). " +
 		"Check `truncated` and `totalLines` in the result to detect when more content exists; " +
 		"paginate by incrementing `line`.",
-	schema: ReadInput,
+	schema: ReadSchema,
 	execute: async (input) => {
 		const cwd = input.cwd ?? process.cwd();
 		const filePath = input.path.startsWith("/")

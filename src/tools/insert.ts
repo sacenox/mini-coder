@@ -4,7 +4,7 @@ import type { ToolDef } from "../llm-api/types.ts";
 import { generateDiff } from "./diff.ts";
 import { findLineByHash } from "./hashline.ts";
 
-const InsertInput = z.object({
+const InsertSchema = z.object({
 	path: z.string().describe("File path to edit (absolute or relative to cwd)"),
 	anchor: z
 		.string()
@@ -13,13 +13,9 @@ const InsertInput = z.object({
 		.enum(["before", "after"])
 		.describe('Insert the content "before" or "after" the anchor line'),
 	content: z.string().describe("Text to insert"),
-	cwd: z
-		.string()
-		.optional()
-		.describe("Working directory for resolving relative paths"),
 });
 
-type InsertInput = z.infer<typeof InsertInput>;
+type InsertInput = z.infer<typeof InsertSchema> & { cwd?: string };
 
 export interface InsertOutput {
 	path: string;
@@ -36,7 +32,7 @@ export const insertTool: ToolDef<InsertInput, InsertOutput> = {
 		"The anchor line itself is not modified. " +
 		'Anchors come from the `read` or `grep` tools (format: "line:hash", e.g. "11:a3"). ' +
 		"To replace or delete lines use `edit`. To create or overwrite a file use `write`.",
-	schema: InsertInput,
+	schema: InsertSchema,
 	execute: async (input) => {
 		const cwd = input.cwd ?? process.cwd();
 		const filePath = input.path.startsWith("/")

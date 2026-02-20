@@ -4,7 +4,7 @@ import type { ToolDef } from "../llm-api/types.ts";
 import { generateDiff } from "./diff.ts";
 import { findLineByHash } from "./hashline.ts";
 
-const EditInput = z.object({
+const EditSchema = z.object({
 	path: z.string().describe("File path to edit (absolute or relative to cwd)"),
 	startAnchor: z
 		.string()
@@ -21,13 +21,9 @@ const EditInput = z.object({
 		.describe(
 			"Replacement text. Omit or pass empty string to delete the range.",
 		),
-	cwd: z
-		.string()
-		.optional()
-		.describe("Working directory for resolving relative paths"),
 });
 
-type EditInput = z.infer<typeof EditInput>;
+type EditInput = z.infer<typeof EditSchema> & { cwd?: string };
 
 export interface EditOutput {
 	path: string;
@@ -45,7 +41,7 @@ export const editTool: ToolDef<EditInput, EditOutput> = {
 		"Provide startAnchor alone to target a single line, or add endAnchor for a range. " +
 		"Set newContent to the replacement text, or omit it to delete the range. " +
 		"To create or overwrite a file use `write`. To insert without replacing any lines use `insert`.",
-	schema: EditInput,
+	schema: EditSchema,
 	execute: async (input) => {
 		const cwd = input.cwd ?? process.cwd();
 		const filePath = input.path.startsWith("/")

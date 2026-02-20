@@ -2,18 +2,14 @@ import { join, relative } from "node:path";
 import { z } from "zod";
 import type { ToolDef } from "../llm-api/types.ts";
 
-const GlobInput = z.object({
+const GlobSchema = z.object({
 	pattern: z
 		.string()
 		.describe("Glob pattern to match files against, e.g. '**/*.ts'"),
-	cwd: z
-		.string()
-		.optional()
-		.describe("Directory to search in (defaults to process.cwd())"),
 	ignore: z.array(z.string()).optional().describe("Glob patterns to exclude"),
 });
 
-type GlobInput = z.infer<typeof GlobInput>;
+type GlobInput = z.infer<typeof GlobSchema> & { cwd?: string };
 
 export interface GlobOutput {
 	files: string[];
@@ -28,7 +24,7 @@ export const globTool: ToolDef<GlobInput, GlobOutput> = {
 	description:
 		"Find files matching a glob pattern. Returns relative paths sorted by modification time. " +
 		"Use this to discover files before reading them.",
-	schema: GlobInput,
+	schema: GlobSchema,
 	execute: async (input) => {
 		const cwd = input.cwd ?? process.cwd();
 		const defaultIgnore = [
