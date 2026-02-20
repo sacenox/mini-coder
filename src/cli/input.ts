@@ -162,7 +162,7 @@ export async function readline(opts: {
 
 			// ── Search mode ────────────────────────────────────────────────────────
 			if (searchMode) {
-				if (raw === CTRL_C || raw === ESC) {
+				if (raw === ESC) {
 					searchMode = false;
 					searchQuery = "";
 					renderPrompt();
@@ -249,20 +249,12 @@ export async function readline(opts: {
 			// ── Control keys ──────────────────────────────────────────────────────
 			if (raw === CTRL_C) {
 				process.stdout.write("\n");
-				return { type: "interrupt" };
+				return { type: "eof" };
 			}
 
 			if (raw === CTRL_D) {
-				if (buf.length === 0) {
-					process.stdout.write("\n");
-					return { type: "eof" };
-				}
-				// Delete char at cursor (like delete key)
-				if (cursor < buf.length) {
-					buf = buf.slice(0, cursor) + buf.slice(cursor + 1);
-					renderPrompt();
-				}
-				continue;
+				process.stdout.write("\n");
+				return { type: "interrupt" };
 			}
 
 			if (raw === CTRL_A) {
