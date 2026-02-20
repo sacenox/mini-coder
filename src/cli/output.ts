@@ -389,11 +389,13 @@ export async function renderTurn(
 ): Promise<{
 	inputTokens: number;
 	outputTokens: number;
+	contextTokens: number;
 	newMessages: import("../llm-api/turn.ts").CoreMessage[];
 }> {
 	let inText = false;
 	let inputTokens = 0;
 	let outputTokens = 0;
+	let contextTokens = 0;
 	let newMessages: import("../llm-api/turn.ts").CoreMessage[] = [];
 
 	for await (const event of events) {
@@ -434,6 +436,7 @@ export async function renderTurn(
 				spinner.stop();
 				inputTokens = event.inputTokens;
 				outputTokens = event.outputTokens;
+				contextTokens = event.contextTokens;
 				newMessages = event.messages;
 				break;
 			}
@@ -451,7 +454,7 @@ export async function renderTurn(
 		}
 	}
 
-	return { inputTokens, outputTokens, newMessages };
+	return { inputTokens, outputTokens, contextTokens, newMessages };
 }
 
 // ─── Status bar ───────────────────────────────────────────────────────────────
@@ -465,7 +468,8 @@ export function renderStatusBar(opts: {
 	gitBranch: string | null;
 	inputTokens: number;
 	outputTokens: number;
-	contextPercent: number | null;
+	contextTokens: number;
+	contextWindow: number | null;
 }): void {
 	const cols = (process.stderr as NodeJS.WriteStream).columns ?? 80;
 
@@ -479,9 +483,22 @@ export function renderStatusBar(opts: {
 			c.dim(`↑${fmtTokens(opts.inputTokens)} ↓${fmtTokens(opts.outputTokens)}`),
 		);
 	}
-	if (opts.contextPercent !== null) {
-		const pct = `${opts.contextPercent}%`;
-		right.push(opts.contextPercent > 80 ? c.red(pct) : c.dim(pct));
+	if (opts.contextTokens > 0) {
+		const ctxRaw = fmtTokens(opts.contextTokens);
+		if (opts.contextWindow !== null) {
+			const pct = Math.round((opts.contextTokens / opts.contextWindow) * 100);
+			const ctxMax = fmtTokens(opts.contextWindow);
+			const pctStr = `${pct}%`;
+			const colored =
+				pct >= 90
+					? c.red(pctStr)
+					: pct >= 75
+						? c.yellow(pctStr)
+						: c.dim(pctStr);
+			right.push(c.dim(`ctx ${ctxRaw}/${ctxMax} `) + colored);
+		} else {
+			right.push(c.dim(`ctx ${ctxRaw}`));
+		}
 	}
 	if (opts.gitBranch) right.push(c.dim(`⎇ ${opts.gitBranch}`));
 

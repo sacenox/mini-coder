@@ -70,6 +70,8 @@ export interface TurnCompleteEvent {
 	type: "turn-complete";
 	inputTokens: number;
 	outputTokens: number;
+	/** Input tokens of the final step — equals the actual context window usage. */
+	contextTokens: number;
 	/**
 	 * Raw AI SDK ModelMessage objects generated this turn.
 	 * These are passed directly back to streamText on subsequent turns —

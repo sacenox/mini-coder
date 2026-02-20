@@ -129,6 +129,45 @@ function directGoogle() {
 	return _directGoogle;
 }
 
+// ─── Context window table ─────────────────────────────────────────────────────
+// Maps model ID substrings (matched in order) to token limits.
+// Covers all Zen models plus common direct-provider model families.
+// When a model isn't matched, callers fall back to showing raw token counts.
+
+const CONTEXT_WINDOW_TABLE: Array<[pattern: RegExp, tokens: number]> = [
+	// Claude — all modern models are 200k
+	[/^claude-/, 200_000],
+	// Gemini — all Gemini 3.x are 1M
+	[/^gemini-/, 1_000_000],
+	// GPT-5 series — 128k
+	[/^gpt-5/, 128_000],
+	// GPT-4o / GPT-4 series — 128k
+	[/^gpt-4/, 128_000],
+	// Kimi K2 / K2.5 — 262k
+	[/^kimi-k2/, 262_000],
+	// MiniMax M2 — 196k
+	[/^minimax-m2/, 196_000],
+	// GLM 5 / 4.x — 128k
+	[/^glm-/, 128_000],
+	// Qwen3 Coder — 131k (Qwen3 standard)
+	[/^qwen3-/, 131_000],
+];
+
+/**
+ * Return the known context window size (in tokens) for a model string.
+ * Accepts either a bare model ID or a "provider/model-id" string.
+ * Returns null when the model is unknown.
+ */
+export function getContextWindow(modelString: string): number | null {
+	const modelId = modelString.includes("/")
+		? modelString.slice(modelString.indexOf("/") + 1)
+		: modelString;
+	for (const [pattern, tokens] of CONTEXT_WINDOW_TABLE) {
+		if (pattern.test(modelId)) return tokens;
+	}
+	return null;
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**

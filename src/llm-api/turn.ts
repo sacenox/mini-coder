@@ -68,6 +68,10 @@ export async function* runTurn(options: {
 
 	let inputTokens = 0;
 	let outputTokens = 0;
+	// Overwritten each step — after all steps this holds the last step's input
+	// token count, which approximates context window usage (each step re-sends
+	// the full conversation history, so later steps have larger prompts).
+	let contextTokens = 0;
 
 	try {
 		const streamOpts: StreamTextOptions = {
@@ -78,6 +82,7 @@ export async function* runTurn(options: {
 			onStepFinish: (step: StepResult<ToolSet>) => {
 				inputTokens += step.usage?.inputTokens ?? 0;
 				outputTokens += step.usage?.outputTokens ?? 0;
+				contextTokens = step.usage?.inputTokens ?? contextTokens;
 			},
 			...(systemPrompt ? { system: systemPrompt } : {}),
 			...(signal ? { abortSignal: signal } : {}),
@@ -162,6 +167,7 @@ export async function* runTurn(options: {
 			type: "turn-complete",
 			inputTokens,
 			outputTokens,
+			contextTokens,
 			// Pass raw ModelMessage objects — no conversion; they are fed back to
 			// streamText on the next turn and must stay in their original shape.
 			messages: newMessages,

@@ -14,7 +14,7 @@ import {
 	restoreTerminal,
 	writeln,
 } from "../cli/output.ts";
-import { resolveModel } from "../llm-api/providers.ts";
+import { getContextWindow, resolveModel } from "../llm-api/providers.ts";
 import { type CoreMessage, runTurn } from "../llm-api/turn.ts";
 import type { Message, ToolDef } from "../llm-api/types.ts";
 import { connectMcpServer } from "../mcp/client.ts";
@@ -409,10 +409,8 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 			signal: abortController.signal,
 		});
 
-		const { inputTokens, outputTokens, newMessages } = await renderTurn(
-			events,
-			spinner,
-		);
+		const { inputTokens, outputTokens, contextTokens, newMessages } =
+			await renderTurn(events, spinner);
 		process.removeListener("SIGINT", onSigInt);
 
 		// newMessages are raw ModelMessage objects — push directly into coreHistory
@@ -460,7 +458,8 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 			gitBranch: branch,
 			inputTokens,
 			outputTokens,
-			contextPercent: null,
+			contextTokens,
+			contextWindow: getContextWindow(currentModel),
 		});
 	}
 }
