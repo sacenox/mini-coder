@@ -63,8 +63,6 @@ export async function* runTurn(options: {
 
   let inputTokens = 0;
   let outputTokens = 0;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const newMessages: any[] = [];
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -77,10 +75,6 @@ export async function* runTurn(options: {
       onStepFinish: (step: any) => {
         inputTokens += (step.usage?.inputTokens as number) ?? 0;
         outputTokens += (step.usage?.outputTokens as number) ?? 0;
-        if (step.response?.messages) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          newMessages.push(...(step.response.messages as any[]));
-        }
       },
     };
     if (systemPrompt) streamOpts.system = systemPrompt;
@@ -139,6 +133,17 @@ export async function* runTurn(options: {
             : new Error(String(c.error));
       }
     }
+
+    // Collect the final response messages after the stream completes.
+    // Using result.response (which resolves to the final step's response)
+    // gives us the authoritative, deduplicated list of all messages generated
+    // across all steps. Accumulating from onStepFinish would cause duplicates
+    // because step.response.messages includes all prior step messages PLUS the
+    // current step's messages on each callback invocation.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const finalResponse = await (result as any).response;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const newMessages: any[] = finalResponse?.messages ?? [];
 
     yield {
       type: "turn-complete",
