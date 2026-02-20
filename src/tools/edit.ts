@@ -2,20 +2,23 @@ import { existsSync, mkdirSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { z } from "zod";
 import type { ToolDef } from "../llm-api/types.ts";
+import { findLineByHash } from "./hashline.ts";
 
 const EditInput = z.object({
 	path: z.string().describe("File path to edit (absolute or relative to cwd)"),
-	oldString: z
+	startAnchor: z.string().optional().describe('Start anchor, e.g. "11:a3"'),
+	endAnchor: z
 		.string()
-		.describe(
-			"Exact string to find and replace. Must match exactly including whitespace and indentation. " +
-				"Must be unique in the file. To create a new file, pass an empty string.",
-		),
-	newString: z
+		.optional()
+		.describe('End anchor (inclusive), e.g. "33:0e"'),
+	newContent: z
 		.string()
-		.describe(
-			"String to replace oldString with. Pass empty string to delete oldString.",
-		),
+		.optional()
+		.describe("Replacement text. Omit or pass empty string to delete a range."),
+	insertPosition: z
+		.enum(["before", "after"])
+		.optional()
+		.describe("Insert-only position relative to startAnchor"),
 	cwd: z
 		.string()
 		.optional()
@@ -32,14 +35,15 @@ export interface EditOutput {
 	created: boolean;
 }
 
+const HASH_NOT_FOUND_ERROR =
+	"Hash not found. Re-read the file to get current anchors.";
+
 export const editTool: ToolDef<EditInput, EditOutput> = {
 	name: "edit",
 	description:
-		"Edit a file by replacing an exact string with a new string. " +
-		"The oldString must match exactly (including whitespace). " +
-		"To create a new file, pass oldString as empty string. " +
-		"To delete text, pass newString as empty string. " +
-		"Prefer small, focused edits over replacing large blocks.",
+		"Edit a file using hashline anchors. Provide startAnchor (and optional endAnchor) " +
+		"to replace or delete a range. Use insertPosition with startAnchor to insert text. " +
+		"To create a new file, omit startAnchor and provide newContent.",
 	schema: EditInput,
 	execute: async (input) => {
 		const cwd = input.cwd ?? process.cwd();
@@ -51,21 +55,30 @@ export const editTool: ToolDef<EditInput, EditOutput> = {
 		let created = false;
 
 		// ── Creating a new file ──────────────────────────────────────────────────
-		if (input.oldString === "") {
+		if (!input.startAnchor) {
+			if (input.endAnchor || input.insertPosition) {
+				throw new Error(
+					"startAnchor is required for edits. Omit it only to create a new file.",
+				);
+			}
+			if (input.newContent === undefined) {
+				throw new Error("newContent is required to create a new file.");
+			}
+
 			const dir = dirname(filePath);
 			if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 
 			const existing = await Bun.file(filePath).exists();
 			if (existing) {
 				throw new Error(
-					`File "${relPath}" already exists. Provide oldString to edit an existing file.`,
+					`File "${relPath}" already exists. Provide startAnchor to edit an existing file.`,
 				);
 			}
 
-			await Bun.write(filePath, input.newString);
+			await Bun.write(filePath, input.newContent);
 			created = true;
 
-			const diff = generateDiff(relPath, "", input.newString);
+			const diff = generateDiff(relPath, "", input.newContent);
 			return { path: relPath, success: true, diff, created };
 		}
 
@@ -74,33 +87,97 @@ export const editTool: ToolDef<EditInput, EditOutput> = {
 		const exists = await file.exists();
 		if (!exists) {
 			throw new Error(
-				`File not found: "${relPath}". To create a new file, pass oldString as empty string.`,
+				`File not found: "${relPath}". To create a new file, omit startAnchor.`,
 			);
+		}
+
+		const start = parseAnchor(input.startAnchor, "startAnchor");
+		const end = input.endAnchor
+			? parseAnchor(input.endAnchor, "endAnchor")
+			: null;
+		if (end && end.line < start.line) {
+			throw new Error(
+				"endAnchor line number must be >= startAnchor line number.",
+			);
+		}
+		if (input.insertPosition && input.endAnchor) {
+			throw new Error("insertPosition cannot be used with endAnchor.");
+		}
+		if (input.insertPosition && input.newContent === undefined) {
+			throw new Error("newContent is required for insert operations.");
 		}
 
 		const original = await file.text();
+		const lines = original.split("\n");
 
-		// Check uniqueness
-		const firstIdx = original.indexOf(input.oldString);
-		if (firstIdx === -1) {
-			throw new Error(
-				`oldString not found in "${relPath}". Make sure it matches exactly including whitespace and indentation.`,
-			);
+		const startLine = findLineByHash(lines, start.hash, start.line);
+		if (!startLine) throw new Error(HASH_NOT_FOUND_ERROR);
+
+		let endLine = startLine;
+		if (end) {
+			const resolvedEnd = findLineByHash(lines, end.hash, end.line);
+			if (!resolvedEnd) throw new Error(HASH_NOT_FOUND_ERROR);
+			endLine = resolvedEnd;
 		}
-		const secondIdx = original.indexOf(input.oldString, firstIdx + 1);
-		if (secondIdx !== -1) {
-			throw new Error(
-				`oldString matches multiple locations in "${relPath}". Provide more surrounding context to make it unique.`,
-			);
+		if (endLine < startLine) {
+			throw new Error("endAnchor resolves before startAnchor.");
 		}
 
-		const updated = original.replace(input.oldString, input.newString);
+		let updatedLines: string[];
+		if (input.insertPosition) {
+			const insertLines = (input.newContent ?? "").split("\n");
+			const insertAt =
+				input.insertPosition === "before" ? startLine - 1 : startLine;
+			updatedLines = [
+				...lines.slice(0, insertAt),
+				...insertLines,
+				...lines.slice(insertAt),
+			];
+		} else {
+			const replacement =
+				input.newContent === undefined || input.newContent === ""
+					? []
+					: input.newContent.split("\n");
+			const startIdx = startLine - 1;
+			const endIdx = (end ? endLine : startLine) - 1;
+			updatedLines = [
+				...lines.slice(0, startIdx),
+				...replacement,
+				...lines.slice(endIdx + 1),
+			];
+		}
+
+		const updated = updatedLines.join("\n");
 		await Bun.write(filePath, updated);
 
 		const diff = generateDiff(relPath, original, updated);
 		return { path: relPath, success: true, diff, created };
 	},
 };
+
+interface ParsedAnchor {
+	line: number;
+	hash: string;
+}
+
+function parseAnchor(value: string, name: string): ParsedAnchor {
+	const match = /^\s*(\d+):([0-9a-fA-F]{2})\s*$/.exec(value);
+	if (!match) {
+		throw new Error(`Invalid ${name}. Expected "line:hh".`);
+	}
+
+	const line = Number(match[1]);
+	if (!Number.isInteger(line) || line < 1) {
+		throw new Error(`Invalid ${name} line number.`);
+	}
+
+	const hash = match[2];
+	if (!hash) {
+		throw new Error(`Invalid ${name}. Expected "line:hh".`);
+	}
+
+	return { line, hash: hash.toLowerCase() };
+}
 
 // ─── Simple unified diff generator ───────────────────────────────────────────
 

@@ -144,14 +144,18 @@ function toolCallLine(name: string, args: unknown): string {
 		return `${G.search} ${c.dim("grep")} ${c.bold(pattern)}${flags ? c.dim(`  ${flags}`) : ""}`;
 	}
 	if (name === "read") {
+		const line = Number.isFinite(a.line as number) ? Number(a.line) : null;
+		const count = Number.isFinite(a.count as number) ? Number(a.count) : null;
 		const range =
-			a.startLine || a.endLine
-				? c.dim(`:${a.startLine ?? ""}–${a.endLine ?? ""}`)
-				: "";
+			line || count ? c.dim(`:${line ?? 1}${count ? `+${count}` : ""}`) : "";
 		return `${G.read} ${c.dim("read")} ${String(a.path ?? "")}${range}`;
 	}
 	if (name === "edit") {
-		const verb = !a.oldString || a.oldString === "" ? "create" : "edit";
+		const verb = !a.startAnchor
+			? "create"
+			: a.insertPosition
+				? "insert"
+				: "edit";
 		return `${G.write} ${c.dim(verb)} ${c.bold(String(a.path ?? ""))}`;
 	}
 	if (name === "shell") {
@@ -257,15 +261,17 @@ export function renderToolResult(
 	if (toolName === "read") {
 		const r = result as {
 			path: string;
-			startLine: number;
-			endLine: number;
+			line: number;
 			totalLines: number;
 			truncated: boolean;
+			content?: string;
 		};
+		const linesReturned = r.content ? r.content.split("\n").length : 0;
+		const endLine = linesReturned > 0 ? r.line + linesReturned - 1 : r.line;
 		const range =
-			r.startLine === 1 && r.endLine === r.totalLines
+			r.line === 1 && endLine === r.totalLines
 				? `${r.totalLines} lines`
-				: `lines ${r.startLine}–${r.endLine} of ${r.totalLines}`;
+				: `lines ${r.line}–${endLine} of ${r.totalLines}`;
 		writeln(
 			`    ${G.info} ${c.dim(`${r.path}  ${range}${r.truncated ? "  (truncated)" : ""}`)}`,
 		);

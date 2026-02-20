@@ -1,21 +1,23 @@
 import { join, relative } from "node:path";
 import { z } from "zod";
 import type { ToolDef } from "../llm-api/types.ts";
+import { formatHashLine } from "./hashline.ts";
 
 const ReadInput = z.object({
 	path: z.string().describe("File path to read (absolute or relative to cwd)"),
-	startLine: z
+	line: z
 		.number()
 		.int()
 		.min(1)
 		.optional()
-		.describe("First line to read (1-indexed, inclusive)"),
-	endLine: z
+		.describe("1-indexed starting line (default: 1)"),
+	count: z
 		.number()
 		.int()
 		.min(1)
+		.max(500)
 		.optional()
-		.describe("Last line to read (1-indexed, inclusive)"),
+		.describe("Lines to read (default: 500, max: 500)"),
 	cwd: z
 		.string()
 		.optional()
@@ -28,19 +30,20 @@ export interface ReadOutput {
 	path: string;
 	content: string;
 	totalLines: number;
-	startLine: number;
-	endLine: number;
+	line: number;
 	truncated: boolean;
 }
 
-const MAX_LINES = 2000;
-const MAX_BYTES = 200_000;
+const MAX_COUNT = 500;
+const MAX_BYTES = 1_000_000;
 
 export const readTool: ToolDef<ReadInput, ReadOutput> = {
 	name: "read",
 	description:
-		"Read a file's contents. Optionally specify a line range with startLine/endLine. " +
-		"Lines are 1-indexed. Large files are automatically truncated.",
+		"Read a file's contents. `line` sets the starting line (1-indexed, default 1). " +
+		"`count` sets how many lines to read (default 500, max 500). " +
+		"Check `truncated` and `totalLines` in the result to detect when more content exists; " +
+		"paginate by incrementing `line`.",
 	schema: ReadInput,
 	execute: async (input) => {
 		const cwd = input.cwd ?? process.cwd();
@@ -65,30 +68,23 @@ export const readTool: ToolDef<ReadInput, ReadOutput> = {
 		const allLines = raw.split("\n");
 		const totalLines = allLines.length;
 
-		const startLine = input.startLine ?? 1;
-		const endLine =
-			input.endLine ?? Math.min(totalLines, startLine + MAX_LINES - 1);
+		const startLine = input.line ?? 1;
+		const count = Math.min(input.count ?? MAX_COUNT, MAX_COUNT);
 
 		const clampedStart = Math.max(1, Math.min(startLine, totalLines));
-		const clampedEnd = Math.max(clampedStart, Math.min(endLine, totalLines));
+		const endLine = Math.min(totalLines, clampedStart + count - 1);
+		const truncated = endLine < totalLines;
 
-		// Hard cap on lines returned
-		const lineCount = clampedEnd - clampedStart + 1;
-		const hardEnd =
-			lineCount > MAX_LINES ? clampedStart + MAX_LINES - 1 : clampedEnd;
-		const truncated = hardEnd < clampedEnd || hardEnd < totalLines;
-
-		const selectedLines = allLines.slice(clampedStart - 1, hardEnd);
+		const selectedLines = allLines.slice(clampedStart - 1, endLine);
 		const content = selectedLines
-			.map((line, i) => `${clampedStart + i}: ${line}`)
+			.map((line, i) => formatHashLine(clampedStart + i, line))
 			.join("\n");
 
 		return {
 			path: relative(cwd, filePath),
 			content,
 			totalLines,
-			startLine: clampedStart,
-			endLine: hardEnd,
+			line: clampedStart,
 			truncated,
 		};
 	},
