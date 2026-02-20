@@ -243,6 +243,10 @@ export async function readline(opts: {
 					renderPrompt();
 					continue;
 				}
+				if (raw === ESC) {
+					process.stdout.write("\n");
+					return { type: "interrupt" };
+				}
 				continue;
 			}
 
