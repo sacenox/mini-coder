@@ -18,6 +18,8 @@ export interface CommandContext {
 	planMode: boolean;
 	setPlanMode: (enabled: boolean) => void;
 	undoLastTurn: () => boolean;
+	startNewSession: () => void;
+
 	connectMcpServer: (name: string) => Promise<void>;
 	runSubagent: (
 		prompt: string,
@@ -292,8 +294,16 @@ async function handleReview(ctx: CommandContext, args: string): Promise<void> {
 	}
 }
 
+function handleNew(ctx: CommandContext): void {
+	ctx.startNewSession();
+	writeln(
+		`${PREFIX.success} ${c.dim("new session started — context cleared")}`,
+	);
+}
+
 function handleHelp(): void {
 	writeln();
+
 	const cmds: [string, string][] = [
 		["/model [id]", "list or switch models (fetches live list)"],
 		["/undo", "remove the last turn from conversation history"],
@@ -302,6 +312,7 @@ function handleHelp(): void {
 		["/mcp list", "list MCP servers"],
 		["/mcp add <n> <t> [u]", "add an MCP server"],
 		["/mcp remove <name>", "remove an MCP server"],
+		["/new", "start a new session with clean context"],
 		["/help", "this message"],
 		["/exit", "quit"],
 	];
@@ -345,6 +356,10 @@ export async function handleCommand(
 
 		case "mcp":
 			await handleMcp(ctx, args);
+			return { type: "handled" };
+
+		case "new":
+			handleNew(ctx);
 			return { type: "handled" };
 
 		case "review":

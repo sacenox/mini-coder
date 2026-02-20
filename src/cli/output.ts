@@ -466,6 +466,7 @@ export function renderStatusBar(opts: {
 	provider: string;
 	cwd: string;
 	gitBranch: string | null;
+	sessionId: string;
 	inputTokens: number;
 	outputTokens: number;
 	contextTokens: number;
@@ -476,6 +477,7 @@ export function renderStatusBar(opts: {
 	// Build segments from right priority (rightmost items drop first)
 	const left: string[] = [c.cyan(opts.model)];
 	if (opts.provider && opts.provider !== "zen") left.push(c.dim(opts.provider));
+	left.push(c.dim(opts.sessionId));
 
 	const right: string[] = [];
 	if (opts.inputTokens > 0 || opts.outputTokens > 0) {

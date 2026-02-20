@@ -319,6 +319,13 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 			return deleted;
 		},
 		connectMcpServer: connectAndAddMcp,
+		startNewSession: () => {
+			session = newSession(currentModel, cwd);
+			coreHistory.length = 0;
+			turnIndex = 1;
+			totalIn = 0;
+			totalOut = 0;
+		},
 	};
 	const spinner = new Spinner();
 	let totalIn = 0;
@@ -456,6 +463,7 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 			provider,
 			cwd: cwdDisplay,
 			gitBranch: branch,
+			sessionId: session.id,
 			inputTokens,
 			outputTokens,
 			contextTokens,
