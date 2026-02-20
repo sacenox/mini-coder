@@ -6,6 +6,11 @@ import * as c from "yoctocolors";
 function renderInline(text: string): string {
 	let out = "";
 	let i = 0;
+	// Track whether the previous character in the *source* was consumed as part
+	// of a bold closing **. This lets the italic branch distinguish "the * right
+	// after **bold**" (safe to start italic) from "the second * of an unclosed **"
+	// (must not start italic).
+	let prevWasBoldClose = false;
 
 	while (i < text.length) {
 		// Inline code: `...`
@@ -14,32 +19,43 @@ function renderInline(text: string): string {
 			if (end !== -1) {
 				out += c.yellow(text.slice(i, end + 1));
 				i = end + 1;
+				prevWasBoldClose = false;
 				continue;
 			}
 		}
 
-		// Bold: **...**
-		if (text.slice(i, i + 2) === "**") {
+		// Bold: **...**  (opening ** must not be followed by a third *)
+		if (text.slice(i, i + 2) === "**" && text[i + 2] !== "*") {
 			const end = text.indexOf("**", i + 2);
 			if (end !== -1) {
 				out += c.bold(text.slice(i + 2, end));
 				i = end + 2;
+				prevWasBoldClose = true;
 				continue;
 			}
 		}
 
-		// Italic: *...* (not preceded by another *)
-		if (text[i] === "*" && text[i - 1] !== "*" && text[i + 1] !== "*") {
+		// Italic: *...* — opening * must not be part of ** (next char is *).
+		// We also require that the previous source character was NOT a * UNLESS
+		// we just closed a bold span (in which case the adjacent * is a legitimate
+		// italic opener, not the second star of a ** pair).
+		if (
+			text[i] === "*" &&
+			text[i + 1] !== "*" &&
+			(prevWasBoldClose || text[i - 1] !== "*")
+		) {
 			const end = text.indexOf("*", i + 1);
 			if (end !== -1 && text[end - 1] !== "*") {
 				out += c.dim(text.slice(i + 1, end));
 				i = end + 1;
+				prevWasBoldClose = false;
 				continue;
 			}
 		}
 
 		out += text[i];
 		i++;
+		prevWasBoldClose = false;
 	}
 
 	return out;
