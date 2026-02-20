@@ -2,9 +2,11 @@ import type { ToolDef } from "../llm-api/types.ts";
 import { editTool } from "../tools/edit.ts";
 import { globTool } from "../tools/glob.ts";
 import { grepTool } from "../tools/grep.ts";
+import { insertTool } from "../tools/insert.ts";
 import { readTool } from "../tools/read.ts";
 import { shellTool } from "../tools/shell.ts";
 import { createSubagentTool } from "../tools/subagent.ts";
+import { writeTool } from "../tools/write.ts";
 
 // ─── Hook types ────────────────────────────────────────────────────────────────
 
@@ -65,10 +67,15 @@ export function buildToolSet(opts: {
 }): ToolDef[] {
 	const depth = opts.depth ?? 0;
 	return [
+		// Read-only: discover and inspect files
 		withCwdDefault(globTool as ToolDef, opts.cwd),
 		withCwdDefault(grepTool as ToolDef, opts.cwd),
 		withCwdDefault(readTool as ToolDef, opts.cwd),
+		// Write: create/overwrite, replace/delete, insert
+		withCwdDefault(writeTool as ToolDef, opts.cwd),
 		withCwdDefault(editTool as ToolDef, opts.cwd),
+		withCwdDefault(insertTool as ToolDef, opts.cwd),
+		// Shell and subagent
 		withCwdDefault(shellTool as ToolDef, opts.cwd),
 		createSubagentTool(async (prompt, model) => {
 			if (depth >= MAX_SUBAGENT_DEPTH) {

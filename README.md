@@ -34,7 +34,9 @@ I come equipped with a tight, reliable set of tools:
 | 🔍 `glob` | Find files by pattern across your project |
 | 🧲 `grep` | Search file contents with regex |
 | 📖 `read` | Read files (with line-range support) |
-| ✏️ `edit` | Make precise, targeted edits (no full rewrites) |
+| 📝 `write` | Create a new file or fully overwrite an existing file |
+| ✏️ `edit` | Replace or delete lines using hashline anchors |
+| ➕ `insert` | Insert lines before/after an anchor without replacing |
 | 🐚 `shell` | Run shell commands and see their output |
 | 🤖 `subagent` | Spawn a focused mini-me for parallel subtasks |
 
@@ -92,7 +94,7 @@ src/
   agent/            # Main REPL loop + tool registry
   cli/              # Input, output, slash commands
   llm-api/          # Provider factory + streaming turn logic
-  tools/            # glob, grep, read, edit, shell, subagent
+  tools/            # glob, grep, read, write, edit, insert, shell, subagent
   mcp/              # MCP server connections
   session/          # SQLite-backed session & history management
 ```
