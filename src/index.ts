@@ -4,6 +4,7 @@ import { autoDiscoverModel } from "./llm-api/providers.ts";
 import { runAgent } from "./agent/agent.ts";
 import { printSessionList, getMostRecentSession } from "./session/manager.ts";
 import { writeln, renderError, renderBanner, registerTerminalCleanup } from "./cli/output.ts";
+import { getPreferredModel } from "./session/db.ts";
 
 // Register terminal cleanup handlers as early as possible so the cursor is
 // always restored even if the process crashes or is killed.
@@ -135,8 +136,8 @@ async function main(): Promise<void> {
     sessionId = args.sessionId;
   }
 
-  // Determine model
-  const model = args.model ?? autoDiscoverModel();
+  // Determine model: CLI flag > persisted user preference > auto-discover
+  const model = args.model ?? getPreferredModel() ?? autoDiscoverModel();
 
   if (!args.prompt) {
     // Only show banner for interactive sessions, not piped/one-shot

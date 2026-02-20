@@ -28,6 +28,7 @@ import {
   addPromptHistory,
   getConfigDir,
   listMcpServers,
+  setPreferredModel,
 } from "../session/db.ts";
 import { join } from "path";
 import { existsSync, readFileSync } from "fs";
@@ -257,6 +258,7 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
     setModel: (m) => {
       currentModel = m;
       session.model = m;
+      setPreferredModel(m);
     },
     get planMode() {
       return planMode;
