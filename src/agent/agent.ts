@@ -80,11 +80,13 @@ function buildSystemPrompt(cwd: string): string {
 	const cwdDisplay = cwd.startsWith(homedir())
 		? `~${cwd.slice(homedir().length)}`
 		: cwd;
+	const now = new Date().toLocaleString(undefined, { hour12: false });
 
 	let prompt = `You are mini-coder, a small and fast CLI coding agent.
 You have access to tools to read files, search code, make edits, run shell commands, and spawn subagents.
 
 Current working directory: ${cwdDisplay}
+Current date/time: ${now}
 
 Guidelines:
 - Be concise and precise. Avoid unnecessary preamble.
