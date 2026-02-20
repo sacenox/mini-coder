@@ -1,5 +1,6 @@
 import * as c from "yoctocolors";
 import type { TurnEvent } from "../llm-api/types.ts";
+import { renderMarkdown } from "./markdown.ts";
 
 // ─── Terminal restore ─────────────────────────────────────────────────────────
 
@@ -393,10 +394,38 @@ export async function renderTurn(
 	newMessages: import("../llm-api/turn.ts").CoreMessage[];
 }> {
 	let inText = false;
+	// Full text accumulated so far — needed for correct markdown context
+	// (e.g. knowing whether we're inside a fenced code block).
+	let textBuffer = "";
+	// Tracks how many characters of textBuffer have already been written to
+	// stdout so we only write new content on each delta.
+	let writtenLen = 0;
 	let inputTokens = 0;
 	let outputTokens = 0;
 	let contextTokens = 0;
 	let newMessages: import("../llm-api/turn.ts").CoreMessage[] = [];
+
+	// Flush all completed lines (everything up to the last newline) through
+	// renderMarkdown and write only the newly rendered portion to stdout.
+	function flushLines(): void {
+		const lastNl = textBuffer.lastIndexOf("\n");
+		if (lastNl < writtenLen) return; // no new complete lines
+		const fullRendered = renderMarkdown(textBuffer.slice(0, lastNl + 1));
+		const alreadyRendered = renderMarkdown(textBuffer.slice(0, writtenLen));
+		const newOutput = fullRendered.slice(alreadyRendered.length);
+		if (newOutput) write(newOutput);
+		writtenLen = lastNl + 1;
+	}
+
+	// Flush any remaining buffered text (including incomplete last line).
+	function flushText(): void {
+		if (writtenLen >= textBuffer.length) return;
+		const fullRendered = renderMarkdown(textBuffer);
+		const alreadyRendered = renderMarkdown(textBuffer.slice(0, writtenLen));
+		const newOutput = fullRendered.slice(alreadyRendered.length);
+		if (newOutput) write(newOutput);
+		writtenLen = textBuffer.length;
+	}
 
 	for await (const event of events) {
 		switch (event.type) {
@@ -406,12 +435,14 @@ export async function renderTurn(
 					process.stdout.write(`${G.reply} `);
 					inText = true;
 				}
-				write(event.delta);
+				textBuffer += event.delta;
+				flushLines();
 				break;
 			}
 
 			case "tool-call-start": {
 				if (inText) {
+					flushText();
 					writeln();
 					inText = false;
 				}
@@ -430,6 +461,7 @@ export async function renderTurn(
 
 			case "turn-complete": {
 				if (inText) {
+					flushText();
 					writeln();
 					inText = false;
 				}
@@ -443,6 +475,7 @@ export async function renderTurn(
 
 			case "turn-error": {
 				if (inText) {
+					flushText();
 					writeln();
 					inText = false;
 				}
