@@ -1,41 +1,47 @@
-import { streamText, tool, stepCountIs, jsonSchema } from "ai";
+import { dynamicTool, jsonSchema, stepCountIs, streamText } from "ai";
+import type { StepResult } from "ai";
 import { z } from "zod";
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyLanguageModel = any;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyModelMessage = any;
-import type { TurnEvent, ToolDef } from "./types.ts";
+import type { ToolDef, TurnEvent } from "./types.ts";
+
+type StreamTextOptions = Parameters<typeof streamText>[0];
+export type CoreMessage = NonNullable<StreamTextOptions["messages"]>[number];
+type CoreModel = StreamTextOptions["model"];
+type ToolSet = NonNullable<StreamTextOptions["tools"]>;
+type ToolEntry = ToolSet extends Record<string, infer T> ? T : never;
+type StreamChunk = { type?: string; [key: string]: unknown };
+
+type StreamTextResult = ReturnType<typeof streamText>;
+type StreamTextResultFull = StreamTextResult & {
+	fullStream: AsyncIterable<StreamChunk>;
+	response: Promise<{ messages?: CoreMessage[] }>;
+};
 
 const MAX_STEPS = 50;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function isZodSchema(s: unknown): boolean {
-  // Zod schemas have a _def property; plain JSON Schema objects don't.
-  return (
-    s !== null &&
-    typeof s === "object" &&
-    "_def" in (s as object)
-  );
+	// Zod schemas have a _def property; plain JSON Schema objects don't.
+	return s !== null && typeof s === "object" && "_def" in (s as object);
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function toCoreTool(def: ToolDef): any {
-  // MCP tools pass raw JSON Schema objects; the AI SDK requires them to be
-  // wrapped with jsonSchema(). Zod schemas are passed through as-is.
-  const schema = isZodSchema(def.schema) ? def.schema : jsonSchema(def.schema);
-  return tool({
-    description: def.description,
-    inputSchema: schema,
-    execute: async (input: unknown) => {
-      try {
-        return await def.execute(input);
-      } catch (err) {
-        throw err instanceof Error ? err : new Error(String(err));
-      }
-    },
-  });
+function toCoreTool(def: ToolDef): ReturnType<typeof dynamicTool> {
+	// MCP tools pass raw JSON Schema objects; the AI SDK requires them to be
+	// wrapped with jsonSchema(). Zod schemas are passed through as-is.
+	const schema = isZodSchema(def.schema)
+		? (def.schema as import("ai").FlexibleSchema<unknown>)
+		: jsonSchema(def.schema);
+	return dynamicTool({
+		description: def.description,
+		inputSchema: schema,
+		execute: async (input: unknown) => {
+			try {
+				return await def.execute(input);
+			} catch (err) {
+				throw err instanceof Error ? err : new Error(String(err));
+			}
+		},
+	});
 }
 
 // ─── Main turn function ───────────────────────────────────────────────────────
@@ -47,125 +53,131 @@ function toCoreTool(def: ToolDef): any {
  * (or TurnErrorEvent on failure).
  */
 export async function* runTurn(options: {
-  model: AnyLanguageModel;
-  messages: AnyModelMessage[];
-  tools: ToolDef[];
-  systemPrompt?: string;
-  signal?: AbortSignal;
+	model: CoreModel;
+	messages: CoreMessage[];
+	tools: ToolDef[];
+	systemPrompt?: string;
+	signal?: AbortSignal;
 }): AsyncGenerator<TurnEvent> {
-  const { model, messages, tools, systemPrompt, signal } = options;
+	const { model, messages, tools, systemPrompt, signal } = options;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const toolSet: Record<string, any> = {};
-  for (const def of tools) {
-    toolSet[def.name] = toCoreTool(def);
-  }
+	const toolSet = {} as ToolSet;
+	for (const def of tools) {
+		(toolSet as Record<string, ToolEntry>)[def.name] = toCoreTool(def);
+	}
 
-  let inputTokens = 0;
-  let outputTokens = 0;
+	let inputTokens = 0;
+	let outputTokens = 0;
 
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const streamOpts: any = {
-      model,
-      messages,
-      tools: toolSet,
-      stopWhen: stepCountIs(MAX_STEPS),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      onStepFinish: (step: any) => {
-        inputTokens += (step.usage?.inputTokens as number) ?? 0;
-        outputTokens += (step.usage?.outputTokens as number) ?? 0;
-      },
-    };
-    if (systemPrompt) streamOpts.system = systemPrompt;
-    if (signal) streamOpts.abortSignal = signal;
+	try {
+		const streamOpts: StreamTextOptions = {
+			model,
+			messages,
+			tools: toolSet,
+			stopWhen: stepCountIs(MAX_STEPS),
+			onStepFinish: (step: StepResult<ToolSet>) => {
+				inputTokens += step.usage?.inputTokens ?? 0;
+				outputTokens += step.usage?.outputTokens ?? 0;
+			},
+			...(systemPrompt ? { system: systemPrompt } : {}),
+			...(signal ? { abortSignal: signal } : {}),
+		};
 
-    const result = streamText(streamOpts);
+		const result = streamText(streamOpts) as StreamTextResultFull;
 
-    // Stream events
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    for await (const chunk of (result as any).fullStream) {
-      if (signal?.aborted) break;
+		// Stream events
+		for await (const chunk of result.fullStream) {
+			if (signal?.aborted) break;
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const c = chunk as any;
+			const c = chunk as StreamChunk;
 
-      switch (c.type) {
-        case "text-delta":
-          // AI SDK v6: property is `text`, not `textDelta`
-          yield { type: "text-delta", delta: (c.text ?? c.textDelta ?? "") as string };
-          break;
+			switch (c.type) {
+				case "text-delta": {
+					// AI SDK v6: property is `text`, not `textDelta`
+					const delta =
+						typeof c.text === "string"
+							? c.text
+							: typeof c.textDelta === "string"
+								? c.textDelta
+								: "";
+					yield {
+						type: "text-delta",
+						delta,
+					};
+					break;
+				}
 
-        case "tool-call":
-          yield {
-            type: "tool-call-start",
-            toolCallId: c.toolCallId as string,
-            toolName: c.toolName as string,
-            // AI SDK v6: property is `input`, not `args`
-            args: c.input ?? c.args,
-          };
-          break;
+				case "tool-call": {
+					yield {
+						type: "tool-call-start",
+						toolCallId: String(c.toolCallId ?? ""),
+						toolName: String(c.toolName ?? ""),
+						// AI SDK v6: property is `input`, not `args`
+						args: c.input ?? c.args,
+					};
+					break;
+				}
 
-        case "tool-result":
-          yield {
-            type: "tool-result",
-            toolCallId: c.toolCallId as string,
-            toolName: c.toolName as string,
-            // AI SDK v6: property is `output`, not `result`
-            result: c.output ?? c.result,
-            isError: false,
-          };
-          break;
+				case "tool-result": {
+					yield {
+						type: "tool-result",
+						toolCallId: String(c.toolCallId ?? ""),
+						toolName: String(c.toolName ?? ""),
+						// AI SDK v6: property is `output`, not `result`
+						result:
+							"output" in c ? c.output : "result" in c ? c.result : undefined,
+						isError: false,
+					};
+					break;
+				}
 
-        case "tool-error":
-          yield {
-            type: "tool-result",
-            toolCallId: c.toolCallId as string,
-            toolName: c.toolName as string,
-            result: c.error ?? "Tool execution failed",
-            isError: true,
-          };
-          break;
+				case "tool-error": {
+					yield {
+						type: "tool-result",
+						toolCallId: String(c.toolCallId ?? ""),
+						toolName: String(c.toolName ?? ""),
+						result: c.error ?? "Tool execution failed",
+						isError: true,
+					};
+					break;
+				}
 
-        case "error":
-          throw c.error instanceof Error
-            ? c.error
-            : new Error(String(c.error));
-      }
-    }
+				case "error": {
+					const err = c.error;
+					throw err instanceof Error ? err : new Error(String(err));
+				}
+			}
+		}
 
-    // Collect the final response messages after the stream completes.
-    // Using result.response (which resolves to the final step's response)
-    // gives us the authoritative, deduplicated list of all messages generated
-    // across all steps. Accumulating from onStepFinish would cause duplicates
-    // because step.response.messages includes all prior step messages PLUS the
-    // current step's messages on each callback invocation.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const finalResponse = await (result as any).response;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const newMessages: any[] = finalResponse?.messages ?? [];
+		// Collect the final response messages after the stream completes.
+		// Using result.response (which resolves to the final step's response)
+		// gives us the authoritative, deduplicated list of all messages generated
+		// across all steps. Accumulating from onStepFinish would cause duplicates
+		// because step.response.messages includes all prior step messages PLUS the
+		// current step's messages on each callback invocation.
+		const finalResponse = await result.response;
+		const newMessages = finalResponse?.messages ?? [];
 
-    yield {
-      type: "turn-complete",
-      inputTokens,
-      outputTokens,
-      // Pass raw ModelMessage objects — no conversion; they are fed back to
-      // streamText on the next turn and must stay in their original shape.
-      messages: newMessages,
-    };
-  } catch (err) {
-    yield {
-      type: "turn-error",
-      error: err instanceof Error ? err : new Error(String(err)),
-    };
-  }
+		yield {
+			type: "turn-complete",
+			inputTokens,
+			outputTokens,
+			// Pass raw ModelMessage objects — no conversion; they are fed back to
+			// streamText on the next turn and must stay in their original shape.
+			messages: newMessages,
+		};
+	} catch (err) {
+		yield {
+			type: "turn-error",
+			error: err instanceof Error ? err : new Error(String(err)),
+		};
+	}
 }
 
 // ─── Message builder helpers ──────────────────────────────────────────────────
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function userMessage(text: string): any {
-  return { role: "user", content: text };
+export function userMessage(text: string): CoreMessage {
+	return { role: "user", content: text };
 }
 
 export { z };

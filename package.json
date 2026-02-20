@@ -9,7 +9,9 @@
   },
   "scripts": {
     "dev": "bun run src/index.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check src",
+    "format": "biome format --write src"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.46",
@@ -23,6 +25,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
     "@types/bun": "latest",
     "typescript": "^5.8.3"
   }
