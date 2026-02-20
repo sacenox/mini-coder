@@ -33,14 +33,14 @@ export interface EditOutput {
 const HASH_NOT_FOUND_ERROR =
 	"Hash not found. Re-read the file to get current anchors.";
 
-export const editTool: ToolDef<EditInput, EditOutput> = {
-	name: "edit",
+export const replaceTool: ToolDef<EditInput, EditOutput> = {
+	name: "replace",
 	description:
 		"Replace or delete a range of lines in an existing file using hashline anchors. " +
 		'Anchors come from the `read` or `grep` tools (format: "line:hash", e.g. "11:a3"). ' +
 		"Provide startAnchor alone to target a single line, or add endAnchor for a range. " +
 		"Set newContent to the replacement text, or omit it to delete the range. " +
-		"To create a file use `write`. To insert without replacing any lines use `insert`.",
+		"To create a file use `create`. To insert without replacing any lines use `insert`.",
 	schema: EditSchema,
 	execute: async (input) => {
 		const cwd = input.cwd ?? process.cwd();
@@ -53,7 +53,7 @@ export const editTool: ToolDef<EditInput, EditOutput> = {
 		const file = Bun.file(filePath);
 		if (!(await file.exists())) {
 			throw new Error(
-				`File not found: "${relPath}". To create a new file use the \`write\` tool.`,
+				`File not found: "${relPath}". To create a new file use the \`create\` tool.`,
 			);
 		}
 

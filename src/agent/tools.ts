@@ -1,12 +1,12 @@
 import type { ToolDef } from "../llm-api/types.ts";
-import { editTool } from "../tools/edit.ts";
+import { createTool } from "../tools/create.ts";
 import { globTool } from "../tools/glob.ts";
 import { grepTool } from "../tools/grep.ts";
 import { insertTool } from "../tools/insert.ts";
 import { readTool } from "../tools/read.ts";
+import { replaceTool } from "../tools/replace.ts";
 import { shellTool } from "../tools/shell.ts";
 import { createSubagentTool } from "../tools/subagent.ts";
-import { writeTool } from "../tools/write.ts";
 
 // ─── Hook types ────────────────────────────────────────────────────────────────
 
@@ -72,8 +72,8 @@ export function buildToolSet(opts: {
 		withCwdDefault(grepTool as ToolDef, opts.cwd),
 		withCwdDefault(readTool as ToolDef, opts.cwd),
 		// Write: create/overwrite, replace/delete, insert
-		withCwdDefault(writeTool as ToolDef, opts.cwd),
-		withCwdDefault(editTool as ToolDef, opts.cwd),
+		withCwdDefault(createTool as ToolDef, opts.cwd),
+		withCwdDefault(replaceTool as ToolDef, opts.cwd),
 		withCwdDefault(insertTool as ToolDef, opts.cwd),
 		// Shell and subagent
 		withCwdDefault(shellTool as ToolDef, opts.cwd),

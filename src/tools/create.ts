@@ -17,12 +17,12 @@ export interface WriteOutput {
 	created: boolean;
 }
 
-export const writeTool: ToolDef<WriteInput, WriteOutput> = {
-	name: "write",
+export const createTool: ToolDef<WriteInput, WriteOutput> = {
+	name: "create",
 	description:
 		"Create a new file or fully overwrite an existing file with the given content. " +
 		"Use this only for new files. " +
-		"For targeted line edits on existing files, **use `edit` or `insert` instead**.",
+		"For targeted line edits on existing files, **use `replace` or `insert` instead**.",
 	schema: WriteSchema,
 	execute: async (input) => {
 		const cwd = input.cwd ?? process.cwd();
