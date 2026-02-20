@@ -105,10 +105,12 @@ async function readKey(reader: StreamReader): Promise<string> {
 // ─── Main readline function ───────────────────────────────────────────────────
 
 const PROMPT = c.green("▶ ");
-const PROMPT_RAW_LEN = 2; // "▶ " is 2 visible chars
+const PROMPT_PLAN = c.yellow("⬢ ");
+const PROMPT_RAW_LEN = 2; // both prompts are 2 visible chars
 
 export async function readline(opts: {
 	cwd?: string;
+	planMode?: boolean;
 }): Promise<InputResult> {
 	const cwd = opts.cwd ?? process.cwd();
 
@@ -134,8 +136,9 @@ export async function readline(opts: {
 				? `…${buf.slice(-(cols - PROMPT_RAW_LEN - 3))}`
 				: buf;
 
+		const prompt = opts.planMode ? PROMPT_PLAN : PROMPT;
 		process.stdout.write(
-			`${CLEAR_LINE}${PROMPT}${display}${CSI}${PROMPT_RAW_LEN + cursor + 1}G`,
+			`${CLEAR_LINE}${prompt}${display}${CSI}${PROMPT_RAW_LEN + cursor + 1}G`,
 		);
 	}
 

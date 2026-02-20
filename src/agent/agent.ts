@@ -348,7 +348,7 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 
 		let input: InputResult;
 		try {
-			input = await readline({ cwd });
+			input = await readline({ cwd, planMode });
 		} catch {
 			break;
 		}
