@@ -15,7 +15,7 @@ import {
 	writeln,
 } from "../cli/output.ts";
 import { resolveModel } from "../llm-api/providers.ts";
-import { type CoreMessage, runTurn, userMessage } from "../llm-api/turn.ts";
+import { type CoreMessage, runTurn } from "../llm-api/turn.ts";
 import type { Message, ToolDef } from "../llm-api/types.ts";
 import { connectMcpServer } from "../mcp/client.ts";
 import {
@@ -102,10 +102,10 @@ Guidelines:
 }
 
 // ─── DB messages → raw ModelMessages (for session resume) ────────────────────
-// On resume, the DB has only simple text messages (user prompts + assistant
-// text replies). Tool-call/result parts are intentionally not reconstructed
-// because the complex output/input shapes are opaque. The conversation context
-// is still preserved for the model via the text content.
+// On resume, the DB stores text-only messages. Tool-call/result parts are
+// intentionally not reconstructed because the complex output/input shapes are
+// opaque. Any tool-role entries are kept as plain text and treated as assistant
+// messages for resume context.
 function isTextPart(part: unknown): part is { type: "text"; text: string } {
 	return (
 		typeof part === "object" &&
@@ -115,24 +115,30 @@ function isTextPart(part: unknown): part is { type: "text"; text: string } {
 	);
 }
 
+function resumeRole(role: Message["role"]): "user" | "assistant" {
+	// Tool-role entries are stored as plain text; treat them as assistant
+	// messages when rebuilding context for the model.
+	return role === "user" ? "user" : "assistant";
+}
+
 function dbMessagesToCore(messages: Message[]): CoreMessage[] {
 	return messages.map((m): CoreMessage => {
+		const role = resumeRole(m.role);
 		if (typeof m.content === "string") {
-			// DB messages only have "user" or "assistant" roles; cast is safe.
-			return { role: m.role as "user" | "assistant", content: m.content };
+			return { role, content: m.content };
 		}
 		if (Array.isArray(m.content)) {
 			// Filter to text-only parts to avoid feeding malformed tool parts
 			const textParts = m.content.filter(isTextPart);
 			if (textParts.length > 0) {
 				return {
-					role: m.role as "user" | "assistant",
+					role,
 					content: textParts,
 				};
 			}
-			return { role: m.role as "user" | "assistant", content: "" };
+			return { role, content: "" };
 		}
-		return { role: m.role as "user" | "assistant", content: String(m.content) };
+		return { role, content: String(m.content) };
 	});
 }
 

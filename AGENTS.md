@@ -4,4 +4,5 @@
 - Core idea is in [mini-coder-plan.md](mini-coder-plan.md). This file is managed by the user, don't edit unless asked to by the user.
 - README.md is cosmetic for users, don't edit unless asked to.
 - Write minimal tests, focused on our code's logic. Never test dependencies. Never use mock servers or stubs.
-- Keep the repo pristine: no failing tests, no lint, no build issues.
+- Keep the repo pristine: no failing tests, no lint, no build issues, no `nolint:` comments.
+- Use `bun run typecheck && bun run format && bun run lint` to check your changes.
