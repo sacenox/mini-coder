@@ -207,13 +207,12 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 	// Subagent runner (recursive) — depth prevents infinite recursion
 	const runSubagent = async (
 		prompt: string,
-		model?: string,
 		depth = 0,
 	): Promise<{ result: string; inputTokens: number; outputTokens: number }> => {
-		const subModel = model ?? currentModel;
 		const subMessages: Message[] = [{ role: "user", content: prompt }];
 		const subTools = buildToolSet({ cwd, depth, runSubagent });
-		const subLlm = resolveModel(subModel);
+		const subLlm = resolveModel(currentModel);
+
 		const systemPrompt = buildSystemPrompt(cwd);
 
 		let result = "";
@@ -287,7 +286,8 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 			planMode = v;
 		},
 		cwd,
-		runSubagent: (prompt, model) => runSubagent(prompt, model),
+		runSubagent: (prompt) => runSubagent(prompt),
+
 		undoLastTurn: () => {
 			// Nothing to undo if there are no messages
 			if (session.messages.length === 0) return false;

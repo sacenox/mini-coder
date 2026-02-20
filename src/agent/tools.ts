@@ -57,7 +57,6 @@ export function buildToolSet(opts: {
 	depth?: number;
 	runSubagent: (
 		prompt: string,
-		model?: string,
 		depth?: number,
 	) => Promise<{
 		result: string;
@@ -77,14 +76,14 @@ export function buildToolSet(opts: {
 		withCwdDefault(insertTool as ToolDef, opts.cwd),
 		// Shell and subagent
 		withCwdDefault(shellTool as ToolDef, opts.cwd),
-		createSubagentTool(async (prompt, model) => {
+		createSubagentTool(async (prompt) => {
 			if (depth >= MAX_SUBAGENT_DEPTH) {
 				throw new Error(
 					`Subagent depth limit reached (max ${MAX_SUBAGENT_DEPTH}). ` +
 						`Cannot spawn another subagent from depth ${depth}.`,
 				);
 			}
-			return opts.runSubagent(prompt, model, depth + 1);
+			return opts.runSubagent(prompt, depth + 1);
 		}) as ToolDef,
 	];
 }

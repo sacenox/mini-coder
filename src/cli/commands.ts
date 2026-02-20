@@ -23,8 +23,8 @@ export interface CommandContext {
 	connectMcpServer: (name: string) => Promise<void>;
 	runSubagent: (
 		prompt: string,
-		model?: string,
 	) => Promise<{ result: string; inputTokens: number; outputTokens: number }>;
+
 	cwd: string;
 }
 
@@ -238,40 +238,34 @@ async function handleMcp(ctx: CommandContext, args: string): Promise<void> {
 // ─── Review ───────────────────────────────────────────────────────────────────
 
 const REVIEW_PROMPT = (cwd: string, focus: string) => `\
-You are a thorough code reviewer. Your job is to review the recent changes in \
-this codebase and produce a structured, actionable report.
+You are a code reviewer. Review recent changes and provide actionable feedback.
 
 Working directory: ${cwd}
-${focus ? `Focus area: ${focus}` : ""}
+${focus ? `Focus: ${focus}` : ""}
 
-Use the following hierarchy of concerns (most important first) to guide your review:
+## What to review
+- No args: \`git diff\` (unstaged) + \`git diff --cached\` (staged) + \`git status --short\` (untracked)
+- Commit hash: \`git show <hash>\`
+- Branch: \`git diff <branch>...HEAD\`
+- PR number/URL: \`gh pr view\` + \`gh pr diff\`
 
-1. **Comprehension & team alignment** — Is the intent of the change clear? \
-Would a teammate be able to understand the system after reading this? \
-Flag anything that lacks explanation or diverges from established patterns without reason.
+## How to review
+After getting the diff, read the full files changed — diffs alone miss context.
+Check for AGENTS.md or CONVENTIONS.md for project conventions.
 
-2. **Correctness** — Does the change actually solve the stated problem? \
-Look for logic errors, missing edge cases, incorrect assumptions, and off-by-one errors.
+## What to flag (priority order)
+1. **Bugs** — logic errors, missing edge cases, unhandled errors, race conditions, security issues. Be certain before flagging; investigate first.
+2. **Structure** — wrong abstraction, established patterns ignored, excessive nesting.
+3. **Performance** — only if obviously problematic (O(n²) on unbounded data, N+1, blocking hot paths).
+4. **Style** — only clear violations of project conventions. Don't be a zealot.
 
-3. **Design** — Is the approach well-structured? \
-Consider separation of concerns, abstraction quality, coupling, cohesion, \
-and whether a simpler design could achieve the same goal.
+Only review the changed code, not pre-existing code.
 
-4. **Bugs & safety** — Identify potential runtime errors, unhandled rejections/exceptions, \
-type unsafety, resource leaks, race conditions, or security issues.
-
-5. **Style & consistency** — Flag naming inconsistencies, formatting issues, \
-dead code, missing or misleading comments — only after the above are addressed.
-
-Instructions:
-- First use \`shell\` to use git diff commands to check for unstaged changes, if not focused \
-on something else default to reviewing the git diff.
-- Use \`glob\`, \`grep\`, and \`read\` as needed to understand the full context of changed files.
-- Structure your output with a section per concern level above. \
-Use "✔ nothing to flag" for levels with no issues.
-- End with a short **Summary** of the most important items to address.
-- Be specific: quote code, cite file names and line numbers.
-- Be direct but constructive. Focus on the code, not the author.
+## Output
+- Be direct and specific: quote code, cite file and line number.
+- State the scenario/input that triggers a bug — severity depends on this.
+- No flattery, no filler. Matter-of-fact tone.
+- End with a short **Summary** of the most important items.
 `;
 
 async function handleReview(ctx: CommandContext, args: string): Promise<void> {

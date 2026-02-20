@@ -1,3 +1,9 @@
+# Markdown Assistant responses
+
+- use our color packages to create a minimal markdown highlighter
+
+---
+
 # Fix implementation error
 
 1. The DB only saves text — agent.ts:412–429 strips tool parts before writing to SQLite. That's the right design for persistence, but coreHistory in memory is never trimmed.
@@ -15,13 +21,6 @@ src/tools/subagent.ts -- It should not include a model choice
 # Undo needs to restore working directory
 
 Besides undoing the conversation turn, it should restore some snapshot, using git?
-
----
-
-# Plan mode changes
-
-- Allow read tools + mcp
-- When plan mode is on, add a `<system-message>PLAN MODE ACTIVE: Help the user gather context for the plan -- READ ONLY</system-message>` suffix to the user messages.
 
 ---
 
