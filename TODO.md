@@ -21,7 +21,7 @@ Besides undoing the conversation turn, it should restore some snapshot, using gi
 # Plan mode changes
 
 - Allow read tools + mcp
-- When plan mode is on, add a `<system-message>PLAN MODE ACTIVE -- READ ONLY</system-message>` suffix to the user messages.
+- When plan mode is on, add a `<system-message>PLAN MODE ACTIVE: Help the user gather context for the plan -- READ ONLY</system-message>` suffix to the user messages.
 
 ---
 

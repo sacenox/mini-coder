@@ -88,3 +88,11 @@ export function buildToolSet(opts: {
 		}) as ToolDef,
 	];
 }
+
+export function buildReadOnlyToolSet(opts: { cwd: string }): ToolDef[] {
+	return [
+		withCwdDefault(globTool as ToolDef, opts.cwd),
+		withCwdDefault(grepTool as ToolDef, opts.cwd),
+		withCwdDefault(readTool as ToolDef, opts.cwd),
+	];
+}

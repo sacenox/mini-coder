@@ -33,7 +33,7 @@ import {
 	resumeSession,
 	touchActiveSession,
 } from "../session/manager.ts";
-import { buildToolSet } from "./tools.ts";
+import { buildReadOnlyToolSet, buildToolSet } from "./tools.ts";
 
 // ─── Git branch detection ─────────────────────────────────────────────────────
 
@@ -240,6 +240,7 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 
 	// ── MCP: load persisted servers and connect them ───────────────────────────
 	const tools: ToolDef[] = buildToolSet({ cwd, depth: 0, runSubagent });
+	const mcpTools: ToolDef[] = [];
 
 	async function connectAndAddMcp(name: string): Promise<void> {
 		const rows = listMcpServers();
@@ -255,6 +256,7 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		};
 		const client = await connectMcpServer(cfg);
 		tools.push(...client.tools);
+		mcpTools.push(...client.tools);
 	}
 
 	// Connect all persisted MCP servers at startup
@@ -396,8 +398,13 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		session.messages.push(userMsg);
 		saveMessages(session.id, [userMsg], thisTurn);
 
-		// Also push into coreHistory as a raw ModelMessage
-		coreHistory.push({ role: "user", content: resolvedText });
+		// Also push into coreHistory as a raw ModelMessage.
+		// In plan mode, append the system-message suffix so the model knows it
+		// should only read/explore — not execute write operations.
+		const coreContent = planMode
+			? `${resolvedText}\n\n<system-message>PLAN MODE ACTIVE: Help the user gather context for the plan -- READ ONLY</system-message>`
+			: resolvedText;
+		coreHistory.push({ role: "user", content: coreContent });
 
 		const llm = resolveModel(currentModel);
 		const systemPrompt = buildSystemPrompt(cwd);
@@ -411,7 +418,7 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		const events = runTurn({
 			model: llm,
 			messages: coreHistory,
-			tools: planMode ? [] : tools,
+			tools: planMode ? [...buildReadOnlyToolSet({ cwd }), ...mcpTools] : tools,
 			systemPrompt,
 			signal: abortController.signal,
 		});

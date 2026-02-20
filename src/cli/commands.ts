@@ -114,7 +114,7 @@ function handlePlan(ctx: CommandContext): void {
 	ctx.setPlanMode(!ctx.planMode);
 	if (ctx.planMode) {
 		writeln(
-			`${PREFIX.info} ${c.yellow("plan mode")} ${c.dim("— agent will describe without running tools")}`,
+			`${PREFIX.info} ${c.yellow("plan mode")} ${c.dim("— read-only tools + MCP, no writes or shell")}`,
 		);
 	} else {
 		writeln(`${PREFIX.info} ${c.dim("plan mode off")}`);
@@ -264,8 +264,8 @@ type unsafety, resource leaks, race conditions, or security issues.
 dead code, missing or misleading comments — only after the above are addressed.
 
 Instructions:
-- First use \`shell\` to run \`git diff HEAD~1\` (or \`git diff --cached\` if there are staged changes) \
-to see what changed. Also run \`git log --oneline -5\` for context.
+- First use \`shell\` to use git diff commands to check for unstaged changes, if not focused \
+on something else default to reviewing the git diff.
 - Use \`glob\`, \`grep\`, and \`read\` as needed to understand the full context of changed files.
 - Structure your output with a section per concern level above. \
 Use "✔ nothing to flag" for levels with no issues.
@@ -307,7 +307,7 @@ function handleHelp(): void {
 	const cmds: [string, string][] = [
 		["/model [id]", "list or switch models (fetches live list)"],
 		["/undo", "remove the last turn from conversation history"],
-		["/plan", "toggle plan mode (no tool execution)"],
+		["/plan", "toggle plan mode (read-only tools + MCP)"],
 		["/review [focus]", "run a structured code review on recent changes"],
 		["/mcp list", "list MCP servers"],
 		["/mcp add <n> <t> [u]", "add an MCP server"],
