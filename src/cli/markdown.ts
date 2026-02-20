@@ -63,76 +63,79 @@ function renderInline(text: string): string {
 
 // ─── Block renderer ───────────────────────────────────────────────────────────
 
-export function renderMarkdown(text: string): string {
-	const lines = text.split("\n");
-	const out: string[] = [];
-	let inFence = false;
-
-	for (const raw of lines) {
-		// Fenced code block toggle (``` or ~~~)
-		if (/^(`{3,}|~{3,})/.test(raw)) {
-			inFence = !inFence;
-			// Show the fence line dimmed (language hint visible but subdued)
-			out.push(c.dim(raw));
-			continue;
-		}
-
-		// Inside fenced block — yellow, no inline processing
-		if (inFence) {
-			out.push(c.yellow(raw));
-			continue;
-		}
-
-		// Horizontal rule: --- or *** or ===
-		if (/^(-{3,}|\*{3,}|={3,})\s*$/.test(raw)) {
-			out.push(c.dim("─".repeat(40)));
-			continue;
-		}
-
-		// Headings
-		const h3 = raw.match(/^(#{3,})\s+(.*)/);
-		if (h3) {
-			out.push(c.bold(renderInline(h3[2] ?? "")));
-			continue;
-		}
-		const h2 = raw.match(/^##\s+(.*)/);
-		if (h2) {
-			out.push(c.bold(c.cyan(renderInline(h2[1] ?? ""))));
-			continue;
-		}
-		const h1 = raw.match(/^#\s+(.*)/);
-		if (h1) {
-			out.push(c.bold(c.cyan(renderInline(h1[1] ?? ""))));
-			continue;
-		}
-
-		// Blockquote: > ...
-		const bq = raw.match(/^>\s?(.*)/);
-		if (bq) {
-			out.push(c.dim(`│ ${renderInline(bq[1] ?? "")}`));
-			continue;
-		}
-
-		// Unordered list: - or * or +
-		const ul = raw.match(/^(\s*)[*\-+]\s+(.*)/);
-		if (ul) {
-			const indent = ul[1] ?? "";
-			out.push(`${indent}${c.dim("·")} ${renderInline(ul[2] ?? "")}`);
-			continue;
-		}
-
-		// Ordered list: 1. ...
-		const ol = raw.match(/^(\s*)(\d+)\.\s+(.*)/);
-		if (ol) {
-			const indent = ol[1] ?? "";
-			const num = ol[2] ?? "";
-			out.push(`${indent}${c.dim(`${num}.`)} ${renderInline(ol[3] ?? "")}`);
-			continue;
-		}
-
-		// Plain text (inline spans still applied)
-		out.push(renderInline(raw));
+/**
+ * Render a single source line given the current fence state.
+ * Returns the rendered string and the updated fence state.
+ * Use this for incremental streaming — call once per complete line.
+ */
+export function renderLine(
+	raw: string,
+	inFence: boolean,
+): { output: string; inFence: boolean } {
+	// Fenced code block toggle (``` or ~~~)
+	if (/^(`{3,}|~{3,})/.test(raw)) {
+		return { output: c.dim(raw), inFence: !inFence };
 	}
+	if (inFence) {
+		return { output: c.yellow(raw), inFence: true };
+	}
+	// Horizontal rule: --- or *** or ===
+	if (/^(-{3,}|\*{3,}|={3,})\s*$/.test(raw)) {
+		return { output: c.dim("─".repeat(40)), inFence: false };
+	}
+	// Headings
+	const h3 = raw.match(/^(#{3,})\s+(.*)/);
+	if (h3) return { output: c.bold(renderInline(h3[2] ?? "")), inFence: false };
+	const h2 = raw.match(/^##\s+(.*)/);
+	if (h2)
+		return {
+			output: c.bold(c.cyan(renderInline(h2[1] ?? ""))),
+			inFence: false,
+		};
+	const h1 = raw.match(/^#\s+(.*)/);
+	if (h1)
+		return {
+			output: c.bold(c.cyan(renderInline(h1[1] ?? ""))),
+			inFence: false,
+		};
+	// Blockquote: > ...
+	const bq = raw.match(/^>\s?(.*)/);
+	if (bq)
+		return {
+			output: c.dim(`│ ${renderInline(bq[1] ?? "")}`),
+			inFence: false,
+		};
+	// Unordered list: - or * or +
+	const ul = raw.match(/^(\s*)[*\-+]\s+(.*)/);
+	if (ul) {
+		const indent = ul[1] ?? "";
+		return {
+			output: `${indent}${c.dim("·")} ${renderInline(ul[2] ?? "")}`,
+			inFence: false,
+		};
+	}
+	// Ordered list: 1. ...
+	const ol = raw.match(/^(\s*)(\d+)\.\s+(.*)/);
+	if (ol) {
+		const indent = ol[1] ?? "";
+		const num = ol[2] ?? "";
+		return {
+			output: `${indent}${c.dim(`${num}.`)} ${renderInline(ol[3] ?? "")}`,
+			inFence: false,
+		};
+	}
+	// Plain text (inline spans still applied)
+	return { output: renderInline(raw), inFence: false };
+}
 
-	return out.join("\n");
+export function renderMarkdown(text: string): string {
+	let inFence = false;
+	return text
+		.split("\n")
+		.map((raw) => {
+			const r = renderLine(raw, inFence);
+			inFence = r.inFence;
+			return r.output;
+		})
+		.join("\n");
 }

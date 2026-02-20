@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
 import * as c from "yoctocolors";
 import type { TurnEvent } from "../llm-api/types.ts";
-import { renderMarkdown } from "./markdown.ts";
+import { renderLine } from "./markdown.ts";
 
 const HOME = homedir();
 
@@ -436,37 +436,67 @@ export async function renderTurn(
 	newMessages: import("../llm-api/turn.ts").CoreMessage[];
 }> {
 	let inText = false;
-	// Full text accumulated so far — needed for correct markdown context
-	// (e.g. knowing whether we're inside a fenced code block).
-	let textBuffer = "";
-	// Tracks how many characters of textBuffer have already been written to
-	// stdout so we only write new content on each delta.
-	let writtenLen = 0;
+	// All source lines received so far (split on \n).
+	// The last element is the in-progress partial line (may be "").
+	const lines: string[] = [""];
+	// How many complete lines (index 0..flushedLines-1) have already been
+	// printed to stdout with a trailing \n.
+	let flushedLines = 0;
+	// Fence state at the start of lines[flushedLines] — updated as we flush.
+	let inFence = false;
+	// Whether the current partial line (lines[lines.length-1]) has been
+	// written to stdout (without a trailing \n, so \r can overwrite it).
+	let partialWritten = false;
 	let inputTokens = 0;
 	let outputTokens = 0;
 	let contextTokens = 0;
 	let newMessages: import("../llm-api/turn.ts").CoreMessage[] = [];
 
-	// Flush all completed lines (everything up to the last newline) through
-	// renderMarkdown and write only the newly rendered portion to stdout.
+	// Flush all newly complete lines (everything up to the last \n).
+	// Each complete line is rendered exactly once via renderLine, keeping
+	// inFence state consistent across calls — O(N) total work.
+	// After flushing complete lines, write/overwrite the partial last line
+	// as raw text so the user sees content immediately.
 	function flushLines(): void {
-		const lastNl = textBuffer.lastIndexOf("\n");
-		if (lastNl < writtenLen) return; // no new complete lines
-		const fullRendered = renderMarkdown(textBuffer.slice(0, lastNl + 1));
-		const alreadyRendered = renderMarkdown(textBuffer.slice(0, writtenLen));
-		const newOutput = fullRendered.slice(alreadyRendered.length);
-		if (newOutput) write(newOutput);
-		writtenLen = lastNl + 1;
+		const complete = lines.length - 1; // indices 0..complete-1 are complete
+		// Render and print any newly complete lines.
+		while (flushedLines < complete) {
+			const raw = lines[flushedLines] ?? "";
+			const result = renderLine(raw, inFence);
+			// If a partial line was already written on this terminal line, clear
+			// it first with \r before printing the final rendered version.
+			if (partialWritten) {
+				process.stdout.write("\r\x1B[2K");
+				partialWritten = false;
+			}
+			write(`${result.output}\n`);
+
+			inFence = result.inFence;
+			flushedLines++;
+		}
+		// Write/overwrite the partial last line (no \n), rendered so inline
+		// spans (bold, code, italic) are visible as they stream in.
+		const partial = lines[lines.length - 1] ?? "";
+		if (partial) {
+			const rendered = renderLine(partial, inFence).output;
+			process.stdout.write(`\r${rendered}`);
+			partialWritten = true;
+		}
 	}
 
-	// Flush any remaining buffered text (including incomplete last line).
+	// Finalize: overwrite the partial line with its fully-rendered version.
+	// Callers are responsible for writing \n after this.
 	function flushText(): void {
-		if (writtenLen >= textBuffer.length) return;
-		const fullRendered = renderMarkdown(textBuffer);
-		const alreadyRendered = renderMarkdown(textBuffer.slice(0, writtenLen));
-		const newOutput = fullRendered.slice(alreadyRendered.length);
-		if (newOutput) write(newOutput);
-		writtenLen = textBuffer.length;
+		const partial = lines[lines.length - 1] ?? "";
+		// Clear whatever is on-screen first — even if partial is now "" (e.g.
+		// stream ended with \n), partialWritten may be true and must be cleared.
+		if (partialWritten) {
+			process.stdout.write("\r\x1B[2K");
+			partialWritten = false;
+		}
+		if (!partial) return;
+		const result = renderLine(partial, inFence);
+		if (result.output) write(result.output);
 	}
 
 	for await (const event of events) {
@@ -477,7 +507,16 @@ export async function renderTurn(
 					process.stdout.write(`${G.reply} `);
 					inText = true;
 				}
-				textBuffer += event.delta;
+				// Split the delta on newlines and append to our lines array.
+				// Each \n in the delta completes the current partial line and
+				// starts a new one.
+				const parts = event.delta.split("\n");
+				lines[lines.length - 1] =
+					(lines[lines.length - 1] ?? "") + (parts[0] ?? "");
+				for (let i = 1; i < parts.length; i++) {
+					lines.push(parts[i] ?? "");
+				}
+
 				flushLines();
 				break;
 			}
