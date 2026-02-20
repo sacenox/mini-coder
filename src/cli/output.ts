@@ -1,6 +1,9 @@
+import { homedir } from "node:os";
 import * as c from "yoctocolors";
 import type { TurnEvent } from "../llm-api/types.ts";
 import { renderMarkdown } from "./markdown.ts";
+
+const HOME = homedir();
 
 // ─── Terminal restore ─────────────────────────────────────────────────────────
 
@@ -189,6 +192,22 @@ function toolCallLine(name: string, args: unknown): string {
 
 export function renderToolCall(toolName: string, args: unknown): void {
 	writeln(`  ${toolCallLine(toolName, args)}`);
+}
+
+export function renderHook(
+	toolName: string,
+	scriptPath: string,
+	success: boolean,
+): void {
+	const short = scriptPath.replace(HOME, "~");
+
+	if (success) {
+		writeln(`    ${G.ok} ${c.dim(`hook post-${toolName}`)}`);
+	} else {
+		writeln(
+			`    ${G.err} ${c.red(`hook post-${toolName} failed`)} ${c.dim(short)}`,
+		);
+	}
 }
 
 // ─── Tool result — compact data ───────────────────────────────────────────────

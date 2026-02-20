@@ -8,12 +8,14 @@ import {
 	PREFIX,
 	Spinner,
 	renderError,
+	renderHook,
 	renderInfo,
 	renderStatusBar,
 	renderTurn,
 	restoreTerminal,
 	writeln,
 } from "../cli/output.ts";
+
 import { getContextWindow, resolveModel } from "../llm-api/providers.ts";
 import { type CoreMessage, runTurn } from "../llm-api/turn.ts";
 import type { Message, ToolDef } from "../llm-api/types.ts";
@@ -212,7 +214,13 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		depth = 0,
 	): Promise<{ result: string; inputTokens: number; outputTokens: number }> => {
 		const subMessages: Message[] = [{ role: "user", content: prompt }];
-		const subTools = buildToolSet({ cwd, depth, runSubagent });
+		const subTools = buildToolSet({
+			cwd,
+			depth,
+			runSubagent,
+			onHook: renderHook,
+		});
+
 		const subLlm = resolveModel(currentModel);
 
 		const systemPrompt = buildSystemPrompt(cwd);
@@ -240,7 +248,13 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 	};
 
 	// ── MCP: load persisted servers and connect them ───────────────────────────
-	const tools: ToolDef[] = buildToolSet({ cwd, depth: 0, runSubagent });
+	const tools: ToolDef[] = buildToolSet({
+		cwd,
+		depth: 0,
+		runSubagent,
+		onHook: renderHook,
+	});
+
 	const mcpTools: ToolDef[] = [];
 
 	async function connectAndAddMcp(name: string): Promise<void> {

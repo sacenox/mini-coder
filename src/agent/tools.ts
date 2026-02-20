@@ -53,13 +53,15 @@ type EnvBuilder<TInput, TOutput> = (
 /**
  * Wrap a tool to fire its post-hook (if one exists) after each successful execute.
  * Hooks are looked up via the session-scoped cache — no filesystem access per call.
- * Hooks are fire-and-forget; errors are always swallowed.
+ * Errors are always swallowed. onHook is called with the result so the caller can
+ * render a UI line.
  */
 function withHooks<TInput extends { cwd?: string }, TOutput>(
 	tool: ToolDef<TInput, TOutput>,
 	lookupHook: (toolName: string) => string | null,
 	cwd: string,
 	buildEnv: EnvBuilder<TInput, TOutput>,
+	onHook: (toolName: string, scriptPath: string, success: boolean) => void,
 ): ToolDef<TInput, TOutput> {
 	const originalExecute = tool.execute;
 	return {
@@ -69,7 +71,8 @@ function withHooks<TInput extends { cwd?: string }, TOutput>(
 			const hookScript = lookupHook(tool.name);
 			if (hookScript) {
 				const env = buildEnv(result, input);
-				await runHook(hookScript, env, cwd);
+				const success = await runHook(hookScript, env, cwd);
+				onHook(tool.name, hookScript, success);
 			}
 			return result;
 		},
@@ -102,8 +105,9 @@ export function buildToolSet(opts: {
 		inputTokens: number;
 		outputTokens: number;
 	}>;
+	onHook: (toolName: string, scriptPath: string, success: boolean) => void;
 }): ToolDef[] {
-	const { cwd } = opts;
+	const { cwd, onHook } = opts;
 	const depth = opts.depth ?? 0;
 	const lookupHook = createHookCache(HOOKABLE_TOOLS, cwd);
 
@@ -117,6 +121,7 @@ export function buildToolSet(opts: {
 			lookupHook,
 			cwd,
 			(_, input) => hookEnvForGlob(input, cwd),
+			onHook,
 		) as ToolDef,
 		withHooks(
 			withCwdDefault(grepTool as ToolDef, cwd) as ToolDef<
@@ -126,6 +131,7 @@ export function buildToolSet(opts: {
 			lookupHook,
 			cwd,
 			(_, input) => hookEnvForGrep(input, cwd),
+			onHook,
 		) as ToolDef,
 		withHooks(
 			withCwdDefault(readTool as ToolDef, cwd) as ToolDef<
@@ -135,6 +141,7 @@ export function buildToolSet(opts: {
 			lookupHook,
 			cwd,
 			(_, input) => hookEnvForRead(input, cwd),
+			onHook,
 		) as ToolDef,
 		// Write: create/overwrite, replace/delete, insert
 		withHooks(
@@ -145,6 +152,7 @@ export function buildToolSet(opts: {
 			lookupHook,
 			cwd,
 			(result) => hookEnvForCreate(result, cwd),
+			onHook,
 		) as ToolDef,
 		withHooks(
 			withCwdDefault(replaceTool as ToolDef, cwd) as ToolDef<
@@ -154,6 +162,7 @@ export function buildToolSet(opts: {
 			lookupHook,
 			cwd,
 			(result) => hookEnvForReplace(result, cwd),
+			onHook,
 		) as ToolDef,
 		withHooks(
 			withCwdDefault(insertTool as ToolDef, cwd) as ToolDef<
@@ -163,6 +172,7 @@ export function buildToolSet(opts: {
 			lookupHook,
 			cwd,
 			(result) => hookEnvForInsert(result, cwd),
+			onHook,
 		) as ToolDef,
 		// Shell and subagent
 		withHooks(
@@ -173,6 +183,7 @@ export function buildToolSet(opts: {
 			lookupHook,
 			cwd,
 			(result, input) => hookEnvForShell(result, input, cwd),
+			onHook,
 		) as ToolDef,
 		createSubagentTool(async (prompt) => {
 			if (depth >= MAX_SUBAGENT_DEPTH) {

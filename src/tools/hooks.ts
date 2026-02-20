@@ -51,7 +51,7 @@ export async function runHook(
 	scriptPath: string,
 	env: Record<string, string>,
 	cwd: string,
-): Promise<void> {
+): Promise<boolean> {
 	try {
 		const proc = Bun.spawn(["bash", scriptPath], {
 			cwd,
@@ -59,9 +59,11 @@ export async function runHook(
 			stdout: "ignore",
 			stderr: "ignore",
 		});
-		await proc.exited;
+		const code = await proc.exited;
+		return code === 0;
 	} catch {
 		// Hooks must not crash the agent
+		return false;
 	}
 }
 

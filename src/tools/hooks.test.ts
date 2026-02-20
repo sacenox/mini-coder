@@ -65,23 +65,23 @@ describe("createHookCache", () => {
 // ─── runHook ──────────────────────────────────────────────────────────────────
 
 describe("runHook", () => {
-	it("completes without throwing when the script exits zero", async () => {
+	it("returns true when the script exits zero", async () => {
 		const script = makeHook(tmpDir, "post-create", "#!/bin/bash\nexit 0");
-		await expect(
-			runHook(script, { TOOL: "create" }, tmpDir),
-		).resolves.toBeUndefined();
+		await expect(runHook(script, { TOOL: "create" }, tmpDir)).resolves.toBe(
+			true,
+		);
 	});
 
-	it("completes without throwing when the script exits non-zero", async () => {
+	it("returns false when the script exits non-zero", async () => {
 		const script = makeHook(tmpDir, "post-replace", "#!/bin/bash\nexit 1");
-		await expect(
-			runHook(script, { TOOL: "replace" }, tmpDir),
-		).resolves.toBeUndefined();
+		await expect(runHook(script, { TOOL: "replace" }, tmpDir)).resolves.toBe(
+			false,
+		);
 	});
 
-	it("completes without throwing when the script path does not exist", async () => {
+	it("returns false when the script path does not exist", async () => {
 		const missing = join(tmpDir, ".agents", "hooks", "post-missing");
-		await expect(runHook(missing, {}, tmpDir)).resolves.toBeUndefined();
+		await expect(runHook(missing, {}, tmpDir)).resolves.toBe(false);
 	});
 
 	it("passes env vars to the hook script", async () => {
