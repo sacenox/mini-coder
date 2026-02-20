@@ -58,7 +58,6 @@ function loadContextFile(cwd: string): string | null {
   const candidates = [
     join(cwd, "AGENTS.md"),
     join(cwd, "CLAUDE.md"),
-    join(cwd, ".agents", "system.md"),
     join(getConfigDir(), "AGENTS.md"),
   ];
   for (const p of candidates) {
@@ -125,7 +124,10 @@ function dbMessagesToCore(messages: Message[]): any[] {
 
 // ─── Shell passthrough (! prefix) ─────────────────────────────────────────────
 
-async function runShellPassthrough(command: string, cwd: string): Promise<string> {
+async function runShellPassthrough(
+  command: string,
+  cwd: string,
+): Promise<string> {
   const proc = Bun.spawn(["bash", "-c", command], {
     cwd,
     stdout: "pipe",
@@ -150,7 +152,7 @@ async function runShellPassthrough(command: string, cwd: string): Promise<string
 export interface AgentOptions {
   model: string;
   cwd: string;
-  sessionId?: string;     // resume existing
+  sessionId?: string; // resume existing
   initialPrompt?: string; // non-interactive first message
 }
 
@@ -187,7 +189,7 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
   const runSubagent = async (
     prompt: string,
     model?: string,
-    depth = 0
+    depth = 0,
   ): Promise<{ result: string; inputTokens: number; outputTokens: number }> => {
     const subModel = model ?? currentModel;
     const subMessages: Message[] = [{ role: "user", content: prompt }];
@@ -249,10 +251,19 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
   let planMode = false;
 
   const cmdCtx: CommandContext = {
-    get currentModel() { return currentModel; },
-    setModel: (m) => { currentModel = m; session.model = m; },
-    get planMode() { return planMode; },
-    setPlanMode: (v) => { planMode = v; },
+    get currentModel() {
+      return currentModel;
+    },
+    setModel: (m) => {
+      currentModel = m;
+      session.model = m;
+    },
+    get planMode() {
+      return planMode;
+    },
+    setPlanMode: (v) => {
+      planMode = v;
+    },
     cwd,
     runSubagent: (prompt, model) => runSubagent(prompt, model),
     undoLastTurn: () => {
@@ -378,7 +389,10 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
       signal: abortController.signal,
     });
 
-    const { inputTokens, outputTokens, newMessages } = await renderTurn(events, spinner);
+    const { inputTokens, outputTokens, newMessages } = await renderTurn(
+      events,
+      spinner,
+    );
     process.removeListener("SIGINT", onSigInt);
 
     // newMessages are raw ModelMessage objects — push directly into coreHistory

@@ -16,7 +16,7 @@ Elegant output that focus on the conversation with the agent and their actions.
 Accurate and reliable core set of features.
 Fast and performant
 Community oriented, all of the inspirations have their own dotfile format, try to follow the existing
-conventions and not introduce more specs. (skills.sh installs to `.agents` which could be a good one for us)
+conventions and not introduce more specs. (skills.sh installs to `.agents,AGENTS.md` which could be a good one for us)
 
 ## Features:
 
@@ -28,9 +28,9 @@ conventions and not introduce more specs. (skills.sh installs to `.agents` which
 - `glob`, `grep`, `read`, `edit`, `shell`, and `subagent` tools for LLMs
 - tool hooks support (do command automatically after certain tools)
 - Commands in CLI prompt:
-  - `/model` command allows the user to pick a model from connected providers. As well as thinking effort for the model if supported.
+  - `/model` command allows the user to pick a model from connected providers. As well as thinking effort for the model if supported. Selection persists accross sessions.
   - `/review` command sends a subagent with a specific prompt to review code well
-  - `/mcp` list/add/remove mcp servers
+  - `/mcp` list/add/remove mcp servers. servers are stored in sqlite
   - `/plan` for a read-only mode (`/plan` again to turn off)
 - Connect to streaming MCPs (Example: https://exa.ai/docs/reference/exa-mcp)
 
