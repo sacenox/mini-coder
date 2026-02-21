@@ -598,8 +598,8 @@ export async function renderTurn(
 	let printQueue = "";
 	// Next character index in printQueue to emit.
 	let printPos = 0;
-	// Handle for the active setImmediate ticker, or null if idle.
-	let tickerHandle: ReturnType<typeof setImmediate> | null = null;
+	// Handle for the active setTimeout ticker, or null if idle.
+	let tickerHandle: ReturnType<typeof setTimeout> | null = null;
 
 	let inputTokens = 0;
 	let outputTokens = 0;
@@ -621,7 +621,6 @@ export async function renderTurn(
 		if (printPos < printQueue.length) {
 			process.stdout.write(printQueue[printPos] as string);
 			printPos++;
-			// TODO: Tick is too fast, print is almost instant
 			scheduleTick();
 		} else {
 			// Queue fully drained — reclaim memory.
@@ -631,14 +630,14 @@ export async function renderTurn(
 	}
 
 	function scheduleTick(): void {
-		tickerHandle = setImmediate(tick);
+		tickerHandle = setTimeout(tick, 8);
 	}
 
 	// Synchronously drain any remaining print queue — used when the turn ends
 	// or a tool call interrupts the text stream.
 	function drainQueue(): void {
 		if (tickerHandle !== null) {
-			clearImmediate(tickerHandle);
+			clearTimeout(tickerHandle);
 			tickerHandle = null;
 		}
 		if (printPos < printQueue.length) {
