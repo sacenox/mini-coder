@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 
 import * as c from "yoctocolors";
 import type { TurnEvent } from "../llm-api/types.ts";
-import { renderLine } from "./markdown.ts";
+import { renderChunk } from "./markdown.ts";
 
 const HOME = homedir();
 const PACKAGE_VERSION = (() => {
@@ -450,67 +450,108 @@ export async function renderTurn(
 	newMessages: import("../llm-api/turn.ts").CoreMessage[];
 }> {
 	let inText = false;
-	// All source lines received so far (split on \n).
-	// The last element is the in-progress partial line (may be "").
-	const lines: string[] = [""];
-	// How many complete lines (index 0..flushedLines-1) have already been
-	// printed to stdout with a trailing \n.
-	let flushedLines = 0;
-	// Fence state at the start of lines[flushedLines] — updated as we flush.
+	// Unprocessed raw text — only the portion from the last flush boundary
+	// onward. Trimmed after each flush to keep memory constant.
+	let rawBuffer = "";
+	// Fence state at the start of rawBuffer — updated whenever we trim.
 	let inFence = false;
-	// Whether the current partial line (lines[lines.length-1]) has been
-	// written to stdout (without a trailing \n, so \r can overwrite it).
-	let partialWritten = false;
+	// ANSI-rendered characters waiting to be emitted one-by-one.
+	let printQueue = "";
+	// Next character index in printQueue to emit.
+	let printPos = 0;
+	// Handle for the active setImmediate ticker, or null if idle.
+	let tickerHandle: ReturnType<typeof setImmediate> | null = null;
+
 	let inputTokens = 0;
 	let outputTokens = 0;
 	let contextTokens = 0;
 	let newMessages: import("../llm-api/turn.ts").CoreMessage[] = [];
 
-	// Flush all newly complete lines (everything up to the last \n).
-	// Each complete line is rendered exactly once via renderLine, keeping
-	// inFence state consistent across calls — O(N) total work.
-	// After flushing complete lines, write/overwrite the partial last line
-	// as raw text so the user sees content immediately.
-	function flushLines(): void {
-		const complete = lines.length - 1; // indices 0..complete-1 are complete
-		// Render and print any newly complete lines.
-		while (flushedLines < complete) {
-			const raw = lines[flushedLines] ?? "";
-			const result = renderLine(raw, inFence);
-			// If a partial line was already written on this terminal line, clear
-			// it first with \r before printing the final rendered version.
-			if (partialWritten) {
-				process.stdout.write("\r\x1B[2K");
-				partialWritten = false;
-			}
-			write(`${result.output}\n`);
-
-			inFence = result.inFence;
-			flushedLines++;
-		}
-		// Write/overwrite the partial last line (no \n), rendered so inline
-		// spans (bold, code, italic) are visible as they stream in.
-		const partial = lines[lines.length - 1] ?? "";
-		if (partial) {
-			const rendered = renderLine(partial, inFence).output;
-			process.stdout.write(`\r${rendered}`);
-			partialWritten = true;
+	// Append rendered ANSI text to the print queue and start the ticker if
+	// it is not already running.
+	function enqueuePrint(ansi: string): void {
+		printQueue += ansi;
+		if (tickerHandle === null) {
+			scheduleTick();
 		}
 	}
 
-	// Finalize: overwrite the partial line with its fully-rendered version.
-	// Callers are responsible for writing \n after this.
-	function flushText(): void {
-		const partial = lines[lines.length - 1] ?? "";
-		// Clear whatever is on-screen first — even if partial is now "" (e.g.
-		// stream ended with \n), partialWritten may be true and must be cleared.
-		if (partialWritten) {
-			process.stdout.write("\r\x1B[2K");
-			partialWritten = false;
+	// Emit one character from the print queue, then reschedule until drained.
+	function tick(): void {
+		tickerHandle = null;
+		if (printPos < printQueue.length) {
+			process.stdout.write(printQueue[printPos] as string);
+			printPos++;
+			scheduleTick();
+		} else {
+			// Queue fully drained — reclaim memory.
+			printQueue = "";
+			printPos = 0;
 		}
-		if (!partial) return;
-		const result = renderLine(partial, inFence);
-		if (result.output) write(result.output);
+	}
+
+	function scheduleTick(): void {
+		tickerHandle = setImmediate(tick);
+	}
+
+	// Synchronously drain any remaining print queue — used when the turn ends
+	// or a tool call interrupts the text stream.
+	function drainQueue(): void {
+		if (tickerHandle !== null) {
+			clearImmediate(tickerHandle);
+			tickerHandle = null;
+		}
+		if (printPos < printQueue.length) {
+			process.stdout.write(printQueue.slice(printPos));
+		}
+		// Reclaim memory.
+		printQueue = "";
+		printPos = 0;
+	}
+
+	// Render and enqueue a slice of rawBuffer, then trim rawBuffer to only
+	// retain the unprocessed tail. inFence is updated to reflect the new head.
+	function renderAndTrim(end: number): void {
+		const chunk = rawBuffer.slice(0, end);
+		const rendered = renderChunk(chunk, inFence);
+		inFence = rendered.inFence;
+		enqueuePrint(rendered.output);
+		rawBuffer = rawBuffer.slice(end);
+	}
+
+	// Flush complete chunks from rawBuffer. Strategy:
+	//   1. If a \n\n boundary exists, flush everything up to and including it
+	//      as one paragraph chunk — preserving blank-line spacing.
+	//   2. Otherwise, flush any complete lines (\n) one at a time so that
+	//      single-paragraph and list responses stream immediately rather than
+	//      waiting for a blank line.
+	// The unprocessed tail (partial line) stays in rawBuffer.
+	function flushChunks(): void {
+		// Prefer paragraph-level boundaries first.
+		let boundary = rawBuffer.indexOf("\n\n");
+		if (boundary !== -1) {
+			// Flush everything up to and including the blank line.
+			renderAndTrim(boundary + 2);
+			// After trimming, there may be more boundaries — recurse.
+			flushChunks();
+			return;
+		}
+		// No blank line yet: flush any complete lines individually so content
+		// appears immediately rather than waiting for the next blank line.
+		boundary = rawBuffer.lastIndexOf("\n");
+		if (boundary !== -1) {
+			// Include the trailing \n so each line ends correctly.
+			renderAndTrim(boundary + 1);
+		}
+	}
+
+	// Render everything remaining in rawBuffer (the final partial chunk),
+	// enqueue it, then drain the entire queue synchronously.
+	function flushAll(): void {
+		if (rawBuffer) {
+			renderAndTrim(rawBuffer.length);
+		}
+		drainQueue();
 	}
 
 	for await (const event of events) {
@@ -521,23 +562,14 @@ export async function renderTurn(
 					process.stdout.write(`${G.reply} `);
 					inText = true;
 				}
-				// Split the delta on newlines and append to our lines array.
-				// Each \n in the delta completes the current partial line and
-				// starts a new one.
-				const parts = event.delta.split("\n");
-				lines[lines.length - 1] =
-					(lines[lines.length - 1] ?? "") + (parts[0] ?? "");
-				for (let i = 1; i < parts.length; i++) {
-					lines.push(parts[i] ?? "");
-				}
-
-				flushLines();
+				rawBuffer += event.delta;
+				flushChunks();
 				break;
 			}
 
 			case "tool-call-start": {
 				if (inText) {
-					flushText();
+					flushAll();
 					writeln();
 					inText = false;
 				}
@@ -556,7 +588,7 @@ export async function renderTurn(
 
 			case "turn-complete": {
 				if (inText) {
-					flushText();
+					flushAll();
 					writeln();
 					inText = false;
 				}
@@ -570,7 +602,7 @@ export async function renderTurn(
 
 			case "turn-error": {
 				if (inText) {
-					flushText();
+					flushAll();
 					writeln();
 					inText = false;
 				}

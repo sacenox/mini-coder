@@ -139,3 +139,25 @@ export function renderMarkdown(text: string): string {
 		})
 		.join("\n");
 }
+
+/**
+ * Render a multi-line chunk of markdown given an initial fence state.
+ * Returns the ANSI-coloured output and the fence state after the last line.
+ * Use this for chunk-based streaming where each chunk is a complete paragraph
+ * or block (delimited by blank lines).
+ */
+export function renderChunk(
+	text: string,
+	inFence: boolean,
+): { output: string; inFence: boolean } {
+	let fence = inFence;
+	const output = text
+		.split("\n")
+		.map((raw) => {
+			const r = renderLine(raw, fence);
+			fence = r.inFence;
+			return r.output;
+		})
+		.join("\n");
+	return { output, inFence: fence };
+}
