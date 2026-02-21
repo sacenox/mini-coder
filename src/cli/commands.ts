@@ -18,7 +18,7 @@ export interface CommandContext {
 	setModel: (model: string) => void;
 	planMode: boolean;
 	setPlanMode: (enabled: boolean) => void;
-	undoLastTurn: () => boolean;
+	undoLastTurn: () => Promise<boolean>;
 	startNewSession: () => void;
 
 	connectMcpServer: (name: string) => Promise<void>;
@@ -123,10 +123,12 @@ function handlePlan(ctx: CommandContext): void {
 	}
 }
 
-function handleUndo(ctx: CommandContext): void {
-	const ok = ctx.undoLastTurn();
+async function handleUndo(ctx: CommandContext): Promise<void> {
+	const ok = await ctx.undoLastTurn();
 	if (ok) {
-		writeln(`${PREFIX.success} ${c.dim("last turn removed from history")}`);
+		writeln(
+			`${PREFIX.success} ${c.dim("last turn undone — history and files restored")}`,
+		);
 	} else {
 		writeln(`${PREFIX.info} ${c.dim("nothing to undo")}`);
 	}
@@ -351,7 +353,7 @@ export async function handleCommand(
 			return { type: "handled" };
 
 		case "undo":
-			handleUndo(ctx);
+			await handleUndo(ctx);
 			return { type: "handled" };
 
 		case "plan":

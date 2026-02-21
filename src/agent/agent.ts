@@ -20,6 +20,11 @@ import { getContextWindow, resolveModel } from "../llm-api/providers.ts";
 import { type CoreMessage, runTurn } from "../llm-api/turn.ts";
 import type { ToolDef } from "../llm-api/types.ts";
 import { connectMcpServer } from "../mcp/client.ts";
+import {
+	type GitStashPopResult,
+	gitStashPop,
+	gitStashTurn,
+} from "../tools/git-stash.ts";
 
 import {
 	deleteLastTurn,
@@ -286,7 +291,7 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		cwd,
 		runSubagent: (prompt) => runSubagent(prompt),
 
-		undoLastTurn: () => {
+		undoLastTurn: async () => {
 			// Nothing to undo if there are no messages
 			if (session.messages.length === 0) return false;
 
@@ -315,7 +320,20 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 
 			// Delete from DB and decrement turn counter
 			const deleted = deleteLastTurn(session.id);
+			const poppedTurn = lastStash;
 			if (turnIndex > 0) turnIndex--;
+			lastStash = null;
+
+			// Restore files via git stash pop for the specific turn being undone
+			if (poppedTurn !== null) {
+				const popResult: GitStashPopResult = await gitStashPop(cwd, poppedTurn);
+				if (popResult.restored === false && popResult.conflict) {
+					renderError(
+						"git stash pop conflict — your working tree may need manual resolution",
+					);
+				}
+			}
+
 			return deleted;
 		},
 		connectMcpServer: connectAndAddMcp,
@@ -326,12 +344,15 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 			totalIn = 0;
 			totalOut = 0;
 			lastContextTokens = 0;
+			lastStash = null;
 		},
 	};
 	const spinner = new Spinner();
 	let totalIn = 0;
 	let totalOut = 0;
 	let lastContextTokens = 0;
+	// turnIndex of the last stash created, or null if no stash was made
+	let lastStash: number | null = null;
 
 	// ── Handle initial prompt (non-interactive) ────────────────────────────────
 	if (opts.initialPrompt) {
@@ -401,6 +422,11 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		// Capture turn index for this turn (user + response share the same index)
 		const thisTurn = turnIndex++;
 
+		// Snapshot working tree before anything is persisted or sent to the LLM.
+		// If stashing fails (not a git repo, clean tree) stashed=false and /undo
+		// will only roll back conversation history, not files — which is fine.
+		const stashed = await gitStashTurn(cwd, thisTurn);
+
 		const coreContent = planMode
 			? `${resolvedText}\n\n<system-message>PLAN MODE ACTIVE: Help the user gather context for the plan -- READ ONLY</system-message>`
 			: resolvedText;
@@ -415,6 +441,9 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		const abortController = new AbortController();
 		const onSigInt = () => abortController.abort();
 		process.once("SIGINT", onSigInt);
+
+		// Store stash metadata so undoLastTurn can pop the right stash
+		lastStash = stashed ? thisTurn : null;
 
 		spinner.start("thinking");
 
