@@ -21,12 +21,13 @@ import { type CoreMessage, runTurn } from "../llm-api/turn.ts";
 import type { ToolDef } from "../llm-api/types.ts";
 import { connectMcpServer } from "../mcp/client.ts";
 import {
-	type GitStashPopResult,
-	gitStashPop,
-	gitStashTurn,
-} from "../tools/git-stash.ts";
+	type SnapshotRestoreResult,
+	restoreSnapshot,
+	takeSnapshot,
+} from "../tools/snapshot.ts";
 
 import {
+	deleteAllSnapshots,
 	deleteLastTurn,
 	getConfigDir,
 	getMaxTurnIndex,
@@ -159,6 +160,9 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		}
 		session = resumed;
 		currentModel = session.model;
+		// Orphaned snapshot rows from a previous run can never be reached by the
+		// fresh in-memory snapshotStack — delete them so they don't accumulate.
+		deleteAllSnapshots(session.id);
 		renderInfo(`Resumed session ${session.id} (${c.cyan(currentModel)})`);
 	} else {
 		session = newSession(currentModel, cwd);
@@ -320,16 +324,22 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 
 			// Delete from DB and decrement turn counter
 			const deleted = deleteLastTurn(session.id);
-			const poppedTurn = lastStash;
+			const poppedTurn = snapshotStack.pop() ?? null;
 			if (turnIndex > 0) turnIndex--;
-			lastStash = null;
 
-			// Restore files via git stash pop for the specific turn being undone
+			// Restore files from the SQLite snapshot for the turn being undone
 			if (poppedTurn !== null) {
-				const popResult: GitStashPopResult = await gitStashPop(cwd, poppedTurn);
-				if (popResult.restored === false && popResult.conflict) {
+				const restoreResult: SnapshotRestoreResult = await restoreSnapshot(
+					cwd,
+					session.id,
+					poppedTurn,
+				);
+				if (
+					restoreResult.restored === false &&
+					restoreResult.reason === "error"
+				) {
 					renderError(
-						"git stash pop conflict — your working tree may need manual resolution",
+						"snapshot restore failed — some files may not have been reverted",
 					);
 				}
 			}
@@ -338,21 +348,24 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		},
 		connectMcpServer: connectAndAddMcp,
 		startNewSession: () => {
+			deleteAllSnapshots(session.id);
 			session = newSession(currentModel, cwd);
 			coreHistory.length = 0;
 			turnIndex = 1;
 			totalIn = 0;
 			totalOut = 0;
 			lastContextTokens = 0;
-			lastStash = null;
+			snapshotStack.length = 0;
 		},
 	};
 	const spinner = new Spinner();
 	let totalIn = 0;
 	let totalOut = 0;
 	let lastContextTokens = 0;
-	// turnIndex of the last stash created, or null if no stash was made
-	let lastStash: number | null = null;
+	// Stack aligned 1:1 with turns. Each processUserInput pushes the turn index
+	// when a snapshot was created, or null when the tree was clean. Each
+	// undoLastTurn pops the top so the indices always correspond to the right turn.
+	const snapshotStack: Array<number | null> = [];
 
 	// ── Handle initial prompt (non-interactive) ────────────────────────────────
 	if (opts.initialPrompt) {
@@ -423,9 +436,9 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		const thisTurn = turnIndex++;
 
 		// Snapshot working tree before anything is persisted or sent to the LLM.
-		// If stashing fails (not a git repo, clean tree) stashed=false and /undo
-		// will only roll back conversation history, not files — which is fine.
-		const stashed = await gitStashTurn(cwd, thisTurn);
+		// Saves dirty file contents to SQLite so /undo can restore them without
+		// touching git stash or the user's working tree state.
+		const snapped = await takeSnapshot(cwd, session.id, thisTurn);
 
 		const coreContent = planMode
 			? `${resolvedText}\n\n<system-message>PLAN MODE ACTIVE: Help the user gather context for the plan -- READ ONLY</system-message>`
@@ -442,8 +455,10 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		const onSigInt = () => abortController.abort();
 		process.once("SIGINT", onSigInt);
 
-		// Store stash metadata so undoLastTurn can pop the right stash
-		lastStash = stashed ? thisTurn : null;
+		// Always push so the stack stays aligned 1:1 with turns. A null entry means
+		// the tree was clean at snapshot time — /undo will roll back conversation
+		// history but skip file restoration for that turn.
+		snapshotStack.push(snapped ? thisTurn : null);
 
 		spinner.start("thinking");
 
