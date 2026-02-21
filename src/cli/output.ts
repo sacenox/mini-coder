@@ -45,6 +45,9 @@ export function registerTerminalCleanup(): void {
 		process.exit(143);
 	});
 	process.on("SIGINT", () => {
+		// If another handler is registered (e.g. processUserInput's abort handler),
+		// let it handle the interrupt — don't exit the process.
+		if (process.listenerCount("SIGINT") > 1) return;
 		cleanup();
 		process.exit(130);
 	});
@@ -607,8 +610,18 @@ export async function renderTurn(
 					inText = false;
 				}
 				spinner.stop();
-				const msg = event.error.message.split("\n")[0] ?? event.error.message;
-				writeln(`${G.err} ${c.red(msg)}`);
+				// Abort errors (ctrl-c) are expected — show a quiet "interrupted" note
+				// instead of a red error banner so the UX feels intentional.
+				const isAbort =
+					event.error.name === "AbortError" ||
+					(event.error.name === "Error" &&
+						event.error.message.toLowerCase().includes("abort"));
+				if (isAbort) {
+					writeln(`${G.warn} ${c.dim("interrupted")}`);
+				} else {
+					const msg = event.error.message.split("\n")[0] ?? event.error.message;
+					writeln(`${G.err} ${c.red(msg)}`);
+				}
 				break;
 			}
 		}
