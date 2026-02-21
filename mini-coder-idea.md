@@ -24,7 +24,7 @@ conventions and not introduce more specs. (skills.sh installs to `.agents,AGENTS
 - Session management and command to create new/resume/list with local sqlite file.
 - Seamless shell integration with aliases and completions with `!` in prompt input.
 - Reference files, skills, agents from the working directory and global community configs with `@` in prompt input
-- Cancel LLM request (interrupt the llm CTRL+d) and `/undo` last LLM turn
+- Gracefully cancel an in-flight LLM request with `ctrl+c` (returns to prompt) and exit with `ctrl+d`. `/undo` last LLM turn.
 - `glob`, `grep`, `read`, `replace`,`insert`, `create`, `shell`, and `subagent` tools for LLMs
 - tool hooks support (do command automatically after certain tools)
 - Commands in CLI prompt:

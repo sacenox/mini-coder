@@ -256,12 +256,12 @@ export async function readline(opts: {
 			// ── Control keys ──────────────────────────────────────────────────────
 			if (raw === CTRL_C) {
 				process.stdout.write("\n");
-				return { type: "eof" };
+				return { type: "interrupt" };
 			}
 
 			if (raw === CTRL_D) {
 				process.stdout.write("\n");
-				return { type: "interrupt" };
+				return { type: "eof" };
 			}
 
 			if (raw === CTRL_A) {
