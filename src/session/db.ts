@@ -1,8 +1,8 @@
 import { Database } from "bun:sqlite";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { Message } from "../llm-api/types.ts";
+import type { CoreMessage } from "../llm-api/turn.ts";
 
 // ─── Config dir ───────────────────────────────────────────────────────────────
 
@@ -18,6 +18,8 @@ function getDbPath(): string {
 
 // ─── Schema ───────────────────────────────────────────────────────────────────
 
+const DB_VERSION = 2;
+
 const SCHEMA = `
   CREATE TABLE IF NOT EXISTS sessions (
     id          TEXT PRIMARY KEY,
@@ -31,8 +33,7 @@ const SCHEMA = `
   CREATE TABLE IF NOT EXISTS messages (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id  TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-    role        TEXT NOT NULL,
-    content     TEXT NOT NULL,
+    payload     TEXT NOT NULL,
     turn_index  INTEGER NOT NULL DEFAULT 0,
     created_at  INTEGER NOT NULL
   );
@@ -68,11 +69,6 @@ const SCHEMA = `
   );
 `;
 
-// Migration: add turn_index column if missing (existing DBs)
-const MIGRATION = `
-  ALTER TABLE messages ADD COLUMN turn_index INTEGER NOT NULL DEFAULT 0;
-`;
-
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface SessionRow {
@@ -90,18 +86,32 @@ let _db: Database | null = null;
 
 export function getDb(): Database {
 	if (!_db) {
-		_db = new Database(getDbPath(), { create: true });
-		_db.exec("PRAGMA journal_mode=WAL;");
-		_db.exec("PRAGMA foreign_keys=ON;");
-		_db.exec(SCHEMA);
-		// Safe migration: add turn_index column if it doesn't exist yet
-		const hasTurnIndex = _db
-			.query<{ name: string }, []>("PRAGMA table_info(messages)")
-			.all()
-			.some((col) => col.name === "turn_index");
-		if (!hasTurnIndex) {
-			_db.exec(MIGRATION);
+		const dbPath = getDbPath();
+		let db = new Database(dbPath, { create: true });
+		db.exec("PRAGMA journal_mode=WAL;");
+		db.exec("PRAGMA foreign_keys=ON;");
+
+		const version =
+			db.query<{ user_version: number }, []>("PRAGMA user_version").get()
+				?.user_version ?? 0;
+		if (version !== DB_VERSION) {
+			try {
+				db.close();
+			} catch {
+				// ignore
+			}
+			for (const path of [dbPath, `${dbPath}-wal`, `${dbPath}-shm`]) {
+				if (existsSync(path)) unlinkSync(path);
+			}
+			db = new Database(dbPath, { create: true });
+			db.exec("PRAGMA journal_mode=WAL;");
+			db.exec("PRAGMA foreign_keys=ON;");
+			db.exec(SCHEMA);
+			db.exec(`PRAGMA user_version = ${DB_VERSION};`);
+		} else {
+			db.exec(SCHEMA);
 		}
+		_db = db;
 	}
 	return _db;
 }
@@ -166,27 +176,31 @@ export function deleteSession(id: string): void {
 
 // ─── Message CRUD ─────────────────────────────────────────────────────────────
 
-export function saveMessage(sessionId: string, msg: Message): void {
+export function saveMessage(
+	sessionId: string,
+	msg: CoreMessage,
+	turnIndex = 0,
+): void {
 	getDb().run(
-		`INSERT INTO messages (session_id, role, content, created_at)
+		`INSERT INTO messages (session_id, payload, turn_index, created_at)
      VALUES (?, ?, ?, ?)`,
-		[sessionId, msg.role, JSON.stringify(msg.content), Date.now()],
+		[sessionId, JSON.stringify(msg), turnIndex, Date.now()],
 	);
 }
 
 export function saveMessages(
 	sessionId: string,
-	msgs: Message[],
+	msgs: CoreMessage[],
 	turnIndex = 0,
 ): void {
 	const db = getDb();
 	const stmt = db.prepare(
-		`INSERT INTO messages (session_id, role, content, turn_index, created_at)
-     VALUES (?, ?, ?, ?, ?)`,
+		`INSERT INTO messages (session_id, payload, turn_index, created_at)
+     VALUES (?, ?, ?, ?)`,
 	);
 	const now = Date.now();
 	for (const msg of msgs) {
-		stmt.run(sessionId, msg.role, JSON.stringify(msg.content), turnIndex, now);
+		stmt.run(sessionId, JSON.stringify(msg), turnIndex, now);
 	}
 }
 
@@ -217,17 +231,14 @@ export function deleteLastTurn(sessionId: string): boolean {
 	return true;
 }
 
-export function loadMessages(sessionId: string): Message[] {
+export function loadMessages(sessionId: string): CoreMessage[] {
 	const rows = getDb()
-		.query<{ role: string; content: string }, [string]>(
-			"SELECT role, content FROM messages WHERE session_id = ? ORDER BY id ASC",
+		.query<{ payload: string }, [string]>(
+			"SELECT payload FROM messages WHERE session_id = ? ORDER BY id ASC",
 		)
 		.all(sessionId);
 
-	return rows.map((row) => ({
-		role: row.role as Message["role"],
-		content: JSON.parse(row.content) as Message["content"],
-	}));
+	return rows.map((row) => JSON.parse(row.payload) as CoreMessage);
 }
 
 // ─── Prompt history ───────────────────────────────────────────────────────────

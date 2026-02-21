@@ -18,10 +18,10 @@ import {
 
 import { getContextWindow, resolveModel } from "../llm-api/providers.ts";
 import { type CoreMessage, runTurn } from "../llm-api/turn.ts";
-import type { Message, ToolDef } from "../llm-api/types.ts";
+import type { ToolDef } from "../llm-api/types.ts";
 import { connectMcpServer } from "../mcp/client.ts";
+
 import {
-	addPromptHistory,
 	deleteLastTurn,
 	getConfigDir,
 	getMaxTurnIndex,
@@ -29,6 +29,7 @@ import {
 	saveMessages,
 	setPreferredModel,
 } from "../session/db.ts";
+
 import {
 	type ActiveSession,
 	newSession,
@@ -105,47 +106,6 @@ Guidelines:
 	return prompt;
 }
 
-// ─── DB messages → raw ModelMessages (for session resume) ────────────────────
-// On resume, the DB stores text-only messages. Tool-call/result parts are
-// intentionally not reconstructed because the complex output/input shapes are
-// opaque. Any tool-role entries are kept as plain text and treated as assistant
-// messages for resume context.
-function isTextPart(part: unknown): part is { type: "text"; text: string } {
-	return (
-		typeof part === "object" &&
-		part !== null &&
-		(part as { type?: unknown }).type === "text" &&
-		typeof (part as { text?: unknown }).text === "string"
-	);
-}
-
-function resumeRole(role: Message["role"]): "user" | "assistant" {
-	// Tool-role entries are stored as plain text; treat them as assistant
-	// messages when rebuilding context for the model.
-	return role === "user" ? "user" : "assistant";
-}
-
-function dbMessagesToCore(messages: Message[]): CoreMessage[] {
-	return messages.map((m): CoreMessage => {
-		const role = resumeRole(m.role);
-		if (typeof m.content === "string") {
-			return { role, content: m.content };
-		}
-		if (Array.isArray(m.content)) {
-			// Filter to text-only parts to avoid feeding malformed tool parts
-			const textParts = m.content.filter(isTextPart);
-			if (textParts.length > 0) {
-				return {
-					role,
-					content: textParts,
-				};
-			}
-			return { role, content: "" };
-		}
-		return { role, content: String(m.content) };
-	});
-}
-
 // ─── Shell passthrough (! prefix) ─────────────────────────────────────────────
 
 async function runShellPassthrough(
@@ -204,16 +164,16 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 	let turnIndex = getMaxTurnIndex(session.id) + 1;
 
 	// Raw AI SDK ModelMessage history — fed directly to streamText each turn.
-	// This is kept separate from session.messages (which is DB-persisted text)
-	// to avoid lossy round-trips through our internal Message type.
-	const coreHistory: CoreMessage[] = dbMessagesToCore(session.messages);
+	// This is kept separate from session.messages (DB-persisted CoreMessages)
+	// so we can trim or rebuild without mutating the in-memory DB copy.
+	const coreHistory: CoreMessage[] = [...session.messages];
 
 	// Subagent runner (recursive) — depth prevents infinite recursion
 	const runSubagent = async (
 		prompt: string,
 		depth = 0,
 	): Promise<{ result: string; inputTokens: number; outputTokens: number }> => {
-		const subMessages: Message[] = [{ role: "user", content: prompt }];
+		const subMessages: CoreMessage[] = [{ role: "user", content: prompt }];
 		const subTools = buildToolSet({
 			cwd,
 			depth,
@@ -231,7 +191,7 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 
 		const events = runTurn({
 			model: subLlm,
-			messages: dbMessagesToCore(subMessages),
+			messages: subMessages,
 			tools: subTools,
 			systemPrompt,
 		});
@@ -394,13 +354,13 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 				const out = await runShellPassthrough(input.command, cwd);
 				if (out) {
 					const thisTurn = turnIndex++;
-					const msg: Message = {
+					const msg: CoreMessage = {
 						role: "user",
 						content: `Shell output of \`${input.command}\`:\n\`\`\`\n${out}\n\`\`\``,
 					};
 					session.messages.push(msg);
 					saveMessages(session.id, [msg], thisTurn);
-					coreHistory.push({ role: "user", content: String(msg.content) });
+					coreHistory.push(msg);
 				}
 				continue;
 			}
@@ -419,17 +379,13 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		// Capture turn index for this turn (user + response share the same index)
 		const thisTurn = turnIndex++;
 
-		const userMsg: Message = { role: "user", content: resolvedText };
-		session.messages.push(userMsg);
-		saveMessages(session.id, [userMsg], thisTurn);
-
-		// Also push into coreHistory as a raw ModelMessage.
-		// In plan mode, append the system-message suffix so the model knows it
-		// should only read/explore — not execute write operations.
 		const coreContent = planMode
 			? `${resolvedText}\n\n<system-message>PLAN MODE ACTIVE: Help the user gather context for the plan -- READ ONLY</system-message>`
 			: resolvedText;
-		coreHistory.push({ role: "user", content: coreContent });
+		const userMsg: CoreMessage = { role: "user", content: coreContent };
+		session.messages.push(userMsg);
+		saveMessages(session.id, [userMsg], thisTurn);
+		coreHistory.push(userMsg);
 
 		const llm = resolveModel(currentModel);
 		const systemPrompt = buildSystemPrompt(cwd);
@@ -456,26 +412,8 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		// so subsequent turns have the correct input/output fields.
 		if (newMessages.length > 0) {
 			coreHistory.push(...newMessages);
-			// For DB persistence, store a simplified version (text only is enough
-			// for session resume context — tool call parts are not reconstructed).
-			const dbMsgs: Message[] = newMessages.map((m) => {
-				const role = m.role as Message["role"];
-				const content = m.content;
-				if (typeof content === "string") {
-					return { role, content };
-				}
-				if (Array.isArray(content)) {
-					// Collapse to text content only for DB storage
-					const text = content
-						.filter(isTextPart)
-						.map((p) => p.text)
-						.join("");
-					return { role, content: text };
-				}
-				return { role, content: String(content) };
-			});
-			session.messages.push(...dbMsgs);
-			saveMessages(session.id, dbMsgs, thisTurn);
+			session.messages.push(...newMessages);
+			saveMessages(session.id, newMessages, thisTurn);
 		}
 
 		totalIn += inputTokens;

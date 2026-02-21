@@ -2,7 +2,7 @@ import { homedir } from "node:os";
 import { relative } from "node:path";
 import * as c from "yoctocolors";
 import { PREFIX, writeln } from "../cli/output.ts";
-import type { Message } from "../llm-api/types.ts";
+import type { CoreMessage } from "../llm-api/turn.ts";
 import {
 	type SessionRow,
 	createSession,
@@ -18,7 +18,7 @@ import {
 export interface ActiveSession {
 	id: string;
 	model: string;
-	messages: Message[];
+	messages: CoreMessage[];
 }
 
 export function newSession(model: string, cwd: string): ActiveSession {
