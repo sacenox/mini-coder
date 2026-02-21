@@ -24,7 +24,7 @@ export interface CommandContext {
 	connectMcpServer: (name: string) => Promise<void>;
 	runSubagent: (
 		prompt: string,
-	) => Promise<{ result: string; inputTokens: number; outputTokens: number }>;
+	) => Promise<import("../tools/subagent.ts").SubagentOutput>;
 
 	cwd: string;
 }

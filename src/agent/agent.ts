@@ -172,7 +172,7 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 	const runSubagent = async (
 		prompt: string,
 		depth = 0,
-	): Promise<{ result: string; inputTokens: number; outputTokens: number }> => {
+	): Promise<import("../tools/subagent.ts").SubagentOutput> => {
 		const subMessages: CoreMessage[] = [{ role: "user", content: prompt }];
 		const subTools = buildToolSet({
 			cwd,
@@ -188,6 +188,10 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		let result = "";
 		let inputTokens = 0;
 		let outputTokens = 0;
+		const activity: import("../tools/subagent.ts").SubagentToolEntry[] = [];
+
+		// Track pending tool call so we can pair it with its result
+		const pendingCalls = new Map<string, { toolName: string; args: unknown }>();
 
 		const events = runTurn({
 			model: subLlm,
@@ -198,13 +202,31 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 
 		for await (const event of events) {
 			if (event.type === "text-delta") result += event.delta;
+			if (event.type === "tool-call-start") {
+				pendingCalls.set(event.toolCallId, {
+					toolName: event.toolName,
+					args: event.args,
+				});
+			}
+			if (event.type === "tool-result") {
+				const pending = pendingCalls.get(event.toolCallId);
+				if (pending) {
+					pendingCalls.delete(event.toolCallId);
+					activity.push({
+						toolName: pending.toolName,
+						args: pending.args,
+						result: event.result,
+						isError: event.isError,
+					});
+				}
+			}
 			if (event.type === "turn-complete") {
 				inputTokens = event.inputTokens;
 				outputTokens = event.outputTokens;
 			}
 		}
 
-		return { result, inputTokens, outputTokens };
+		return { result, inputTokens, outputTokens, activity };
 	};
 
 	// ── MCP: load persisted servers and connect them ───────────────────────────

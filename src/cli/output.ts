@@ -229,6 +229,142 @@ export function renderHook(
 
 // ─── Tool result — compact data ───────────────────────────────────────────────
 
+/**
+ * Render a compact one-liner status for a tool result inside a subagent tree.
+ * `indent` is the prefix string (spaces) for the current tree depth.
+ */
+function renderToolResultInline(
+	toolName: string,
+	result: unknown,
+	isError: boolean,
+	indent: string,
+): void {
+	if (isError) {
+		const msg =
+			typeof result === "string"
+				? result
+				: result instanceof Error
+					? result.message
+					: JSON.stringify(result);
+		const oneLiner = msg.split("\n")[0] ?? msg;
+		writeln(`${indent}${G.err} ${c.red(oneLiner)}`);
+		return;
+	}
+
+	if (toolName === "glob") {
+		const r = result as { files: string[]; truncated: boolean };
+		const n = r.files.length;
+		writeln(
+			`${indent}${G.info} ${c.dim(n === 0 ? "no matches" : `${n} file${n === 1 ? "" : "s"}${r.truncated ? " (capped)" : ""}`)}`,
+		);
+		return;
+	}
+
+	if (toolName === "grep") {
+		const r = result as { matches: unknown[]; truncated: boolean };
+		const n = r.matches.length;
+		writeln(
+			`${indent}${G.info} ${c.dim(n === 0 ? "no matches" : `${n} match${n === 1 ? "" : "es"}${r.truncated ? " (capped)" : ""}`)}`,
+		);
+		return;
+	}
+
+	if (toolName === "read") {
+		const r = result as { totalLines: number; truncated: boolean };
+		writeln(
+			`${indent}${G.info} ${c.dim(`${r.totalLines} lines${r.truncated ? " (truncated)" : ""}`)}`,
+		);
+		return;
+	}
+
+	if (toolName === "create") {
+		const r = result as { path: string; created: boolean };
+		const verb = r.created ? c.green("created") : c.dim("overwritten");
+		writeln(`${indent}${G.ok} ${verb} ${r.path}`);
+		return;
+	}
+
+	if (toolName === "replace" || toolName === "insert") {
+		const r = result as { path: string; deleted?: boolean };
+		const verb =
+			toolName === "insert" ? "inserted" : r.deleted ? "deleted" : "replaced";
+		writeln(`${indent}${G.ok} ${c.dim(verb)} ${r.path}`);
+		return;
+	}
+
+	if (toolName === "shell") {
+		const r = result as {
+			exitCode: number;
+			success: boolean;
+			timedOut: boolean;
+		};
+		const badge = r.timedOut
+			? c.yellow("timeout")
+			: r.success
+				? c.green(`✔ ${r.exitCode}`)
+				: c.red(`✖ ${r.exitCode}`);
+		writeln(`${indent}${badge}`);
+		return;
+	}
+
+	if (toolName === "subagent") {
+		const r = result as { inputTokens?: number; outputTokens?: number };
+		if (r.inputTokens || r.outputTokens) {
+			writeln(
+				`${indent}${G.ok} ${c.dim(`↑${r.inputTokens ?? 0} ↓${r.outputTokens ?? 0}`)}`,
+			);
+		}
+		return;
+	}
+
+	if (toolName.startsWith("mcp_")) {
+		const content = Array.isArray(result) ? result : [result];
+		const first = (content as Array<{ type?: string; text?: string }>)[0];
+		if (first?.type === "text" && first.text) {
+			const oneLiner = first.text.split("\n")[0] ?? "";
+			if (oneLiner)
+				writeln(
+					`${indent}${G.info} ${c.dim(oneLiner.length > 80 ? `${oneLiner.slice(0, 77)}…` : oneLiner)}`,
+				);
+		}
+		return;
+	}
+
+	// Generic: one-line JSON
+	const text = JSON.stringify(result);
+	writeln(
+		`${indent}${G.info} ${c.dim(text.length > 80 ? `${text.slice(0, 77)}…` : text)}`,
+	);
+}
+
+/** Render a subagent's activity tree, indented under its parent tool-call line. */
+function renderSubagentActivity(
+	activity: import("../tools/subagent.ts").SubagentToolEntry[],
+	indent: string,
+	maxDepth: number,
+): void {
+	for (const entry of activity) {
+		writeln(`${indent}${toolCallLine(entry.toolName, entry.args)}`);
+
+		// For nested subagents, recurse one more level (capped at maxDepth)
+		if (entry.toolName === "subagent" && maxDepth > 0) {
+			const nested = entry.result as {
+				activity?: import("../tools/subagent.ts").SubagentToolEntry[];
+			};
+			if (nested?.activity?.length) {
+				renderSubagentActivity(nested.activity, `${indent}  `, maxDepth - 1);
+			}
+		}
+
+		renderToolResultInline(
+			entry.toolName,
+			entry.result,
+			entry.isError,
+			`${indent}  `,
+		);
+	}
+}
+
 export function renderToolResult(
 	toolName: string,
 	result: unknown,
@@ -383,12 +519,13 @@ export function renderToolResult(
 	}
 
 	if (toolName === "subagent") {
-		// subagent result: { result: string, inputTokens, outputTokens }
-		const r = result as {
-			result?: string;
-			inputTokens?: number;
-			outputTokens?: number;
-		};
+		const r = result as import("../tools/subagent.ts").SubagentOutput;
+
+		// Render the tool call tree before showing the result text
+		if (r.activity?.length) {
+			renderSubagentActivity(r.activity, "    ", 1);
+		}
+
 		if (r.result) {
 			const lines = r.result.split("\n");
 			const preview = lines.slice(0, 8);
@@ -397,7 +534,6 @@ export function renderToolResult(
 				writeln(`    ${c.dim(`│ … +${lines.length - 8} lines`)}`);
 		}
 		if (r.inputTokens || r.outputTokens) {
-			// TODO: missing total unique context size in tokens
 			writeln(`    ${c.dim(`↑${r.inputTokens ?? 0} ↓${r.outputTokens ?? 0}`)}`);
 		}
 		return;
@@ -485,6 +621,7 @@ export async function renderTurn(
 		if (printPos < printQueue.length) {
 			process.stdout.write(printQueue[printPos] as string);
 			printPos++;
+			// TODO: Tick is too fast, print is almost instant
 			scheduleTick();
 		} else {
 			// Queue fully drained — reclaim memory.

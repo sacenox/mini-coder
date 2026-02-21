@@ -7,10 +7,18 @@ const SubagentInput = z.object({
 
 type SubagentInput = z.infer<typeof SubagentInput>;
 
+export interface SubagentToolEntry {
+	toolName: string;
+	args: unknown;
+	result: unknown;
+	isError: boolean;
+}
+
 export interface SubagentOutput {
 	result: string;
 	inputTokens: number;
 	outputTokens: number;
+	activity: SubagentToolEntry[];
 }
 
 /**
@@ -20,9 +28,7 @@ export interface SubagentOutput {
  * the agent without creating a circular import.
  */
 export function createSubagentTool(
-	runSubagent: (
-		prompt: string,
-	) => Promise<{ result: string; inputTokens: number; outputTokens: number }>,
+	runSubagent: (prompt: string) => Promise<SubagentOutput>,
 ): ToolDef<SubagentInput, SubagentOutput> {
 	return {
 		name: "subagent",

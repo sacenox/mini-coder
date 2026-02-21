@@ -100,11 +100,8 @@ export function buildToolSet(opts: {
 	runSubagent: (
 		prompt: string,
 		depth?: number,
-	) => Promise<{
-		result: string;
-		inputTokens: number;
-		outputTokens: number;
-	}>;
+	) => Promise<import("../tools/subagent.ts").SubagentOutput>;
+
 	onHook: (toolName: string, scriptPath: string, success: boolean) => void;
 }): ToolDef[] {
 	const { cwd, onHook } = opts;
