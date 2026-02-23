@@ -1,59 +1,6 @@
 #TODO
 
----
-
-Investigate crash:
-
-```
-            "content",
-            2
-          ],
-          "message": "Invalid input"
-        }
-      ]
-    ],
-    "path": [
-      22
-    ],
-    "message": "Invalid input"
-  }
-]
-      at new ZodError (/Users/seancaetanomartin/src/mini-coder/node_modules/zod/v4/core/core.js:39:39)
-      at <anonymous> (/Users/seancaetanomartin/src/mini-coder/node_modules/zod/v4/core/parse.js:53:20)
-      at <anonymous> (/Users/seancaetanomartin/src/mini-coder/node_modules/zod/v4/core/parse.js:45:49)
-      at <anonymous> (/Users/seancaetanomartin/src/mini-coder/node_modules/@ai-sdk/provider-utils/dist/index.mjs:2070:33)
-      at validate (/Users/seancaetanomartin/src/mini-coder/node_modules/@ai-sdk/provider-utils/dist/index.mjs:2069:24)
-      at safeValidateTypes (/Users/seancaetanomartin/src/mini-coder/node_modules/@ai-sdk/provider-utils/dist/index.mjs:2109:39)
-      at safeValidateTypes (/Users/seancaetanomartin/src/mini-coder/node_modules/@ai-sdk/provider-utils/dist/index.mjs:2099:33)
-      at standardizePrompt (/Users/seancaetanomartin/src/mini-coder/node_modules/ai/dist/index.mjs:2045:34)
-      at standardizePrompt (/Users/seancaetanomartin/src/mini-coder/node_modules/ai/dist/index.mjs:2005:34)
-      at <anonymous> (/Users/seancaetanomartin/src/mini-coder/node_modules/ai/dist/index.mjs:6746:37)
-      at fn (/Users/seancaetanomartin/src/mini-coder/node_modules/ai/dist/index.mjs:6744:18)
-      at <anonymous> (/Users/seancaetanomartin/src/mini-coder/node_modules/ai/dist/index.mjs:2241:38)
-      at <anonymous> (/Users/seancaetanomartin/src/mini-coder/node_modules/ai/dist/index.mjs:2238:12)
-
-✖ Invalid prompt: The messages do not match the ModelMessage[] schema.
-claude-sonnet-4-6  mlzi8xij  ~/src/mini-coder  ⎇ main  ↑2244.6k ↓8.1k
-▶ 
-```
-
-We should check the db for what was the last call before the errors.
-Session id: `mlzi8xij-kpq0o (untitled)            claude-sonnet-4-6 ~/src/mini-coder  2/23/2026, 8:36:03 PM`
-
-Write a report of the findings to the repo root.
-
----
-
-I want to add a ralph loop command `/ralph`.  It works as a toggle like plan.
-
-Let's explore existing implementations and come up with a concrete plan
-
-https://github.com/anthropics/claude-code/tree/main/plugins/ralph-wiggum
-https://github.com/vercel-labs/ralph-loop-agent/tree/main/packages/ralph-loop-agent/src
-
----
-
-## Gemini 3.1 sometimes gets stuck "thinking"
+## Gemini models sometimes get stuck "thinking" forever
 
 I've seen it a couple times, where after a tool call, gemini 3.1 pro will get stuck
 with the UI only showing the thinking animated icon.  A ctrl+c will complete it's turn and then it will continue to work like nothing happened.
