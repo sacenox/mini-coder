@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/icon-5-community-badge.svg" alt="mini-coder logo" width="100" height="100"/>
+</p>
+
 # 👾 mini-coder
 
 > *Small. Fast. Gets out of your way.*

@@ -3,7 +3,13 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import * as c from "yoctocolors";
 import { type CommandContext, handleCommand } from "../cli/commands.ts";
+import {
+	type ImageAttachment,
+	isImageFilename,
+	loadImageFile,
+} from "../cli/image-types.ts";
 import { readline, type InputResult } from "../cli/input.ts";
+
 import {
 	PREFIX,
 	Spinner,
@@ -432,9 +438,11 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 			case "submit": {
 				const RALPH_MAX_ITERATIONS = 20;
 				let ralphIteration = 1;
-				let lastText = await processUserInput(input.text);
+				let lastText = await processUserInput(input.text, input.images);
+
 				if (ralphMode) {
 					const goal = input.text;
+					const goalImages = input.images;
 					while (ralphMode) {
 						// If the LLM signalled done, stop before starting another iteration.
 						if (hasRalphSignal(lastText)) {
@@ -451,7 +459,7 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 						}
 						ralphIteration++;
 						cmdCtx.startNewSession();
-						lastText = await processUserInput(goal);
+						lastText = await processUserInput(goal, goalImages);
 					}
 				}
 				continue;
@@ -460,9 +468,18 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 	}
 
 	// ── Process a user message ─────────────────────────────────────────────────
-	async function processUserInput(text: string): Promise<string> {
-		// Resolve @file references
-		const resolvedText = await resolveFileRefs(text, cwd);
+	async function processUserInput(
+		text: string,
+		pastedImages: ImageAttachment[] = [],
+	): Promise<string> {
+		// Resolve @file references — may expand image refs into additional attachments
+		const { text: resolvedText, images: refImages } = await resolveFileRefs(
+			text,
+			cwd,
+		);
+
+		// Merge pasted images with @-ref images
+		const allImages = [...pastedImages, ...refImages];
 
 		// Capture turn index for this turn (user + response share the same index)
 		const thisTurn = turnIndex++;
@@ -477,7 +494,23 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 			: ralphMode
 				? `${resolvedText}\n\n<system-message>RALPH MODE: You are in an autonomous loop. When the task is fully complete (all tests pass, no outstanding issues), output exactly \`/ralph\` as your final message to exit the loop. Otherwise, keep working.</system-message>`
 				: resolvedText;
-		const userMsg: CoreMessage = { role: "user", content: coreContent };
+
+		// Build the message content — multi-part when images are present
+		const userMsg: CoreMessage =
+			allImages.length > 0
+				? {
+						role: "user",
+						content: [
+							{ type: "text", text: coreContent },
+							...allImages.map((img) => ({
+								type: "image" as const,
+								image: img.data,
+								mediaType: img.mediaType,
+							})),
+						],
+					}
+				: { role: "user", content: coreContent };
+
 		session.messages.push(userMsg);
 		saveMessages(session.id, [userMsg], thisTurn);
 		coreHistory.push(userMsg);
@@ -629,16 +662,33 @@ export function hasRalphSignal(text: string): boolean {
 
 // ─── Resolve @file references in user input ────────────────────────────────────
 
-async function resolveFileRefs(text: string, cwd: string): Promise<string> {
+async function resolveFileRefs(
+	text: string,
+	cwd: string,
+): Promise<{ text: string; images: ImageAttachment[] }> {
 	// Find all @<path> tokens
 	const atPattern = /@([\w./\-_]+)/g;
 	let result = text;
 	const matches = [...text.matchAll(atPattern)];
+	const images: ImageAttachment[] = [];
 
 	for (const match of matches.reverse()) {
 		const ref = match[1];
 		if (!ref) continue;
 		const filePath = ref.startsWith("/") ? ref : join(cwd, ref);
+
+		// Image files: read as base64 and add as image attachment
+		if (isImageFilename(ref)) {
+			const attachment = await loadImageFile(filePath);
+			if (attachment) {
+				images.unshift(attachment); // reverse() + unshift = left-to-right order
+				// Remove the @ref token from the text
+				result =
+					result.slice(0, match.index) +
+					result.slice((match.index ?? 0) + match[0].length);
+				continue;
+			}
+		}
 
 		try {
 			const content = await Bun.file(filePath).text();
@@ -657,5 +707,5 @@ async function resolveFileRefs(text: string, cwd: string): Promise<string> {
 		}
 	}
 
-	return result;
+	return { text: result, images };
 }

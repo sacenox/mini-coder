@@ -1,6 +1,11 @@
 import { join, relative } from "node:path";
 import * as c from "yoctocolors";
 import { addPromptHistory, getPromptHistory } from "../session/db.ts";
+import {
+	type ImageAttachment,
+	isImageFilename,
+	loadImageFile,
+} from "./image-types.ts";
 
 // ─── ANSI escape sequences ────────────────────────────────────────────────────
 
@@ -32,8 +37,10 @@ const TAB = "\x09";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+export type { ImageAttachment };
+
 export type InputResult =
-	| { type: "submit"; text: string }
+	| { type: "submit"; text: string; images: ImageAttachment[] }
 	| { type: "interrupt" }
 	| { type: "eof" }
 	| { type: "command"; command: string; args: string }
@@ -54,6 +61,54 @@ async function getFileCompletions(
 		if (results.length >= 10) break;
 	}
 	return results;
+}
+
+// ─── Image detection ─────────────────────────────────────────────────────────
+
+/**
+ * Parse a pasted chunk and extract image attachments if present.
+ *
+ * Handles two cases:
+ *  1. The paste is a `data:image/...;base64,...` data URL.
+ *  2. The paste is a file path pointing to an image on disk.
+ *
+ * Returns `{ attachment, label }` when an image is found so the caller can
+ * replace the paste buffer with a placeholder label, or `null` when the paste
+ * is plain text.
+ */
+async function tryExtractImageFromPaste(
+	pasted: string,
+	cwd: string,
+): Promise<{ attachment: ImageAttachment; label: string } | null> {
+	const trimmed = pasted.trim();
+
+	// Case 1: base64 data URL — only accept if explicitly base64-encoded
+	// (non-base64 data URLs like data:image/svg+xml,<svg>... would be sent as
+	// garbled base64 to the model if we don't guard here)
+	if (trimmed.startsWith("data:image/")) {
+		const commaIdx = trimmed.indexOf(",");
+		if (commaIdx !== -1 && trimmed.slice(0, commaIdx).includes(";base64")) {
+			const header = trimmed.slice(0, commaIdx); // "data:image/png;base64"
+			const b64 = trimmed.slice(commaIdx + 1);
+			const mediaType = header.split(";")[0]?.slice(5) ?? "image/png"; // strip "data:"
+			return {
+				attachment: { data: b64, mediaType },
+				label: `[image: ${mediaType}]`,
+			};
+		}
+	}
+
+	// Case 2: file path to an image
+	if (!trimmed.includes(" ") && isImageFilename(trimmed)) {
+		const filePath = trimmed.startsWith("/") ? trimmed : join(cwd, trimmed);
+		const attachment = await loadImageFile(filePath);
+		if (attachment) {
+			const name = filePath.split("/").pop() ?? trimmed;
+			return { attachment, label: `[image: ${name}]` };
+		}
+	}
+
+	return null;
 }
 
 // ─── Singleton stdin reader (shared across readline() calls) ─────────────────
@@ -141,6 +196,7 @@ export async function readline(opts: {
 	let searchMode = false;
 	let searchQuery = "";
 	let pasteBuffer: string | null = null; // full text of a pending paste
+	const imageAttachments: ImageAttachment[] = []; // images collected during this prompt
 
 	process.stdin.setRawMode(true);
 	process.stdin.resume();
@@ -149,10 +205,13 @@ export async function readline(opts: {
 
 	function renderPrompt(): void {
 		const cols = process.stdout.columns ?? 80;
-		// Replace the sentinel with a styled placeholder for display
-		const visualBuf = pasteBuffer
-			? buf.replace(PASTE_SENTINEL, c.dim(pasteLabel(pasteBuffer)))
-			: buf;
+		// Replace paste sentinel and image labels with styled placeholders for display
+		const visualBuf = (
+			pasteBuffer
+				? buf.replace(PASTE_SENTINEL, c.dim(pasteLabel(pasteBuffer)))
+				: buf
+		).replace(/\[image: [^\]]+\]/g, (m) => c.dim(c.cyan(m)));
+
 		// For cursor positioning we need the visual length without the sentinel substitution
 		const visualCursor = pasteBuffer
 			? (() => {
@@ -397,28 +456,38 @@ export async function readline(opts: {
 				cursor = 0;
 				histIdx = history.length + (text ? 1 : 0);
 
-				if (!text) {
+				if (!text && !imageAttachments.length) {
 					renderPrompt();
 					continue;
 				}
 
-				addPromptHistory(text);
+				// Strip image placeholder labels — actual image data is in imageAttachments.
+				// Do this before history and before returning so every path sees clean text.
+				const cleanText = imageAttachments.length
+					? text.replace(/\[image: [^\]]+\]/g, "").trim()
+					: text;
+				addPromptHistory(cleanText);
 
 				// Slash commands
-				if (text.startsWith("/")) {
-					const spaceIdx = text.indexOf(" ");
+				if (cleanText.startsWith("/")) {
+					const spaceIdx = cleanText.indexOf(" ");
 					const command =
-						spaceIdx === -1 ? text.slice(1) : text.slice(1, spaceIdx);
-					const args = spaceIdx === -1 ? "" : text.slice(spaceIdx + 1).trim();
+						spaceIdx === -1 ? cleanText.slice(1) : cleanText.slice(1, spaceIdx);
+					const args =
+						spaceIdx === -1 ? "" : cleanText.slice(spaceIdx + 1).trim();
 					return { type: "command", command, args };
 				}
 
 				// Shell passthrough
-				if (text.startsWith("!")) {
-					return { type: "shell", command: text.slice(1).trim() };
+				if (cleanText.startsWith("!")) {
+					return { type: "shell", command: cleanText.slice(1).trim() };
 				}
 
-				return { type: "submit", text };
+				return {
+					type: "submit",
+					text: cleanText,
+					images: imageAttachments,
+				};
 			}
 
 			// ── Paste detection ───────────────────────────────────────────────────
@@ -427,6 +496,18 @@ export async function readline(opts: {
 			if (raw.length > 1) {
 				// Strip trailing newline that some terminals append on paste
 				const pasted = raw.replace(/\r?\n$/, "");
+
+				// Check if this is an image (data URL or image file path)
+				const imageResult = await tryExtractImageFromPaste(pasted, cwd);
+				if (imageResult) {
+					imageAttachments.push(imageResult.attachment);
+					// Insert the plain label into buf (no sentinel — nothing to expand at submit)
+					buf = buf.slice(0, cursor) + imageResult.label + buf.slice(cursor);
+					cursor += imageResult.label.length;
+					renderPrompt();
+					continue;
+				}
+
 				pasteBuffer = pasted;
 				buf = buf.slice(0, cursor) + PASTE_SENTINEL + buf.slice(cursor);
 				cursor += PASTE_SENTINEL_LEN;

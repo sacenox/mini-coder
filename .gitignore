@@ -7,3 +7,4 @@ dist/
 .env.*
 !.env.example
 bun.lock
+.DS_Store

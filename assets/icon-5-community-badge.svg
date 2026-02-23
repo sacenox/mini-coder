@@ -1,0 +1,63 @@
+<!-- Mini Coder Icon v5: Community Badge
+     Hexagonal badge shape (nod to community/open-source), teal + amber palette.
+     Bolt doubles as a "play / run" symbol. Inspired by: "community oriented",
+     open source tools like Codex & opencode. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <defs>
+    <linearGradient id="hexGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0a3d62"/>
+      <stop offset="100%" stop-color="#0c6e6e"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="rgba(0,0,0,0.35)"/>
+    </filter>
+  </defs>
+
+  <!-- Hexagon background -->
+  <polygon
+    points="50,4 93,27 93,73 50,96 7,73 7,27"
+    fill="url(#hexGrad)"
+    filter="url(#shadow)"
+  />
+  <!-- Subtle inner hex ring -->
+  <polygon
+    points="50,10 88,30 88,70 50,90 12,70 12,30"
+    fill="none"
+    stroke="rgba(255,255,255,0.1)"
+    stroke-width="1.5"
+  />
+
+  <!-- Left bracket { — teal/white -->
+  <path
+    d="M37 18 C29 18 26 23 26 30 L26 43 C26 48 22 51 18 52 C22 53 26 56 26 61 L26 71 C26 78 29 83 37 83"
+    fill="none"
+    stroke="#7fffd4"
+    stroke-width="4"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <!-- Right bracket } — teal/white -->
+  <path
+    d="M63 18 C71 18 74 23 74 30 L74 43 C74 48 78 51 82 52 C78 53 74 56 74 61 L74 71 C74 78 71 83 63 83"
+    fill="none"
+    stroke="#7fffd4"
+    stroke-width="4"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+
+  <!-- Lightning bolt — amber gold -->
+  <path
+    d="M56 22 L42 52 L52 52 L44 78 L62 46 L51 46 Z"
+    fill="#ffc107"
+    stroke="#fff8e1"
+    stroke-width="1"
+    stroke-linejoin="round"
+  />
+  <!-- Tiny speed lines left of bolt -->
+  <line x1="28" y1="46" x2="36" y2="46" stroke="#7fffd4" stroke-width="1.5" stroke-linecap="round" opacity="0.5"/>
+  <line x1="30" y1="51" x2="36" y2="51" stroke="#7fffd4" stroke-width="1.5" stroke-linecap="round" opacity="0.35"/>
+  <!-- Tiny speed lines right of bolt -->
+  <line x1="64" y1="46" x2="72" y2="46" stroke="#7fffd4" stroke-width="1.5" stroke-linecap="round" opacity="0.5"/>
+  <line x1="64" y1="51" x2="70" y2="51" stroke="#7fffd4" stroke-width="1.5" stroke-linecap="round" opacity="0.35"/>
+</svg>

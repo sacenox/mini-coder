@@ -1,0 +1,31 @@
+<!-- Mini Coder Icon v1: Minimal / Clean
+     Thin brackets, sharp lightning bolt. No fills — pure outline.
+     Inspired by: "small and fast, doesn't get in the way" -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <!-- Left bracket { -->
+  <path
+    d="M38 12 C28 12 24 17 24 25 L24 40 C24 46 20 48 16 50 C20 52 24 54 24 60 L24 75 C24 83 28 88 38 88"
+    fill="none"
+    stroke="#1a1a2e"
+    stroke-width="5"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <!-- Right bracket } -->
+  <path
+    d="M62 12 C72 12 76 17 76 25 L76 40 C76 46 80 48 84 50 C80 52 76 54 76 60 L76 75 C76 83 72 88 62 88"
+    fill="none"
+    stroke="#1a1a2e"
+    stroke-width="5"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <!-- Lightning bolt -->
+  <path
+    d="M56 22 L43 52 L52 52 L44 78 L62 44 L52 44 Z"
+    fill="#f5c518"
+    stroke="#1a1a2e"
+    stroke-width="1.5"
+    stroke-linejoin="round"
+  />
+</svg>
