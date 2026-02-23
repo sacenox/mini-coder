@@ -452,40 +452,48 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		const systemPrompt = buildSystemPrompt(cwd);
 
 		const abortController = new AbortController();
-		const onSigInt = () => abortController.abort();
-		process.once("SIGINT", onSigInt);
+		const onSigInt = () => {
+			abortController.abort();
+			process.removeListener("SIGINT", onSigInt);
+		};
+		process.on("SIGINT", onSigInt);
 
-		// Always push so the stack stays aligned 1:1 with turns. A null entry means
-		// the tree was clean at snapshot time — /undo will roll back conversation
-		// history but skip file restoration for that turn.
-		snapshotStack.push(snapped ? thisTurn : null);
+		try {
+			// Always push so the stack stays aligned 1:1 with turns. A null entry means
+			// the tree was clean at snapshot time — /undo will roll back conversation
+			// history but skip file restoration for that turn.
+			snapshotStack.push(snapped ? thisTurn : null);
 
-		spinner.start("thinking");
+			spinner.start("thinking");
 
-		const events = runTurn({
-			model: llm,
-			messages: coreHistory,
-			tools: planMode ? [...buildReadOnlyToolSet({ cwd }), ...mcpTools] : tools,
-			systemPrompt,
-			signal: abortController.signal,
-		});
+			const events = runTurn({
+				model: llm,
+				messages: coreHistory,
+				tools: planMode
+					? [...buildReadOnlyToolSet({ cwd }), ...mcpTools]
+					: tools,
+				systemPrompt,
+				signal: abortController.signal,
+			});
 
-		const { inputTokens, outputTokens, contextTokens, newMessages } =
-			await renderTurn(events, spinner);
-		process.removeListener("SIGINT", onSigInt);
+			const { inputTokens, outputTokens, contextTokens, newMessages } =
+				await renderTurn(events, spinner);
 
-		// newMessages are raw ModelMessage objects — push directly into coreHistory
-		// so subsequent turns have the correct input/output fields.
-		if (newMessages.length > 0) {
-			coreHistory.push(...newMessages);
-			session.messages.push(...newMessages);
-			saveMessages(session.id, newMessages, thisTurn);
+			// newMessages are raw ModelMessage objects — push directly into coreHistory
+			// so subsequent turns have the correct input/output fields.
+			if (newMessages.length > 0) {
+				coreHistory.push(...newMessages);
+				session.messages.push(...newMessages);
+				saveMessages(session.id, newMessages, thisTurn);
+			}
+
+			totalIn += inputTokens;
+			totalOut += outputTokens;
+			lastContextTokens = contextTokens;
+			touchActiveSession(session);
+		} finally {
+			process.removeListener("SIGINT", onSigInt);
 		}
-
-		totalIn += inputTokens;
-		totalOut += outputTokens;
-		lastContextTokens = contextTokens;
-		touchActiveSession(session);
 	}
 
 	// ── Render status bar (called before each prompt) ──────────────────────────
