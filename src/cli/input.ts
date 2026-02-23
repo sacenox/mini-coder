@@ -102,6 +102,20 @@ async function readKey(reader: StreamReader): Promise<string> {
 	return new TextDecoder().decode(value);
 }
 
+// ─── Paste handling ───────────────────────────────────────────────────────────
+
+const PASTE_SENTINEL = "\x00PASTE\x00";
+const PASTE_SENTINEL_LEN = PASTE_SENTINEL.length;
+
+export function pasteLabel(text: string): string {
+	const lines = text.split("\n");
+	const first = lines[0] ?? "";
+	const preview = first.length > 40 ? `${first.slice(0, 40)}…` : first;
+	const extra = lines.length - 1;
+	const more = extra > 0 ? ` +${extra} more line${extra === 1 ? "" : "s"}` : "";
+	return `[pasted: "${preview}"${more}]`;
+}
+
 // ─── Main readline function ───────────────────────────────────────────────────
 
 const PROMPT = c.green("▶ ");
@@ -123,6 +137,7 @@ export async function readline(opts: {
 	let savedInput = ""; // saved current line when navigating history
 	let searchMode = false;
 	let searchQuery = "";
+	let pasteBuffer: string | null = null; // full text of a pending paste
 
 	process.stdin.setRawMode(true);
 	process.stdin.resume();
@@ -131,14 +146,27 @@ export async function readline(opts: {
 
 	function renderPrompt(): void {
 		const cols = process.stdout.columns ?? 80;
+		// Replace the sentinel with a styled placeholder for display
+		const visualBuf = pasteBuffer
+			? buf.replace(PASTE_SENTINEL, c.dim(pasteLabel(pasteBuffer)))
+			: buf;
+		// For cursor positioning we need the visual length without the sentinel substitution
+		const visualCursor = pasteBuffer
+			? (() => {
+					const sentinelPos = buf.indexOf(PASTE_SENTINEL);
+					if (sentinelPos === -1 || cursor <= sentinelPos) return cursor;
+					// cursor is after the sentinel: shift by (label len - sentinel len)
+					return cursor - PASTE_SENTINEL_LEN + pasteLabel(pasteBuffer).length;
+				})()
+			: cursor;
 		const display =
-			buf.length > cols - PROMPT_RAW_LEN - 2
-				? `…${buf.slice(-(cols - PROMPT_RAW_LEN - 3))}`
-				: buf;
+			visualBuf.length > cols - PROMPT_RAW_LEN - 2
+				? `…${visualBuf.slice(-(cols - PROMPT_RAW_LEN - 3))}`
+				: visualBuf;
 
 		const prompt = opts.planMode ? PROMPT_PLAN : PROMPT;
 		process.stdout.write(
-			`${CLEAR_LINE}${prompt}${display}${CSI}${PROMPT_RAW_LEN + cursor + 1}G`,
+			`${CLEAR_LINE}${prompt}${display}${CSI}${PROMPT_RAW_LEN + visualCursor + 1}G`,
 		);
 	}
 
@@ -282,6 +310,7 @@ export async function readline(opts: {
 				while (cursor > 0 && buf[cursor - 1] === " ") cursor--;
 				while (cursor > 0 && buf[cursor - 1] !== " ") cursor--;
 				buf = buf.slice(0, cursor) + buf.slice(end);
+				if (pasteBuffer && !buf.includes(PASTE_SENTINEL)) pasteBuffer = null;
 				renderPrompt();
 				continue;
 			}
@@ -289,12 +318,14 @@ export async function readline(opts: {
 			if (raw === CTRL_U) {
 				buf = buf.slice(cursor);
 				cursor = 0;
+				if (pasteBuffer && !buf.includes(PASTE_SENTINEL)) pasteBuffer = null;
 				renderPrompt();
 				continue;
 			}
 
 			if (raw === CTRL_K) {
 				buf = buf.slice(0, cursor);
+				if (pasteBuffer && !buf.includes(PASTE_SENTINEL)) pasteBuffer = null;
 				renderPrompt();
 				continue;
 			}
@@ -316,6 +347,7 @@ export async function readline(opts: {
 				if (cursor > 0) {
 					buf = buf.slice(0, cursor - 1) + buf.slice(cursor);
 					cursor--;
+					if (pasteBuffer && !buf.includes(PASTE_SENTINEL)) pasteBuffer = null;
 					renderPrompt();
 				}
 				continue;
@@ -346,7 +378,12 @@ export async function readline(opts: {
 
 			// ── Enter — submit ────────────────────────────────────────────────────
 			if (raw === ENTER || raw === NEWLINE) {
-				const text = buf.trim();
+				// Expand paste sentinel before trimming/submitting
+				const expanded = pasteBuffer
+					? buf.replace(PASTE_SENTINEL, pasteBuffer)
+					: buf;
+				pasteBuffer = null;
+				const text = expanded.trim();
 				process.stdout.write("\n");
 				buf = "";
 				cursor = 0;
@@ -374,6 +411,19 @@ export async function readline(opts: {
 				}
 
 				return { type: "submit", text };
+			}
+
+			// ── Paste detection ───────────────────────────────────────────────────
+			// A chunk with more than one character that isn't an escape sequence is
+			// almost certainly a clipboard paste. Capture it and show a placeholder.
+			if (raw.length > 1) {
+				// Strip trailing newline that some terminals append on paste
+				const pasted = raw.replace(/\r?\n$/, "");
+				pasteBuffer = pasted;
+				buf = buf.slice(0, cursor) + PASTE_SENTINEL + buf.slice(cursor);
+				cursor += PASTE_SENTINEL_LEN;
+				renderPrompt();
+				continue;
 			}
 
 			// ── Printable characters ──────────────────────────────────────────────
