@@ -32,7 +32,9 @@ conventions and not introduce more specs. (skills.sh installs to `.agents,AGENTS
   - `/review` command sends a subagent with a specific prompt to review code well
   - `/mcp` list/add/remove mcp servers. servers are stored in sqlite
   - `/plan` for a read-only mode (`/plan` again to turn off)
+  - `/ralph` for a ralph loop mode (by Geoffrey Huntley, who described it simply: “Ralph is a Bash loop.”)
 - Connect to streaming MCPs (Example: https://exa.ai/docs/reference/exa-mcp)
+- Image and clipboard support, pasting images and text
 
 ## UI/Output
 

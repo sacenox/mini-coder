@@ -7,3 +7,4 @@
 - Keep the repo pristine: no failing tests, no lint, no build issues, no `nolint:` comments.
 - Use `bun run typecheck && bun run format && bun run lint && bun test` to check your changes.
 - We care about performance.
+- Don't worry about formatting issues, formatting happens automatically on mutations. (see .agents/hooks)
