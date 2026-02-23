@@ -18,6 +18,10 @@ const CURSOR_UP = `${CSI}A`;
 const CURSOR_DOWN = `${CSI}B`;
 const SAVE_CURSOR = `${CSI}s`;
 const RESTORE_CURSOR = `${CSI}u`;
+const BPASTE_ENABLE = `${ESC}[?2004h`;
+const BPASTE_DISABLE = `${ESC}[?2004l`;
+const BPASTE_START = `${ESC}[200~`;
+const BPASTE_END = `${ESC}[201~`;
 
 // ─── Keycodes ─────────────────────────────────────────────────────────────────
 
@@ -200,6 +204,7 @@ export async function readline(opts: {
 
 	process.stdin.setRawMode(true);
 	process.stdin.resume();
+	process.stdout.write(BPASTE_ENABLE);
 
 	const reader = getStdinReader();
 
@@ -288,6 +293,37 @@ export async function readline(opts: {
 					}
 				}
 				renderSearchPrompt();
+				continue;
+			}
+
+			// ── Bracketed paste ────────────────────────────────────────────────
+			if (raw.includes(BPASTE_START)) {
+				// Collect the full paste, potentially across multiple readKey chunks
+				let accumulated = raw.slice(
+					raw.indexOf(BPASTE_START) + BPASTE_START.length,
+				);
+				while (!accumulated.includes(BPASTE_END)) {
+					const next = await readKey(reader);
+					if (!next) break;
+					accumulated += next;
+				}
+				const endIdx = accumulated.indexOf(BPASTE_END);
+				const pasted =
+					endIdx !== -1 ? accumulated.slice(0, endIdx) : accumulated;
+
+				const imageResult = await tryExtractImageFromPaste(pasted, cwd);
+				if (imageResult) {
+					imageAttachments.push(imageResult.attachment);
+					buf = buf.slice(0, cursor) + imageResult.label + buf.slice(cursor);
+					cursor += imageResult.label.length;
+					renderPrompt();
+					continue;
+				}
+
+				pasteBuffer = pasted;
+				buf = buf.slice(0, cursor) + PASTE_SENTINEL + buf.slice(cursor);
+				cursor += PASTE_SENTINEL_LEN;
+				renderPrompt();
 				continue;
 			}
 
@@ -525,6 +561,7 @@ export async function readline(opts: {
 	} finally {
 		// Do NOT cancel the shared reader — it is reused across readline() calls.
 		// Just reset raw mode and pause stdin until the next prompt.
+		process.stdout.write(BPASTE_DISABLE);
 		process.stdin.setRawMode(false);
 		process.stdin.pause();
 	}
