@@ -9,7 +9,14 @@ import {
 	upsertMcpServer,
 } from "../session/db.ts";
 import { renderMarkdown } from "./markdown.ts";
-import { PREFIX, renderError, renderInfo, write, writeln } from "./output.ts";
+import {
+	PREFIX,
+	renderError,
+	renderInfo,
+	renderSubagentActivity,
+	write,
+	writeln,
+} from "./output.ts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -283,16 +290,22 @@ async function handleReview(
 	writeln();
 
 	try {
-		const { result } = await ctx.runSubagent(REVIEW_PROMPT(ctx.cwd, focus));
+		const output = await ctx.runSubagent(REVIEW_PROMPT(ctx.cwd, focus));
+
+		// Show subagent activity tree.
+		if (output.activity.length) {
+			renderSubagentActivity(output.activity, "  ", 1);
+			writeln();
+		}
 
 		// Show review results.
-		write(renderMarkdown(result));
+		write(renderMarkdown(output.result));
 		writeln();
 
 		// Send results to LLM as well.
 		return {
 			type: "inject-user-message",
-			text: `Code review output:\n\n${result}\n\n<system-message>Review the findings and summarize them to the user.</system-message>`,
+			text: `Code review output:\n\n${output.result}\n\n<system-message>Review the findings and summarize them to the user.</system-message>`,
 		};
 	} catch (e) {
 		writeln(`${PREFIX.error} review failed: ${String(e)}`);

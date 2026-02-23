@@ -338,7 +338,7 @@ function renderToolResultInline(
 }
 
 /** Render a subagent's activity tree, indented under its parent tool-call line. */
-function renderSubagentActivity(
+export function renderSubagentActivity(
 	activity: import("../tools/subagent.ts").SubagentToolEntry[],
 	indent: string,
 	maxDepth: number,
