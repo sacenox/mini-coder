@@ -28,7 +28,7 @@ export interface ShellOutput {
 	timedOut: boolean;
 }
 
-const MAX_OUTPUT_BYTES = 100_000; // 100KB per stream
+const MAX_OUTPUT_BYTES = 10_000; // 10KB per stream
 
 export const shellTool: ToolDef<ShellInput, ShellOutput> = {
 	name: "shell",

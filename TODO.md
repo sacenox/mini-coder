@@ -1,11 +1,5 @@
 # TODO
 
-## Image paste
-
-- Best effort try to find the base64 encoded image or the path to the file.
-- Update `@` so it can also match images.
-- Clone opencode's repo and check how they do it
-
 ## Gemini models sometimes get stuck "thinking" forever
 
 I've seen it a couple times, where after a tool call, gemini 3.1 pro will get stuck

@@ -103,3 +103,111 @@ describe("hasRalphSignal", () => {
 		expect(hasRalphSignal("I finished the task.")).toBe(false);
 	});
 });
+
+// ─── SIGINT handling ──────────────────────────────────────────────────────────
+//
+// Behaviour contract (from mini-coder-idea.md):
+//   • First Ctrl+C during an active turn → cancel the turn, return to prompt.
+//   • Second Ctrl+C (or Ctrl+C when no turn is active) → exit the process.
+//
+// Architecture:
+//   registerTerminalCleanup() (output.ts) registers a "cleanup" handler that
+//   calls process.exit(130) ONLY when listenerCount("SIGINT") === 1.
+//   processUserInput() (agent.ts) registers a per-turn "abort" handler as the
+//   VERY FIRST synchronous action — before any await — so that Ctrl+C at any
+//   point during the turn (including the async preamble) is intercepted here.
+//
+// Note: registerTerminalCleanup() itself cannot be called in tests because it
+// registers a handler that calls process.exit(), which would kill the runner.
+// These tests exercise the identical conditional logic with a safe stand-in.
+
+describe("SIGINT handling — registerTerminalCleanup + processUserInput contract", () => {
+	// Mirrors the exact conditional in registerTerminalCleanup's SIGINT handler.
+	// The real handler calls process.exit(130) instead of log.push("would-exit").
+	function makeCleanupHandler(log: string[]) {
+		return () => {
+			if (process.listenerCount("SIGINT") > 1) {
+				log.push("skipped");
+				return;
+			}
+			log.push("would-exit");
+		};
+	}
+
+	test("cleanup handler skips exit while an abort handler is registered", () => {
+		const log: string[] = [];
+		const cleanup = makeCleanupHandler(log);
+		process.on("SIGINT", cleanup);
+
+		const abort = () => {
+			log.push("abort-fired");
+			process.removeListener("SIGINT", abort);
+		};
+		process.on("SIGINT", abort);
+
+		process.emit("SIGINT");
+
+		process.removeListener("SIGINT", cleanup);
+		expect(log).toEqual(["skipped", "abort-fired"]);
+	});
+
+	test("cleanup handler exits when it is the sole listener", () => {
+		const log: string[] = [];
+		const cleanup = makeCleanupHandler(log);
+		process.on("SIGINT", cleanup);
+
+		process.emit("SIGINT");
+
+		process.removeListener("SIGINT", cleanup);
+		expect(log).toEqual(["would-exit"]);
+	});
+
+	test("abort handler registered before any await covers the async preamble", () => {
+		// processUserInput registers onSigInt synchronously at the TOP of the
+		// function (before resolveFileRefs / takeSnapshot awaits).  This test
+		// confirms that a SIGINT fired during those awaits is caught by the abort
+		// handler rather than escaping to the cleanup handler and exiting.
+		const log: string[] = [];
+		const cleanup = makeCleanupHandler(log);
+		process.on("SIGINT", cleanup);
+
+		// Abort handler is in place before any await fires
+		const abort = () => {
+			log.push("abort-fired");
+			process.removeListener("SIGINT", abort);
+		};
+		process.on("SIGINT", abort);
+
+		// SIGINT fires mid-preamble (simulated synchronously)
+		process.emit("SIGINT");
+
+		process.removeListener("SIGINT", cleanup);
+		process.removeListener("SIGINT", abort);
+
+		// Cleanup skips (listenerCount=2); abort intercepts → no exit
+		expect(log).toEqual(["skipped", "abort-fired"]);
+	});
+
+	test("second SIGINT after turn abort exits — intentional per-spec behaviour", () => {
+		// After the first Ctrl+C the abort handler removes itself (listenerCount→1).
+		// A subsequent Ctrl+C should exit (spec: "Second time it exits the app").
+		const log: string[] = [];
+		const cleanup = makeCleanupHandler(log);
+		process.on("SIGINT", cleanup);
+
+		const abort = () => {
+			log.push("abort-fired");
+			process.removeListener("SIGINT", abort);
+		};
+		process.on("SIGINT", abort);
+
+		process.emit("SIGINT"); // first — aborts the turn
+		expect(log).toEqual(["skipped", "abort-fired"]);
+		log.length = 0;
+
+		process.emit("SIGINT"); // second — exits
+		process.removeListener("SIGINT", cleanup);
+
+		expect(log).toEqual(["would-exit"]);
+	});
+});

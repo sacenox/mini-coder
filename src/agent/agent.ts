@@ -472,6 +472,18 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		text: string,
 		pastedImages: ImageAttachment[] = [],
 	): Promise<string> {
+		// Register the abort handler FIRST — before any await — so that Ctrl+C during
+		// the async preamble (resolveFileRefs, takeSnapshot) is intercepted here rather
+		// than falling through to the cleanup handler which exits the process.
+		const abortController = new AbortController();
+		let wasAborted = false;
+		const onSigInt = () => {
+			wasAborted = true;
+			abortController.abort();
+			process.removeListener("SIGINT", onSigInt);
+		};
+		process.on("SIGINT", onSigInt);
+
 		// Resolve @file references — may expand image refs into additional attachments
 		const { text: resolvedText, images: refImages } = await resolveFileRefs(
 			text,
@@ -488,6 +500,15 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		// Saves dirty file contents to SQLite so /undo can restore them without
 		// touching git stash or the user's working tree state.
 		const snapped = await takeSnapshot(cwd, session.id, thisTurn);
+
+		// If CTRL+C was pressed during the async preamble, bail out gracefully
+		// before touching session state or calling the LLM.
+		if (wasAborted) {
+			process.removeListener("SIGINT", onSigInt);
+			if (snapped) deleteSnapshot(session.id, thisTurn);
+			turnIndex--;
+			return "";
+		}
 
 		const coreContent = planMode
 			? `${resolvedText}\n\n<system-message>PLAN MODE ACTIVE: Help the user gather context for the plan -- READ ONLY</system-message>`
@@ -517,15 +538,6 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 
 		const llm = resolveModel(currentModel);
 		const systemPrompt = buildSystemPrompt(cwd);
-
-		const abortController = new AbortController();
-		let wasAborted = false;
-		const onSigInt = () => {
-			wasAborted = true;
-			abortController.abort();
-			process.removeListener("SIGINT", onSigInt);
-		};
-		process.on("SIGINT", onSigInt);
 
 		let lastAssistantText = "";
 		// Tracks whether the turn was fully committed (assistant messages saved).
