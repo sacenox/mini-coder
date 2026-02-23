@@ -771,6 +771,7 @@ export function renderStatusBar(opts: {
 	outputTokens: number;
 	contextTokens: number;
 	contextWindow: number | null;
+	ralphMode?: boolean;
 }): void {
 	const cols = (process.stdout as NodeJS.WriteStream).columns ?? 80;
 
@@ -778,6 +779,7 @@ export function renderStatusBar(opts: {
 	const left: string[] = [c.cyan(opts.model)];
 	if (opts.provider && opts.provider !== "zen") left.push(c.dim(opts.provider));
 	left.push(c.dim(opts.sessionId.slice(0, 8)));
+	if (opts.ralphMode) left.push(c.magenta("↻ ralph"));
 
 	const right: string[] = [];
 	if (opts.inputTokens > 0 || opts.outputTokens > 0) {

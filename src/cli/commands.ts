@@ -25,6 +25,8 @@ export interface CommandContext {
 	setModel: (model: string) => void;
 	planMode: boolean;
 	setPlanMode: (enabled: boolean) => void;
+	ralphMode: boolean;
+	setRalphMode: (enabled: boolean) => void;
 	undoLastTurn: () => Promise<boolean>;
 	startNewSession: () => void;
 
@@ -122,11 +124,24 @@ async function handleModel(ctx: CommandContext, args: string): Promise<void> {
 function handlePlan(ctx: CommandContext): void {
 	ctx.setPlanMode(!ctx.planMode);
 	if (ctx.planMode) {
+		if (ctx.ralphMode) ctx.setRalphMode(false);
 		writeln(
 			`${PREFIX.info} ${c.yellow("plan mode")} ${c.dim("— read-only tools + MCP, no writes or shell")}`,
 		);
 	} else {
 		writeln(`${PREFIX.info} ${c.dim("plan mode off")}`);
+	}
+}
+
+function handleRalph(ctx: CommandContext): void {
+	ctx.setRalphMode(!ctx.ralphMode);
+	if (ctx.ralphMode) {
+		if (ctx.planMode) ctx.setPlanMode(false);
+		writeln(
+			`${PREFIX.info} ${c.magenta("ralph mode")} ${c.dim("— loops until done, fresh context each iteration")}`,
+		);
+	} else {
+		writeln(`${PREFIX.info} ${c.dim("ralph mode off")}`);
 	}
 }
 
@@ -327,6 +342,10 @@ function handleHelp(): void {
 		["/model [id]", "list or switch models (fetches live list)"],
 		["/undo", "remove the last turn from conversation history"],
 		["/plan", "toggle plan mode (read-only tools + MCP)"],
+		[
+			"/ralph",
+			"toggle ralph mode (autonomous loop, fresh context each iteration)",
+		],
 		["/review [focus]", "run a structured code review on recent changes"],
 		["/mcp list", "list MCP servers"],
 		["/mcp add <n> <t> [u]", "add an MCP server"],
@@ -371,6 +390,10 @@ export async function handleCommand(
 
 		case "plan":
 			handlePlan(ctx);
+			return { type: "handled" };
+
+		case "ralph":
+			handleRalph(ctx);
 			return { type: "handled" };
 
 		case "mcp":

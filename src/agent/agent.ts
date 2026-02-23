@@ -276,6 +276,7 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 	}
 
 	let planMode = false;
+	let ralphMode = false;
 
 	const cmdCtx: CommandContext = {
 		get currentModel() {
@@ -288,6 +289,12 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		},
 		get planMode() {
 			return planMode;
+		},
+		get ralphMode() {
+			return ralphMode;
+		},
+		setRalphMode: (v) => {
+			ralphMode = v;
 		},
 		setPlanMode: (v) => {
 			planMode = v;
@@ -380,7 +387,7 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 
 		let input: InputResult;
 		try {
-			input = await readline({ cwd, planMode });
+			input = await readline({ cwd, planMode, ralphMode });
 		} catch {
 			break;
 		}
@@ -421,14 +428,38 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 				continue;
 			}
 
-			case "submit":
-				await processUserInput(input.text);
+			case "submit": {
+				const RALPH_MAX_ITERATIONS = 20;
+				let ralphIteration = 1;
+				let lastText = await processUserInput(input.text);
+				if (ralphMode) {
+					const goal = input.text;
+					while (ralphMode) {
+						// If the LLM signalled done, stop before starting another iteration.
+						if (hasRalphSignal(lastText)) {
+							ralphMode = false;
+							writeln(`${PREFIX.info} ${c.dim("ralph mode off")}`);
+							break;
+						}
+						if (ralphIteration >= RALPH_MAX_ITERATIONS) {
+							writeln(
+								`${PREFIX.info} ${c.yellow("ralph")} ${c.dim("— max iterations reached, stopping")}`,
+							);
+							ralphMode = false;
+							break;
+						}
+						ralphIteration++;
+						cmdCtx.startNewSession();
+						lastText = await processUserInput(goal);
+					}
+				}
 				continue;
+			}
 		}
 	}
 
 	// ── Process a user message ─────────────────────────────────────────────────
-	async function processUserInput(text: string): Promise<void> {
+	async function processUserInput(text: string): Promise<string> {
 		// Resolve @file references
 		const resolvedText = await resolveFileRefs(text, cwd);
 
@@ -442,7 +473,9 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 
 		const coreContent = planMode
 			? `${resolvedText}\n\n<system-message>PLAN MODE ACTIVE: Help the user gather context for the plan -- READ ONLY</system-message>`
-			: resolvedText;
+			: ralphMode
+				? `${resolvedText}\n\n<system-message>RALPH MODE: You are in an autonomous loop. When the task is fully complete (all tests pass, no outstanding issues), output exactly \`/ralph\` as your final message to exit the loop. Otherwise, keep working.</system-message>`
+				: resolvedText;
 		const userMsg: CoreMessage = { role: "user", content: coreContent };
 		session.messages.push(userMsg);
 		saveMessages(session.id, [userMsg], thisTurn);
@@ -452,12 +485,15 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		const systemPrompt = buildSystemPrompt(cwd);
 
 		const abortController = new AbortController();
+		let wasAborted = false;
 		const onSigInt = () => {
+			wasAborted = true;
 			abortController.abort();
 			process.removeListener("SIGINT", onSigInt);
 		};
 		process.on("SIGINT", onSigInt);
 
+		let lastAssistantText = "";
 		try {
 			// Always push so the stack stays aligned 1:1 with turns. A null entry means
 			// the tree was clean at snapshot time — /undo will roll back conversation
@@ -487,13 +523,22 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 				saveMessages(session.id, newMessages, thisTurn);
 			}
 
+			// Collect all assistant text from this turn so the ralph loop can detect
+			// the /ralph signal even when the final action was a tool call.
+			lastAssistantText = extractAssistantText(newMessages);
+
 			totalIn += inputTokens;
 			totalOut += outputTokens;
 			lastContextTokens = contextTokens;
 			touchActiveSession(session);
 		} finally {
 			process.removeListener("SIGINT", onSigInt);
+			// Stop the ralph loop on Ctrl+C or any unexpected throw, so the user
+			// gets back to the prompt rather than resuming with a stale ralphMode=true.
+			if (wasAborted) ralphMode = false;
 		}
+
+		return lastAssistantText;
 	}
 
 	// ── Render status bar (called before each prompt) ──────────────────────────
@@ -515,8 +560,43 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 			outputTokens: totalOut,
 			contextTokens: lastContextTokens,
 			contextWindow: getContextWindow(currentModel),
+			ralphMode,
 		});
 	}
+}
+
+// ─── Ralph signal detection ───────────────────────────────────────────────────
+
+/**
+ * Collect all text from assistant messages in a turn's newMessages array.
+ * Scans every assistant message (not just the last) so that a trailing tool
+ * call doesn't mask a `/ralph` signal that appeared in earlier text.
+ */
+export function extractAssistantText(
+	newMessages: import("../llm-api/turn.ts").CoreMessage[],
+): string {
+	const parts: string[] = [];
+	for (const msg of newMessages) {
+		if (msg.role !== "assistant") continue;
+		const content = msg.content;
+		if (typeof content === "string") {
+			parts.push(content);
+		} else if (Array.isArray(content)) {
+			for (const part of content as Array<{ type?: string; text?: string }>) {
+				if (part?.type === "text" && part.text) parts.push(part.text);
+			}
+		}
+	}
+	return parts.join("\n");
+}
+
+/**
+ * Returns true if the assistant text contains the `/ralph` stop signal.
+ * Matches `/ralph` as a word boundary so surrounding prose is allowed
+ * (e.g. "All done. /ralph" or "/ralph\n").
+ */
+export function hasRalphSignal(text: string): boolean {
+	return /\/ralph\b/.test(text);
 }
 
 // ─── Resolve @file references in user input ────────────────────────────────────

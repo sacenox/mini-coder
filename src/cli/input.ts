@@ -120,11 +120,14 @@ export function pasteLabel(text: string): string {
 
 const PROMPT = c.green("▶ ");
 const PROMPT_PLAN = c.yellow("⬢ ");
+const PROMPT_RALPH = c.magenta("↻ ");
+
 const PROMPT_RAW_LEN = 2; // both prompts are 2 visible chars
 
 export async function readline(opts: {
 	cwd?: string;
 	planMode?: boolean;
+	ralphMode?: boolean;
 }): Promise<InputResult> {
 	const cwd = opts.cwd ?? process.cwd();
 
@@ -164,7 +167,12 @@ export async function readline(opts: {
 				? `…${visualBuf.slice(-(cols - PROMPT_RAW_LEN - 3))}`
 				: visualBuf;
 
-		const prompt = opts.planMode ? PROMPT_PLAN : PROMPT;
+		const prompt = opts.planMode
+			? PROMPT_PLAN
+			: opts.ralphMode
+				? PROMPT_RALPH
+				: PROMPT;
+
 		process.stdout.write(
 			`${CLEAR_LINE}${prompt}${display}${CSI}${PROMPT_RAW_LEN + visualCursor + 1}G`,
 		);
