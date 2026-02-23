@@ -1,3 +1,10 @@
+## Gemini 3.1 sometimes gets stuck "thinking"
+
+I've seen it a couple times, where after a tool call, gemini 3.1 pro will get stuck
+with the UI only showing the thinking animated icon.  A ctrl+c will complete it's turn and then it will continue to work like nothing happened.
+
+It is possible this is happening with all models, but it's a rare case?
+
 ## `/model` thinking-effort toggle
 
 The idea specifies: *"/model allows the user to pick a model as well as thinking

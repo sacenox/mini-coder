@@ -79,7 +79,7 @@ function zenGoogle(modelId: string) {
 	// @ai-sdk/google constructs its own path; we pass the base up to /models
 	return createGoogleGenerativeAI({
 		apiKey: getZenApiKey(),
-		baseURL: `${ZEN_BASE}/models`,
+		baseURL: ZEN_BASE,
 	});
 }
 
