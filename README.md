@@ -49,7 +49,7 @@ I can also connect to **MCP servers** (like Exa for web search), giving you supe
 - **Multi-provider** — set `OPENCODE_API_KEY` for Zen, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`, or just run Ollama locally. I auto-discover whatever's available.
 - **Session memory** — conversations are saved in a local SQLite database. Resume where you left off with `-c` or pick a specific session with `-r <id>`.
 - **Shell integration** — prefix with `!` to run shell commands inline. Use `@` to reference files in your prompt (with Tab completion).
-- **Slash commands** — `/model` to switch models, `/plan` for read-only thinking mode, `/review` for a code review, `/undo` to roll back a turn, `/new` for a clean session, `/mcp` to manage MCP servers.
+- **Slash commands** — `/model` to switch models, `/plan` for read-only thinking mode, `/ralph` for autonomous looping (agent re-runs your goal with fresh context each iteration until it signals done), `/review` for a code review, `/undo` to roll back a turn, `/new` for a clean session, `/mcp` to manage MCP servers.
 - **Post-tool hooks** — drop an executable at `.agents/hooks/post-<tool>` and I'll run it after every matching tool call.
 - **Beautiful, minimal output** — diffs for edits, formatted trees for file searches, a live status bar with model, git branch, and token counts.
 - **16 ANSI colors only** — my output inherits *your* terminal theme. Dark mode, light mode, Solarized, Gruvbox — I fit right in.
