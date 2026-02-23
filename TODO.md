@@ -1,9 +1,37 @@
+#TODO
+
+---
+
+## Review agent is missing subagent output features.
+
+As the title says, there is no visibility to actions of the /review subagent
+
+---
+
 ## Gemini 3.1 sometimes gets stuck "thinking"
 
 I've seen it a couple times, where after a tool call, gemini 3.1 pro will get stuck
 with the UI only showing the thinking animated icon.  A ctrl+c will complete it's turn and then it will continue to work like nothing happened.
 
-It is possible this is happening with all models, but it's a rare case?
+- Happens to all google models using Zen provider (dont have a google key to try direct)
+- The user did not cancel with CTRL+c, they pressed it after thinking was stuck for over 30m(!!!!!!)
+- When using other coding agents, Gemini 3.1 pro doesn't have this issue
+
+- Check online for new SDK version that supports Gemini 3.1 Pro/API changes.
+- https://github.com/vercel/ai/issues/12367 Is not a known issue, it was confirmed to be a bug with an unrelated library. The only thing to note is this change:
+
+```ts
+// SDK 5
+streamText({ maxSteps: 5 })
+
+// SDK 6
+import { stepCountIs } from 'ai';
+streamText({ stopWhen: stepCountIs(5) })
+```
+
+We should start by checking if the google ai sdk has updates.
+
+---
 
 ## `/model` thinking-effort toggle
 
