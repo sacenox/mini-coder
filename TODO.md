@@ -2,9 +2,19 @@
 
 ---
 
-## Review agent is missing subagent output features.
+# Missing version on globally installed binary
 
-As the title says, there is no visibility to actions of the /review subagent
+Investigate why when I use the global installed binary, the version appears as:
+
+```sh
+❯ mc   
+
+  mc  mini-coder · vunknown
+  zen/claude-sonnet-4-6  ·  /Users/seancaetanomartin/src/mini-coder
+  /help for commands  ·  ctrl+d to exit
+
+· MCP: connected exa
+```
 
 ---
 

@@ -8,7 +8,7 @@
 		"mc": "./dist/mc.js"
 	},
 	"scripts": {
-		"build": "bun build src/index.ts --target=bun --outfile=dist/mc.js --packages=external",
+		"build": "bun run scripts/build.ts",
 		"dev": "bun run src/index.ts",
 		"typecheck": "tsc --noEmit",
 		"lint": "biome check src",

@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 
 import * as c from "yoctocolors";
@@ -6,18 +5,9 @@ import type { TurnEvent } from "../llm-api/types.ts";
 import { renderChunk } from "./markdown.ts";
 
 const HOME = homedir();
-const PACKAGE_VERSION = (() => {
-	try {
-		const raw = readFileSync(
-			new URL("../../package.json", import.meta.url),
-			"utf8",
-		);
-		const data = JSON.parse(raw) as { version?: string };
-		return data.version ?? "unknown";
-	} catch {
-		return "unknown";
-	}
-})();
+declare const __PACKAGE_VERSION__: string;
+const PACKAGE_VERSION =
+	typeof __PACKAGE_VERSION__ !== "undefined" ? __PACKAGE_VERSION__ : "unknown";
 
 // ─── Terminal restore ─────────────────────────────────────────────────────────
 
