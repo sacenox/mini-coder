@@ -229,16 +229,17 @@ export function getMaxTurnIndex(sessionId: string): number {
 }
 
 /**
- * Delete all messages belonging to the most recent turn.
+ * Delete all messages belonging to a specific turn (when `turnIndex` is
+ * provided) or the most recent turn (when omitted).
  * Returns true if anything was deleted.
  */
-export function deleteLastTurn(sessionId: string): boolean {
-	const maxTurn = getMaxTurnIndex(sessionId);
-	if (maxTurn < 0) return false;
-	const db = getDb();
-	db.run("DELETE FROM messages WHERE session_id = ? AND turn_index = ?", [
+export function deleteLastTurn(sessionId: string, turnIndex?: number): boolean {
+	const target =
+		turnIndex !== undefined ? turnIndex : getMaxTurnIndex(sessionId);
+	if (target < 0) return false;
+	getDb().run("DELETE FROM messages WHERE session_id = ? AND turn_index = ?", [
 		sessionId,
-		maxTurn,
+		target,
 	]);
 	return true;
 }

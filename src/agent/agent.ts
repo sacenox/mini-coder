@@ -29,6 +29,7 @@ import {
 import {
 	deleteAllSnapshots,
 	deleteLastTurn,
+	deleteSnapshot,
 	getConfigDir,
 	getMaxTurnIndex,
 	listMcpServers,
@@ -494,6 +495,24 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		process.on("SIGINT", onSigInt);
 
 		let lastAssistantText = "";
+		// Tracks whether the turn was fully committed (assistant messages saved).
+		// Used by rollbackTurn() to avoid double-rolling-back.
+		let turnRolledBack = false;
+
+		// Roll back the user message saved before the LLM call, so a failed turn
+		// doesn't leave two consecutive user messages that would permanently break
+		// the session by failing ModelMessage[] schema validation.
+		const rollbackTurn = () => {
+			if (turnRolledBack) return;
+			turnRolledBack = true;
+			coreHistory.pop();
+			session.messages.pop();
+			deleteLastTurn(session.id, thisTurn);
+			if (snapped) deleteSnapshot(session.id, thisTurn);
+			snapshotStack.pop();
+			turnIndex--; // safe: thisTurn = turnIndex++ so turnIndex >= 1 here
+		};
+
 		try {
 			// Always push so the stack stays aligned 1:1 with turns. A null entry means
 			// the tree was clean at snapshot time — /undo will roll back conversation
@@ -521,6 +540,11 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 				coreHistory.push(...newMessages);
 				session.messages.push(...newMessages);
 				saveMessages(session.id, newMessages, thisTurn);
+			} else {
+				// Turn produced no assistant reply (e.g. schema validation error or
+				// abort). Roll back the user message so the next user input doesn't
+				// create two consecutive user messages.
+				rollbackTurn();
 			}
 
 			// Collect all assistant text from this turn so the ralph loop can detect
@@ -531,6 +555,10 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 			totalOut += outputTokens;
 			lastContextTokens = contextTokens;
 			touchActiveSession(session);
+		} catch (err) {
+			// Unexpected throw (network failure, etc.). Roll back if not already done.
+			rollbackTurn();
+			throw err;
 		} finally {
 			process.removeListener("SIGINT", onSigInt);
 			// Stop the ralph loop on Ctrl+C or any unexpected throw, so the user
