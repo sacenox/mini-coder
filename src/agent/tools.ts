@@ -100,9 +100,11 @@ export function buildToolSet(opts: {
 	runSubagent: (
 		prompt: string,
 		depth?: number,
+		agentName?: string,
 	) => Promise<import("../tools/subagent.ts").SubagentOutput>;
 
 	onHook: (toolName: string, scriptPath: string, success: boolean) => void;
+	availableAgents: ReadonlyMap<string, { description: string }>;
 }): ToolDef[] {
 	const { cwd, onHook } = opts;
 	const depth = opts.depth ?? 0;
@@ -182,15 +184,15 @@ export function buildToolSet(opts: {
 			(result, input) => hookEnvForShell(result, input, cwd),
 			onHook,
 		) as ToolDef,
-		createSubagentTool(async (prompt) => {
+		createSubagentTool(async (prompt, agentName) => {
 			if (depth >= MAX_SUBAGENT_DEPTH) {
 				throw new Error(
 					`Subagent depth limit reached (max ${MAX_SUBAGENT_DEPTH}). ` +
 						`Cannot spawn another subagent from depth ${depth}.`,
 				);
 			}
-			return opts.runSubagent(prompt, depth + 1);
-		}) as ToolDef,
+			return opts.runSubagent(prompt, depth + 1, agentName);
+		}, opts.availableAgents) as ToolDef,
 	];
 }
 

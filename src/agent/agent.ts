@@ -186,24 +186,37 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 	// so we can trim or rebuild without mutating the in-memory DB copy.
 	const coreHistory: CoreMessage[] = [...session.messages];
 
-	// Subagent runner (recursive) — depth prevents infinite recursion
+	// Subagent runner (recursive) — depth prevents infinite recursion.
+	// agentName: optional custom agent to run (looks up .agents/agents/<name>.md).
+	// modelOverride: explicit model to use (for /review and custom commands).
 	const runSubagent = async (
 		prompt: string,
 		depth = 0,
-		model?: string,
-		systemPromptOverride?: string,
+		agentName?: string,
+		modelOverride?: string,
 	): Promise<import("../tools/subagent.ts").SubagentOutput> => {
+		// Resolve custom agent config if an agentName was specified
+		const allAgents = loadAgents(cwd);
+		const agentConfig = agentName ? allAgents.get(agentName) : undefined;
+		if (agentName && !agentConfig) {
+			throw new Error(
+				`Unknown agent "${agentName}". Available agents: ${[...allAgents.keys()].join(", ") || "(none)"}`,
+			);
+		}
+
+		const model = modelOverride ?? agentConfig?.model ?? currentModel;
+		const systemPrompt = agentConfig?.systemPrompt ?? buildSystemPrompt(cwd);
+
 		const subMessages: CoreMessage[] = [{ role: "user", content: prompt }];
 		const subTools = buildToolSet({
 			cwd,
 			depth,
 			runSubagent,
 			onHook: renderHook,
+			availableAgents: allAgents,
 		});
 
-		const subLlm = resolveModel(model ?? currentModel);
-
-		const systemPrompt = systemPromptOverride ?? buildSystemPrompt(cwd);
+		const subLlm = resolveModel(model);
 
 		let result = "";
 		let inputTokens = 0;
@@ -250,11 +263,14 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 	};
 
 	// ── MCP: load persisted servers and connect them ───────────────────────────
+
+	const agents = loadAgents(cwd);
 	const tools: ToolDef[] = buildToolSet({
 		cwd,
 		depth: 0,
 		runSubagent,
 		onHook: renderHook,
+		availableAgents: agents,
 	});
 
 	const mcpTools: ToolDef[] = [];
@@ -314,7 +330,8 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		// depth=0: custom commands are user-initiated, not LLM-initiated, so they
 		// don't consume the recursion depth guard (which only applies to the LLM
 		// subagent tool calling itself).
-		runSubagent: (prompt, model?) => runSubagent(prompt, 0, model),
+		// model? is an optional override for /review and custom commands.
+		runSubagent: (prompt, model?) => runSubagent(prompt, 0, undefined, model),
 
 		undoLastTurn: async () => {
 			// Nothing to undo if there are no messages
@@ -491,40 +508,10 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		};
 		process.on("SIGINT", onSigInt);
 
-		// Resolve @file/skill/agent references
+		// Resolve @file/skill references (agent refs are left as-is for the LLM)
 		const { text: resolvedText, images: refImages } = await resolveFileRefs(
 			text,
 			cwd,
-			0, // depth 0: processUserInput is always top-level
-			runSubagent,
-			async (prompt, model, systemPromptOverride) => {
-				// Run custom agent with full visual output (spinner + renderTurn)
-				const agentLlm = resolveModel(model ?? currentModel);
-				const agentSystem = systemPromptOverride ?? buildSystemPrompt(cwd);
-				const agentTools = buildToolSet({
-					cwd,
-					depth: 0,
-					runSubagent,
-					onHook: renderHook,
-				});
-				const agentMessages: CoreMessage[] = [
-					{ role: "user", content: prompt },
-				];
-				const events = runTurn({
-					model: agentLlm,
-					messages: agentMessages,
-					tools: agentTools,
-					systemPrompt: agentSystem,
-				});
-				spinner.start("thinking");
-				const { newMessages, inputTokens, outputTokens } = await renderTurn(
-					events,
-					spinner,
-				);
-				const result = extractAssistantText(newMessages);
-				const activity: import("../tools/subagent.ts").SubagentToolEntry[] = [];
-				return { result, inputTokens, outputTokens, activity };
-			},
 		);
 
 		// Merge pasted images with @-ref images
@@ -709,50 +696,25 @@ export function hasRalphSignal(text: string): boolean {
 	return /\/ralph\b/.test(text);
 }
 
-// ─── Resolve @file/skill/agent references in user input ───────────────────────
+// ─── Resolve @file/skill references in user input ────────────────────────────
+// @agent references are left as-is — unrecognised @refs simply fall through to
+// the file-inject path and are left unchanged when the file doesn't exist.
 
 async function resolveFileRefs(
 	text: string,
 	cwd: string,
-	depth: number,
-	runSubagentFn: (
-		prompt: string,
-		depth: number,
-		model?: string,
-		systemPromptOverride?: string,
-	) => Promise<import("../tools/subagent.ts").SubagentOutput>,
-	runAgentFn: (
-		prompt: string,
-		model?: string,
-		systemPromptOverride?: string,
-	) => Promise<import("../tools/subagent.ts").SubagentOutput>,
 ): Promise<{ text: string; images: ImageAttachment[] }> {
 	const atPattern = /@([\w./\-_]+)/g;
 	let result = text;
 	const matches = [...text.matchAll(atPattern)];
 	const images: ImageAttachment[] = [];
 
-	// Load agents and skills once for this resolution pass
-	const agents = loadAgents(cwd);
 	const skills = loadSkills(cwd);
 
-	// ── Phase 1: validate — catch multiple @agent refs up front ───────────────
-	const agentMatches = matches.filter((m) => m[1] && agents.has(m[1]));
-	if (agentMatches.length > 1) {
-		throw new Error(
-			`Only one @agent reference is allowed per message, found: ${agentMatches.map((m) => m[0]).join(", ")}`,
-		);
-	}
-
-	// ── Phase 2: substitute skills, images, and files (right-to-left) ─────────
-	// Process all non-agent refs first so images are collected and the prompt
-	// text that the agent receives is clean.
+	// Substitute skills, images, and files (right-to-left).
 	for (const match of [...matches].reverse()) {
 		const ref = match[1];
 		if (!ref) continue;
-
-		// Skip agent refs — handled in phase 3
-		if (agents.has(ref)) continue;
 
 		// @skill-name — inject skill content inline
 		const skill = skills.get(ref);
@@ -795,30 +757,6 @@ async function resolveFileRefs(
 		} catch {
 			// Leave the @ref as-is if file not found
 		}
-	}
-
-	// ── Phase 3: agent dispatch (if any) ──────────────────────────────────────
-	// By now skills/images/files have been resolved, so `result` contains the
-	// clean prompt text. We use the original match index against `text` to strip
-	// just the @agent-name token and pass everything else to the subagent.
-	const agentMatch = agentMatches[0];
-	if (agentMatch) {
-		const ref = agentMatch[1];
-		const agent = ref ? agents.get(ref) : undefined;
-		if (!agent) return { text: result, images };
-		// Strip the @agent-name token from the *original* text to get the prompt,
-		// then layer in any skill expansions from `result`.
-		const promptText = (
-			result.slice(0, agentMatch.index) +
-			result.slice((agentMatch.index ?? 0) + agentMatch[0].length)
-		).trim();
-		const output = await runAgentFn(
-			promptText || "(no prompt)",
-			agent.model,
-			agent.systemPrompt,
-		);
-		// Images collected above are passed through so callers can attach them.
-		return { text: output.result, images };
 	}
 
 	return { text: result, images };
