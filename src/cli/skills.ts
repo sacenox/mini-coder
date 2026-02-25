@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { warnConventionConflicts } from "./config-conflicts.ts";
 import { parseFrontmatter } from "./frontmatter.ts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -55,12 +56,34 @@ function loadFromDir(
 // ─── Load all skills (global + local, local wins) ────────────────────────────
 
 export function loadSkills(cwd: string): Map<string, Skill> {
-	const globalDir = join(homedir(), ".agents", "skills");
-	const localDir = join(cwd, ".agents", "skills");
+	const globalAgentsDir = join(homedir(), ".agents", "skills");
+	const globalClaudeDir = join(homedir(), ".claude", "skills");
+	const localAgentsDir = join(cwd, ".agents", "skills");
+	const localClaudeDir = join(cwd, ".claude", "skills");
 
-	const global = loadFromDir(globalDir, "global");
-	const local = loadFromDir(localDir, "local");
+	const globalAgents = loadFromDir(globalAgentsDir, "global");
+	const globalClaude = loadFromDir(globalClaudeDir, "global");
+	const localAgents = loadFromDir(localAgentsDir, "local");
+	const localClaude = loadFromDir(localClaudeDir, "local");
 
-	// Merge: local overrides global
-	return new Map([...global, ...local]);
+	warnConventionConflicts(
+		"skills",
+		"global",
+		globalAgents.keys(),
+		globalClaude.keys(),
+	);
+	warnConventionConflicts(
+		"skills",
+		"local",
+		localAgents.keys(),
+		localClaude.keys(),
+	);
+
+	// Merge precedence: local overrides global; at the same scope, .agents overrides .claude.
+	return new Map([
+		...globalClaude,
+		...globalAgents,
+		...localClaude,
+		...localAgents,
+	]);
 }

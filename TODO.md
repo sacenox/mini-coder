@@ -15,7 +15,7 @@ Why not just keep using them via their MCP? Simple answer: their tools descripti
 
 https://exa.ai/docs/reference/search-quickstart
 https://exa.ai/docs/reference/contents-quickstart
-**Ask the user for text versions if you can find these pages**
+**Ask the user for text versions if you can't find these pages**
 
 ## Subagents don't have access to MCP tools?
 
