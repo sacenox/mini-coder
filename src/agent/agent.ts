@@ -523,15 +523,6 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		// touching git stash or the user's working tree state.
 		const snapped = await takeSnapshot(cwd, session.id, thisTurn);
 
-		// If CTRL+C was pressed during the async preamble, bail out gracefully
-		// before touching session state or calling the LLM.
-		if (wasAborted) {
-			process.removeListener("SIGINT", onSigInt);
-			if (snapped) deleteSnapshot(session.id, thisTurn);
-			turnIndex--;
-			return "";
-		}
-
 		const coreContent = planMode
 			? `${resolvedText}\n\n<system-message>PLAN MODE ACTIVE: Help the user gather context for the plan -- READ ONLY</system-message>`
 			: ralphMode
@@ -553,6 +544,23 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 						],
 					}
 				: { role: "user", content: coreContent };
+
+		// If CTRL+C was pressed during the async preamble, still save the user
+		// message and a stub assistant reply so the turn stays in history.
+		// /undo is the only way to erase a turn.
+		if (wasAborted) {
+			process.removeListener("SIGINT", onSigInt);
+			const stubMsg: CoreMessage = {
+				role: "assistant",
+				content: "[interrupted]",
+			};
+			session.messages.push(userMsg, stubMsg);
+			saveMessages(session.id, [userMsg, stubMsg], thisTurn);
+			coreHistory.push(userMsg, stubMsg);
+			snapshotStack.push(snapped ? thisTurn : null);
+			touchActiveSession(session);
+			return "";
+		}
 
 		session.messages.push(userMsg);
 		saveMessages(session.id, [userMsg], thisTurn);
@@ -607,9 +615,20 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 				coreHistory.push(...newMessages);
 				session.messages.push(...newMessages);
 				saveMessages(session.id, newMessages, thisTurn);
+			} else if (wasAborted) {
+				// Ctrl+C mid-stream: the LLM reply was partial or empty.
+				// Save a stub assistant message so history stays valid.
+				// /undo is the only way to erase a turn.
+				const stubMsg: CoreMessage = {
+					role: "assistant",
+					content: "[interrupted]",
+				};
+				coreHistory.push(stubMsg);
+				session.messages.push(stubMsg);
+				saveMessages(session.id, [stubMsg], thisTurn);
 			} else {
-				// Turn produced no assistant reply (e.g. schema validation error or
-				// abort). Roll back the user message so the next user input doesn't
+				// Turn produced no assistant reply due to an error (e.g. schema
+				// validation failure). Roll back so the next user input doesn't
 				// create two consecutive user messages.
 				rollbackTurn();
 			}
