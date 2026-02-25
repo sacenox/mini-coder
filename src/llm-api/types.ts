@@ -1,48 +1,4 @@
-import type { LanguageModel } from "ai";
-
-// ─── Provider config ──────────────────────────────────────────────────────────
-
-export interface ProviderConfig {
-	/** Human-readable label shown in the status bar */
-	label: string;
-	/** The resolved AI SDK language model */
-	model: LanguageModel;
-}
-
-// ─── Messages ─────────────────────────────────────────────────────────────────
-
-export type MessageRole = "user" | "assistant" | "tool";
-
-export interface TextContent {
-	type: "text";
-	text: string;
-}
-
-export interface ToolCallContent {
-	type: "tool-call";
-	toolCallId: string;
-	toolName: string;
-	args: unknown;
-}
-
-export interface ToolResultContent {
-	type: "tool-result";
-	toolCallId: string;
-	toolName: string;
-	result: unknown;
-	isError?: boolean;
-}
-
-export type MessageContent =
-	| TextContent
-	| ToolCallContent
-	| ToolResultContent
-	| string;
-
-export interface Message {
-	role: MessageRole;
-	content: MessageContent | MessageContent[];
-}
+import type { CoreMessage } from "./turn.ts";
 
 // ─── Turn events (streamed to the caller) ─────────────────────────────────────
 
@@ -78,7 +34,7 @@ export interface TurnCompleteEvent {
 	 * do NOT convert them through the internal Message type or they will
 	 * lose `input`/`output` field fidelity and fail schema validation.
 	 */
-	messages: import("../llm-api/turn.ts").CoreMessage[];
+	messages: CoreMessage[];
 }
 
 export interface TurnErrorEvent {

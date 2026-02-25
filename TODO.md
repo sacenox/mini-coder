@@ -1,18 +1,8 @@
 # TODO
 
-## Refencing custom subagents with `@` has poor UX
-
-- The main agent has no clue a subagent was called. 
-- When the subagent completes, the main agents just gets the result with
-no context or relation to the user message that triggered it.
-- This is poorly implemented and does not match how Claude Code or Opencode's custom agents work, leading to breaking on of the core premises of mini-coder: no weird setup or different standards...
-
-Write a plan to implement the feature properly, use opencode as the reference
-implementation to ensure we are compatible with their custom agents.
-
 ## Subagents don't have access to MCP tools?
 
-Investigate if subagents are able to see the mcp tools. 
+Investigate if subagents are able to see the mcp tools. The user reported that after adding the exa mcp tools, that the subagents claimed to not be able to search online, but the main agent could.
 
 ## Investigate missing output?
 

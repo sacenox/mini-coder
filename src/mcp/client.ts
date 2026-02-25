@@ -78,14 +78,12 @@ export async function connectMcpServer(
 		// Use the server's declared JSON schema directly
 		schema: t.inputSchema,
 		execute: async (input: unknown) => {
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 			const result = (await client.callTool({
 				name: t.name,
 				arguments: input as Record<string, unknown>,
 			})) as { isError?: boolean; content: unknown };
 
 			if (result.isError) {
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any
 				const content = result.content as Array<{
 					type: string;
 					text?: string;

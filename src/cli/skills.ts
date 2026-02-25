@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { parseFrontmatter } from "./frontmatter.ts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -11,28 +12,6 @@ export interface Skill {
 	content: string;
 	/** "global" (~/.agents/) or "local" (./.agents/) — local wins on conflict */
 	source: "global" | "local";
-}
-
-// ─── Frontmatter parser (name + description only) ────────────────────────────
-
-function parseSkillMeta(raw: string): { name?: string; description?: string } {
-	const FM_RE = /^---\r?\n([\s\S]*?)\r?\n---/;
-	const m = raw.match(FM_RE);
-	if (!m) return {};
-
-	const meta: { name?: string; description?: string } = {};
-	for (const line of (m[1] ?? "").split("\n")) {
-		const colon = line.indexOf(":");
-		if (colon === -1) continue;
-		const key = line.slice(0, colon).trim();
-		const val = line
-			.slice(colon + 1)
-			.trim()
-			.replace(/^["']|["']$/g, "");
-		if (key === "name") meta.name = val;
-		if (key === "description") meta.description = val;
-	}
-	return meta;
 }
 
 // ─── Load skills from a skills root dir ──────────────────────────────────────
@@ -58,7 +37,7 @@ function loadFromDir(
 			if (!statSync(join(dir, entry)).isDirectory()) continue;
 			if (!existsSync(skillFile)) continue;
 			const content = readFileSync(skillFile, "utf-8");
-			const meta = parseSkillMeta(content);
+			const { meta } = parseFrontmatter(content);
 			const name = meta.name ?? entry;
 			skills.set(name, {
 				name,

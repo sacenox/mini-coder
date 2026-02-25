@@ -1,5 +1,4 @@
 import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import * as c from "yoctocolors";
 import { loadAgents } from "../cli/agents.ts";
@@ -10,8 +9,6 @@ import {
 	loadImageFile,
 } from "../cli/image-types.ts";
 import { readline, type InputResult } from "../cli/input.ts";
-import { loadSkills } from "../cli/skills.ts";
-
 import {
 	PREFIX,
 	Spinner,
@@ -21,8 +18,10 @@ import {
 	renderStatusBar,
 	renderTurn,
 	restoreTerminal,
+	tildePath,
 	writeln,
 } from "../cli/output.ts";
+import { loadSkills } from "../cli/skills.ts";
 
 import { getContextWindow, resolveModel } from "../llm-api/providers.ts";
 import { type CoreMessage, runTurn } from "../llm-api/turn.ts";
@@ -33,6 +32,7 @@ import {
 	restoreSnapshot,
 	takeSnapshot,
 } from "../tools/snapshot.ts";
+import type { SubagentOutput, SubagentToolEntry } from "../tools/subagent.ts";
 
 import {
 	deleteAllSnapshots,
@@ -95,9 +95,7 @@ function loadContextFile(cwd: string): string | null {
 
 function buildSystemPrompt(cwd: string): string {
 	const contextFile = loadContextFile(cwd);
-	const cwdDisplay = cwd.startsWith(homedir())
-		? `~${cwd.slice(homedir().length)}`
-		: cwd;
+	const cwdDisplay = tildePath(cwd);
 	const now = new Date().toLocaleString(undefined, { hour12: false });
 
 	let prompt = `You are mini-coder, a small and fast CLI coding agent.
@@ -194,7 +192,7 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		depth = 0,
 		agentName?: string,
 		modelOverride?: string,
-	): Promise<import("../tools/subagent.ts").SubagentOutput> => {
+	): Promise<SubagentOutput> => {
 		// Resolve custom agent config if an agentName was specified
 		const allAgents = loadAgents(cwd);
 		const agentConfig = agentName ? allAgents.get(agentName) : undefined;
@@ -221,7 +219,7 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		let result = "";
 		let inputTokens = 0;
 		let outputTokens = 0;
-		const activity: import("../tools/subagent.ts").SubagentToolEntry[] = [];
+		const activity: SubagentToolEntry[] = [];
 
 		// Track pending tool call so we can pair it with its result
 		const pendingCalls = new Map<string, { toolName: string; args: unknown }>();
@@ -643,9 +641,7 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		const branch = await getGitBranch(cwd);
 		const provider = currentModel.split("/")[0] ?? "";
 		const modelShort = currentModel.split("/").slice(1).join("/");
-		const cwdDisplay = cwd.startsWith(homedir())
-			? `~${cwd.slice(homedir().length)}`
-			: cwd;
+		const cwdDisplay = tildePath(cwd);
 
 		renderStatusBar({
 			model: modelShort,
@@ -669,9 +665,7 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
  * Scans every assistant message (not just the last) so that a trailing tool
  * call doesn't mask a `/ralph` signal that appeared in earlier text.
  */
-export function extractAssistantText(
-	newMessages: import("../llm-api/turn.ts").CoreMessage[],
-): string {
+export function extractAssistantText(newMessages: CoreMessage[]): string {
 	const parts: string[] = [];
 	for (const msg of newMessages) {
 		if (msg.role !== "assistant") continue;

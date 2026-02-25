@@ -1,7 +1,5 @@
-import { homedir } from "node:os";
-import { relative } from "node:path";
 import * as c from "yoctocolors";
-import { PREFIX, writeln } from "../cli/output.ts";
+import { tildePath, writeln } from "../cli/output.ts";
 import type { CoreMessage } from "../llm-api/turn.ts";
 import {
 	type SessionRow,
@@ -50,9 +48,7 @@ export function printSessionList(): void {
 	writeln(`\n${c.bold("Recent sessions:")}`);
 	for (const s of sessions) {
 		const date = new Date(s.updated_at).toLocaleString();
-		const cwd = s.cwd.startsWith(homedir())
-			? `~${s.cwd.slice(homedir().length)}`
-			: s.cwd;
+		const cwd = tildePath(s.cwd);
 		const title = s.title || c.dim("(untitled)");
 		writeln(
 			`  ${c.dim(s.id.padEnd(14))} ${title.padEnd(30)} ${c.cyan(s.model.split("/").pop() ?? s.model).padEnd(20)} ${c.dim(cwd)}  ${c.dim(date)}`,

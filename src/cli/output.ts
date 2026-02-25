@@ -1,13 +1,20 @@
 import { homedir } from "node:os";
 
 import * as c from "yoctocolors";
+import type { CoreMessage } from "../llm-api/turn.ts";
 import type { TurnEvent } from "../llm-api/types.ts";
+import type { SubagentOutput, SubagentToolEntry } from "../tools/subagent.ts";
 import { renderChunk } from "./markdown.ts";
 
 const HOME = homedir();
 declare const __PACKAGE_VERSION__: string;
 const PACKAGE_VERSION =
 	typeof __PACKAGE_VERSION__ !== "undefined" ? __PACKAGE_VERSION__ : "unknown";
+
+/** Replace the home directory prefix with `~` for display. */
+export function tildePath(p: string): string {
+	return p.startsWith(HOME) ? `~${p.slice(HOME.length)}` : p;
+}
 
 // ─── Terminal restore ─────────────────────────────────────────────────────────
 
@@ -329,7 +336,8 @@ function renderToolResultInline(
 
 /** Render a subagent's activity tree, indented under its parent tool-call line. */
 export function renderSubagentActivity(
-	activity: import("../tools/subagent.ts").SubagentToolEntry[],
+	activity: SubagentToolEntry[],
+
 	indent: string,
 	maxDepth: number,
 ): void {
@@ -339,7 +347,7 @@ export function renderSubagentActivity(
 		// For nested subagents, recurse one more level (capped at maxDepth)
 		if (entry.toolName === "subagent" && maxDepth > 0) {
 			const nested = entry.result as {
-				activity?: import("../tools/subagent.ts").SubagentToolEntry[];
+				activity?: SubagentToolEntry[];
 			};
 			if (nested?.activity?.length) {
 				renderSubagentActivity(nested.activity, `${indent}  `, maxDepth - 1);
@@ -509,7 +517,7 @@ export function renderToolResult(
 	}
 
 	if (toolName === "subagent") {
-		const r = result as import("../tools/subagent.ts").SubagentOutput;
+		const r = result as SubagentOutput;
 
 		// Render the tool call tree before showing the result text
 		if (r.activity?.length) {
@@ -576,7 +584,7 @@ export async function renderTurn(
 	inputTokens: number;
 	outputTokens: number;
 	contextTokens: number;
-	newMessages: import("../llm-api/turn.ts").CoreMessage[];
+	newMessages: CoreMessage[];
 }> {
 	let inText = false;
 	// Unprocessed raw text — only the portion from the last flush boundary
@@ -594,7 +602,7 @@ export async function renderTurn(
 	let inputTokens = 0;
 	let outputTokens = 0;
 	let contextTokens = 0;
-	let newMessages: import("../llm-api/turn.ts").CoreMessage[] = [];
+	let newMessages: CoreMessage[] = [];
 
 	// Append rendered ANSI text to the print queue and start the ticker if
 	// it is not already running.

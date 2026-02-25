@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
+import { parseFrontmatter } from "./frontmatter.ts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -13,35 +14,6 @@ export interface AgentConfig {
 	systemPrompt: string;
 	/** "global" (~/.agents/) or "local" (./.agents/) — local wins on conflict */
 	source: "global" | "local";
-}
-
-// ─── Frontmatter parser ───────────────────────────────────────────────────────
-
-interface Frontmatter {
-	description?: string;
-	model?: string;
-}
-
-function parseFrontmatter(raw: string): { meta: Frontmatter; body: string } {
-	const FM_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
-	const m = raw.match(FM_RE);
-	if (!m) return { meta: {}, body: raw };
-
-	const meta: Frontmatter = {};
-	const yamlBlock = m[1] ?? "";
-	for (const line of yamlBlock.split("\n")) {
-		const colon = line.indexOf(":");
-		if (colon === -1) continue;
-		const key = line.slice(0, colon).trim();
-		const val = line
-			.slice(colon + 1)
-			.trim()
-			.replace(/^["']|["']$/g, "");
-		if (key === "description") meta.description = val;
-		if (key === "model") meta.model = val;
-	}
-
-	return { meta, body: (m[2] ?? "").trim() };
 }
 
 // ─── Load agents from a directory ─────────────────────────────────────────────

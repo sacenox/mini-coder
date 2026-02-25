@@ -45,6 +45,8 @@ const ZEN_GOOGLE_MODELS = new Set([
 
 let _zenAnthropic: ReturnType<typeof createAnthropic> | null = null;
 let _zenOpenAI: ReturnType<typeof createOpenAI> | null = null;
+let _zenGoogle: ReturnType<typeof createGoogleGenerativeAI> | null = null;
+
 let _zenCompat: ReturnType<typeof createOpenAICompatible> | null = null;
 
 function getZenApiKey(): string {
@@ -75,12 +77,15 @@ function zenOpenAI() {
 	return _zenOpenAI;
 }
 
-function zenGoogle(modelId: string) {
-	// @ai-sdk/google constructs its own path; we pass the base up to /models
-	return createGoogleGenerativeAI({
-		apiKey: getZenApiKey(),
-		baseURL: ZEN_BASE,
-	});
+function zenGoogle() {
+	if (!_zenGoogle) {
+		// @ai-sdk/google constructs its own path; we pass the base up to /models
+		_zenGoogle = createGoogleGenerativeAI({
+			apiKey: getZenApiKey(),
+			baseURL: ZEN_BASE,
+		});
+	}
+	return _zenGoogle;
 }
 
 function zenCompat() {
@@ -201,7 +206,7 @@ export function resolveModel(modelString: string): LanguageModel {
 				return zenOpenAI()(modelId);
 			}
 			if (ZEN_GOOGLE_MODELS.has(modelId)) {
-				return zenGoogle(modelId)(modelId);
+				return zenGoogle()(modelId);
 			}
 			// Fallback: assume OpenAI-compatible (MiniMax, GLM, Kimi, Qwen, etc.)
 			return zenCompat()(modelId);

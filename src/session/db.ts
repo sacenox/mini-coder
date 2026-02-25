@@ -158,14 +158,6 @@ export function getSession(id: string): SessionRow | null {
 	);
 }
 
-export function updateSessionTitle(id: string, title: string): void {
-	getDb().run("UPDATE sessions SET title = ?, updated_at = ? WHERE id = ?", [
-		title,
-		Date.now(),
-		id,
-	]);
-}
-
 export function touchSession(id: string, model: string): void {
 	getDb().run("UPDATE sessions SET updated_at = ?, model = ? WHERE id = ?", [
 		Date.now(),
@@ -182,23 +174,7 @@ export function listSessions(limit = 20): SessionRow[] {
 		.all(limit);
 }
 
-export function deleteSession(id: string): void {
-	getDb().run("DELETE FROM sessions WHERE id = ?", [id]);
-}
-
 // ─── Message CRUD ─────────────────────────────────────────────────────────────
-
-export function saveMessage(
-	sessionId: string,
-	msg: CoreMessage,
-	turnIndex = 0,
-): void {
-	getDb().run(
-		`INSERT INTO messages (session_id, payload, turn_index, created_at)
-     VALUES (?, ?, ?, ?)`,
-		[sessionId, JSON.stringify(msg), turnIndex, Date.now()],
-	);
-}
 
 export function saveMessages(
 	sessionId: string,

@@ -1,5 +1,5 @@
 import { dynamicTool, jsonSchema, stepCountIs, streamText } from "ai";
-import type { StepResult } from "ai";
+import type { FlexibleSchema, StepResult } from "ai";
 import { z } from "zod";
 import type { ToolDef, TurnEvent } from "./types.ts";
 
@@ -29,7 +29,7 @@ function toCoreTool(def: ToolDef): ReturnType<typeof dynamicTool> {
 	// MCP tools pass raw JSON Schema objects; the AI SDK requires them to be
 	// wrapped with jsonSchema(). Zod schemas are passed through as-is.
 	const schema = isZodSchema(def.schema)
-		? (def.schema as import("ai").FlexibleSchema<unknown>)
+		? (def.schema as FlexibleSchema<unknown>)
 		: jsonSchema(def.schema);
 	return dynamicTool({
 		description: def.description,
@@ -178,12 +178,6 @@ export async function* runTurn(options: {
 			error: err instanceof Error ? err : new Error(String(err)),
 		};
 	}
-}
-
-// ─── Message builder helpers ──────────────────────────────────────────────────
-
-export function userMessage(text: string): CoreMessage {
-	return { role: "user", content: text };
 }
 
 export { z };

@@ -1,4 +1,6 @@
 import type { ToolDef } from "../llm-api/types.ts";
+import type { SubagentOutput } from "../tools/subagent.ts";
+
 import type { CreateOutput } from "../tools/create.ts";
 import { createTool } from "../tools/create.ts";
 import type { GlobOutput } from "../tools/glob.ts";
@@ -101,7 +103,7 @@ export function buildToolSet(opts: {
 		prompt: string,
 		depth?: number,
 		agentName?: string,
-	) => Promise<import("../tools/subagent.ts").SubagentOutput>;
+	) => Promise<SubagentOutput>;
 
 	onHook: (toolName: string, scriptPath: string, success: boolean) => void;
 	availableAgents: ReadonlyMap<string, { description: string }>;

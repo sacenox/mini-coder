@@ -1,8 +1,7 @@
 import * as c from "yoctocolors";
-import {
-	availableProviders,
-	fetchAvailableModels,
-} from "../llm-api/providers.ts";
+import { fetchAvailableModels } from "../llm-api/providers.ts";
+import type { SubagentOutput } from "../tools/subagent.ts";
+
 import {
 	deleteMcpServer,
 	listMcpServers,
@@ -38,10 +37,7 @@ export interface CommandContext {
 	startNewSession: () => void;
 
 	connectMcpServer: (name: string) => Promise<void>;
-	runSubagent: (
-		prompt: string,
-		model?: string,
-	) => Promise<import("../tools/subagent.ts").SubagentOutput>;
+	runSubagent: (prompt: string, model?: string) => Promise<SubagentOutput>;
 
 	cwd: string;
 }
