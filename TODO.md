@@ -9,6 +9,14 @@ I'd like to have the subgent output/activity to be streamed to the main output. 
 This is just dumb and an error when implementing the spec.  We are making a dev tool, it's
 **obvious** that dotfiles shouldn't be ignored.  We should respect the gitignore and nothing more.
 
+## Implement WebContent and WebSearch using exa.ai api
+
+Why not just keep using them via their MCP? Simple answer: their tools descriptions/schema is bloated with params that don't concern the llm. They are also misleading in their naming conventions, futher worsening the issue.  Let's use their api (let's auto discover the api key like we do for other providers "EXA_AI_API_KEY") and if Exa is enabled, the tools are given to the LLM.
+
+https://exa.ai/docs/reference/search-quickstart
+https://exa.ai/docs/reference/contents-quickstart
+**Ask the user for text versions if you can find these pages**
+
 ## Subagents don't have access to MCP tools?
 
 Investigate if subagents are able to see the mcp tools. The user reported that after adding the exa mcp tools, that the subagents claimed to not be able to search online, but the main agent could.
