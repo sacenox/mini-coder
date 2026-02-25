@@ -1,5 +1,9 @@
 # TODO
 
+## Streaming subagent activity
+
+I'd like to have the subgent output/activity to be streamed to the main output.  Right now we wait for the subagent to be complete to print all at once
+
 ## Glob and grep ignore dot files and folders
 
 This is just dumb and an error when implementing the spec.  We are making a dev tool, it's

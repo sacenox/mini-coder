@@ -1,6 +1,6 @@
 ---
 description: Search the codebase for a topic using a subagent
-model: zen/claude-3-5-haiku
+model: zen/claude-haiku-4-5
 ---
 
 Search the codebase for: $ARGUMENTS

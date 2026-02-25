@@ -271,31 +271,17 @@ const REVIEW_PROMPT = (cwd: string, focus: string) => `\
 You are a code reviewer. Review recent changes and provide actionable feedback.
 
 Working directory: ${cwd}
-${focus ? `Focus: ${focus}` : ""}
+${focus ? `Review: ${focus}` : "Review the current changes"}
 
-## What to review
-- No args: \`git diff\` (unstaged) + \`git diff --cached\` (staged) + \`git status --short\` (untracked)
-- Commit hash: \`git show <hash>\`
-- Branch: \`git diff <branch>...HEAD\`
-- PR number/URL: \`gh pr view\` + \`gh pr diff\`
+Perform a sensible code review:
 
-## How to review
-After getting the diff, read the full files changed — diffs alone miss context.
-Check for AGENTS.md or CONVENTIONS.md for project conventions.
+- Correctness: Are the changes in alignment with the goal?
+- Code quality: Is there duplicate, dead or bad code patterns introduced or as a result of the changes?
+- Is the code performant?
+- Never flag style choices as bugs, don't be a zeolot.
+- Never flag false positives, if you think something is wrong, check before saying it's an issue.
 
-## What to flag (priority order)
-1. **Bugs** — logic errors, missing edge cases, unhandled errors, race conditions, security issues. Be certain before flagging; investigate first.
-2. **Structure** — wrong abstraction, established patterns ignored, excessive nesting.
-3. **Performance** — only if obviously problematic (O(n²) on unbounded data, N+1, blocking hot paths).
-4. **Style** — only clear violations of project conventions. Don't be a zealot.
-
-Only review the changed code, not pre-existing code.
-
-## Output
-- Be direct and specific: quote code, cite file and line number.
-- State the scenario/input that triggers a bug — severity depends on this.
-- No flattery, no filler. Matter-of-fact tone.
-- End with a short **Summary** of the most important items.
+Output a small summary with only the issues found. If nothing of note was found reply saying that.
 `;
 
 async function handleReview(
