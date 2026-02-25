@@ -55,6 +55,8 @@ I can also connect to **MCP servers** (like Exa for web search), giving you supe
 - **Shell integration** — prefix with `!` to run shell commands inline. Use `@` to reference files in your prompt (with Tab completion).
 - **Slash commands** — `/model` to switch models, `/plan` for read-only thinking mode, `/ralph` for autonomous looping, `/review` for a code review, `/undo` to roll back a turn, `/new` for a clean session, `/mcp` to manage MCP servers. See all with `/help`.
 - **Custom commands** — drop a `.md` file in `.agents/commands/` and it becomes a `/command`. Supports argument placeholders (`$ARGUMENTS`, `$1`…`$9`) and shell interpolation (`` !`cmd` ``). Global commands live in `~/.agents/commands/`. Custom commands take precedence over built-ins. → [docs/custom-commands.md](docs/custom-commands.md)
+- **Custom agents** — drop a `.md` file in `.agents/agents/` (or `~/.agents/agents/` globally) and reference it with `@agent-name` in your prompt. The agent runs in its own context window with a custom system prompt and optional model override. → [docs/custom-agents.md](docs/custom-agents.md)
+- **Skills** — place a `SKILL.md` in `.agents/skills/<name>/` and inject it into any prompt with `@skill-name`. Skills are *never* auto-loaded — always explicit. → [docs/skills.md](docs/skills.md)
 - **Post-tool hooks** — drop an executable at `.agents/hooks/post-<tool>` and I'll run it after every matching tool call.
 - **Beautiful, minimal output** — diffs for edits, formatted trees for file searches, a live status bar with model, git branch, and token counts.
 - **16 ANSI colors only** — my output inherits *your* terminal theme. Dark mode, light mode, Solarized, Gruvbox — I fit right in.
@@ -65,11 +67,28 @@ I can also connect to **MCP servers** (like Exa for web search), giving you supe
 
 - **I eat my own dog food.** I was built *by* a mini-coder agent. It's agents all the way down. 🐢
 - **I'm tiny but mighty.** The whole runtime is [Bun.js](https://bun.com) — fast startup, native TypeScript, and a built-in SQLite driver.
-- **I respect existing conventions.** Hook scripts live in `.agents/hooks/`, context in `AGENTS.md` or `CLAUDE.md` — I follow the ecosystem instead of inventing new standards.
+- **I respect existing conventions.** Hook scripts live in `.agents/hooks/`, context in `AGENTS.md` or `CLAUDE.md`, commands in `.agents/commands/`, agents in `.agents/agents/`, skills in `.agents/skills/` — I follow the ecosystem instead of inventing new standards.
 - **I spin while I think.** ⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏ (It's the little things.)
 - **I can clone myself.** The `subagent` tool lets me spin up parallel instances of myself to tackle independent subtasks simultaneously. Divide and conquer! (Up to 3 levels deep.)
 
 ---
+
+## 📁 The `.agents` folder
+
+mini-coder follows the [`.agents` convention](https://github.com/agentsmd/agents) used across the AI coding tool ecosystem. Drop files in `.agents/` to extend behaviour for the current repo, or `~/.agents/` to apply them globally.
+
+| Path | What it does |
+|---|---|
+| `.agents/commands/*.md` | Custom slash commands (`/name`) |
+| `.agents/agents/*.md` | Custom agents (`@name`) |
+| `.agents/skills/<name>/SKILL.md` | Reusable skill instructions (`@name`) |
+| `.agents/hooks/post-<tool>` | Scripts run after a tool call |
+| `AGENTS.md` | Project context injected into every system prompt |
+
+Local always overrides global. The same `~/.agents/` folder is shared with Claude Code, Opencode, and other compatible tools — skills and agents you write once work everywhere.
+
+---
+
 
 ## 🚀 Getting Started
 
