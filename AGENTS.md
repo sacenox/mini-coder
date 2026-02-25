@@ -8,4 +8,4 @@
 - Use `bun run typecheck && bun run format && bun run lint && bun test` to check your changes.
 - We care about performance.
 - Don't worry about formatting issues, formatting happens automatically on mutations. (see .agents/hooks)
-- Do not inline `import` calls.
+- Do not inline `import` calls. Don't duplicate code. Don't leave dead code behind.
