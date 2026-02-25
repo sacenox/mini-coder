@@ -4,6 +4,7 @@
 
 ```bash
 bun add -g mini-coder
+# or: npm install -g mini-coder
 mc
 ```
 

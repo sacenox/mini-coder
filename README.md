@@ -73,8 +73,9 @@ I can also connect to **MCP servers** (like Exa for web search), giving you supe
 ## 🚀 Getting Started
 
 ```bash
-# Install globally
-bun run build && bun add -g mini-coder@file:$(pwd)
+# Install from npm
+bun add -g mini-coder
+# or: npm install -g mini-coder
 
 # Set your provider key (pick one — or run Ollama locally)
 export OPENCODE_API_KEY=your-zen-key    # recommended
