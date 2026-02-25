@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import * as c from "yoctocolors";
+import { loadAgents } from "../cli/agents.ts";
 import { type CommandContext, handleCommand } from "../cli/commands.ts";
 import {
 	type ImageAttachment,
@@ -9,6 +10,7 @@ import {
 	loadImageFile,
 } from "../cli/image-types.ts";
 import { readline, type InputResult } from "../cli/input.ts";
+import { loadSkills } from "../cli/skills.ts";
 
 import {
 	PREFIX,
@@ -189,6 +191,7 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		prompt: string,
 		depth = 0,
 		model?: string,
+		systemPromptOverride?: string,
 	): Promise<import("../tools/subagent.ts").SubagentOutput> => {
 		const subMessages: CoreMessage[] = [{ role: "user", content: prompt }];
 		const subTools = buildToolSet({
@@ -200,7 +203,7 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 
 		const subLlm = resolveModel(model ?? currentModel);
 
-		const systemPrompt = buildSystemPrompt(cwd);
+		const systemPrompt = systemPromptOverride ?? buildSystemPrompt(cwd);
 
 		let result = "";
 		let inputTokens = 0;
@@ -488,10 +491,12 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		};
 		process.on("SIGINT", onSigInt);
 
-		// Resolve @file references — may expand image refs into additional attachments
+		// Resolve @file/skill/agent references
 		const { text: resolvedText, images: refImages } = await resolveFileRefs(
 			text,
 			cwd,
+			0, // depth 0: processUserInput is always top-level
+			runSubagent,
 		);
 
 		// Merge pasted images with @-ref images
@@ -676,29 +681,64 @@ export function hasRalphSignal(text: string): boolean {
 	return /\/ralph\b/.test(text);
 }
 
-// ─── Resolve @file references in user input ────────────────────────────────────
+// ─── Resolve @file/skill/agent references in user input ───────────────────────
 
 async function resolveFileRefs(
 	text: string,
 	cwd: string,
+	depth: number,
+	runSubagentFn: (
+		prompt: string,
+		depth: number,
+		model?: string,
+		systemPromptOverride?: string,
+	) => Promise<import("../tools/subagent.ts").SubagentOutput>,
 ): Promise<{ text: string; images: ImageAttachment[] }> {
-	// Find all @<path> tokens
 	const atPattern = /@([\w./\-_]+)/g;
 	let result = text;
 	const matches = [...text.matchAll(atPattern)];
 	const images: ImageAttachment[] = [];
 
-	for (const match of matches.reverse()) {
+	// Load agents and skills once for this resolution pass
+	const agents = loadAgents(cwd);
+	const skills = loadSkills(cwd);
+
+	// ── Phase 1: validate — catch multiple @agent refs up front ───────────────
+	const agentMatches = matches.filter((m) => m[1] && agents.has(m[1]));
+	if (agentMatches.length > 1) {
+		throw new Error(
+			`Only one @agent reference is allowed per message, found: ${agentMatches.map((m) => m[0]).join(", ")}`,
+		);
+	}
+
+	// ── Phase 2: substitute skills, images, and files (right-to-left) ─────────
+	// Process all non-agent refs first so images are collected and the prompt
+	// text that the agent receives is clean.
+	for (const match of [...matches].reverse()) {
 		const ref = match[1];
 		if (!ref) continue;
+
+		// Skip agent refs — handled in phase 3
+		if (agents.has(ref)) continue;
+
+		// @skill-name — inject skill content inline
+		const skill = skills.get(ref);
+		if (skill) {
+			const replacement = `<skill name="${skill.name}">\n${skill.content}\n</skill>`;
+			result =
+				result.slice(0, match.index) +
+				replacement +
+				result.slice((match.index ?? 0) + match[0].length);
+			continue;
+		}
+
 		const filePath = ref.startsWith("/") ? ref : join(cwd, ref);
 
-		// Image files: read as base64 and add as image attachment
+		// @image-path — read as base64 attachment
 		if (isImageFilename(ref)) {
 			const attachment = await loadImageFile(filePath);
 			if (attachment) {
 				images.unshift(attachment); // reverse() + unshift = left-to-right order
-				// Remove the @ref token from the text
 				result =
 					result.slice(0, match.index) +
 					result.slice((match.index ?? 0) + match[0].length);
@@ -706,6 +746,7 @@ async function resolveFileRefs(
 			}
 		}
 
+		// @file-path — inject file contents inline
 		try {
 			const content = await Bun.file(filePath).text();
 			const lines = content.split("\n");
@@ -721,6 +762,31 @@ async function resolveFileRefs(
 		} catch {
 			// Leave the @ref as-is if file not found
 		}
+	}
+
+	// ── Phase 3: agent dispatch (if any) ──────────────────────────────────────
+	// By now skills/images/files have been resolved, so `result` contains the
+	// clean prompt text. We use the original match index against `text` to strip
+	// just the @agent-name token and pass everything else to the subagent.
+	const agentMatch = agentMatches[0];
+	if (agentMatch) {
+		const ref = agentMatch[1];
+		const agent = ref ? agents.get(ref) : undefined;
+		if (!agent) return { text: result, images };
+		// Strip the @agent-name token from the *original* text to get the prompt,
+		// then layer in any skill expansions from `result`.
+		const promptText = (
+			result.slice(0, agentMatch.index) +
+			result.slice((agentMatch.index ?? 0) + agentMatch[0].length)
+		).trim();
+		const output = await runSubagentFn(
+			promptText || "(no prompt)",
+			depth,
+			agent.model,
+			agent.systemPrompt,
+		);
+		// Images collected above are passed through so callers can attach them.
+		return { text: output.result, images };
 	}
 
 	return { text: result, images };

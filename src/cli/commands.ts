@@ -8,6 +8,7 @@ import {
 	listMcpServers,
 	upsertMcpServer,
 } from "../session/db.ts";
+import { loadAgents } from "./agents.ts";
 import {
 	type CustomCommand,
 	expandTemplate,
@@ -22,6 +23,7 @@ import {
 	write,
 	writeln,
 } from "./output.ts";
+import { loadSkills } from "./skills.ts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -381,7 +383,10 @@ async function handleCustomCommand(
 
 // ─── Help ─────────────────────────────────────────────────────────────────────
 
-function handleHelp(custom: Map<string, CustomCommand>): void {
+function handleHelp(
+	ctx: CommandContext,
+	custom: Map<string, CustomCommand>,
+): void {
 	writeln();
 
 	const cmds: [string, string][] = [
@@ -417,7 +422,41 @@ function handleHelp(custom: Map<string, CustomCommand>): void {
 		}
 	}
 
+	// Show agents
+	const agents = loadAgents(ctx.cwd);
+	if (agents.size > 0) {
+		writeln();
+		writeln(c.dim("  agents  (~/.agents/agents/ or .agents/agents/):"));
+		for (const agent of agents.values()) {
+			const tag =
+				agent.source === "local" ? c.dim(" (local)") : c.dim(" (global)");
+			writeln(
+				`  ${c.magenta(`@${agent.name}`.padEnd(26))} ${c.dim(agent.description)}${tag}`,
+			);
+		}
+	}
+
+	// Show skills
+	const skills = loadSkills(ctx.cwd);
+	if (skills.size > 0) {
+		writeln();
+		writeln(c.dim("  skills  (~/.agents/skills/ or .agents/skills/):"));
+		for (const skill of skills.values()) {
+			const tag =
+				skill.source === "local" ? c.dim(" (local)") : c.dim(" (global)");
+			writeln(
+				`  ${c.yellow(`@${skill.name}`.padEnd(26))} ${c.dim(skill.description)}${tag}`,
+			);
+		}
+	}
+
 	writeln();
+	writeln(
+		`  ${c.green("@agent".padEnd(26))} ${c.dim("run prompt through a custom agent (Tab to complete)")}`,
+	);
+	writeln(
+		`  ${c.green("@skill".padEnd(26))} ${c.dim("inject skill instructions into prompt (Tab to complete)")}`,
+	);
 	writeln(
 		`  ${c.green("@file".padEnd(26))} ${c.dim("inject file contents into prompt (Tab to complete)")}`,
 	);
@@ -477,7 +516,7 @@ export async function handleCommand(
 
 		case "help":
 		case "?":
-			handleHelp(custom);
+			handleHelp(ctx, custom);
 			return { type: "handled" };
 
 		case "exit":

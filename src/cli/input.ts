@@ -1,11 +1,13 @@
 import { join, relative } from "node:path";
 import * as c from "yoctocolors";
 import { addPromptHistory, getPromptHistory } from "../session/db.ts";
+import { loadAgents } from "./agents.ts";
 import {
 	type ImageAttachment,
 	isImageFilename,
 	loadImageFile,
 } from "./image-types.ts";
+import { loadSkills } from "./skills.ts";
 
 // ─── ANSI escape sequences ────────────────────────────────────────────────────
 
@@ -52,18 +54,38 @@ export type InputResult =
 
 // ─── File autocomplete ────────────────────────────────────────────────────────
 
-async function getFileCompletions(
+async function getAtCompletions(
 	prefix: string,
 	cwd: string,
 ): Promise<string[]> {
 	const query = prefix.startsWith("@") ? prefix.slice(1) : prefix;
-	const glob = new Bun.Glob(`**/*${query}*`);
 	const results: string[] = [];
-	for await (const file of glob.scan({ cwd, onlyFiles: true })) {
-		if (file.includes("node_modules") || file.includes(".git")) continue;
-		results.push(`@${relative(cwd, join(cwd, file))}`);
-		if (results.length >= 10) break;
+	const MAX = 10;
+
+	// Skills: @<skill-name>
+	const skills = loadSkills(cwd);
+	for (const [name] of skills) {
+		if (results.length >= MAX) break;
+		if (name.includes(query)) results.push(`@${name}`);
 	}
+
+	// Agents: @<agent-name>
+	const agents = loadAgents(cwd);
+	for (const [name] of agents) {
+		if (results.length >= MAX) break;
+		if (name.includes(query)) results.push(`@${name}`);
+	}
+
+	// Files: @<relative-path> — fill remaining slots up to MAX
+	if (results.length < MAX) {
+		const glob = new Bun.Glob(`**/*${query}*`);
+		for await (const file of glob.scan({ cwd, onlyFiles: true })) {
+			if (file.includes("node_modules") || file.includes(".git")) continue;
+			results.push(`@${relative(cwd, join(cwd, file))}`);
+			if (results.length >= MAX) break;
+		}
+	}
+
 	return results;
 }
 
@@ -461,7 +483,7 @@ export async function readline(opts: {
 				const beforeCursor = buf.slice(0, cursor);
 				const atMatch = beforeCursor.match(/@(\S*)$/);
 				if (atMatch) {
-					const completions = await getFileCompletions(atMatch[0], cwd);
+					const completions = await getAtCompletions(atMatch[0], cwd);
 					if (completions.length === 1 && completions[0]) {
 						const replacement = completions[0];
 						buf =

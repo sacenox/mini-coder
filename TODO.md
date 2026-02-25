@@ -1,5 +1,22 @@
 # TODO
 
+## Investigate missing output?
+
+```
+Summary of the design:
+1. Skills (`~/.agents/skills/*/SKILL.md` + `.agents/skills/*/SKILL.md`): `@skill-name` in prompt → loads skill content into context. Tab-autocomplete from both global and local skill dirs.
+2. Custom Agents (`~/.agents/agents/*.md` + `.agents/agents/*.md`): `@agent-name` in prompt → runs that agent as a subagent with its custom system prompt/model. YAML frontmatter with `description`, `model`.
+^C3. Tab completion in input.ts should show `@skill-name` and `@agent-name` suggestions alongside file completions.
+
+[BIG WAIT HERE, nothing happening for 10m+, user used CTRL+c to return to prompt]
+
+claude-sonnet-4-6  mm1v6tyb  ~/src/mini-coder  ⎇ main  ctx 55.9k/200.0k 28%  ↑182.1k ↓949
+▶ What happened?
+◆ I'm mid-way through exploring the codebase to implement your `@` references feature for skills and custom agents. Here's what I've gathered so far:
+```
+
+LLM said it was exploring but no output or tool calls were seen. Session continued normally after the "What happened?" message. (mm1v6tyb session id)
+
 ## Gemini models sometimes get stuck "thinking" forever
 
 I've seen it a couple times, where after a tool call, gemini 3.1 pro will get stuck
@@ -47,29 +64,3 @@ persistence alongside `preferred_model`.
   Opus, o-series OpenAI models). Add a capability flag in `providers.ts`.
 
 ---
-
-## `@` references for global skills / agent configs
-
-The idea says: *"Reference files, skills, agents from the working directory and
-global community configs with `@` in prompt input."*
-
-Skills:
-
-- Should autocomplete from global `~/.agents/skills` and the local agents folder.
-
-Custom Agents:
-
-- [Claude's flow](https://code.claude.com/docs/en/sub-agents)
-- [Opencode's flow](https://opencode.ai/docs/agents/#options)
-
-Let's implement our own with config in `~/.agents/agents/`. Skip the `/agent` command.
-
----
-
-Custom commands:
-
-https://opencode.ai/docs/commands/ I want to copy this approach to custom commands.
-
-Let's also create a local command to this repo, `/search` that fires a small model to explore the codebase for the arguments given.
-
-DO NOT make a new config structure! use `~/.agents/` for global commands and the local version `./.agents/` for repo commands.
