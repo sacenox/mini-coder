@@ -438,6 +438,14 @@ export async function handleCommand(
 	args: string,
 	ctx: CommandContext,
 ): Promise<CommandResult> {
+	// Custom commands take precedence over built-ins — a local /review or
+	// /plan in .agents/commands/ will shadow the built-in with that name.
+	const custom = loadCustomCommands(ctx.cwd);
+	const customCmd = custom.get(command.toLowerCase());
+	if (customCmd) {
+		return await handleCustomCommand(customCmd, args, ctx);
+	}
+
 	switch (command.toLowerCase()) {
 		case "model":
 		case "models":
@@ -469,7 +477,7 @@ export async function handleCommand(
 
 		case "help":
 		case "?":
-			handleHelp(loadCustomCommands(ctx.cwd));
+			handleHelp(custom);
 			return { type: "handled" };
 
 		case "exit":
@@ -478,11 +486,6 @@ export async function handleCommand(
 			return { type: "exit" };
 
 		default: {
-			const custom = loadCustomCommands(ctx.cwd);
-			const cmd = custom.get(command.toLowerCase());
-			if (cmd) {
-				return await handleCustomCommand(cmd, args, ctx);
-			}
 			writeln(
 				`${PREFIX.error} unknown: /${command}  ${c.dim("— /help for commands")}`,
 			);
