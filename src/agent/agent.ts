@@ -497,6 +497,34 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 			cwd,
 			0, // depth 0: processUserInput is always top-level
 			runSubagent,
+			async (prompt, model, systemPromptOverride) => {
+				// Run custom agent with full visual output (spinner + renderTurn)
+				const agentLlm = resolveModel(model ?? currentModel);
+				const agentSystem = systemPromptOverride ?? buildSystemPrompt(cwd);
+				const agentTools = buildToolSet({
+					cwd,
+					depth: 0,
+					runSubagent,
+					onHook: renderHook,
+				});
+				const agentMessages: CoreMessage[] = [
+					{ role: "user", content: prompt },
+				];
+				const events = runTurn({
+					model: agentLlm,
+					messages: agentMessages,
+					tools: agentTools,
+					systemPrompt: agentSystem,
+				});
+				spinner.start("thinking");
+				const { newMessages, inputTokens, outputTokens } = await renderTurn(
+					events,
+					spinner,
+				);
+				const result = extractAssistantText(newMessages);
+				const activity: import("../tools/subagent.ts").SubagentToolEntry[] = [];
+				return { result, inputTokens, outputTokens, activity };
+			},
 		);
 
 		// Merge pasted images with @-ref images
@@ -693,6 +721,11 @@ async function resolveFileRefs(
 		model?: string,
 		systemPromptOverride?: string,
 	) => Promise<import("../tools/subagent.ts").SubagentOutput>,
+	runAgentFn: (
+		prompt: string,
+		model?: string,
+		systemPromptOverride?: string,
+	) => Promise<import("../tools/subagent.ts").SubagentOutput>,
 ): Promise<{ text: string; images: ImageAttachment[] }> {
 	const atPattern = /@([\w./\-_]+)/g;
 	let result = text;
@@ -779,9 +812,8 @@ async function resolveFileRefs(
 			result.slice(0, agentMatch.index) +
 			result.slice((agentMatch.index ?? 0) + agentMatch[0].length)
 		).trim();
-		const output = await runSubagentFn(
+		const output = await runAgentFn(
 			promptText || "(no prompt)",
-			depth,
 			agent.model,
 			agent.systemPrompt,
 		);
