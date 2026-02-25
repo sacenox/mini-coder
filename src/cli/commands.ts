@@ -8,6 +8,11 @@ import {
 	listMcpServers,
 	upsertMcpServer,
 } from "../session/db.ts";
+import {
+	type CustomCommand,
+	expandTemplate,
+	loadCustomCommands,
+} from "./custom-commands.ts";
 import { renderMarkdown } from "./markdown.ts";
 import {
 	PREFIX,
@@ -33,6 +38,7 @@ export interface CommandContext {
 	connectMcpServer: (name: string) => Promise<void>;
 	runSubagent: (
 		prompt: string,
+		model?: string,
 	) => Promise<import("../tools/subagent.ts").SubagentOutput>;
 
 	cwd: string;
@@ -335,7 +341,47 @@ function handleNew(ctx: CommandContext): void {
 	);
 }
 
-function handleHelp(): void {
+// ─── Custom commands ──────────────────────────────────────────────────────────
+
+async function handleCustomCommand(
+	cmd: CustomCommand,
+	args: string,
+	ctx: CommandContext,
+): Promise<CommandResult> {
+	const prompt = await expandTemplate(cmd.template, args, ctx.cwd);
+	const label = c.cyan(cmd.name);
+	const srcPath =
+		cmd.source === "local"
+			? `.agents/commands/${cmd.name}.md`
+			: `~/.agents/commands/${cmd.name}.md`;
+	const src = c.dim(`[${srcPath}]`);
+	writeln(`${PREFIX.info} ${label} ${src}`);
+	writeln();
+
+	try {
+		const output = await ctx.runSubagent(prompt, cmd.model);
+
+		if (output.activity.length) {
+			renderSubagentActivity(output.activity, "  ", 1);
+			writeln();
+		}
+
+		write(renderMarkdown(output.result));
+		writeln();
+
+		return {
+			type: "inject-user-message",
+			text: `/${cmd.name} output:\n\n${output.result}\n\n<system-message>Summarize the findings above to the user.</system-message>`,
+		};
+	} catch (e) {
+		writeln(`${PREFIX.error} /${cmd.name} failed: ${String(e)}`);
+		return { type: "handled" };
+	}
+}
+
+// ─── Help ─────────────────────────────────────────────────────────────────────
+
+function handleHelp(custom: Map<string, CustomCommand>): void {
 	writeln();
 
 	const cmds: [string, string][] = [
@@ -357,6 +403,20 @@ function handleHelp(): void {
 	for (const [cmd, desc] of cmds) {
 		writeln(`  ${c.cyan(cmd.padEnd(26))} ${c.dim(desc)}`);
 	}
+
+	// Show custom commands
+	if (custom.size > 0) {
+		writeln();
+		writeln(c.dim("  custom commands:"));
+		for (const cmd of custom.values()) {
+			const tag =
+				cmd.source === "local" ? c.dim(" (local)") : c.dim(" (global)");
+			writeln(
+				`  ${c.green(`/${cmd.name}`.padEnd(26))} ${c.dim(cmd.description)}${tag}`,
+			);
+		}
+	}
+
 	writeln();
 	writeln(
 		`  ${c.green("@file".padEnd(26))} ${c.dim("inject file contents into prompt (Tab to complete)")}`,
@@ -409,7 +469,7 @@ export async function handleCommand(
 
 		case "help":
 		case "?":
-			handleHelp();
+			handleHelp(loadCustomCommands(ctx.cwd));
 			return { type: "handled" };
 
 		case "exit":
@@ -417,10 +477,16 @@ export async function handleCommand(
 		case "q":
 			return { type: "exit" };
 
-		default:
+		default: {
+			const custom = loadCustomCommands(ctx.cwd);
+			const cmd = custom.get(command.toLowerCase());
+			if (cmd) {
+				return await handleCustomCommand(cmd, args, ctx);
+			}
 			writeln(
 				`${PREFIX.error} unknown: /${command}  ${c.dim("— /help for commands")}`,
 			);
 			return { type: "unknown", command };
+		}
 	}
 }

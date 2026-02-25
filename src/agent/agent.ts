@@ -188,6 +188,7 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 	const runSubagent = async (
 		prompt: string,
 		depth = 0,
+		model?: string,
 	): Promise<import("../tools/subagent.ts").SubagentOutput> => {
 		const subMessages: CoreMessage[] = [{ role: "user", content: prompt }];
 		const subTools = buildToolSet({
@@ -197,7 +198,7 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 			onHook: renderHook,
 		});
 
-		const subLlm = resolveModel(currentModel);
+		const subLlm = resolveModel(model ?? currentModel);
 
 		const systemPrompt = buildSystemPrompt(cwd);
 
@@ -307,7 +308,10 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 			planMode = v;
 		},
 		cwd,
-		runSubagent: (prompt) => runSubagent(prompt),
+		// depth=0: custom commands are user-initiated, not LLM-initiated, so they
+		// don't consume the recursion depth guard (which only applies to the LLM
+		// subagent tool calling itself).
+		runSubagent: (prompt, model?) => runSubagent(prompt, 0, model),
 
 		undoLastTurn: async () => {
 			// Nothing to undo if there are no messages

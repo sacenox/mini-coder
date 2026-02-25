@@ -71,3 +71,5 @@ Custom commands:
 https://opencode.ai/docs/commands/ I want to copy this approach to custom commands.
 
 Let's also create a local command to this repo, `/search` that fires a small model to explore the codebase for the arguments given.
+
+DO NOT make a new config structure! use `~/.agents/` for global commands and the local version `./.agents/` for repo commands.
