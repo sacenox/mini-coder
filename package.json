@@ -5,7 +5,7 @@
 	"module": "src/index.ts",
 	"type": "module",
 	"bin": {
-		"mc": "./dist/mc.js"
+		"mc": "dist/mc.js"
 	},
 	"scripts": {
 		"build": "bun run scripts/build.ts",
@@ -30,5 +30,6 @@
 		"@biomejs/biome": "^1.9.4",
 		"@types/bun": "latest",
 		"typescript": "^5.8.3"
-	}
+	},
+	"license": "MIT"
 }

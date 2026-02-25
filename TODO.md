@@ -53,15 +53,21 @@ persistence alongside `preferred_model`.
 The idea says: *"Reference files, skills, agents from the working directory and
 global community configs with `@` in prompt input."*
 
-Currently `getFileCompletions()` in `src/cli/input.ts` only scans `cwd` with
-`Bun.Glob`, and `resolveFileRefs()` in `src/agent/agent.ts` (line 501) only reads
-files relative to `cwd` or as absolute paths. Global skill/agent files under
-`~/.agents/` (the convention referenced in the idea from `skills.sh`) are never
-surfaced.
+Skills:
 
-**Fix:**
-- Extend `getFileCompletions()` to also scan `~/.agents/` for skill/agent files and
-  surface them as `@~/.agents/<name>` completions alongside local results.
-- In `resolveFileRefs()`, resolve `@`-refs that start with `~/` or match a known
-  global skill name against `homedir() + "/.agents/"` in addition to `cwd`.
-- Optionally distinguish global refs visually in Tab-completion output.
+- Should autocomplete from global `~/.agents/skills` and the local agents folder.
+
+Custom Agents:
+
+- [Claude's flow](https://code.claude.com/docs/en/sub-agents)
+- [Opencode's flow](https://opencode.ai/docs/agents/#options)
+
+Let's implement our own with config in `~/.agents/agents/`. Skip the `/agent` command.
+
+---
+
+Custom commands:
+
+https://opencode.ai/docs/commands/ I want to copy this approach to custom commands.
+
+Let's also create a local command to this repo, `/search` that fires a small model to explore the codebase for the arguments given.

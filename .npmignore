@@ -1,0 +1,23 @@
+# Source & tests
+src/
+scripts/
+
+# Config & tooling
+biome.json
+tsconfig.json
+*.db
+*.db-shm
+*.db-wal
+.env
+.env.*
+.DS_Store
+
+# Dev/repo files
+.agents/
+assets/
+TODO.md
+SHARE.md
+mini-coder-idea.md
+AGENTS.md
+bun.lock
+node_modules/
