@@ -158,4 +158,12 @@ I believe the best tools disappear into your workflow. I don't want to be the st
 
 ---
 
+## 💬 What People Are Saying
+
+> "sean this is fucking sick"
+> — [vpr99](https://github.com/vpr99) (eric)
+
+---
+
+
 *Built with ❤️ and a healthy obsession with terminal aesthetics.*
