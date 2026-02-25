@@ -399,6 +399,16 @@ export async function readline(opts: {
 					renderPrompt();
 					continue;
 				}
+				// Alt+Backspace (delete word backward): ESC DEL
+				if (raw === `${ESC}${BACKSPACE}`) {
+					const end = cursor;
+					while (cursor > 0 && buf[cursor - 1] === " ") cursor--;
+					while (cursor > 0 && buf[cursor - 1] !== " ") cursor--;
+					buf = buf.slice(0, cursor) + buf.slice(end);
+					if (pasteBuffer && !buf.includes(PASTE_SENTINEL)) pasteBuffer = null;
+					renderPrompt();
+					continue;
+				}
 				if (raw === ESC) {
 					process.stdout.write("\n");
 					return { type: "interrupt" };
