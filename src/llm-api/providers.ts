@@ -9,37 +9,13 @@ import { createOllama } from "ollama-ai-provider";
 
 const ZEN_BASE = "https://opencode.ai/zen/v1";
 
-// Models that use the Anthropic messages endpoint on Zen
-const ZEN_ANTHROPIC_MODELS = new Set([
-	"claude-opus-4-6",
-	"claude-opus-4-5",
-	"claude-opus-4-1",
-	"claude-sonnet-4-6",
-	"claude-sonnet-4-5",
-	"claude-sonnet-4",
-	"claude-haiku-4-5",
-	"claude-3-5-haiku",
-]);
-
-// Models that use the OpenAI responses endpoint on Zen
-const ZEN_OPENAI_MODELS = new Set([
-	"gpt-5.2",
-	"gpt-5.2-codex",
-	"gpt-5.1",
-	"gpt-5.1-codex",
-	"gpt-5.1-codex-max",
-	"gpt-5.1-codex-mini",
-	"gpt-5",
-	"gpt-5-codex",
-	"gpt-5-nano",
-]);
-
-// Models that use the Google generative AI endpoint on Zen
-const ZEN_GOOGLE_MODELS = new Set([
-	"gemini-3.1-pro",
-	"gemini-3-pro",
-	"gemini-3-flash",
-]);
+// Zen endpoint routing — matched in order, fallthrough to OpenAI-compatible
+function zenEndpointFor(modelId: string) {
+	if (modelId.startsWith("claude-")) return zenAnthropic()(modelId);
+	if (modelId.startsWith("gpt-")) return zenOpenAI()(modelId);
+	if (modelId.startsWith("gemini-")) return zenGoogle()(modelId);
+	return zenCompat()(modelId);
+}
 
 // ─── Lazy provider factories (created on first use) ───────────────────────────
 
@@ -199,17 +175,7 @@ export function resolveModel(modelString: string): LanguageModel {
 
 	switch (provider) {
 		case "zen": {
-			if (ZEN_ANTHROPIC_MODELS.has(modelId)) {
-				return zenAnthropic()(modelId);
-			}
-			if (ZEN_OPENAI_MODELS.has(modelId)) {
-				return zenOpenAI()(modelId);
-			}
-			if (ZEN_GOOGLE_MODELS.has(modelId)) {
-				return zenGoogle()(modelId);
-			}
-			// Fallback: assume OpenAI-compatible (MiniMax, GLM, Kimi, Qwen, etc.)
-			return zenCompat()(modelId);
+			return zenEndpointFor(modelId);
 		}
 
 		case "anthropic":

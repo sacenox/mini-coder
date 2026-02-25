@@ -1,5 +1,10 @@
 # TODO
 
+## Glob and grep ignore dot files and folders
+
+This is just dumb and an error when implementing the spec.  We are making a dev tool, it's
+**obvious** that dotfiles shouldn't be ignored.  We should respect the gitignore and nothing more.
+
 ## Subagents don't have access to MCP tools?
 
 Investigate if subagents are able to see the mcp tools. The user reported that after adding the exa mcp tools, that the subagents claimed to not be able to search online, but the main agent could.
