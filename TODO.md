@@ -1,5 +1,128 @@
 # TODO
 
+# Zod/Schema error: 
+
+likely fixed by https://github.com/sacenox/mini-coder/commit/d27dccbf6ca2ced4f05d493701da9d8fe809e05d
+
+A user reported this issue, seems like we are trying to use a wrong type? Please see what you can find in the code
+
+```
+gpt-5.3-codex  mm2h8qwl  ~/code/personal/mini-coder  ⎇ main
+▶ right now I can use opt+left/right to navigate between words. I'd like to do the same for delete. Eg: opt+delete to delete single words.
+  ? glob **/*
+    · src/session/manager.ts
+    · src/session/db.ts
+    · src/llm-api/types.ts
+    · src/mcp/client.ts
+    · src/tools/subagent.ts
+    · src/llm-api/providers.ts
+    · src/llm-api/turn.ts
+    · src/cli/output.ts
+    · src/cli/skills.test.ts
+    · src/cli/skills.ts
+    · src/cli/commands.ts
+    · src/cli/input.ts
+      +51 more
+⠼ thinking333 |   }) {
+334 |     var _a15, _b15, _c;
+335 |     if (_TypeValidationError.isInstance(cause) && cause.value === value && ((_a15 = cause.context) == null ? void 0 : _a15.field) === (context == null ? void 0 : context.field) && ((_b15 = cause.context) == null ? void 0 : _b15.entityName) === (context == null ? void 0 : context.entityName) && ((_c = cause.context) == null ? void 0 : _c.entityId) === (context == null ? void 0 : context.entityId)) {
+336 |       return cause;
+337 |     }
+338 |     return new _TypeValidationError({ value, cause, context });
+                 ^
+AI_TypeValidationError: Type validation failed: Value: {"type":"ping","cost":"0.00387975"}.
+Error message: [
+  {
+    "code": "invalid_union",
+    "errors": [
+      [
+        {
+          "expected": "array",
+          "code": "invalid_type",
+          "path": [
+            "choices"
+          ],
+          "message": "Invalid input: expected array, received undefined"
+        }
+      ],
+      [
+        {
+          "expected": "object",
+          "code": "invalid_type",
+          "path": [
+            "error"
+          ],
+          "message": "Invalid input: expected object, received undefined"
+        }
+      ]
+    ],
+    "path": [],
+    "message": "Invalid input"
+  }
+]
+      value: {
+  type: "ping",
+  cost: "0.00387975",
+},
+    context: undefined,
+ vercel.ai.error: true,
+ vercel.ai.error.AI_TypeValidationError: true,
+
+      at wrap (/Users/ericskram/.bun/install/global/node_modules/@ai-sdk/provider/dist/index.mjs:338:12)
+      at safeValidateTypes (/Users/ericskram/.bun/install/global/node_modules/@ai-sdk/provider-utils/dist/index.mjs:2115:35)
+      at async safeParseJSON (/Users/ericskram/.bun/install/global/node_modules/@ai-sdk/provider-utils/dist/index.mjs:2154:18)
+      at async transform (/Users/ericskram/.bun/install/global/node_modules/@ai-sdk/provider-utils/dist/index.mjs:2186:34)
+
+25 |     class Definition extends Parent {
+26 |     }
+27 |     Object.defineProperty(Definition, "name", { value: name });
+28 |     function _(def) {
+29 |         var _a;
+30 |         const inst = params?.Parent ? new Definition() : this;
+                                           ^
+ZodError: [
+  {
+    "code": "invalid_union",
+    "errors": [
+      [
+        {
+          "expected": "array",
+          "code": "invalid_type",
+          "path": [
+            "choices"
+          ],
+          "message": "Invalid input: expected array, received undefined"
+        }
+      ],
+      [
+        {
+          "expected": "object",
+          "code": "invalid_type",
+          "path": [
+            "error"
+          ],
+          "message": "Invalid input: expected object, received undefined"
+        }
+      ]
+    ],
+    "path": [],
+    "message": "Invalid input"
+  }
+]
+      at new ZodError (/Users/ericskram/.bun/install/global/node_modules/zod/v4/core/core.js:30:39)
+      at <anonymous> (/Users/ericskram/.bun/install/global/node_modules/zod/v4/core/parse.js:53:20)
+      at <anonymous> (/Users/ericskram/.bun/install/global/node_modules/zod/v4/core/parse.js:45:49)
+      at <anonymous> (/Users/ericskram/.bun/install/global/node_modules/@ai-sdk/provider-utils/dist/index.mjs:2070:33)
+      at validate (/Users/ericskram/.bun/install/global/node_modules/@ai-sdk/provider-utils/dist/index.mjs:2069:24)
+      at safeValidateTypes (/Users/ericskram/.bun/install/global/node_modules/@ai-sdk/provider-utils/dist/index.mjs:2109:39)
+      at safeValidateTypes (/Users/ericskram/.bun/install/global/node_modules/@ai-sdk/provider-utils/dist/index.mjs:2099:33)
+      at safeParseJSON (/Users/ericskram/.bun/install/global/node_modules/@ai-sdk/provider-utils/dist/index.mjs:2154:18)
+      at safeParseJSON (/Users/ericskram/.bun/install/global/node_modules/@ai-sdk/provider-utils/dist/index.mjs:2145:29)
+      at transform (/Users/ericskram/.bun/install/global/node_modules/@ai-sdk/provider-utils/dist/index.mjs:2186:34)
+      at transform (/Users/ericskram/.bun/install/global/node_modules/@ai-sdk/provider-utils/dist/index.mjs:2182:25)
+```
+
+
 ## Streaming subagent activity
 
 I'd like to have the subgent output/activity to be streamed to the main output.  Right now we wait for the subagent to be complete to print all at once
