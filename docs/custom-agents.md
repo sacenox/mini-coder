@@ -1,15 +1,9 @@
-# Custom Agents and Skills
-
-Two ways to extend mini-coder with reusable AI behaviour via `@` references.
-
----
-
-## Agents
+# Custom Agents
 
 An agent is a subagent with a custom system prompt and optional model override.
 Use `@agent-name` anywhere in your prompt to route the message through it.
 
-### Where to put them
+## Where to put them
 
 | Location | Scope |
 |---|---|
@@ -18,7 +12,7 @@ Use `@agent-name` anywhere in your prompt to route the message through it.
 
 Local agents override global ones with the same name.
 
-### Create an agent
+## Create an agent
 
 The filename becomes the agent name.
 
@@ -46,18 +40,7 @@ The rest of the message (everything except the `@reviewer` token) becomes
 the prompt. The agent runs in its own context window and returns its output
 into the conversation.
 
-### Combining with skills
-
-Skills and files are resolved before the agent fires, so you can mix them:
-
-```
-@reviewer @src/auth/session.ts check this file for issues
-```
-
-The file content is injected into the prompt, then the whole thing is sent
-to the reviewer agent.
-
-### Frontmatter fields
+## Frontmatter fields
 
 | Field | Required | Description |
 |---|---|---|
@@ -66,74 +49,22 @@ to the reviewer agent.
 
 The markdown body (after frontmatter) is the agent's system prompt.
 
----
+## Combining with files
 
-## Skills
-
-A skill is a reusable instruction file injected inline into your prompt.
-Use `@skill-name` to load it — the LLM sees the skill content as context
-before your message.
-
-### Where to put them
-
-Each skill is a folder containing a `SKILL.md`:
-
-| Location | Scope |
-|---|---|
-| `.agents/skills/<name>/SKILL.md` | Current repo only |
-| `~/.agents/skills/<name>/SKILL.md` | All projects (global) |
-
-Local skills override global ones with the same name.
-
-### Create a skill
-
-`.agents/skills/conventional-commits/SKILL.md`:
-
-```md
----
-name: conventional-commits
-description: Conventional commit message format rules
----
-
-# Conventional Commits
-
-All commit messages must follow this format:
-
-  <type>(<scope>): <short summary>
-
-Types: feat, fix, docs, refactor, test, chore
-- Summary is lowercase, no period at the end
-- Breaking changes: add `!` after type, e.g. `feat!:`
-- Body is optional, wrapped at 72 chars
-```
-
-Then in the REPL:
+`@file` references are resolved before the agent fires:
 
 ```
-@conventional-commits write a commit message for my staged changes
+@reviewer @src/auth/session.ts check this file for issues
 ```
-
-The skill content is wrapped in `<skill name="…">…</skill>` tags and
-prepended to your message before it's sent to the LLM.
-
-### Frontmatter fields
-
-| Field | Required | Description |
-|---|---|---|
-| `name` | No | Skill name for `@` reference. Defaults to folder name. |
-| `description` | No | Shown in `/help`. Defaults to name. |
-
----
 
 ## Tab completion
 
-Type `@` and press `Tab` to autocomplete. Skills and agents are listed
-first, then local files — up to 10 results total.
+Type `@` and press `Tab` to autocomplete agent names alongside files.
 
-## Listing available agents and skills
+## Listing agents
 
 ```
 /help
 ```
 
-Agents are shown in magenta, skills in yellow, tagged `(local)` or `(global)`.
+Agents are listed in magenta, tagged `(local)` or `(global)`.
