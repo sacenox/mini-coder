@@ -1,6 +1,7 @@
 import { join, relative } from "node:path";
 import { z } from "zod";
 import type { ToolDef } from "../llm-api/types.ts";
+import { loadGitignore } from "./ignore.ts";
 
 const GlobSchema = z.object({
 	pattern: z
@@ -27,27 +28,26 @@ export const globTool: ToolDef<GlobInput, GlobOutput> = {
 	schema: GlobSchema,
 	execute: async (input) => {
 		const cwd = input.cwd ?? process.cwd();
-		const defaultIgnore = [
-			"node_modules/**",
-			".git/**",
-			"dist/**",
-			"*.db",
-			"*.db-shm",
-			"*.db-wal",
-		];
+		const defaultIgnore = [".git/**", "node_modules/**"];
 		const ignorePatterns = [...defaultIgnore, ...(input.ignore ?? [])];
+
+		const ignoreGlobs = ignorePatterns.map((pat) => new Bun.Glob(pat));
+
+		const ig = await loadGitignore(cwd);
 
 		const glob = new Bun.Glob(input.pattern);
 		const matches: Array<{ path: string; mtime: number }> = [];
 
-		for await (const file of glob.scan({ cwd, onlyFiles: true })) {
-			// Check ignore patterns
-			const ignored = ignorePatterns.some((pat) => {
-				const ig = new Bun.Glob(pat);
-				return ig.match(file);
-			});
-			if (ignored) continue;
+		for await (const file of glob.scan({ cwd, onlyFiles: true, dot: true })) {
+			// Check if ignored by .gitignore
+			if (ig?.ignores(file)) continue;
 
+			// Check explicit ignore patterns
+			const firstSegment = file.split("/")[0] ?? "";
+			const ignored = ignoreGlobs.some(
+				(g) => g.match(file) || g.match(firstSegment),
+			);
+			if (ignored) continue;
 			try {
 				const fullPath = join(cwd, file);
 				const stat = (await Bun.file(fullPath).stat?.()) ?? null;

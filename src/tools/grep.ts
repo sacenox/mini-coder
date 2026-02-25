@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import type { ToolDef } from "../llm-api/types.ts";
 import { formatHashLine } from "./hashline.ts";
+import { loadGitignore } from "./ignore.ts";
 
 const GrepSchema = z.object({
 	pattern: z.string().describe("Regular expression to search for"),
@@ -66,20 +67,20 @@ export const grepTool: ToolDef<GrepInput, GrepOutput> = {
 
 		const allMatches: GrepMatch[] = [];
 		let truncated = false;
+		const ig = await loadGitignore(cwd);
 
 		outer: for await (const relPath of fileGlob.scan({
 			cwd,
 			onlyFiles: true,
+			dot: true,
 		})) {
+			if (ig?.ignores(relPath)) continue;
+
+			const firstSegment = relPath.split("/")[0] ?? "";
 			// Skip ignored
-			if (
-				ignoreGlob.some(
-					(g) => g.match(relPath) || g.match(relPath.split("/")[0] ?? ""),
-				)
-			) {
+			if (ignoreGlob.some((g) => g.match(relPath) || g.match(firstSegment))) {
 				continue;
 			}
-
 			const fullPath = join(cwd, relPath);
 			let text: string;
 			try {
