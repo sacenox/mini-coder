@@ -89,6 +89,11 @@ export async function* runTurn(options: {
 		};
 
 		const result = streamText(streamOpts) as StreamTextResultFull;
+		// If the stream is aborted, result.response will reject with an AbortError.
+		// If the for-await loop breaks early or throws, result.response is never
+		// awaited, causing an unhandled rejection that crashes the app.
+		// We catch it here to mark it as handled (awaiting it later will still throw).
+		result.response.catch(() => {});
 
 		// Stream events
 		for await (const chunk of result.fullStream) {
