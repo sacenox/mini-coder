@@ -8,7 +8,7 @@ import {
 	isImageFilename,
 	loadImageFile,
 } from "../cli/image-types.ts";
-import { readline, type InputResult } from "../cli/input.ts";
+import { readline, type InputResult, watchForInterrupt } from "../cli/input.ts";
 import {
 	PREFIX,
 	Spinner,
@@ -487,17 +487,15 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		text: string,
 		pastedImages: ImageAttachment[] = [],
 	): Promise<string> {
-		// Register the abort handler FIRST — before any await — so that Ctrl+C during
-		// the async preamble (resolveFileRefs, takeSnapshot) is intercepted here rather
-		// than falling through to the cleanup handler which exits the process.
+		// Watch for Ctrl+C by reading raw stdin bytes. This is more reliable than
+		// SIGINT listeners in Bun: when stdin is in raw mode, the OS sends 0x03
+		// directly instead of raising a signal that Bun may intercept or swallow.
 		const abortController = new AbortController();
 		let wasAborted = false;
-		const onSigInt = () => {
+		abortController.signal.addEventListener("abort", () => {
 			wasAborted = true;
-			abortController.abort();
-			process.removeListener("SIGINT", onSigInt);
-		};
-		process.on("SIGINT", onSigInt);
+		});
+		const stopWatcher = watchForInterrupt(abortController);
 
 		// Resolve @file/skill references (agent refs are left as-is for the LLM)
 		const { text: resolvedText, images: refImages } = await resolveFileRefs(
@@ -542,7 +540,7 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		// message and a stub assistant reply so the turn stays in history.
 		// /undo is the only way to erase a turn.
 		if (wasAborted) {
-			process.removeListener("SIGINT", onSigInt);
+			stopWatcher();
 			const stubMsg: CoreMessage = {
 				role: "assistant",
 				content: "[interrupted]",
@@ -639,7 +637,7 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 			rollbackTurn();
 			throw err;
 		} finally {
-			process.removeListener("SIGINT", onSigInt);
+			stopWatcher();
 			// Stop the ralph loop on Ctrl+C or any unexpected throw, so the user
 			// gets back to the prompt rather than resuming with a stale ralphMode=true.
 			if (wasAborted) ralphMode = false;

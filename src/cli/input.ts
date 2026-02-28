@@ -183,6 +183,42 @@ async function readKey(reader: StreamReader): Promise<string> {
 	return new TextDecoder().decode(value);
 }
 
+// ─── Interrupt watcher (used during LLM turns) ────────────────────────────────
+// While the LLM is streaming we keep stdin in raw mode so that Ctrl+C arrives
+// as byte 0x03. We listen directly on process.stdin via a dedicated 'data'
+// handler — NOT via the shared ReadableStream reader — so that the watcher and
+// readline() never race for the same bytes.  The caller must call the returned
+// stop() in a finally block.
+
+export function watchForInterrupt(
+	abortController: AbortController,
+): () => void {
+	if (!process.stdin.isTTY) return () => {};
+
+	const onData = (chunk: Buffer) => {
+		for (const byte of chunk) {
+			if (byte === 0x03) {
+				// Ctrl+C received — abort and clean up immediately.
+				cleanup();
+				abortController.abort();
+				return;
+			}
+		}
+	};
+
+	const cleanup = () => {
+		process.stdin.removeListener("data", onData);
+		process.stdin.setRawMode(false);
+		process.stdin.pause();
+	};
+
+	process.stdin.setRawMode(true);
+	process.stdin.resume();
+	process.stdin.on("data", onData);
+
+	return cleanup;
+}
+
 // ─── Paste handling ───────────────────────────────────────────────────────────
 
 const PASTE_SENTINEL = "\x00PASTE\x00";

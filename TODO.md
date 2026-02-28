@@ -1,27 +1,14 @@
 # TODO
 
-## Resuming sessions is not working:
+## Agent get's stuck on thinking
 
-```
-❯ bun run dev -c
-$ bun run src/index.ts -c
+- When using Google models, there is a rare occurence where the LLM seems to be stuck on thinking.  There is no output for several minutes, and the only solution is to use CTRL+c to interrupt.
+- This is not a infinite reasoning loop, there are requests being made, the app is "stuck", or "hanguing".
+- Setting a thinkingConfig is also not a fix, 8000 is the default.
 
-  mc  mini-coder · vunknown
-  zen/gemini-3.1-pro  ·  /Users/seancaetanomartin/src/mini-coder
-  /help for commands  ·  ctrl+d to exit
+## Help agent edits error less:
 
-· Resumed session mm60qesy-dyr0s (zen/gemini-3.1-pro)
-· MCP: connected exa
-gemini-3.1-pro  mm60qesy  ~/src/mini-coder  ⎇ main
-▶ No tool calls, what are you doing, answer me.
-◆ I apologize for the confusion. Since this is the start of our session, I haven't actually made any tool calls or unrelated changes yet! I am ready to focus exclusively on your request: investigating how to stream subagent activity to the main output and writing a plan to tackle it.
-
-Let me search the codebase to understand how subagents are currently executed and how their output is collected. Once I find the relevant code, I'll put together a plan for how we can stream their activity instead of waiting for completion.
-```
-
-## Streaming subagent activity
-
-Id like to have the subgent output, activity to be streamed to the main output.  Right now we wait for the subagent to be complete to print all at once
+- Agents sometimes include `|` at the end of the hash, this is because how we display the hashed to them, let's check if the anchor last char is `|` and strip it if it instead of letting it error.
 
 ## Implement WebContent and WebSearch using exa.ai api
 

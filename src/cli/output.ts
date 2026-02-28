@@ -42,9 +42,6 @@ export function registerTerminalCleanup(): void {
 		process.exit(143);
 	});
 	process.on("SIGINT", () => {
-		// If another handler is registered (e.g. processUserInput's abort handler),
-		// let it handle the interrupt — don't exit the process.
-		if (process.listenerCount("SIGINT") > 1) return;
 		cleanup();
 		process.exit(130);
 	});
