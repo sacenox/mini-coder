@@ -1,8 +1,27 @@
 # TODO
 
+## Resuming sessions is not working:
+
+```
+❯ bun run dev -c
+$ bun run src/index.ts -c
+
+  mc  mini-coder · vunknown
+  zen/gemini-3.1-pro  ·  /Users/seancaetanomartin/src/mini-coder
+  /help for commands  ·  ctrl+d to exit
+
+· Resumed session mm60qesy-dyr0s (zen/gemini-3.1-pro)
+· MCP: connected exa
+gemini-3.1-pro  mm60qesy  ~/src/mini-coder  ⎇ main
+▶ No tool calls, what are you doing, answer me.
+◆ I apologize for the confusion. Since this is the start of our session, I haven't actually made any tool calls or unrelated changes yet! I am ready to focus exclusively on your request: investigating how to stream subagent activity to the main output and writing a plan to tackle it.
+
+Let me search the codebase to understand how subagents are currently executed and how their output is collected. Once I find the relevant code, I'll put together a plan for how we can stream their activity instead of waiting for completion.
+```
+
 ## Streaming subagent activity
 
-I'd like to have the subgent output/activity to be streamed to the main output.  Right now we wait for the subagent to be complete to print all at once
+Id like to have the subgent output, activity to be streamed to the main output.  Right now we wait for the subagent to be complete to print all at once
 
 ## Implement WebContent and WebSearch using exa.ai api
 
