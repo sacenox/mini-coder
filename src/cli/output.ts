@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import * as c from "yoctocolors";
 import type { CoreMessage } from "../llm-api/turn.ts";
 import type { TurnEvent } from "../llm-api/types.ts";
-import type { SubagentOutput, SubagentToolEntry } from "../tools/subagent.ts";
+import type { SubagentOutput } from "../tools/subagent.ts";
 import { renderChunk } from "./markdown.ts";
 
 const HOME = homedir();
@@ -305,12 +305,7 @@ function renderToolResultInline(
 	}
 
 	if (toolName === "subagent") {
-		const r = result as { inputTokens?: number; outputTokens?: number };
-		if (r.inputTokens || r.outputTokens) {
-			writeln(
-				`${indent}${G.ok} ${c.dim(`↑${r.inputTokens ?? 0} ↓${r.outputTokens ?? 0}`)}`,
-			);
-		}
+		// Activity and token counts are now streamed live.
 		return;
 	}
 
@@ -334,32 +329,68 @@ function renderToolResultInline(
 	);
 }
 
-/** Render a subagent's activity tree, indented under its parent tool-call line. */
-export function renderSubagentActivity(
-	activity: SubagentToolEntry[],
+export function formatSubagentLabel(
+	laneId: number,
+	parentLabel?: string,
+): string {
+	const numStr = parentLabel
+		? `${parentLabel.replace(/[\[\]]/g, "")}.${laneId}`
+		: `${laneId}`;
+	return c.dim(c.cyan(`[${numStr}]`));
+}
 
-	indent: string,
-	maxDepth: number,
+const laneBuffers = new Map<number, string>();
+
+export function renderSubagentEvent(
+	event: TurnEvent,
+	opts: {
+		laneId: number;
+		parentLabel?: string | undefined;
+		activeLanes: Set<number>;
+	},
 ): void {
-	for (const entry of activity) {
-		writeln(`${indent}${toolCallLine(entry.toolName, entry.args)}`);
+	const { laneId, parentLabel, activeLanes } = opts;
 
-		// For nested subagents, recurse one more level (capped at maxDepth)
-		if (entry.toolName === "subagent" && maxDepth > 0) {
-			const nested = entry.result as {
-				activity?: SubagentToolEntry[];
-			};
-			if (nested?.activity?.length) {
-				renderSubagentActivity(nested.activity, `${indent}  `, maxDepth - 1);
+	const labelStr = formatSubagentLabel(laneId, parentLabel);
+	const prefix = activeLanes.size > 1 ? `${labelStr} ` : "";
+
+	if (event.type === "text-delta") {
+		const buf = (laneBuffers.get(laneId) ?? "") + event.delta;
+		const lines = buf.split("\n");
+		if (lines.length > 1) {
+			for (let i = 0; i < lines.length - 1; i++) {
+				writeln(`${prefix}${lines[i]}`);
 			}
+			laneBuffers.set(laneId, lines[lines.length - 1] ?? "");
+		} else {
+			laneBuffers.set(laneId, buf);
 		}
-
+	} else if (event.type === "tool-call-start") {
+		writeln(`${prefix}${toolCallLine(event.toolName, event.args)}`);
+	} else if (event.type === "tool-result") {
+		// Use inlineResultSummary logic directly here
 		renderToolResultInline(
-			entry.toolName,
-			entry.result,
-			entry.isError,
-			`${indent}  `,
+			event.toolName,
+			event.result,
+			event.isError,
+			`${prefix}  `,
 		);
+	} else if (event.type === "turn-complete") {
+		// Flush buffer if any
+		const buf = laneBuffers.get(laneId);
+		if (buf) {
+			writeln(`${prefix}${buf}`);
+			laneBuffers.delete(laneId);
+		}
+		if (event.inputTokens > 0 || event.outputTokens > 0) {
+			writeln(
+				`${prefix}${c.dim(`↑${event.inputTokens} ↓${event.outputTokens}`)}`,
+			);
+		}
+	} else if (event.type === "turn-error") {
+		laneBuffers.delete(laneId);
+		const msg = event.error.message.split("\n")[0] ?? event.error.message;
+		writeln(`${prefix}${G.err} ${c.red(msg)}`);
 	}
 }
 
@@ -517,23 +548,7 @@ export function renderToolResult(
 	}
 
 	if (toolName === "subagent") {
-		const r = result as SubagentOutput;
-
-		// Render the tool call tree before showing the result text
-		if (r.activity?.length) {
-			renderSubagentActivity(r.activity, "    ", 1);
-		}
-
-		if (r.result) {
-			const lines = r.result.split("\n");
-			const preview = lines.slice(0, 8);
-			for (const line of preview) writeln(`    ${c.dim("│")} ${line}`);
-			if (lines.length > 8)
-				writeln(`    ${c.dim(`│ … +${lines.length - 8} lines`)}`);
-		}
-		if (r.inputTokens || r.outputTokens) {
-			writeln(`    ${c.dim(`↑${r.inputTokens ?? 0} ↓${r.outputTokens ?? 0}`)}`);
-		}
+		// Activity and tokens are streamed live.
 		return;
 	}
 

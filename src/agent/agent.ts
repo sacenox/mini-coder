@@ -12,10 +12,12 @@ import { readline, type InputResult } from "../cli/input.ts";
 import {
 	PREFIX,
 	Spinner,
+	formatSubagentLabel,
 	renderError,
 	renderHook,
 	renderInfo,
 	renderStatusBar,
+	renderSubagentEvent,
 	renderTurn,
 	restoreTerminal,
 	tildePath,
@@ -32,7 +34,7 @@ import {
 	restoreSnapshot,
 	takeSnapshot,
 } from "../tools/snapshot.ts";
-import type { SubagentOutput, SubagentToolEntry } from "../tools/subagent.ts";
+import type { SubagentOutput } from "../tools/subagent.ts";
 
 import {
 	deleteAllSnapshots,
@@ -184,6 +186,9 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 	// so we can trim or rebuild without mutating the in-memory DB copy.
 	const coreHistory: CoreMessage[] = [...session.messages];
 
+	let nextLaneId = 1;
+	const activeLanes = new Set<number>();
+
 	// Subagent runner (recursive) — depth prevents infinite recursion.
 	// agentName: optional custom agent to run (looks up .agents/agents/<name>.md).
 	// modelOverride: explicit model to use (for /review and custom commands).
@@ -192,6 +197,7 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		depth = 0,
 		agentName?: string,
 		modelOverride?: string,
+		parentLabel?: string,
 	): Promise<SubagentOutput> => {
 		// Resolve custom agent config if an agentName was specified
 		const allAgents = loadAgents(cwd);
@@ -206,12 +212,17 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		const systemPrompt = agentConfig?.systemPrompt ?? buildSystemPrompt(cwd);
 
 		const subMessages: CoreMessage[] = [{ role: "user", content: prompt }];
+		const laneId = nextLaneId++;
+		activeLanes.add(laneId);
+		const laneLabel = formatSubagentLabel(laneId, parentLabel);
+
 		const subTools = buildToolSet({
 			cwd,
 			depth,
 			runSubagent,
 			onHook: renderHook,
 			availableAgents: allAgents,
+			parentLabel: laneLabel,
 		});
 
 		const subLlm = resolveModel(model);
@@ -219,10 +230,6 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		let result = "";
 		let inputTokens = 0;
 		let outputTokens = 0;
-		const activity: SubagentToolEntry[] = [];
-
-		// Track pending tool call so we can pair it with its result
-		const pendingCalls = new Map<string, { toolName: string; args: unknown }>();
 
 		const events = runTurn({
 			model: subLlm,
@@ -232,32 +239,18 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		});
 
 		for await (const event of events) {
+			spinner.stop();
+			renderSubagentEvent(event, { laneId, parentLabel, activeLanes });
+			spinner.start("thinking");
 			if (event.type === "text-delta") result += event.delta;
-			if (event.type === "tool-call-start") {
-				pendingCalls.set(event.toolCallId, {
-					toolName: event.toolName,
-					args: event.args,
-				});
-			}
-			if (event.type === "tool-result") {
-				const pending = pendingCalls.get(event.toolCallId);
-				if (pending) {
-					pendingCalls.delete(event.toolCallId);
-					activity.push({
-						toolName: pending.toolName,
-						args: pending.args,
-						result: event.result,
-						isError: event.isError,
-					});
-				}
-			}
 			if (event.type === "turn-complete") {
 				inputTokens = event.inputTokens;
 				outputTokens = event.outputTokens;
 			}
 		}
 
-		return { result, inputTokens, outputTokens, activity };
+		activeLanes.delete(laneId);
+		return { result, inputTokens, outputTokens };
 	};
 
 	// ── MCP: load persisted servers and connect them ───────────────────────────

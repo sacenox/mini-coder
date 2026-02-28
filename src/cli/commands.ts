@@ -14,14 +14,7 @@ import {
 	loadCustomCommands,
 } from "./custom-commands.ts";
 import { renderMarkdown } from "./markdown.ts";
-import {
-	PREFIX,
-	renderError,
-	renderInfo,
-	renderSubagentActivity,
-	write,
-	writeln,
-} from "./output.ts";
+import { PREFIX, renderError, renderInfo, write, writeln } from "./output.ts";
 import { loadSkills } from "./skills.ts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -297,12 +290,6 @@ async function handleReview(
 	try {
 		const output = await ctx.runSubagent(REVIEW_PROMPT(ctx.cwd, focus));
 
-		// Show subagent activity tree.
-		if (output.activity.length) {
-			renderSubagentActivity(output.activity, "  ", 1);
-			writeln();
-		}
-
 		// Show review results.
 		write(renderMarkdown(output.result));
 		writeln();
@@ -344,11 +331,6 @@ async function handleCustomCommand(
 
 	try {
 		const output = await ctx.runSubagent(prompt, cmd.model);
-
-		if (output.activity.length) {
-			renderSubagentActivity(output.activity, "  ", 1);
-			writeln();
-		}
 
 		write(renderMarkdown(output.result));
 		writeln();

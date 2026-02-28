@@ -13,18 +13,10 @@ const SubagentInput = z.object({
 
 type SubagentInput = z.infer<typeof SubagentInput>;
 
-export interface SubagentToolEntry {
-	toolName: string;
-	args: unknown;
-	result: unknown;
-	isError: boolean;
-}
-
 export interface SubagentOutput {
 	result: string;
 	inputTokens: number;
 	outputTokens: number;
-	activity: SubagentToolEntry[];
 }
 
 /**
@@ -34,8 +26,13 @@ export interface SubagentOutput {
  * the agent without creating a circular import.
  */
 export function createSubagentTool(
-	runSubagent: (prompt: string, agentName?: string) => Promise<SubagentOutput>,
+	runSubagent: (
+		prompt: string,
+		agentName?: string,
+		parentLabel?: string,
+	) => Promise<SubagentOutput>,
 	availableAgents: ReadonlyMap<string, { description: string }>,
+	parentLabel?: string,
 ): ToolDef<SubagentInput, SubagentOutput> {
 	const agentSection =
 		availableAgents.size > 0
@@ -46,7 +43,7 @@ export function createSubagentTool(
 		description: `Spawn a sub-agent to handle a focused subtask. Use this for parallel exploration, specialised analysis, or tasks that benefit from a fresh context window. The subagent has access to all the same tools.${agentSection}`,
 		schema: SubagentInput,
 		execute: async (input) => {
-			return runSubagent(input.prompt, input.agentName);
+			return runSubagent(input.prompt, input.agentName, parentLabel);
 		},
 	};
 }
