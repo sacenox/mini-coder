@@ -175,4 +175,16 @@ describe("insertTool", () => {
 			}),
 		).rejects.toThrow("Invalid anchor");
 	});
+	test("accepts anchor with trailing pipe separator", async () => {
+		const name = await write("f.txt", "a\nb\nc\n");
+		await insertTool.execute({
+			path: name,
+			cwd: dir,
+			anchor: `${anchor(2, "b")}|`,
+			position: "after",
+			content: "X",
+		});
+
+		expect(await read(name)).toBe("a\nb\nX\nc\n");
+	});
 });

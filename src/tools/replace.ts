@@ -110,7 +110,10 @@ interface ParsedAnchor {
 }
 
 function parseAnchor(value: string, name: string): ParsedAnchor {
-	const match = /^\s*(\d+):([0-9a-fA-F]{2})\s*$/.exec(value);
+	const normalized = value.trim().endsWith("|")
+		? value.trim().slice(0, -1)
+		: value;
+	const match = /^\s*(\d+):([0-9a-fA-F]{2})\s*$/.exec(normalized);
 	if (!match) {
 		throw new Error(
 			`Invalid ${name}. Expected format: "line:hh" (e.g. "11:a3").`,

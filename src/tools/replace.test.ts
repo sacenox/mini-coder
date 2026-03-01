@@ -169,4 +169,15 @@ describe("replaceTool", () => {
 			}),
 		).rejects.toThrow("Invalid startAnchor");
 	});
+	test("accepts anchors with trailing pipe separator", async () => {
+		const name = await write("f.txt", "a\nb\nc\n");
+		await replaceTool.execute({
+			path: name,
+			cwd: dir,
+			startAnchor: `${anchor(2, "b")}|`,
+			newContent: "B",
+		});
+
+		expect(await read(name)).toBe("a\nB\nc\n");
+	});
 });
