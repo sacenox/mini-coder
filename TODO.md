@@ -7,17 +7,6 @@
 
 ---
 
-## Websearch and webcontent don't have styled outputs
-
-Currently they print json and raw text.
-Refactor so they have a dedicated formatted output like the other builtin tools.
-
-## Help agent edits error less:
-
-- Agents sometimes include `|` at the end of the hashes passes to replace() and other tools, this is because how we display the hashed to them, with `|` as the separator. let's check if the anchor last char is `|` and strip it if it instead of letting it error.
-
----
-
 ## `/model` thinking-effort toggle
 
 The idea specifies: *"/model allows the user to pick a model as well as thinking
