@@ -148,21 +148,25 @@ export function renderToolResultInline(
 	}
 
 	if (toolName === "glob") {
-		const r = result as { files: string[]; truncated: boolean };
-		const n = r.files.length;
-		writeln(
-			`${indent}${G.info} ${c.dim(n === 0 ? "no matches" : `${n} file${n === 1 ? "" : "s"}${r.truncated ? " (capped)" : ""}`)}`,
-		);
-		return;
+		const r = result as { files?: string[]; truncated?: boolean };
+		if (Array.isArray(r?.files)) {
+			const n = r.files.length;
+			writeln(
+				`${indent}${G.info} ${c.dim(n === 0 ? "no matches" : `${n} file${n === 1 ? "" : "s"}${r.truncated ? " (capped)" : ""}`)}`,
+			);
+			return;
+		}
 	}
 
 	if (toolName === "grep") {
-		const r = result as { matches: unknown[]; truncated: boolean };
-		const n = r.matches.length;
-		writeln(
-			`${indent}${G.info} ${c.dim(n === 0 ? "no matches" : `${n} match${n === 1 ? "" : "es"}${r.truncated ? " (capped)" : ""}`)}`,
-		);
-		return;
+		const r = result as { matches?: unknown[]; truncated?: boolean };
+		if (Array.isArray(r?.matches)) {
+			const n = r.matches.length;
+			writeln(
+				`${indent}${G.info} ${c.dim(n === 0 ? "no matches" : `${n} match${n === 1 ? "" : "es"}${r.truncated ? " (capped)" : ""}`)}`,
+			);
+			return;
+		}
 	}
 
 	if (toolName === "read") {
@@ -247,65 +251,69 @@ export function renderToolResult(
 	}
 
 	if (toolName === "glob") {
-		const r = result as { files: string[]; truncated: boolean };
-		const files = r.files;
-		if (files.length === 0) {
-			writeln(`    ${G.info} ${c.dim("no matches")}`);
+		const r = result as { files?: string[]; truncated?: boolean };
+		if (Array.isArray(r?.files)) {
+			const files = r.files;
+			if (files.length === 0) {
+				writeln(`    ${G.info} ${c.dim("no matches")}`);
+				return;
+			}
+
+			// Show up to 12 files, grouped by top-level directory for readability
+			const show = files.slice(0, 12);
+			const rest = files.length - show.length;
+
+			// Find common prefix to strip for cleaner display
+			const prefix = commonPrefix(show);
+			for (const f of show) {
+				const rel =
+					prefix && f.startsWith(prefix)
+						? c.dim(prefix) + f.slice(prefix.length)
+						: f;
+				writeln(`    ${c.dim("·")} ${rel}`);
+			}
+			if (rest > 0) writeln(`    ${c.dim(`  +${rest} more`)}`);
+			if (r.truncated) writeln(`    ${c.dim("  (results capped)")}`);
 			return;
 		}
-
-		// Show up to 12 files, grouped by top-level directory for readability
-		const show = files.slice(0, 12);
-		const rest = files.length - show.length;
-
-		// Find common prefix to strip for cleaner display
-		const prefix = commonPrefix(show);
-		for (const f of show) {
-			const rel =
-				prefix && f.startsWith(prefix)
-					? c.dim(prefix) + f.slice(prefix.length)
-					: f;
-			writeln(`    ${c.dim("·")} ${rel}`);
-		}
-		if (rest > 0) writeln(`    ${c.dim(`  +${rest} more`)}`);
-		if (r.truncated) writeln(`    ${c.dim("  (results capped)")}`);
-		return;
 	}
 
 	if (toolName === "grep") {
 		const r = result as {
-			matches: Array<{
+			matches?: Array<{
 				file: string;
 				line: number;
 				text: string;
 				context?: Array<{ line: number; text: string; isMatch: boolean }>;
 			}>;
-			truncated: boolean;
+			truncated?: boolean;
 		};
-		if (r.matches.length === 0) {
-			writeln(`    ${G.info} ${c.dim("no matches")}`);
+		if (Array.isArray(r?.matches)) {
+			if (r.matches.length === 0) {
+				writeln(`    ${G.info} ${c.dim("no matches")}`);
+				return;
+			}
+
+			// Deduplicate by file, show file:line and match text
+			const seen = new Set<string>();
+			let shown = 0;
+			for (const m of r.matches) {
+				if (shown >= 10) break;
+				const key = m.file;
+				const fileLabel = seen.has(key)
+					? c.dim(" ".repeat(m.file.length + 1))
+					: c.dim(`${m.file}:`);
+				seen.add(key);
+				writeln(
+					`    ${fileLabel}${c.dim(String(m.line))}  ${stripHashlinePrefix(m.text).trim()}`,
+				);
+				shown++;
+			}
+			const rest = r.matches.length - shown;
+			if (rest > 0) writeln(`    ${c.dim(`  +${rest} more`)}`);
+			if (r.truncated) writeln(`    ${c.dim("  (results capped)")}`);
 			return;
 		}
-
-		// Deduplicate by file, show file:line and match text
-		const seen = new Set<string>();
-		let shown = 0;
-		for (const m of r.matches) {
-			if (shown >= 10) break;
-			const key = m.file;
-			const fileLabel = seen.has(key)
-				? c.dim(" ".repeat(m.file.length + 1))
-				: c.dim(`${m.file}:`);
-			seen.add(key);
-			writeln(
-				`    ${fileLabel}${c.dim(String(m.line))}  ${stripHashlinePrefix(m.text).trim()}`,
-			);
-			shown++;
-		}
-		const rest = r.matches.length - shown;
-		if (rest > 0) writeln(`    ${c.dim(`  +${rest} more`)}`);
-		if (r.truncated) writeln(`    ${c.dim("  (results capped)")}`);
-		return;
 	}
 
 	if (toolName === "read") {

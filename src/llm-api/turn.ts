@@ -213,7 +213,7 @@ export async function* runTurn(options: {
 						// AI SDK v6: property is `output`, not `result`
 						result:
 							"output" in c ? c.output : "result" in c ? c.result : undefined,
-						isError: false,
+						isError: "isError" in c ? Boolean(c.isError) : false,
 					};
 					break;
 				}
