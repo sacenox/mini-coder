@@ -11,6 +11,6 @@ Steps to follow exactly:
 4. Update the `version` field in `package.json` to the new version.
 5. Run `bun run build` to produce a fresh `dist/mc.js`.
 6. Commit all staged and unstaged changes with the message: `chore: release v<new-version>`.
-7. Create a git tag `v<new-version>` on that commit.
+7. Create a git tag `v<new-version>` on that commit, make sure to use `-m "<version>"` to avoid interactive message editing.
 8. Push the commit and the tag: `git push && git push --tags`.
 9. Ask the user to run `npm publish` to publish to npm to complete the push with passkey auth.
