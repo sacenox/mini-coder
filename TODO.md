@@ -1,12 +1,5 @@
 # TODO
 
-## Handle reaching max tool calls better:
-
-- Force the LLM to respond with a status update if tool calls are exhausted.
-- On the last toolcall before max append a `<system-message>` block to the tool response telling the llm to give a status update and list
-what is left todo.
-- Don't include tools in the last round trip to force the LLM to respond.
-
 ## Help agent edits error less:
 
 - Agents sometimes include `|` at the end of the hash, this is because how we display the hashed to them, let's check if the anchor last char is `|` and strip it if it instead of letting it error.
