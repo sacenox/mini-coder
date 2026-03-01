@@ -1,8 +1,15 @@
 # TODO
 
+## Write blog posts
+
+- Codex being big dumb and lazy without strong guidance in system prompt/instructions
+- Keeping up codebase health when using agents to develop an applications. Avoid regressions, bad tests, lint etc.
+
 ## Help agent edits error less:
 
 - Agents sometimes include `|` at the end of the hash, this is because how we display the hashed to them, let's check if the anchor last char is `|` and strip it if it instead of letting it error.
+
+---
 
 ## `/model` thinking-effort toggle
 
@@ -14,15 +21,15 @@ so thinking effort is never forwarded to the SDK. The `settings` table (via
 `getSetting`/`setSetting` in `src/session/db.ts`) is already available for
 persistence alongside `preferred_model`.
 
-**Fix:**
-- Add `thinkingEffort?: "low" | "medium" | "high"` to `runTurn()` options and pass
-  it as `providerOptions` — e.g. for Anthropic:
-  `{ anthropic: { thinking: { type: "enabled", budgetTokens: N } } }`.
-- Expose it in `/model` (e.g. `/model --effort high`) and persist to `settings`
-  with key `"thinking_effort"`.
-- Read it back in `agent.ts` (alongside `getPreferredModel()`) and thread it into
-  every `runTurn()` call including subagents.
-- Gate display in `/model` listing to models that support it (Claude 3.5+ Sonnet /
-  Opus, o-series OpenAI models). Add a capability flag in `providers.ts`.
+Research model capabilities and if we can fetch them automatically from providers (from the model list maybe?)
+For the models that support reasoning, show the options when listing models with `/models`
 
 ---
+
+## LSP Diagnostics
+
+We should have a closed loop feedback for LSP diagnostics on edits/reads.
+
+This could potentially be a very big slowdown, waiting for updated diagnostics every edit. This also has bias downsides, stale diagnostics confuse the LLM, and can cause negative distractions.
+
+We need to do research first, but maybe we can leverage the hooks feature to achieve a similar result without the performance penalties? Needs brainstorming

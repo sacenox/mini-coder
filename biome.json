@@ -10,10 +10,6 @@
 		"enabled": true,
 		"rules": {
 			"recommended": true,
-			"suspicious": {
-				"noDebugger": "error",
-				"noExplicitAny": "error"
-			},
 			"style": {
 				"noNonNullAssertion": "error",
 				"noParameterAssign": "error",
