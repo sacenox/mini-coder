@@ -9,3 +9,5 @@
 - We care about performance.
 - Don't worry about formatting issues, formatting happens automatically on mutations. (see .agents/hooks)
 - Do not inline `import` calls. Don't duplicate code. Don't leave dead code behind.
+- Don't make random test files, if you need to test something, write a propper unit test.
+- If you make temp files, clean them up when you are done.
