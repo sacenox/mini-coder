@@ -541,10 +541,7 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		// /undo is the only way to erase a turn.
 		if (wasAborted) {
 			stopWatcher();
-			const stubMsg: CoreMessage = {
-				role: "assistant",
-				content: "[interrupted]",
-			};
+			const stubMsg = makeInterruptMessage("user");
 			session.messages.push(userMsg, stubMsg);
 			saveMessages(session.id, [userMsg, stubMsg], thisTurn);
 			coreHistory.push(userMsg, stubMsg);
@@ -595,11 +592,7 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 				if (wasAborted) {
 					// Had partial content — append a system message block so the model
 					// knows the response was cut short. /undo is the only way to erase.
-					const note: CoreMessage = {
-						role: "assistant",
-						content:
-							"<system-message>Response was interrupted by the user.</system-message>",
-					};
+					const note = makeInterruptMessage("user");
 					coreHistory.push(note);
 					session.messages.push(note);
 					saveMessages(session.id, [note], thisTurn);
@@ -607,11 +600,7 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 			} else {
 				// No messages returned — interrupted before any content. Save a
 				// synthetic assistant message. /undo is the only way to erase a turn.
-				const stubMsg: CoreMessage = {
-					role: "assistant",
-					content:
-						"<system-message>Response was interrupted by the user.</system-message>",
-				};
+				const stubMsg = makeInterruptMessage("user");
 				coreHistory.push(stubMsg);
 				session.messages.push(stubMsg);
 				saveMessages(session.id, [stubMsg], thisTurn);
@@ -630,11 +619,7 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 			// so history stays valid. /undo is the only way to erase a turn.
 			if (!errorStubSaved) {
 				errorStubSaved = true;
-				const stubMsg: CoreMessage = {
-					role: "assistant",
-					content:
-						"<system-message>Response was interrupted due to an error.</system-message>",
-				};
+				const stubMsg = makeInterruptMessage("error");
 				coreHistory.push(stubMsg);
 				session.messages.push(stubMsg);
 				saveMessages(session.id, [stubMsg], thisTurn);
@@ -670,6 +655,24 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 			ralphMode,
 		});
 	}
+}
+
+// ─── Interrupt stub helpers ───────────────────────────────────────────────────
+
+/**
+ * Returns a synthetic assistant CoreMessage signalling that the turn was
+ * interrupted by the user (Ctrl+C) or by an error.  Used in three places:
+ *   1. Preamble abort (Ctrl+C before LLM call starts)
+ *   2. Mid-stream abort with no partial content
+ *   3. Mid-stream abort with partial content (appended after real messages)
+ *   4. Unexpected throw in the catch block
+ */
+export function makeInterruptMessage(reason: "user" | "error"): CoreMessage {
+	const text =
+		reason === "user"
+			? "<system-message>Response was interrupted by the user.</system-message>"
+			: "<system-message>Response was interrupted due to an error.</system-message>";
+	return { role: "assistant", content: text };
 }
 
 // ─── Ralph signal detection ───────────────────────────────────────────────────

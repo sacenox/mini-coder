@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { CoreMessage } from "../llm-api/turn.ts";
-import { extractAssistantText, hasRalphSignal } from "./agent.ts";
+import {
+	extractAssistantText,
+	hasRalphSignal,
+	makeInterruptMessage,
+} from "./agent.ts";
 
 // ─── extractAssistantText ─────────────────────────────────────────────────────
 
@@ -144,5 +148,39 @@ describe("interrupt via AbortController", () => {
 		expect(controller.signal.aborted).toBe(false);
 		controller.abort();
 		expect(controller.signal.aborted).toBe(true);
+	});
+});
+
+// ─── makeInterruptMessage ─────────────────────────────────────────────────────
+
+describe("makeInterruptMessage", () => {
+	test("user reason produces an assistant role message", () => {
+		const msg = makeInterruptMessage("user");
+		expect(msg.role).toBe("assistant");
+	});
+
+	test("error reason produces an assistant role message", () => {
+		const msg = makeInterruptMessage("error");
+		expect(msg.role).toBe("assistant");
+	});
+
+	test("user reason content contains system-message tag", () => {
+		const msg = makeInterruptMessage("user");
+		expect(msg.content).toContain("<system-message>");
+		expect(msg.content).toContain("</system-message>");
+		expect(msg.content).toContain("interrupted by the user");
+	});
+
+	test("error reason content contains system-message tag", () => {
+		const msg = makeInterruptMessage("error");
+		expect(msg.content).toContain("<system-message>");
+		expect(msg.content).toContain("</system-message>");
+		expect(msg.content).toContain("interrupted due to an error");
+	});
+
+	test("user and error produce different messages", () => {
+		expect(makeInterruptMessage("user").content).not.toBe(
+			makeInterruptMessage("error").content,
+		);
 	});
 });
