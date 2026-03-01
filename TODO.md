@@ -1,5 +1,37 @@
 # TODO
 
+## Fatal error when using grep:
+
+```
+  ? grep export const PREFIX
+✖ undefined is not an object (evaluating 'r.matches.length')
+error: script "dev" exited with code 1
+```
+Session id: mm81zgi6
+
+```
+  ? grep process\.std  i
+✖ undefined is not an object (evaluating 'r.matches.length')
+error: script "dev" exited with code 1
+```
+Session id: mm82xtos
+
+## Mini coder hanged after shell tool call:
+
+```
+  $ $ rm src/session/db.ts && bun run test
+⠇ shell
+```
+
+Stayed spinning with shell label for well over the timeout time. I had to use ctrl+c to return to the prompt:
+
+```
+  $ $ rm src/session/db.ts && bun run test
+error: script "dev" exited with code 130
+```
+
+App exited instead of returning to the prompt.
+
 ## Help agent edits error less:
 
 - Agents sometimes include `|` at the end of the hash, this is because how we display the hashed to them, let's check if the anchor last char is `|` and strip it if it instead of letting it error.

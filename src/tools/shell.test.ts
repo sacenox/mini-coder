@@ -1,14 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import { shellTool } from "./shell.ts";
 
-describe("shellTool", () => {
+describe.skipIf(!process.stdin.isTTY)("shellTool", () => {
 	it("preserves stdin raw mode if it was enabled", async () => {
-		// Only run this test if stdin is a TTY, otherwise raw mode concepts don't apply.
-		if (!process.stdin.isTTY) {
-			console.log("Skipping raw mode test because stdin is not a TTY");
-			return;
-		}
-
 		// Set raw mode to true initially
 		process.stdin.setRawMode(true);
 		expect(process.stdin.isRaw).toBe(true);
@@ -24,11 +18,6 @@ describe("shellTool", () => {
 	});
 
 	it("leaves raw mode disabled if it was disabled", async () => {
-		if (!process.stdin.isTTY) {
-			console.log("Skipping raw mode test because stdin is not a TTY");
-			return;
-		}
-
 		// Ensure raw mode is false
 		process.stdin.setRawMode(false);
 		expect(process.stdin.isRaw).toBe(false);

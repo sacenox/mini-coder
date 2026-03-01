@@ -1,6 +1,6 @@
 import { join, relative } from "node:path";
 import * as c from "yoctocolors";
-import { addPromptHistory, getPromptHistory } from "../session/db.ts";
+import { addPromptHistory, getPromptHistory } from "../session/db/index.ts";
 import { loadAgents } from "./agents.ts";
 import {
 	type ImageAttachment,

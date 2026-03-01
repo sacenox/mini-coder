@@ -22,7 +22,7 @@ import {
 	deleteSnapshot,
 	loadSnapshot,
 	saveSnapshot,
-} from "../session/db.ts";
+} from "../session/db/index.ts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

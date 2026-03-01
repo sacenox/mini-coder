@@ -6,7 +6,7 @@ import {
 	deleteMcpServer,
 	listMcpServers,
 	upsertMcpServer,
-} from "../session/db.ts";
+} from "../session/db/index.ts";
 import { loadAgents } from "./agents.ts";
 import {
 	type CustomCommand,

@@ -9,7 +9,7 @@ import {
 	listSessions,
 	loadMessages,
 	touchSession,
-} from "./db.ts";
+} from "./db/index.ts";
 
 // ─── Active session ───────────────────────────────────────────────────────────
 

@@ -2,6 +2,7 @@
 import * as c from "yoctocolors";
 import { runAgent } from "./agent/agent.ts";
 import { initErrorLog } from "./cli/error-log.ts";
+import { CliReporter } from "./cli/output-reporter.ts";
 import {
 	registerTerminalCleanup,
 	renderBanner,
@@ -9,7 +10,7 @@ import {
 	writeln,
 } from "./cli/output.ts";
 import { autoDiscoverModel } from "./llm-api/providers.ts";
-import { getPreferredModel } from "./session/db.ts";
+import { getPreferredModel } from "./session/db/index.ts";
 import { getMostRecentSession, printSessionList } from "./session/manager.ts";
 
 // Register terminal cleanup handlers as early as possible so the cursor is
@@ -156,7 +157,11 @@ async function main(): Promise<void> {
 	}
 
 	try {
-		const agentOpts: Parameters<typeof runAgent>[0] = { model, cwd: args.cwd };
+		const agentOpts: Parameters<typeof runAgent>[0] = {
+			model,
+			cwd: args.cwd,
+			reporter: new CliReporter(),
+		};
 		if (sessionId) agentOpts.sessionId = sessionId;
 		if (args.prompt) agentOpts.initialPrompt = args.prompt;
 		await runAgent(agentOpts);

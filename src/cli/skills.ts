@@ -6,6 +6,8 @@ import { parseFrontmatter } from "./frontmatter.ts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+import { loadMarkdownConfigs } from "./load-markdown-configs.ts";
+
 export interface Skill {
 	name: string;
 	description: string;
@@ -15,75 +17,20 @@ export interface Skill {
 	source: "global" | "local";
 }
 
-// ─── Load skills from a skills root dir ──────────────────────────────────────
-// Each skill lives at <dir>/<skill-name>/SKILL.md
-
-function loadFromDir(
-	dir: string,
-	source: "global" | "local",
-): Map<string, Skill> {
-	const skills = new Map<string, Skill>();
-	if (!existsSync(dir)) return skills;
-
-	let entries: string[];
-	try {
-		entries = readdirSync(dir);
-	} catch {
-		return skills;
-	}
-
-	for (const entry of entries) {
-		const skillFile = join(dir, entry, "SKILL.md");
-		try {
-			if (!statSync(join(dir, entry)).isDirectory()) continue;
-			if (!existsSync(skillFile)) continue;
-			const content = readFileSync(skillFile, "utf-8");
-			const { meta } = parseFrontmatter(content);
-			const name = meta.name ?? entry;
-			skills.set(name, {
-				name,
-				description: meta.description ?? name,
-				content,
-				source,
-			});
-		} catch {
-			// skip unreadable entries
-		}
-	}
-	return skills;
-}
-
 // ─── Load all skills (global + local, local wins) ────────────────────────────
 
 export function loadSkills(cwd: string): Map<string, Skill> {
-	const globalAgentsDir = join(homedir(), ".agents", "skills");
-	const globalClaudeDir = join(homedir(), ".claude", "skills");
-	const localAgentsDir = join(cwd, ".agents", "skills");
-	const localClaudeDir = join(cwd, ".claude", "skills");
-
-	const globalAgents = loadFromDir(globalAgentsDir, "global");
-	const globalClaude = loadFromDir(globalClaudeDir, "global");
-	const localAgents = loadFromDir(localAgentsDir, "local");
-	const localClaude = loadFromDir(localClaudeDir, "local");
-
-	warnConventionConflicts(
-		"skills",
-		"global",
-		globalAgents.keys(),
-		globalClaude.keys(),
-	);
-	warnConventionConflicts(
-		"skills",
-		"local",
-		localAgents.keys(),
-		localClaude.keys(),
-	);
-
-	// Merge precedence: local overrides global; at the same scope, .agents overrides .claude.
-	return new Map([
-		...globalClaude,
-		...globalAgents,
-		...localClaude,
-		...localAgents,
-	]);
+	return loadMarkdownConfigs<Skill>({
+		type: "skills",
+		strategy: "nested",
+		nestedFileName: "SKILL.md",
+		cwd,
+		includeClaudeDirs: true,
+		mapConfig: ({ name, meta, raw, source }) => ({
+			name,
+			description: meta.description ?? name,
+			content: raw,
+			source,
+		}),
+	});
 }

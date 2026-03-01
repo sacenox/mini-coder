@@ -2,7 +2,11 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { deleteSnapshot, loadSnapshot, saveSnapshot } from "../session/db.ts";
+import {
+	deleteSnapshot,
+	loadSnapshot,
+	saveSnapshot,
+} from "../session/db/index.ts";
 import { restoreSnapshot, takeSnapshot } from "./snapshot.ts";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

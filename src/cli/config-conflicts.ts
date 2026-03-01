@@ -2,7 +2,7 @@ import * as c from "yoctocolors";
 import { G, writeln } from "./output.ts";
 
 export function warnConventionConflicts(
-	kind: "commands" | "skills",
+	kind: "commands" | "skills" | "agents",
 	scope: "global" | "local",
 	agentsNames: Iterable<string>,
 	claudeNames: Iterable<string>,

@@ -4,7 +4,7 @@ import {
 	extractAssistantText,
 	hasRalphSignal,
 	makeInterruptMessage,
-} from "./agent.ts";
+} from "./agent-helpers.ts";
 
 // ─── extractAssistantText ─────────────────────────────────────────────────────
 

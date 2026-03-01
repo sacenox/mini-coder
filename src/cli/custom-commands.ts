@@ -6,6 +6,8 @@ import { parseFrontmatter } from "./frontmatter.ts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+import { loadMarkdownConfigs } from "./load-markdown-configs.ts";
+
 export interface CustomCommand {
 	name: string;
 	description: string;
@@ -17,79 +19,23 @@ export interface CustomCommand {
 	source: "global" | "local";
 }
 
-// ─── Load commands from a directory ──────────────────────────────────────────
+// ─── Load all custom commands (global + local, local wins) ───────────────────
 
-function loadFromDir(
-	dir: string,
-	source: "global" | "local",
-): Map<string, CustomCommand> {
-	const commands = new Map<string, CustomCommand>();
-	if (!existsSync(dir)) return commands;
-
-	let entries: string[];
-	try {
-		entries = readdirSync(dir);
-	} catch {
-		return commands;
-	}
-
-	for (const entry of entries) {
-		if (!entry.endsWith(".md")) continue;
-		const name = basename(entry, ".md");
-		const filePath = join(dir, entry);
-		let raw: string;
-		try {
-			raw = readFileSync(filePath, "utf-8");
-		} catch {
-			continue;
-		}
-		const { meta, body } = parseFrontmatter(raw);
-		commands.set(name, {
+export function loadCustomCommands(cwd: string): Map<string, CustomCommand> {
+	return loadMarkdownConfigs<CustomCommand>({
+		type: "commands",
+		strategy: "flat",
+		cwd,
+		includeClaudeDirs: true,
+		mapConfig: ({ name, meta, body, source }) => ({
 			name,
 			description: meta.description ?? name,
 			...(meta.model ? { model: meta.model } : {}),
 			template: body,
 			source,
-		});
-	}
-	return commands;
+		}),
+	});
 }
-
-// ─── Load all custom commands (global + local, local wins) ───────────────────
-
-export function loadCustomCommands(cwd: string): Map<string, CustomCommand> {
-	const globalAgentsDir = join(homedir(), ".agents", "commands");
-	const globalClaudeDir = join(homedir(), ".claude", "commands");
-	const localAgentsDir = join(cwd, ".agents", "commands");
-	const localClaudeDir = join(cwd, ".claude", "commands");
-
-	const globalAgents = loadFromDir(globalAgentsDir, "global");
-	const globalClaude = loadFromDir(globalClaudeDir, "global");
-	const localAgents = loadFromDir(localAgentsDir, "local");
-	const localClaude = loadFromDir(localClaudeDir, "local");
-
-	warnConventionConflicts(
-		"commands",
-		"global",
-		globalAgents.keys(),
-		globalClaude.keys(),
-	);
-	warnConventionConflicts(
-		"commands",
-		"local",
-		localAgents.keys(),
-		localClaude.keys(),
-	);
-
-	// Merge precedence: local overrides global; at the same scope, .agents overrides .claude.
-	return new Map([
-		...globalClaude,
-		...globalAgents,
-		...localClaude,
-		...localAgents,
-	]);
-}
-
 // ─── Template expansion ───────────────────────────────────────────────────────
 
 /**
