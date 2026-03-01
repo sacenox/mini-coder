@@ -12,7 +12,7 @@ const ZEN_BASE = "https://opencode.ai/zen/v1";
 // Zen endpoint routing — matched in order, fallthrough to OpenAI-compatible
 function zenEndpointFor(modelId: string) {
 	if (modelId.startsWith("claude-")) return zenAnthropic()(modelId);
-	if (modelId.startsWith("gpt-")) return zenOpenAI()(modelId);
+	if (modelId.startsWith("gpt-")) return zenOpenAI().responses(modelId);
 	if (modelId.startsWith("gemini-")) return zenGoogle()(modelId);
 	return zenCompat()(modelId);
 }
@@ -109,6 +109,24 @@ function directGoogle() {
 	return _directGoogle;
 }
 
+// ─── Model string parsing ─────────────────────────────────────────────────────
+
+/**
+ * Split a "<provider>/<model-id>" string into its two parts.
+ * When there is no slash, provider is the full string and modelId is "".
+ */
+export function parseModelString(modelString: string): {
+	provider: string;
+	modelId: string;
+} {
+	const slashIdx = modelString.indexOf("/");
+	if (slashIdx === -1) return { provider: modelString, modelId: "" };
+	return {
+		provider: modelString.slice(0, slashIdx),
+		modelId: modelString.slice(slashIdx + 1),
+	};
+}
+
 // ─── Context window table ─────────────────────────────────────────────────────
 // Maps model ID substrings (matched in order) to token limits.
 // Covers all Zen models plus common direct-provider model families.
@@ -139,9 +157,7 @@ const CONTEXT_WINDOW_TABLE: Array<[pattern: RegExp, tokens: number]> = [
  * Returns null when the model is unknown.
  */
 export function getContextWindow(modelString: string): number | null {
-	const modelId = modelString.includes("/")
-		? modelString.slice(modelString.indexOf("/") + 1)
-		: modelString;
+	const { modelId } = parseModelString(modelString);
 	for (const [pattern, tokens] of CONTEXT_WINDOW_TABLE) {
 		if (pattern.test(modelId)) return tokens;
 	}
@@ -182,7 +198,9 @@ export function resolveModel(modelString: string): LanguageModel {
 			return directAnthropic()(modelId);
 
 		case "openai":
-			return directOpenAI()(modelId);
+			return modelId.startsWith("gpt-")
+				? directOpenAI().responses(modelId)
+				: directOpenAI()(modelId);
 
 		case "google":
 			return directGoogle()(modelId);

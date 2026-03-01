@@ -25,7 +25,11 @@ import {
 } from "../cli/output.ts";
 import { loadSkills } from "../cli/skills.ts";
 
-import { getContextWindow, resolveModel } from "../llm-api/providers.ts";
+import {
+	getContextWindow,
+	parseModelString,
+	resolveModel,
+} from "../llm-api/providers.ts";
 import { type CoreMessage, runTurn } from "../llm-api/turn.ts";
 import type { ToolDef } from "../llm-api/types.ts";
 import { connectMcpServer } from "../mcp/client.ts";
@@ -95,7 +99,26 @@ function loadContextFile(cwd: string): string | null {
 
 // ─── System prompt ────────────────────────────────────────────────────────────
 
-function buildSystemPrompt(cwd: string): string {
+// Extra directives injected when the model is a Codex variant.
+// Codex is RLHF-tuned to be collaborative and permission-seeking by default;
+// without these overrides it will read a few files, describe what it *plans*
+// to do, and then stop — even in ralph mode. The Responses API `instructions`
+// field (used for all gpt-* models) is the authoritative channel for these.
+const CODEX_AUTONOMY = `
+# Autonomy and persistence
+- You are an autonomous senior engineer. Once given a direction, proactively gather context, implement, test, and refine without waiting for additional prompts at each step.
+- Persist until the task is fully handled end-to-end within the current turn: do not stop at analysis or partial work; carry changes through to implementation and verification.
+- Bias to action: default to implementing with reasonable assumptions. Do not end your turn with clarifications or requests to "proceed" unless you are truly blocked on information only the user can provide.
+- Do NOT output an upfront plan, preamble, or status update before working. Start making tool calls immediately.
+- Do NOT ask "shall I proceed?", "shall I start?", "reply X to continue", or any equivalent. Just start.
+- If something is ambiguous, pick the most reasonable interpretation, implement it, and note the assumption at the end.`;
+
+function isCodexModel(modelString: string): boolean {
+	const { modelId } = parseModelString(modelString);
+	return modelId.includes("codex");
+}
+
+function buildSystemPrompt(cwd: string, modelString?: string): string {
 	const contextFile = loadContextFile(cwd);
 	const cwdDisplay = tildePath(cwd);
 	const now = new Date().toLocaleString(undefined, { hour12: false });
@@ -111,8 +134,11 @@ Guidelines:
 - Prefer small, targeted edits over large rewrites.
 - Always read a file before editing it.
 - Use glob to discover files, grep to find patterns, read to inspect contents.
-- Use shell for tests, builds, and git operations.
-- When in doubt, ask the user before making destructive changes.`;
+- Use shell for tests, builds, and git operations.`;
+
+	if (modelString && isCodexModel(modelString)) {
+		prompt += CODEX_AUTONOMY;
+	}
 
 	if (contextFile) {
 		prompt += `\n\n# Project context\n\n${contextFile}`;
@@ -209,7 +235,8 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		}
 
 		const model = modelOverride ?? agentConfig?.model ?? currentModel;
-		const systemPrompt = agentConfig?.systemPrompt ?? buildSystemPrompt(cwd);
+		const systemPrompt =
+			agentConfig?.systemPrompt ?? buildSystemPrompt(cwd, model);
 
 		const subMessages: CoreMessage[] = [{ role: "user", content: prompt }];
 		const laneId = nextLaneId++;
@@ -518,7 +545,7 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		const coreContent = planMode
 			? `${resolvedText}\n\n<system-message>PLAN MODE ACTIVE: Help the user gather context for the plan -- READ ONLY</system-message>`
 			: ralphMode
-				? `${resolvedText}\n\n<system-message>RALPH MODE: You are in an autonomous loop. You MUST use tools to complete the task above before outputting \`/ralph\`. Do NOT output \`/ralph\` without first making tool calls and doing the work. Only output \`/ralph\` as your final message once all changes are made and verified.</system-message>`
+				? `${resolvedText}\n\n<system-message>RALPH MODE: You are in an autonomous loop. You MUST make actual file changes (create, edit, or write files) to complete the requested task before outputting \`/ralph\`. Reading files, running tests, or exploring the codebase does NOT count as doing the work. Only output \`/ralph\` as your final message after all requested changes are implemented and tests pass.</system-message>`
 				: resolvedText;
 
 		// Build the message content — multi-part when images are present
@@ -556,7 +583,7 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		coreHistory.push(userMsg);
 
 		const llm = resolveModel(currentModel);
-		const systemPrompt = buildSystemPrompt(cwd);
+		const systemPrompt = buildSystemPrompt(cwd, currentModel);
 
 		let lastAssistantText = "";
 		// Tracks whether the catch block stub has already been saved, to avoid

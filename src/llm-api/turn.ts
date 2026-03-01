@@ -1,6 +1,7 @@
 import { dynamicTool, jsonSchema, stepCountIs, streamText } from "ai";
 import type { FlexibleSchema, StepResult } from "ai";
 import { z } from "zod";
+import { parseModelString } from "./providers.ts";
 import type { ToolDef, TurnEvent } from "./types.ts";
 
 type StreamTextOptions = Parameters<typeof streamText>[0];
@@ -68,10 +69,7 @@ function toCoreTool(
  * authoritative system prompt (rather than a system-role message in `input`).
  */
 export function isOpenAIGPT(modelString: string): boolean {
-	const slashIdx = modelString.indexOf("/");
-	const provider =
-		slashIdx === -1 ? modelString : modelString.slice(0, slashIdx);
-	const modelId = slashIdx === -1 ? "" : modelString.slice(slashIdx + 1);
+	const { provider, modelId } = parseModelString(modelString);
 	return (
 		(provider === "openai" || provider === "zen") && modelId.startsWith("gpt-")
 	);
@@ -130,15 +128,7 @@ export async function* runTurn(options: {
 		// as a system-role message in `input` works but is treated as a lower-priority
 		// user turn, causing the model to deprioritise the instructions.
 		const useInstructions =
-			systemPrompt !== undefined &&
-			modelString !== undefined &&
-			isOpenAIGPT(modelString);
-
-		// GPT models tend to describe planned tool calls without making them, then
-		// yield back to the user. This applies broadly across the gpt-* family.
-		// The one-liner closes that gap without adding opinion about how to do the task.
-		const GPT_CONTINUATION =
-			"\n\nAlways make tool calls rather than describing them. Keep going until the task is complete, then stop.";
+			systemPrompt !== undefined && isOpenAIGPT(modelString);
 
 		const streamOpts: StreamTextOptions = {
 			model,
@@ -166,7 +156,7 @@ export async function* runTurn(options: {
 				? {
 						providerOptions: {
 							openai: {
-								instructions: systemPrompt + GPT_CONTINUATION,
+								instructions: systemPrompt,
 								store: false,
 							},
 						},
