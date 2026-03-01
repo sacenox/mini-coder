@@ -517,7 +517,7 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		const coreContent = planMode
 			? `${resolvedText}\n\n<system-message>PLAN MODE ACTIVE: Help the user gather context for the plan -- READ ONLY</system-message>`
 			: ralphMode
-				? `${resolvedText}\n\n<system-message>RALPH MODE: You are in an autonomous loop. When the task is fully complete (all tests pass, no outstanding issues), output exactly \`/ralph\` as your final message to exit the loop. Otherwise, keep working.</system-message>`
+				? `${resolvedText}\n\n<system-message>RALPH MODE: You are in an autonomous loop. Output exactly \`/ralph\` as your final message only after you have made all requested changes AND verified tests pass. Passing tests alone does not mean the task is complete — you must first do all the work. Otherwise, keep working.</system-message>`
 				: resolvedText;
 
 		// Build the message content — multi-part when images are present
