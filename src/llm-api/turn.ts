@@ -63,6 +63,21 @@ function toCoreTool(
 // ─── Main turn function ───────────────────────────────────────────────────────
 
 /**
+ * Returns true when the model string refers to an OpenAI GPT model, which uses
+ * the Responses API and honours the `instructions` provider option as the
+ * authoritative system prompt (rather than a system-role message in `input`).
+ */
+function isOpenAIGPT(modelString: string): boolean {
+	const slashIdx = modelString.indexOf("/");
+	const provider =
+		slashIdx === -1 ? modelString : modelString.slice(0, slashIdx);
+	const modelId = slashIdx === -1 ? "" : modelString.slice(slashIdx + 1);
+	return (
+		(provider === "openai" || provider === "zen") && modelId.startsWith("gpt-")
+	);
+}
+
+/**
  * Run a single agent turn against the model.
  *
  * Yields TurnEvents as they arrive, then yields a final TurnCompleteEvent
@@ -70,12 +85,13 @@ function toCoreTool(
  */
 export async function* runTurn(options: {
 	model: CoreModel;
+	modelString: string;
 	messages: CoreMessage[];
 	tools: ToolDef[];
 	systemPrompt?: string;
 	signal?: AbortSignal;
 }): AsyncGenerator<TurnEvent> {
-	const { model, messages, tools, systemPrompt, signal } = options;
+	const { model, modelString, messages, tools, systemPrompt, signal } = options;
 
 	// stepCount tracks completed steps (incremented in onStepFinish).
 	// Used to detect the second-to-last step for the warning injection.
@@ -109,6 +125,21 @@ export async function* runTurn(options: {
 	let contextTokens = 0;
 
 	try {
+		// OpenAI GPT models use the Responses API (@ai-sdk/openai v3 / ai v6 default),
+		// which honours `instructions` as the authoritative system prompt. Passing it
+		// as a system-role message in `input` works but is treated as a lower-priority
+		// user turn, causing the model to deprioritise the instructions.
+		const useInstructions =
+			systemPrompt !== undefined &&
+			modelString !== undefined &&
+			isOpenAIGPT(modelString);
+
+		// GPT models tend to describe planned tool calls without making them, then
+		// yield back to the user. This applies broadly across the gpt-* family.
+		// The one-liner closes that gap without adding opinion about how to do the task.
+		const GPT_CONTINUATION =
+			"\n\nAlways make tool calls rather than describing them. Keep going until the task is complete, then stop.";
+
 		const streamOpts: StreamTextOptions = {
 			model,
 			messages,
@@ -130,7 +161,17 @@ export async function* runTurn(options: {
 				return undefined;
 			},
 
-			...(systemPrompt ? { system: systemPrompt } : {}),
+			...(systemPrompt && !useInstructions ? { system: systemPrompt } : {}),
+			...(useInstructions
+				? {
+						providerOptions: {
+							openai: {
+								instructions: systemPrompt + GPT_CONTINUATION,
+								store: false,
+							},
+						},
+					}
+				: {}),
 			...(signal ? { abortSignal: signal } : {}),
 		};
 

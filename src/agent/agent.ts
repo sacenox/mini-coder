@@ -233,6 +233,7 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 
 		const events = runTurn({
 			model: subLlm,
+			modelString: model,
 			messages: subMessages,
 			tools: subTools,
 			systemPrompt,
@@ -572,6 +573,7 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 
 			const events = runTurn({
 				model: llm,
+				modelString: currentModel,
 				messages: coreHistory,
 				tools: planMode
 					? [...buildReadOnlyToolSet({ cwd }), ...mcpTools]
