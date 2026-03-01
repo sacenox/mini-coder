@@ -5,10 +5,8 @@ import type {
 	SubagentEventData,
 	TurnResult,
 } from "../agent/reporter.ts";
-import type { CoreMessage } from "../llm-api/turn.ts";
 import type { TurnEvent } from "../llm-api/types.ts";
 import {
-	PREFIX,
 	Spinner,
 	renderError,
 	renderHook,

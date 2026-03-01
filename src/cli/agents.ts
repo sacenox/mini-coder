@@ -1,8 +1,3 @@
-import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { homedir } from "node:os";
-import { basename, join } from "node:path";
-import { parseFrontmatter } from "./frontmatter.ts";
-
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 import { loadMarkdownConfigs } from "./load-markdown-configs.ts";

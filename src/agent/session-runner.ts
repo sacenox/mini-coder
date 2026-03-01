@@ -1,14 +1,12 @@
 import * as c from "yoctocolors";
 import type { ImageAttachment } from "../cli/image-types.ts";
 import { watchForInterrupt } from "../cli/input.ts";
-import { getContextWindow, resolveModel } from "../llm-api/providers.ts";
+import { resolveModel } from "../llm-api/providers.ts";
 import type { CoreMessage } from "../llm-api/turn.ts";
 import { runTurn } from "../llm-api/turn.ts";
 import type { ToolDef } from "../llm-api/types.ts";
 import {
 	deleteAllSnapshots,
-	deleteLastTurn,
-	deleteSnapshot,
 	getMaxTurnIndex,
 	saveMessages,
 } from "../session/db/index.ts";

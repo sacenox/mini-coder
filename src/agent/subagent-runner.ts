@@ -1,6 +1,6 @@
 import { loadAgents } from "../cli/agents.ts";
 import { formatSubagentLabel } from "../cli/output.ts";
-import { parseModelString, resolveModel } from "../llm-api/providers.ts";
+import { resolveModel } from "../llm-api/providers.ts";
 import { type CoreMessage, runTurn } from "../llm-api/turn.ts";
 import type { SubagentOutput } from "../tools/subagent.ts";
 import type { AgentReporter } from "./reporter.ts";

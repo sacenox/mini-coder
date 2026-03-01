@@ -1,68 +1,19 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import * as c from "yoctocolors";
 import { loadAgents } from "../cli/agents.ts";
-import { type CommandContext, handleCommand } from "../cli/commands.ts";
-import {
-	type ImageAttachment,
-	isImageFilename,
-	loadImageFile,
-} from "../cli/image-types.ts";
-import { readline, type InputResult, watchForInterrupt } from "../cli/input.ts";
-import {
-	PREFIX,
-	formatSubagentLabel,
-	tildePath,
-	writeln,
-} from "../cli/output.ts";
-import { loadSkills } from "../cli/skills.ts";
+import type { CommandContext } from "../cli/commands.ts";
+import { tildePath } from "../cli/output.ts";
 import type { AgentReporter } from "./reporter.ts";
 
-import {
-	getContextWindow,
-	parseModelString,
-	resolveModel,
-} from "../llm-api/providers.ts";
-import { type CoreMessage, runTurn } from "../llm-api/turn.ts";
+import { getContextWindow } from "../llm-api/providers.ts";
 import type { ToolDef } from "../llm-api/types.ts";
 import { connectMcpServer } from "../mcp/client.ts";
-import {
-	type SnapshotRestoreResult,
-	restoreSnapshot,
-	takeSnapshot,
-} from "../tools/snapshot.ts";
-import type { SubagentOutput } from "../tools/subagent.ts";
 
-import {
-	deleteAllSnapshots,
-	deleteLastTurn,
-	deleteSnapshot,
-	getConfigDir,
-	getMaxTurnIndex,
-	listMcpServers,
-	saveMessages,
-	setPreferredModel,
-} from "../session/db/index.ts";
-
-import {
-	type ActiveSession,
-	newSession,
-	resumeSession,
-	touchActiveSession,
-} from "../session/manager.ts";
+import { listMcpServers, setPreferredModel } from "../session/db/index.ts";
 import { createSubagentRunner } from "./subagent-runner.ts";
-import { buildReadOnlyToolSet, buildToolSet } from "./tools.ts";
+import { buildToolSet } from "./tools.ts";
 import { undoLastTurn } from "./undo-snapshot.ts";
 
-import {
-	extractAssistantText,
-	getGitBranch,
-	hasRalphSignal,
-	makeInterruptMessage,
-	resolveFileRefs,
-	runShellPassthrough,
-} from "./agent-helpers.ts";
-import { buildSystemPrompt } from "./system-prompt.ts";
+import { getGitBranch } from "./agent-helpers.ts";
 
 import { runInputLoop } from "./input-loop.ts";
 import { SessionRunner } from "./session-runner.ts";

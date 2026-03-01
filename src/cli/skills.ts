@@ -1,9 +1,3 @@
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
-import { warnConventionConflicts } from "./config-conflicts.ts";
-import { parseFrontmatter } from "./frontmatter.ts";
-
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 import { loadMarkdownConfigs } from "./load-markdown-configs.ts";

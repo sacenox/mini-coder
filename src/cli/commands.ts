@@ -14,7 +14,7 @@ import {
 	loadCustomCommands,
 } from "./custom-commands.ts";
 import { renderMarkdown } from "./markdown.ts";
-import { PREFIX, renderError, renderInfo, write, writeln } from "./output.ts";
+import { PREFIX, write, writeln } from "./output.ts";
 import { loadSkills } from "./skills.ts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────

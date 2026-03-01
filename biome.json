@@ -10,10 +10,32 @@
 		"enabled": true,
 		"rules": {
 			"recommended": true,
+			"suspicious": {
+				"noDebugger": "error",
+				"noExplicitAny": "error"
+			},
+			"style": {
+				"noNonNullAssertion": "error",
+				"noParameterAssign": "error",
+				"useConst": "error"
+			},
+			"complexity": {
+				"noUselessCatch": "error"
+			},
+			"suspicious": {
+				"noDebugger": "error",
+				"noExplicitAny": "error",
+				"noConsoleLog": "error"
+			},
 			"correctness": {
-				"noUnusedVariables": "error"
+				"noUnusedVariables": "error",
+				"noUnusedImports": "error",
+				"noUndeclaredVariables": "error"
 			}
 		}
+	},
+	"javascript": {
+		"globals": ["Bun", "Timer"]
 	},
 	"files": {
 		"ignore": ["node_modules", "dist"]
