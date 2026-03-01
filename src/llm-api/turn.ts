@@ -67,7 +67,7 @@ function toCoreTool(
  * the Responses API and honours the `instructions` provider option as the
  * authoritative system prompt (rather than a system-role message in `input`).
  */
-function isOpenAIGPT(modelString: string): boolean {
+export function isOpenAIGPT(modelString: string): boolean {
 	const slashIdx = modelString.indexOf("/");
 	const provider =
 		slashIdx === -1 ? modelString : modelString.slice(0, slashIdx);
