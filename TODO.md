@@ -1,11 +1,5 @@
 # TODO
 
-## Agent get's stuck on thinking
-
-- When using Google models, there is a rare occurence where the LLM seems to be stuck on thinking.  There is no output for several minutes, and the only solution is to use CTRL+c to interrupt.
-- This is not a infinite reasoning loop, there are requests being made, the app is "stuck", or "hanguing".
-- Setting a thinkingConfig is also not a fix, 8000 is the default.
-
 ## Help agent edits error less:
 
 - Agents sometimes include `|` at the end of the hash, this is because how we display the hashed to them, let's check if the anchor last char is `|` and strip it if it instead of letting it error.
@@ -17,6 +11,12 @@ Why not just keep using them via their MCP? Simple answer: their tools descripti
 https://exa.ai/docs/reference/search-quickstart
 https://exa.ai/docs/reference/contents-quickstart
 **Ask the user for text versions if you can't find these pages**
+
+## Agent get's stuck on thinking
+
+- When using Google models, there is a rare occurence where the LLM seems to be stuck on thinking.  There is no output for several minutes, and the only solution is to use CTRL+c to interrupt.
+- This is not a infinite reasoning loop, there are requests being made, the app is "stuck", or "hanguing".
+- Setting a thinkingConfig is also not a fix, 8000 is the default.
 
 ## Subagents don't have access to MCP tools?
 
