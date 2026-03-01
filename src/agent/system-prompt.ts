@@ -53,7 +53,7 @@ Guidelines:
 - Always read a file before editing it.
 - Use glob to discover files, grep to find patterns, read to inspect contents.
 - Use shell for tests, builds, and git operations.
-- Use subagent to manage your limited context size, and to perform actions in parallel.`;
+- Use subagents for parallel execution and handling large subtasks to protect your context limit.`;
 
 	if (modelString && isCodexModel(modelString)) {
 		prompt += CODEX_AUTONOMY;
