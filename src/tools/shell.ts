@@ -48,6 +48,8 @@ export const shellTool: ToolDef<ShellInput, ShellOutput> = {
 
 		let timedOut = false;
 
+		const wasRaw = process.stdin.isTTY ? process.stdin.isRaw : false;
+
 		const proc = Bun.spawn(["bash", "-c", input.command], {
 			cwd,
 			env,
@@ -115,6 +117,13 @@ export const shellTool: ToolDef<ShellInput, ShellOutput> = {
 			// Ensure the terminal is in a sane state if the spawn caused any
 			// raw-mode or cursor-visibility side-effects
 			restoreTerminal();
+			if (wasRaw) {
+				try {
+					process.stdin.setRawMode(true);
+				} catch {
+					/* ignore */
+				}
+			}
 		}
 
 		return {
