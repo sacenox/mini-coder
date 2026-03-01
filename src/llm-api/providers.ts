@@ -5,7 +5,37 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { LanguageModel } from "ai";
 import { createOllama } from "ollama-ai-provider";
 
+import { logApiEvent } from "./api-log.ts";
 // ─── Zen endpoint constants ────────────────────────────────────────────────────
+
+function getFetchWithLogging(): typeof fetch {
+	const customFetch = async (
+		input: Parameters<typeof fetch>[0],
+		init?: Parameters<typeof fetch>[1],
+	): Promise<Response> => {
+		if (init?.body) {
+			try {
+				const bodyStr = init.body.toString();
+				const bodyJson = JSON.parse(bodyStr);
+				logApiEvent("Provider Request", {
+					url: input.toString(),
+					method: init.method,
+					headers: init.headers,
+					body: bodyJson,
+				});
+			} catch {
+				logApiEvent("Provider Request", {
+					url: input.toString(),
+					method: init.method,
+					headers: init.headers,
+					body: init.body,
+				});
+			}
+		}
+		return fetch(input, init);
+	};
+	return customFetch as unknown as typeof fetch;
+}
 
 const ZEN_BASE = "https://opencode.ai/zen/v1";
 
@@ -35,6 +65,7 @@ function zenAnthropic() {
 	if (!_zenAnthropic) {
 		// @ai-sdk/anthropic appends /messages automatically — baseURL is the v1 root
 		_zenAnthropic = createAnthropic({
+			fetch: getFetchWithLogging(),
 			apiKey: getZenApiKey(),
 			baseURL: ZEN_BASE,
 		});
@@ -46,6 +77,7 @@ function zenOpenAI() {
 	if (!_zenOpenAI) {
 		// @ai-sdk/openai appends /responses automatically — baseURL is the v1 root
 		_zenOpenAI = createOpenAI({
+			fetch: getFetchWithLogging(),
 			apiKey: getZenApiKey(),
 			baseURL: ZEN_BASE,
 		});
@@ -57,6 +89,7 @@ function zenGoogle() {
 	if (!_zenGoogle) {
 		// @ai-sdk/google constructs its own path; we pass the base up to /models
 		_zenGoogle = createGoogleGenerativeAI({
+			fetch: getFetchWithLogging(),
 			apiKey: getZenApiKey(),
 			baseURL: ZEN_BASE,
 		});
@@ -68,6 +101,7 @@ function zenCompat() {
 	if (!_zenCompat) {
 		// @ai-sdk/openai-compatible appends /chat/completions — baseURL is the v1 root
 		_zenCompat = createOpenAICompatible({
+			fetch: getFetchWithLogging(),
 			name: "zen-compat",
 			apiKey: getZenApiKey(),
 			baseURL: ZEN_BASE,
@@ -86,7 +120,10 @@ function directAnthropic() {
 	if (!_directAnthropic) {
 		const key = process.env.ANTHROPIC_API_KEY;
 		if (!key) throw new Error("ANTHROPIC_API_KEY is not set");
-		_directAnthropic = createAnthropic({ apiKey: key });
+		_directAnthropic = createAnthropic({
+			fetch: getFetchWithLogging(),
+			apiKey: key,
+		});
 	}
 	return _directAnthropic;
 }
@@ -95,7 +132,7 @@ function directOpenAI() {
 	if (!_directOpenAI) {
 		const key = process.env.OPENAI_API_KEY;
 		if (!key) throw new Error("OPENAI_API_KEY is not set");
-		_directOpenAI = createOpenAI({ apiKey: key });
+		_directOpenAI = createOpenAI({ fetch: getFetchWithLogging(), apiKey: key });
 	}
 	return _directOpenAI;
 }
@@ -104,7 +141,10 @@ function directGoogle() {
 	if (!_directGoogle) {
 		const key = process.env.GOOGLE_API_KEY ?? process.env.GEMINI_API_KEY;
 		if (!key) throw new Error("GOOGLE_API_KEY or GEMINI_API_KEY is not set");
-		_directGoogle = createGoogleGenerativeAI({ apiKey: key });
+		_directGoogle = createGoogleGenerativeAI({
+			fetch: getFetchWithLogging(),
+			apiKey: key,
+		});
 	}
 	return _directGoogle;
 }
@@ -207,7 +247,10 @@ export function resolveModel(modelString: string): LanguageModel {
 
 		case "ollama": {
 			const baseURL = process.env.OLLAMA_BASE_URL ?? "http://localhost:11434";
-			const ollamaProvider = createOllama({ baseURL });
+			const ollamaProvider = createOllama({
+				fetch: getFetchWithLogging(),
+				baseURL,
+			});
 			// ollama-ai-provider returns LanguageModelV1; cast to LanguageModel
 			return ollamaProvider(modelId) as unknown as LanguageModel;
 		}

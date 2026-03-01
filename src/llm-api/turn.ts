@@ -159,7 +159,7 @@ export async function* runTurn(options: {
 				return undefined;
 			},
 
-			...(systemPrompt && !useInstructions ? { system: systemPrompt } : {}),
+			...(systemPrompt ? { system: systemPrompt } : {}),
 			...(useInstructions
 				? {
 						providerOptions: {
