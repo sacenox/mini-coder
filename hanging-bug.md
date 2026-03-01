@@ -69,6 +69,7 @@ So this is now proven in your codepath:
 *   When a command times out, `proc.kill("SIGTERM")` only kills the parent process (e.g., `bash`). Any child processes (e.g., `bun`) become orphaned but stay alive, holding the write end of the `stdout`/`stderr` pipes open. 
 *   Because the pipe never closes, `await reader.read()` inside `collectStream()` hangs indefinitely. 
 *   Because `collectStream()` never resolves, the tool execution never finishes, `tool-result` is never yielded, and the stream goes completely silent while the spinner stays stuck on "shell".
+   - **FIXED**
 
 ### Root Cause 2: Hangs spinning on `"thinking"`
 **Proof in code:** `src/llm-api/turn.ts`

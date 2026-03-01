@@ -5,9 +5,16 @@
 - Codex being big dumb and lazy without strong guidance in system prompt/instructions
 - Keeping up codebase health when using agents to develop an applications. Avoid regressions, bad tests, lint etc.
 
+---
+
+## Websearch and webcontent don't have styled outputs
+
+Currently they print json and raw text.
+Refactor so they have a dedicated formatted output like the other builtin tools.
+
 ## Help agent edits error less:
 
-- Agents sometimes include `|` at the end of the hash, this is because how we display the hashed to them, let's check if the anchor last char is `|` and strip it if it instead of letting it error.
+- Agents sometimes include `|` at the end of the hashes passes to replace() and other tools, this is because how we display the hashed to them, with `|` as the separator. let's check if the anchor last char is `|` and strip it if it instead of letting it error.
 
 ---
 
