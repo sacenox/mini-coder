@@ -14,7 +14,7 @@ describe("shellTool", () => {
 		expect(process.stdin.isRaw).toBe(true);
 
 		// Execute a quick command
-		await shellTool.execute({ command: "echo hello" });
+		await shellTool.execute({ command: "echo hello", timeout: 30_000 });
 
 		// Verify it restored raw mode
 		expect(process.stdin.isRaw).toBe(true);
@@ -34,7 +34,7 @@ describe("shellTool", () => {
 		expect(process.stdin.isRaw).toBe(false);
 
 		// Execute a quick command
-		await shellTool.execute({ command: "echo hello" });
+		await shellTool.execute({ command: "echo hello", timeout: 30_000 });
 
 		// Verify it stayed false
 		expect(process.stdin.isRaw).toBe(false);

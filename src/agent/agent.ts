@@ -561,23 +561,9 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		const systemPrompt = buildSystemPrompt(cwd);
 
 		let lastAssistantText = "";
-		// Tracks whether the turn was fully committed (assistant messages saved).
-		// Used by rollbackTurn() to avoid double-rolling-back.
-		let turnRolledBack = false;
-
-		// Roll back the user message saved before the LLM call, so a failed turn
-		// doesn't leave two consecutive user messages that would permanently break
-		// the session by failing ModelMessage[] schema validation.
-		const rollbackTurn = () => {
-			if (turnRolledBack) return;
-			turnRolledBack = true;
-			coreHistory.pop();
-			session.messages.pop();
-			deleteLastTurn(session.id, thisTurn);
-			if (snapped) deleteSnapshot(session.id, thisTurn);
-			snapshotStack.pop();
-			turnIndex--; // safe: thisTurn = turnIndex++ so turnIndex >= 1 here
-		};
+		// Tracks whether the catch block stub has already been saved, to avoid
+		// double-appending if somehow both paths fire.
+		let errorStubSaved = false;
 
 		try {
 			// Always push so the stack stays aligned 1:1 with turns. A null entry means
@@ -606,22 +592,29 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 				coreHistory.push(...newMessages);
 				session.messages.push(...newMessages);
 				saveMessages(session.id, newMessages, thisTurn);
-			} else if (wasAborted) {
-				// Ctrl+C mid-stream: the LLM reply was partial or empty.
-				// Save a stub assistant message so history stays valid.
-				// /undo is the only way to erase a turn.
+				if (wasAborted) {
+					// Had partial content — append a system message block so the model
+					// knows the response was cut short. /undo is the only way to erase.
+					const note: CoreMessage = {
+						role: "assistant",
+						content:
+							"<system-message>Response was interrupted by the user.</system-message>",
+					};
+					coreHistory.push(note);
+					session.messages.push(note);
+					saveMessages(session.id, [note], thisTurn);
+				}
+			} else {
+				// No messages returned — interrupted before any content. Save a
+				// synthetic assistant message. /undo is the only way to erase a turn.
 				const stubMsg: CoreMessage = {
 					role: "assistant",
-					content: "[interrupted]",
+					content:
+						"<system-message>Response was interrupted by the user.</system-message>",
 				};
 				coreHistory.push(stubMsg);
 				session.messages.push(stubMsg);
 				saveMessages(session.id, [stubMsg], thisTurn);
-			} else {
-				// Turn produced no assistant reply due to an error (e.g. schema
-				// validation failure). Roll back so the next user input doesn't
-				// create two consecutive user messages.
-				rollbackTurn();
 			}
 
 			// Collect all assistant text from this turn so the ralph loop can detect
@@ -633,8 +626,19 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 			lastContextTokens = contextTokens;
 			touchActiveSession(session);
 		} catch (err) {
-			// Unexpected throw (network failure, etc.). Roll back if not already done.
-			rollbackTurn();
+			// Unexpected throw (network failure, etc.). Append a system message block
+			// so history stays valid. /undo is the only way to erase a turn.
+			if (!errorStubSaved) {
+				errorStubSaved = true;
+				const stubMsg: CoreMessage = {
+					role: "assistant",
+					content:
+						"<system-message>Response was interrupted due to an error.</system-message>",
+				};
+				coreHistory.push(stubMsg);
+				session.messages.push(stubMsg);
+				saveMessages(session.id, [stubMsg], thisTurn);
+			}
 			throw err;
 		} finally {
 			stopWatcher();
