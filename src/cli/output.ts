@@ -4,6 +4,8 @@ import * as c from "yoctocolors";
 import type { CoreMessage } from "../llm-api/turn.ts";
 import type { TurnEvent } from "../llm-api/types.ts";
 import type { SubagentOutput } from "../tools/subagent.ts";
+import { logError } from "./error-log.ts";
+import { parseAppError } from "./error-parse.ts";
 import { renderChunk } from "./markdown.ts";
 
 const HOME = homedir();
@@ -386,8 +388,12 @@ export function renderSubagentEvent(
 		}
 	} else if (event.type === "turn-error") {
 		laneBuffers.delete(laneId);
-		const msg = event.error.message.split("\n")[0] ?? event.error.message;
-		writeln(`${prefix}${G.err} ${c.red(msg)}`);
+		logError(event.error, "turn");
+		const parsed = parseAppError(event.error);
+		writeln(`${prefix}${G.err} ${c.red(parsed.headline)}`);
+		if (parsed.hint) {
+			writeln(`${prefix}  ${c.dim(parsed.hint)}`);
+		}
 	}
 }
 
@@ -765,8 +771,12 @@ export async function renderTurn(
 				if (isAbort) {
 					writeln(`${G.warn} ${c.dim("interrupted")}`);
 				} else {
-					const msg = event.error.message.split("\n")[0] ?? event.error.message;
-					writeln(`${G.err} ${c.red(msg)}`);
+					logError(event.error, "turn");
+					const parsed = parseAppError(event.error);
+					writeln(`${G.err} ${c.red(parsed.headline)}`);
+					if (parsed.hint) {
+						writeln(`  ${c.dim(parsed.hint)}`);
+					}
 				}
 				break;
 			}
@@ -852,9 +862,13 @@ export function renderBanner(model: string, cwd: string): void {
 
 // ─── Error / info helpers ─────────────────────────────────────────────────────
 
-export function renderError(err: unknown): void {
-	const msg = err instanceof Error ? err.message : String(err);
-	writeln(`${G.err} ${c.red(msg)}`);
+export function renderError(err: unknown, context = "render"): void {
+	logError(err, context);
+	const parsed = parseAppError(err);
+	writeln(`${G.err} ${c.red(parsed.headline)}`);
+	if (parsed.hint) {
+		writeln(`  ${c.dim(parsed.hint)}`);
+	}
 }
 
 export function renderInfo(msg: string): void {

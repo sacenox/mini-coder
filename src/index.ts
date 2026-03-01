@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import * as c from "yoctocolors";
 import { runAgent } from "./agent/agent.ts";
+import { initErrorLog } from "./cli/error-log.ts";
 import {
 	registerTerminalCleanup,
 	renderBanner,
@@ -14,6 +15,7 @@ import { getMostRecentSession, printSessionList } from "./session/manager.ts";
 // Register terminal cleanup handlers as early as possible so the cursor is
 // always restored even if the process crashes or is killed.
 registerTerminalCleanup();
+initErrorLog();
 
 // ─── CLI argument parsing ─────────────────────────────────────────────────────
 
@@ -159,12 +161,12 @@ async function main(): Promise<void> {
 		if (args.prompt) agentOpts.initialPrompt = args.prompt;
 		await runAgent(agentOpts);
 	} catch (err) {
-		renderError(err);
+		renderError(err, "agent");
 		process.exit(1);
 	}
 }
 
 main().catch((err) => {
-	console.error(err);
+	renderError(err, "main");
 	process.exit(1);
 });
