@@ -1,4 +1,5 @@
 import type { ToolDef } from "../llm-api/types.ts";
+import { webContentTool, webSearchTool } from "../tools/exa.ts";
 import type { SubagentOutput } from "../tools/subagent.ts";
 
 import type { CreateOutput } from "../tools/create.ts";
@@ -115,7 +116,7 @@ export function buildToolSet(opts: {
 	const depth = opts.depth ?? 0;
 	const lookupHook = createHookCache(HOOKABLE_TOOLS, cwd);
 
-	return [
+	const tools: ToolDef[] = [
 		// Read-only: discover and inspect files
 		withHooks(
 			withCwdDefault(globTool as ToolDef, cwd) as ToolDef<
@@ -209,14 +210,26 @@ export function buildToolSet(opts: {
 			opts.parentLabel,
 		) as ToolDef,
 	];
+
+	if (process.env.EXA_API_KEY) {
+		tools.push(webSearchTool as ToolDef, webContentTool as ToolDef);
+	}
+
+	return tools;
 }
 
 // Plan mode: read-only tools only, no hooks (hooks are a write-tool concern).
 export function buildReadOnlyToolSet(opts: { cwd: string }): ToolDef[] {
 	const { cwd } = opts;
-	return [
+	const tools: ToolDef[] = [
 		withCwdDefault(globTool as ToolDef, cwd),
 		withCwdDefault(grepTool as ToolDef, cwd),
 		withCwdDefault(readTool as ToolDef, cwd),
 	];
+
+	if (process.env.EXA_API_KEY) {
+		tools.push(webSearchTool as ToolDef, webContentTool as ToolDef);
+	}
+
+	return tools;
 }
