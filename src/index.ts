@@ -9,6 +9,7 @@ import {
 	renderError,
 	writeln,
 } from "./cli/output.ts";
+import { initApiLog } from "./llm-api/api-log.ts";
 import { autoDiscoverModel } from "./llm-api/providers.ts";
 import { getPreferredModel } from "./session/db/index.ts";
 import { getMostRecentSession, printSessionList } from "./session/manager.ts";
@@ -17,6 +18,7 @@ import { getMostRecentSession, printSessionList } from "./session/manager.ts";
 // always restored even if the process crashes or is killed.
 registerTerminalCleanup();
 initErrorLog();
+initApiLog();
 
 // ─── CLI argument parsing ─────────────────────────────────────────────────────
 

@@ -47,6 +47,7 @@ export const shellTool: ToolDef<ShellInput, ShellOutput> = {
 		);
 
 		let timedOut = false;
+		const readers: { cancel: () => Promise<void> }[] = [];
 
 		const wasRaw = process.stdin.isTTY ? process.stdin.isRaw : false;
 
@@ -72,6 +73,9 @@ export const shellTool: ToolDef<ShellInput, ShellOutput> = {
 			} catch {
 				/* already done */
 			}
+			for (const r of readers) {
+				r.cancel().catch(() => {});
+			}
 		}, timeout);
 
 		// Collect output with size limit
@@ -79,22 +83,28 @@ export const shellTool: ToolDef<ShellInput, ShellOutput> = {
 			stream: ReadableStream<Uint8Array>,
 		): Promise<string> {
 			const reader = stream.getReader();
+			readers.push(reader);
 			const chunks: Uint8Array[] = [];
 			let totalBytes = 0;
 			let truncated = false;
 
 			while (true) {
-				const { done, value } = await reader.read();
-				if (done) break;
-				if (value) {
-					if (totalBytes + value.length > MAX_OUTPUT_BYTES) {
-						chunks.push(value.slice(0, MAX_OUTPUT_BYTES - totalBytes));
-						truncated = true;
-						reader.cancel().catch(() => {});
-						break;
+				try {
+					const { done, value } = await reader.read();
+					if (done) break;
+					if (value) {
+						if (totalBytes + value.length > MAX_OUTPUT_BYTES) {
+							chunks.push(value.slice(0, MAX_OUTPUT_BYTES - totalBytes));
+							truncated = true;
+							reader.cancel().catch(() => {});
+							break;
+						}
+						chunks.push(value);
+						totalBytes += value.length;
 					}
-					chunks.push(value);
-					totalBytes += value.length;
+				} catch (_err) {
+					// Reader was cancelled or stream errored
+					break;
 				}
 			}
 

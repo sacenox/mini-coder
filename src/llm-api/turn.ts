@@ -1,6 +1,7 @@
 import { dynamicTool, jsonSchema, stepCountIs, streamText } from "ai";
 import type { FlexibleSchema, StepResult } from "ai";
 import { z } from "zod";
+import { logApiEvent } from "./api-log.ts";
 import { parseModelString } from "./providers.ts";
 import type { ToolDef, TurnEvent } from "./types.ts";
 
@@ -130,12 +131,19 @@ export async function* runTurn(options: {
 		const useInstructions =
 			systemPrompt !== undefined && isOpenAIGPT(modelString);
 
+		logApiEvent("turn start", { modelString, messageCount: messages.length });
+
 		const streamOpts: StreamTextOptions = {
 			model,
 			messages,
 			tools: toolSet,
 			stopWhen: stepCountIs(MAX_STEPS),
 			onStepFinish: (step: StepResult<ToolSet>) => {
+				logApiEvent("step finish", {
+					stepNumber: stepCount + 1,
+					finishReason: step.finishReason,
+					usage: step.usage,
+				});
 				inputTokens += step.usage?.inputTokens ?? 0;
 				outputTokens += step.usage?.outputTokens ?? 0;
 				contextTokens = step.usage?.inputTokens ?? contextTokens;
@@ -177,6 +185,18 @@ export async function* runTurn(options: {
 			if (signal?.aborted) break;
 
 			const c = chunk as StreamChunk;
+
+			if (c.type !== "text-delta") {
+				logApiEvent("stream chunk", {
+					type: c.type,
+					toolCallId: c.toolCallId,
+					toolName: c.toolName,
+					isError: c.isError,
+					// Truncate args/output to avoid massive logs if desired, but for now log it all to debug hangups
+					hasArgs: "args" in c || "input" in c,
+					hasOutput: "output" in c || "result" in c,
+				});
+			}
 
 			switch (c.type) {
 				case "text-delta": {
@@ -245,6 +265,12 @@ export async function* runTurn(options: {
 		const finalResponse = await result.response;
 		const newMessages = finalResponse?.messages ?? [];
 
+		logApiEvent("turn complete", {
+			newMessagesCount: newMessages.length,
+			inputTokens,
+			outputTokens,
+		});
+
 		yield {
 			type: "turn-complete",
 			inputTokens,
@@ -255,6 +281,7 @@ export async function* runTurn(options: {
 			messages: newMessages,
 		};
 	} catch (err) {
+		logApiEvent("turn error", err);
 		yield {
 			type: "turn-error",
 			error: err instanceof Error ? err : new Error(String(err)),

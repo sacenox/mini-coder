@@ -57,7 +57,7 @@ export function loadMessages(sessionId: string): CoreMessage[] {
 	for (const row of rows) {
 		try {
 			messages.push(JSON.parse(row.payload) as CoreMessage);
-		} catch (err) {
+		} catch (_err) {
 			renderError(
 				new Error(
 					`Failed to parse message ID ${row.id} for session ${sessionId}`,
