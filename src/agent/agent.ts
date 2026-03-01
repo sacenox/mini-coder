@@ -661,7 +661,7 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 
 /**
  * Returns a synthetic assistant CoreMessage signalling that the turn was
- * interrupted by the user (Ctrl+C) or by an error.  Used in three places:
+ * interrupted by the user (Ctrl+C) or by an error.  Used in four places:
  *   1. Preamble abort (Ctrl+C before LLM call starts)
  *   2. Mid-stream abort with no partial content
  *   3. Mid-stream abort with partial content (appended after real messages)

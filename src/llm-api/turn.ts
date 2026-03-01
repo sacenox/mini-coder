@@ -25,7 +25,10 @@ function isZodSchema(s: unknown): boolean {
 	return s !== null && typeof s === "object" && "_def" in (s as object);
 }
 
-function toCoreTool(def: ToolDef): ReturnType<typeof dynamicTool> {
+function toCoreTool(
+	def: ToolDef,
+	claimWarning: () => boolean,
+): ReturnType<typeof dynamicTool> {
 	// MCP tools pass raw JSON Schema objects; the AI SDK requires them to be
 	// wrapped with jsonSchema(). Zod schemas are passed through as-is.
 	const schema = isZodSchema(def.schema)
@@ -36,7 +39,20 @@ function toCoreTool(def: ToolDef): ReturnType<typeof dynamicTool> {
 		inputSchema: schema,
 		execute: async (input: unknown) => {
 			try {
-				return await def.execute(input);
+				const result = await def.execute(input);
+				// On the second-to-last step, append a system message to the first
+				// tool result that completes. claimWarning() returns true exactly once
+				// per step so parallel tool calls don't duplicate the warning.
+				if (claimWarning()) {
+					const warning =
+						"\n\n<system-message>You have reached the maximum number of tool calls. " +
+						"No more tools will be available after this result. " +
+						"Respond with a status update and list what still needs to be done.</system-message>";
+					const str =
+						typeof result === "string" ? result : JSON.stringify(result);
+					return str + warning;
+				}
+				return result;
 			} catch (err) {
 				throw err instanceof Error ? err : new Error(String(err));
 			}
@@ -61,9 +77,28 @@ export async function* runTurn(options: {
 }): AsyncGenerator<TurnEvent> {
 	const { model, messages, tools, systemPrompt, signal } = options;
 
+	// stepCount tracks completed steps (incremented in onStepFinish).
+	// Used to detect the second-to-last step for the warning injection.
+	let stepCount = 0;
+	// warningClaimed resets to false at the start of each step and is flipped to
+	// true by the first tool that completes on the second-to-last step, ensuring
+	// the <system-message> warning appears exactly once even with parallel calls.
+	let warningClaimed = false;
+
+	// Returns true exactly once on the second-to-last step, so parallel tool
+	// calls in the same step only inject the <system-message> warning once.
+	function claimWarning(): boolean {
+		if (stepCount !== MAX_STEPS - 2 || warningClaimed) return false;
+		warningClaimed = true;
+		return true;
+	}
+
 	const toolSet = {} as ToolSet;
 	for (const def of tools) {
-		(toolSet as Record<string, ToolEntry>)[def.name] = toCoreTool(def);
+		(toolSet as Record<string, ToolEntry>)[def.name] = toCoreTool(
+			def,
+			claimWarning,
+		);
 	}
 
 	let inputTokens = 0;
@@ -83,7 +118,18 @@ export async function* runTurn(options: {
 				inputTokens += step.usage?.inputTokens ?? 0;
 				outputTokens += step.usage?.outputTokens ?? 0;
 				contextTokens = step.usage?.inputTokens ?? contextTokens;
+				stepCount++;
+				warningClaimed = false;
 			},
+			// On the last allowed step, strip all tools so the model is forced to
+			// respond with text — no more tool calls are possible.
+			prepareStep: ({ stepNumber }: { stepNumber: number }) => {
+				if (stepNumber >= MAX_STEPS - 1) {
+					return { activeTools: [] as Array<keyof typeof toolSet> };
+				}
+				return undefined;
+			},
+
 			...(systemPrompt ? { system: systemPrompt } : {}),
 			...(signal ? { abortSignal: signal } : {}),
 		};
