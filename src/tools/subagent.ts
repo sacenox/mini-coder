@@ -40,7 +40,7 @@ export function createSubagentTool(
 			: "";
 	return {
 		name: "subagent",
-		description: `Spawn a sub-agent to handle a focused subtask. Use this for parallel exploration, specialised analysis, or tasks that benefit from a fresh context window. The subagent has access to all the same tools.${agentSection}`,
+		description: `Spawn a sub-agent to handle a focused subtask. Use this for parallel exploration, specialised analysis, or tasks that benefit from a fresh context window. ${agentSection}`,
 		schema: SubagentInput,
 		execute: async (input) => {
 			return runSubagent(input.prompt, input.agentName, parentLabel);

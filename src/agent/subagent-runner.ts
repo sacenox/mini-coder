@@ -47,7 +47,7 @@ export function createSubagentRunner(
 			onHook: (tool, path, ok) => reporter.renderHook(tool, path, ok),
 			availableAgents: allAgents,
 			parentLabel: laneLabel,
-		});
+		}).filter((tool) => tool.name !== "subagent");
 
 		const subLlm = resolveModel(model);
 
