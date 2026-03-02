@@ -7,6 +7,13 @@
 
 ---
 
+## Subagents are spawing more subagents for no reason.
+
+- Remove the subagent tool from subagents.
+- Update the subagent prompt specify to not delegate work.
+
+---
+
 ## CTRL+c during a tool call still exits the app instead of interrupting.
 
 As the title says, see example output:
