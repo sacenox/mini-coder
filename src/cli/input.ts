@@ -8,6 +8,7 @@ import {
 	loadImageFile,
 } from "./image-types.ts";
 import { loadSkills } from "./skills.ts";
+import { terminal } from "./terminal-io.ts";
 
 // ─── ANSI escape sequences ────────────────────────────────────────────────────
 
@@ -195,12 +196,16 @@ export function watchForInterrupt(
 ): () => void {
 	if (!process.stdin.isTTY) return () => {};
 
+	const onInterrupt = () => {
+		cleanup();
+		abortController.abort();
+	};
+
 	const onData = (chunk: Buffer) => {
 		for (const byte of chunk) {
 			if (byte === 0x03) {
 				// Ctrl+C received — abort and clean up immediately.
-				cleanup();
-				abortController.abort();
+				onInterrupt();
 				return;
 			}
 		}
@@ -208,10 +213,12 @@ export function watchForInterrupt(
 
 	const cleanup = () => {
 		process.stdin.removeListener("data", onData);
+		terminal.setInterruptHandler(null);
 		process.stdin.setRawMode(false);
 		process.stdin.pause();
 	};
 
+	terminal.setInterruptHandler(onInterrupt);
 	process.stdin.setRawMode(true);
 	process.stdin.resume();
 	process.stdin.on("data", onData);

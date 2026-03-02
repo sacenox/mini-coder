@@ -9,32 +9,8 @@
 
 ## Subagents are spawing more subagents for no reason.
 
-- Remove the subagent tool from subagents.
-- Update the subagent prompt specify to not delegate work.
+Sometimes, a subagent spawns another subagent to do a task, and it enters an endless loop of spawing more subagents.
 
----
-
-## CTRL+c during a tool call still exits the app instead of interrupting.
-
-As the title says, see example output:
-
-```
-gpt-5.3-codex  mm8agcuc  ~/src/mini-coder  ⎇ main  ctx 31.8k/128.0k 25%  ↑502.9k ↓2.9k
-▶ /release
-· release [.agents/commands/release.md]
-
-$ $ bun run typecheck && bun run format && bun run lint && bun test
-  ✔ 0
-← read package.json:1+200
-  · 37 lines
-✎ replace package.json 3:a0–3:a0
-⠹ thinking    ✔ hook post-replace
-  ✔ replaced package.json
-$ $ bun run build
-  ✔ 0
-$ $ git add -A && git commit -m "chore: release v0.0.10" && git tag v0.0.…      <- Shell command hanguing waiting for user input for the git tag call
-error: script "dev" exited with code 130                                         <- ctrl+c by the user in hopes to return to the prompt, but app exited.
-```
 ---
 
 ## `/model` thinking-effort toggle

@@ -3,7 +3,11 @@ export type SignalHandler = () => void;
 export class TerminalIO {
 	private cleanupHandlers: Set<() => void> = new Set();
 	private rawModeEnabled = false;
-	private abortController = new AbortController();
+	private interruptHandler: (() => void) | null = null;
+
+	setInterruptHandler(handler: (() => void) | null): void {
+		this.interruptHandler = handler;
+	}
 
 	stdoutWrite(text: string): void {
 		process.stdout.write(text);
@@ -48,8 +52,12 @@ export class TerminalIO {
 			process.exit(143);
 		});
 		process.on("SIGINT", () => {
-			cleanup();
-			process.exit(130);
+			if (this.interruptHandler) {
+				this.interruptHandler();
+			} else {
+				cleanup();
+				process.exit(130);
+			}
 		});
 		process.on("uncaughtException", (err) => {
 			cleanup();
