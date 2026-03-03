@@ -7,27 +7,6 @@
 
 ---
 
-## Subagents are spawing more subagents for no reason.
-
-Sometimes, a subagent spawns another subagent to do a task, and it enters an endless loop of spawing more subagents.
-
----
-
-## `/model` thinking-effort toggle
-
-The idea specifies: *"/model allows the user to pick a model as well as thinking
-effort for the model if supported. Selection persists across sessions."*
-
-`runTurn()` in `src/llm-api/turn.ts` builds `streamOpts` with no `providerOptions`,
-so thinking effort is never forwarded to the SDK. The `settings` table (via
-`getSetting`/`setSetting` in `src/session/db.ts`) is already available for
-persistence alongside `preferred_model`.
-
-Research model capabilities and if we can fetch them automatically from providers (from the model list maybe?)
-For the models that support reasoning, show the options when listing models with `/models`
-
----
-
 ## LSP Diagnostics
 
 We should have a closed loop feedback for LSP diagnostics on edits/reads.
