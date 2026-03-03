@@ -4,11 +4,15 @@ import type { CommandContext } from "../cli/commands.ts";
 import { tildePath } from "../cli/output.ts";
 import type { AgentReporter } from "./reporter.ts";
 
-import { getContextWindow } from "../llm-api/providers.ts";
+import { type ThinkingEffort, getContextWindow } from "../llm-api/providers.ts";
 import type { ToolDef } from "../llm-api/types.ts";
 import { connectMcpServer } from "../mcp/client.ts";
 
-import { listMcpServers, setPreferredModel } from "../session/db/index.ts";
+import {
+	listMcpServers,
+	setPreferredModel,
+	setPreferredThinkingEffort,
+} from "../session/db/index.ts";
 import { createSubagentRunner } from "./subagent-runner.ts";
 import { buildToolSet } from "./tools.ts";
 import { undoLastTurn } from "./undo-snapshot.ts";
@@ -21,6 +25,7 @@ import { SessionRunner } from "./session-runner.ts";
 export interface AgentOptions {
 	model: string;
 	cwd: string;
+	initialThinkingEffort: ThinkingEffort | null;
 	sessionId?: string;
 	initialPrompt?: string;
 	reporter: AgentReporter;
@@ -29,11 +34,13 @@ export interface AgentOptions {
 export async function runAgent(opts: AgentOptions): Promise<void> {
 	const cwd = opts.cwd;
 	let currentModel = opts.model;
+	let currentThinkingEffort = opts.initialThinkingEffort;
 
 	const runSubagent = createSubagentRunner(
 		cwd,
 		opts.reporter,
 		() => currentModel,
+		() => currentThinkingEffort,
 	);
 
 	const agents = loadAgents(cwd);
@@ -79,6 +86,7 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		tools,
 		mcpTools,
 		initialModel: currentModel,
+		initialThinkingEffort: opts.initialThinkingEffort,
 		sessionId: opts.sessionId,
 	});
 
@@ -91,6 +99,14 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 			runner.session.model = m;
 			setPreferredModel(m);
 			currentModel = m; // Update local reference for runSubagent
+		},
+		get thinkingEffort() {
+			return runner.currentThinkingEffort;
+		},
+		setThinkingEffort: (e) => {
+			runner.currentThinkingEffort = e;
+			setPreferredThinkingEffort(e);
+			currentThinkingEffort = e;
 		},
 		get planMode() {
 			return runner.planMode;
@@ -140,6 +156,7 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 			contextTokens: runner.lastContextTokens,
 			contextWindow: getContextWindow(runner.currentModel) ?? 0,
 			ralphMode: runner.ralphMode,
+			thinkingEffort: runner.currentThinkingEffort,
 		});
 	}
 

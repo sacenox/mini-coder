@@ -2,6 +2,7 @@ import * as c from "yoctocolors";
 import type { ImageAttachment } from "../cli/image-types.ts";
 import { watchForInterrupt } from "../cli/input.ts";
 import { resolveModel } from "../llm-api/providers.ts";
+import type { ThinkingEffort } from "../llm-api/providers.ts";
 import type { CoreMessage } from "../llm-api/turn.ts";
 import { runTurn } from "../llm-api/turn.ts";
 import type { ToolDef } from "../llm-api/types.ts";
@@ -32,6 +33,7 @@ export interface SessionRunnerOptions {
 	tools: ToolDef[];
 	mcpTools: ToolDef[];
 	initialModel: string;
+	initialThinkingEffort: ThinkingEffort | null;
 	sessionId?: string | undefined;
 }
 
@@ -41,6 +43,7 @@ export class SessionRunner {
 	public tools: ToolDef[];
 	public mcpTools: ToolDef[];
 	public currentModel: string;
+	public currentThinkingEffort: ThinkingEffort | null;
 
 	public session!: ActiveSession;
 	public coreHistory!: CoreMessage[];
@@ -60,6 +63,7 @@ export class SessionRunner {
 		this.tools = opts.tools;
 		this.mcpTools = opts.mcpTools;
 		this.currentModel = opts.initialModel;
+		this.currentThinkingEffort = opts.initialThinkingEffort;
 		this.initSession(opts.sessionId);
 	}
 
@@ -169,6 +173,9 @@ export class SessionRunner {
 					: this.tools,
 				systemPrompt,
 				signal: abortController.signal,
+				...(this.currentThinkingEffort
+					? { thinkingEffort: this.currentThinkingEffort }
+					: {}),
 			});
 
 			const { inputTokens, outputTokens, contextTokens, newMessages } =

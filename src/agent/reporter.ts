@@ -19,6 +19,7 @@ export interface StatusBarData {
 	contextTokens: number;
 	contextWindow: number;
 	ralphMode: boolean;
+	thinkingEffort?: string | null;
 }
 
 export interface SubagentEventData {

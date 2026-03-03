@@ -1,5 +1,6 @@
 import * as c from "yoctocolors";
 import { fetchAvailableModels } from "../llm-api/providers.ts";
+import type { ThinkingEffort } from "../llm-api/providers.ts";
 import type { SubagentOutput } from "../tools/subagent.ts";
 
 import {
@@ -22,6 +23,8 @@ import { loadSkills } from "./skills.ts";
 export interface CommandContext {
 	currentModel: string;
 	setModel: (model: string) => void;
+	thinkingEffort: ThinkingEffort | null;
+	setThinkingEffort: (effort: ThinkingEffort | null) => void;
 	planMode: boolean;
 	setPlanMode: (enabled: boolean) => void;
 	ralphMode: boolean;
@@ -44,26 +47,66 @@ export type CommandResult =
 // ─── Command handlers ─────────────────────────────────────────────────────────
 
 async function handleModel(ctx: CommandContext, args: string): Promise<void> {
-	if (args) {
-		// If the user passed a bare model name (no provider prefix), resolve it
-		// against the live model list so we get the full "provider/model-id" form.
-		let modelId = args;
-		if (!args.includes("/")) {
+	const parts = args.trim().split(/\s+/).filter(Boolean);
+
+	if (parts.length > 0) {
+		if (parts[0] === "effort") {
+			const effortArg = parts[1] ?? "";
+			if (effortArg === "off") {
+				ctx.setThinkingEffort(null);
+				writeln(`${PREFIX.success} thinking effort disabled`);
+			} else if (["low", "medium", "high", "xhigh"].includes(effortArg)) {
+				ctx.setThinkingEffort(effortArg as ThinkingEffort);
+				writeln(`${PREFIX.success} thinking effort → ${c.cyan(effortArg)}`);
+			} else {
+				writeln(
+					`${PREFIX.error} usage: /model effort <low|medium|high|xhigh|off>`,
+				);
+			}
+			return;
+		}
+
+		// Otherwise, it's a model switch
+		const idArg = parts[0] ?? "";
+		let modelId = idArg;
+		if (!idArg.includes("/")) {
 			const models = await fetchAvailableModels();
 			const match = models.find(
-				(m) => m.id.split("/").slice(1).join("/") === args || m.id === args,
+				(m) => m.id.split("/").slice(1).join("/") === idArg || m.id === idArg,
 			);
 			if (match) {
 				modelId = match.id;
 			} else {
 				writeln(
-					`${PREFIX.error} unknown model ${c.cyan(args)}  ${c.dim("— run /models for the full list")}`,
+					`${PREFIX.error} unknown model ${c.cyan(idArg)}  ${c.dim("— run /models for the full list")}`,
 				);
 				return;
 			}
 		}
 		ctx.setModel(modelId);
-		writeln(`${PREFIX.success} model → ${c.cyan(modelId)}`);
+
+		const effortArg = parts[1];
+		if (effortArg) {
+			if (effortArg === "off") {
+				ctx.setThinkingEffort(null);
+				writeln(
+					`${PREFIX.success} model → ${c.cyan(modelId)} ${c.dim("(thinking disabled)")}`,
+				);
+			} else if (["low", "medium", "high", "xhigh"].includes(effortArg)) {
+				ctx.setThinkingEffort(effortArg as ThinkingEffort);
+				writeln(
+					`${PREFIX.success} model → ${c.cyan(modelId)} ${c.dim(`(✦ ${effortArg})`)}`,
+				);
+			} else {
+				writeln(`${PREFIX.success} model → ${c.cyan(modelId)}`);
+				writeln(
+					`${PREFIX.error} unknown effort level ${c.cyan(effortArg)} (use low, medium, high, xhigh, off)`,
+				);
+			}
+		} else {
+			const e = ctx.thinkingEffort ? c.dim(` (✦ ${ctx.thinkingEffort})`) : "";
+			writeln(`${PREFIX.success} model → ${c.cyan(modelId)}${e}`);
+		}
 		return;
 	}
 
@@ -106,8 +149,14 @@ async function handleModel(ctx: CommandContext, args: string): Promise<void> {
 			const ctxTag = m.context
 				? c.dim(` ${Math.round(m.context / 1000)}k`)
 				: "";
+			const effortTag =
+				isCurrent && ctx.thinkingEffort
+					? c.dim(` ✦ ${ctx.thinkingEffort}`)
+					: "";
 			const cur = isCurrent ? c.cyan(" ◀") : "";
-			writeln(`    ${c.dim("·")} ${m.displayName}${freeTag}${ctxTag}${cur}`);
+			writeln(
+				`    ${c.dim("·")} ${m.displayName}${freeTag}${ctxTag}${cur}${effortTag}`,
+			);
 			writeln(`      ${c.dim(m.id)}`);
 		}
 	}
@@ -115,6 +164,11 @@ async function handleModel(ctx: CommandContext, args: string): Promise<void> {
 	writeln();
 	writeln(
 		c.dim("  /model <id>  to switch  ·  e.g. /model zen/claude-sonnet-4-6"),
+	);
+	writeln(
+		c.dim(
+			"  /model effort <low|medium|high|xhigh|off>  to set thinking effort",
+		),
 	);
 }
 

@@ -11,7 +11,10 @@ import {
 } from "./cli/output.ts";
 import { initApiLog } from "./llm-api/api-log.ts";
 import { autoDiscoverModel } from "./llm-api/providers.ts";
-import { getPreferredModel } from "./session/db/index.ts";
+import {
+	getPreferredModel,
+	getPreferredThinkingEffort,
+} from "./session/db/index.ts";
 import { getMostRecentSession, printSessionList } from "./session/manager.ts";
 
 // Register terminal cleanup handlers as early as possible so the cursor is
@@ -162,6 +165,7 @@ async function main(): Promise<void> {
 		const agentOpts: Parameters<typeof runAgent>[0] = {
 			model,
 			cwd: args.cwd,
+			initialThinkingEffort: getPreferredThinkingEffort(),
 			reporter: new CliReporter(),
 		};
 		if (sessionId) agentOpts.sessionId = sessionId;

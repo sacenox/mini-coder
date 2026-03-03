@@ -24,3 +24,21 @@ export function getPreferredModel(): string | null {
 export function setPreferredModel(model: string): void {
 	setSetting("preferred_model", model);
 }
+
+import type { ThinkingEffort } from "../../llm-api/providers.ts";
+
+export function getPreferredThinkingEffort(): ThinkingEffort | null {
+	const v = getSetting("preferred_thinking_effort");
+	if (v === "low" || v === "medium" || v === "high" || v === "xhigh") return v;
+	return null;
+}
+
+export function setPreferredThinkingEffort(
+	effort: ThinkingEffort | null,
+): void {
+	if (effort === null) {
+		getDb().run("DELETE FROM settings WHERE key = 'preferred_thinking_effort'");
+	} else {
+		setSetting("preferred_thinking_effort", effort);
+	}
+}

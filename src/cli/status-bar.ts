@@ -42,11 +42,13 @@ export function renderStatusBar(opts: {
 	contextTokens: number;
 	contextWindow: number | null;
 	ralphMode?: boolean;
+	thinkingEffort?: string | null;
 }): void {
 	const cols = (process.stdout as NodeJS.WriteStream).columns ?? 80;
 
 	// Build segments from right priority (rightmost items drop first)
 	const left: string[] = [c.cyan(opts.model)];
+	if (opts.thinkingEffort) left.push(c.dim(`✦ ${opts.thinkingEffort}`));
 	if (opts.provider && opts.provider !== "zen") left.push(c.dim(opts.provider));
 	left.push(c.dim(opts.sessionId.slice(0, 8)));
 	if (opts.ralphMode) left.push(c.magenta("↻ ralph"));

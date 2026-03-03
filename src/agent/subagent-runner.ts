@@ -7,10 +7,13 @@ import type { AgentReporter } from "./reporter.ts";
 import { buildSystemPrompt } from "./system-prompt.ts";
 import { buildToolSet } from "./tools.ts";
 
+import type { ThinkingEffort } from "../llm-api/providers.ts";
+
 export function createSubagentRunner(
 	cwd: string,
 	reporter: AgentReporter,
 	getCurrentModel: () => string,
+	getThinkingEffort: () => ThinkingEffort | null,
 ) {
 	let nextLaneId = 1;
 	const activeLanes = new Set<number>();
@@ -55,12 +58,14 @@ export function createSubagentRunner(
 		let inputTokens = 0;
 		let outputTokens = 0;
 
+		const effort = getThinkingEffort();
 		const events = runTurn({
 			model: subLlm,
 			modelString: model,
 			messages: subMessages,
 			tools: subTools,
 			systemPrompt,
+			...(effort ? { thinkingEffort: effort } : {}),
 		});
 
 		for await (const event of events) {

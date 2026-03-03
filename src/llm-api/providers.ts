@@ -190,6 +190,141 @@ const CONTEXT_WINDOW_TABLE: Array<[pattern: RegExp, tokens: number]> = [
 	// Qwen3 Coder — 131k (Qwen3 standard)
 	[/^qwen3-/, 131_000],
 ];
+export type ThinkingEffort = "low" | "medium" | "high" | "xhigh";
+
+// Maps model-ID patterns (tested against the bare model ID, not provider/id)
+// to whether the model supports thinking/reasoning.
+// Matched in order; first match wins.
+const REASONING_MODELS: Array<RegExp> = [
+	// Anthropic — Claude 3.5+ and Claude 3.7+ support extended thinking
+	/^claude-3-5-sonnet/,
+	/^claude-3-7/,
+	/^claude-sonnet-4/,
+	/^claude-opus-4/,
+	// OpenAI — o-series and GPT-5 reasoning models
+	/^o1/,
+	/^o3/,
+	/^o4/,
+	/^gpt-5/,
+	// Google — Gemini 2.5+ and Gemini 3.x
+	/^gemini-2\.5/,
+	/^gemini-3/,
+];
+
+export function supportsThinking(modelString: string): boolean {
+	const { modelId } = parseModelString(modelString);
+	return REASONING_MODELS.some((p) => p.test(modelId));
+}
+
+// Token budgets for Anthropic extended thinking (budget_tokens mode).
+// Adaptive-mode models (claude-sonnet-4-6+, claude-opus-4+) use effort
+// strings instead; detected by model ID below.
+const ANTHROPIC_BUDGET: Record<ThinkingEffort, number> = {
+	low: 4_096,
+	medium: 8_192,
+	high: 16_384,
+	xhigh: 32_768,
+};
+
+// Clamp xhigh → high for providers that don't support it.
+function clampEffort(
+	effort: ThinkingEffort,
+	max: ThinkingEffort,
+): ThinkingEffort {
+	const ORDER: ThinkingEffort[] = ["low", "medium", "high", "xhigh"];
+	const i = ORDER.indexOf(effort);
+	const m = ORDER.indexOf(max);
+	return ORDER[Math.min(i, m)] as ThinkingEffort;
+}
+
+export function getThinkingProviderOptions(
+	modelString: string,
+	effort: ThinkingEffort,
+): Record<string, unknown> | null {
+	if (!supportsThinking(modelString)) return null;
+
+	const { provider, modelId } = parseModelString(modelString);
+
+	// Anthropic (direct or via Zen routing through @ai-sdk/anthropic)
+	if (
+		provider === "anthropic" ||
+		(provider === "zen" && modelId.startsWith("claude-"))
+	) {
+		// Claude 3.7+, Sonnet 4.x, Opus 4.x support adaptive effort strings.
+		const isAdaptive =
+			/^claude-3-7/.test(modelId) ||
+			/^claude-sonnet-4/.test(modelId) ||
+			/^claude-opus-4/.test(modelId);
+
+		if (isAdaptive) {
+			// Adaptive: effort string ("low"|"medium"|"high"|"max")
+			// xhigh maps to "max" for Opus; clamp to "high" for others.
+			const isOpus = /^claude-opus-4/.test(modelId);
+			const mapped = effort === "xhigh" ? (isOpus ? "max" : "high") : effort;
+			return { anthropic: { thinking: { type: "adaptive" }, effort: mapped } };
+		}
+
+		// Extended thinking: budget_tokens integer
+		const budget = ANTHROPIC_BUDGET[effort];
+		return {
+			anthropic: {
+				thinking: { type: "enabled", budgetTokens: budget },
+				betas: ["interleaved-thinking-2025-05-14"],
+			},
+		};
+	}
+
+	// OpenAI o-series and GPT-5 (direct or via Zen routing through @ai-sdk/openai)
+	if (
+		provider === "openai" ||
+		(provider === "zen" &&
+			(modelId.startsWith("o") || modelId.startsWith("gpt-5")))
+	) {
+		// xhigh only valid on gpt-5.2+, o4+; clamp for others.
+		const supportsXhigh = /^gpt-5\.[2-9]/.test(modelId) || /^o4/.test(modelId);
+		const clamped = supportsXhigh ? effort : clampEffort(effort, "high");
+		return { openai: { reasoningEffort: clamped } };
+	}
+
+	// Google Gemini (direct or via Zen routing through @ai-sdk/google)
+	if (
+		provider === "google" ||
+		(provider === "zen" && modelId.startsWith("gemini-"))
+	) {
+		// Gemini 3.x: thinkingLevel enum. 2.5.x: budgetTokens.
+		if (/^gemini-3/.test(modelId)) {
+			// No xhigh for Gemini 3.
+			const level = clampEffort(effort, "high");
+			return {
+				google: {
+					thinkingConfig: {
+						includeThoughts: true,
+						thinkingLevel: level,
+					},
+				},
+			};
+		}
+		// Gemini 2.5: budget tokens. Capped at 24575 per API limit.
+		const GEMINI_BUDGET: Record<ThinkingEffort, number> = {
+			low: 4_096,
+			medium: 8_192,
+			high: 16_384,
+			xhigh: 24_575,
+		};
+		return {
+			google: {
+				thinkingConfig: {
+					includeThoughts: true,
+					thinkingBudget: GEMINI_BUDGET[effort],
+				},
+			},
+		};
+	}
+
+	// Unrecognised provider with a reasoning model (e.g. future providers) —
+	// return null and let the call proceed without thinking options.
+	return null;
+}
 
 /**
  * Return the known context window size (in tokens) for a model string.

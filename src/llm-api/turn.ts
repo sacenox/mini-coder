@@ -3,6 +3,10 @@ import type { FlexibleSchema, StepResult } from "ai";
 import { z } from "zod";
 import { logApiEvent } from "./api-log.ts";
 import { parseModelString } from "./providers.ts";
+import {
+	type ThinkingEffort,
+	getThinkingProviderOptions,
+} from "./providers.ts";
 import type { ToolDef, TurnEvent } from "./types.ts";
 
 type StreamTextOptions = Parameters<typeof streamText>[0];
@@ -89,8 +93,17 @@ export async function* runTurn(options: {
 	tools: ToolDef[];
 	systemPrompt?: string;
 	signal?: AbortSignal;
+	thinkingEffort?: ThinkingEffort;
 }): AsyncGenerator<TurnEvent> {
-	const { model, modelString, messages, tools, systemPrompt, signal } = options;
+	const {
+		model,
+		modelString,
+		messages,
+		tools,
+		systemPrompt,
+		signal,
+		thinkingEffort,
+	} = options;
 
 	// stepCount tracks completed steps (incremented in onStepFinish).
 	// Used to detect the second-to-last step for the warning injection.
@@ -133,6 +146,26 @@ export async function* runTurn(options: {
 
 		logApiEvent("turn start", { modelString, messageCount: messages.length });
 
+		const thinkingOpts = thinkingEffort
+			? getThinkingProviderOptions(modelString, thinkingEffort)
+			: null;
+
+		const mergedProviderOptions = {
+			...(useInstructions
+				? { openai: { instructions: systemPrompt, store: false } }
+				: {}),
+			...(thinkingOpts ?? {}),
+			...(useInstructions && thinkingOpts?.openai
+				? {
+						openai: {
+							instructions: systemPrompt,
+							store: false,
+							...(thinkingOpts.openai as object),
+						},
+					}
+				: {}),
+		};
+
 		const streamOpts: StreamTextOptions = {
 			model,
 			messages,
@@ -160,15 +193,8 @@ export async function* runTurn(options: {
 			},
 
 			...(systemPrompt ? { system: systemPrompt } : {}),
-			...(useInstructions
-				? {
-						providerOptions: {
-							openai: {
-								instructions: systemPrompt,
-								store: false,
-							},
-						},
-					}
+			...(Object.keys(mergedProviderOptions).length > 0
+				? { providerOptions: mergedProviderOptions }
 				: {}),
 			...(signal ? { abortSignal: signal } : {}),
 		};
