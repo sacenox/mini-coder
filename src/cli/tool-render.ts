@@ -497,14 +497,35 @@ export function renderToolResult(
 	writeln(`    ${c.dim(text.length > 120 ? `${text.slice(0, 117)}…` : text)}`);
 }
 
+function stripAnsiSgr(text: string): string {
+	const esc = String.fromCharCode(0x1b);
+	return text.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "");
+}
+
+function normalizeParentLaneLabel(parentLabel: string): string {
+	const plain = stripAnsiSgr(parentLabel);
+	const match = plain.match(/\[([^\]]+)\]/);
+	const inner = (match?.[1] ?? plain).trim();
+	const lanePath = (inner.split("·")[0] ?? inner).trim();
+	return lanePath || inner;
+}
+
+function shortWorktreeBranch(branch: string): string {
+	const match = branch.match(/^(mc-sub-\d+)-\d+$/);
+	return match?.[1] ?? branch;
+}
+
 export function formatSubagentLabel(
 	laneId: number,
 	parentLabel?: string,
+	worktreeBranch?: string,
 ): string {
-	const numStr = parentLabel
-		? `${parentLabel.replace(/[\[\]]/g, "")}.${laneId}`
-		: `${laneId}`;
-	return c.dim(c.cyan(`[${numStr}]`));
+	const parent = parentLabel ? normalizeParentLaneLabel(parentLabel) : "";
+	const numStr = parent ? `${parent}.${laneId}` : `${laneId}`;
+	const branchHint = worktreeBranch
+		? `·${shortWorktreeBranch(worktreeBranch)}`
+		: "";
+	return c.dim(c.cyan(`[${numStr}${branchHint}]`));
 }
 
 const laneBuffers = new Map<number, string>();
@@ -514,13 +535,14 @@ export function renderSubagentEvent(
 	opts: {
 		laneId: number;
 		parentLabel?: string | undefined;
+		worktreeBranch?: string;
 		activeLanes: Set<number>;
 	},
 ): void {
-	const { laneId, parentLabel, activeLanes } = opts;
+	const { laneId, parentLabel, worktreeBranch, activeLanes } = opts;
 
-	const labelStr = formatSubagentLabel(laneId, parentLabel);
-	const prefix = activeLanes.size > 1 ? `${labelStr} ` : "";
+	const labelStr = formatSubagentLabel(laneId, parentLabel, worktreeBranch);
+	const prefix = activeLanes.size > 1 || worktreeBranch ? `${labelStr} ` : "";
 
 	if (event.type === "text-delta") {
 		const buf = (laneBuffers.get(laneId) ?? "") + event.delta;

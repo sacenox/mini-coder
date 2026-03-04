@@ -17,6 +17,42 @@ export interface SubagentOutput {
 	result: string;
 	inputTokens: number;
 	outputTokens: number;
+	mergeConflict?: {
+		branch: string;
+		conflictFiles: string[];
+	};
+	mergeBlocked?: {
+		branch: string;
+		conflictFiles: string[];
+	};
+}
+
+function formatConflictFiles(conflictFiles: string[]): string {
+	if (conflictFiles.length === 0) return "  - (unknown)";
+	return conflictFiles.map((file) => `  - ${file}`).join("\n");
+}
+
+export function getSubagentMergeError(output: SubagentOutput): string | null {
+	if (output.mergeConflict) {
+		const files = formatConflictFiles(output.mergeConflict.conflictFiles);
+		return `⚠ Merge conflict: subagent branch "${output.mergeConflict.branch}" has been merged into your working tree
+but has conflicts in these files:
+${files}
+
+Resolve the conflicts (remove <<<<, ====, >>>> markers), stage the files with
+\`git add <file>\`, then run \`git merge --continue\` to complete the merge.`;
+	}
+	if (output.mergeBlocked) {
+		const files = formatConflictFiles(output.mergeBlocked.conflictFiles);
+		return `⚠ Merge deferred: subagent branch "${output.mergeBlocked.branch}" was not merged because another merge is already in progress.
+Current unresolved files:
+${files}
+
+Resolve the current merge first (remove <<<<, ====, >>>> markers), stage files with
+\`git add <file>\`, run \`git merge --continue\`, then merge the deferred branch with
+\`git merge --no-ff ${output.mergeBlocked.branch}\`.`;
+	}
+	return null;
 }
 
 /**

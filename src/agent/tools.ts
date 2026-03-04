@@ -1,6 +1,10 @@
 import type { ToolDef } from "../llm-api/types.ts";
 import { webContentTool, webSearchTool } from "../tools/exa.ts";
-import type { SubagentOutput } from "../tools/subagent.ts";
+import {
+	type SubagentOutput,
+	createSubagentTool,
+	getSubagentMergeError,
+} from "../tools/subagent.ts";
 
 import type { CreateOutput } from "../tools/create.ts";
 import { createTool } from "../tools/create.ts";
@@ -27,7 +31,6 @@ import type { ReplaceOutput } from "../tools/replace.ts";
 import { replaceTool } from "../tools/replace.ts";
 import type { ShellOutput } from "../tools/shell.ts";
 import { shellTool } from "../tools/shell.ts";
-import { createSubagentTool } from "../tools/subagent.ts";
 
 // ─── Tool wrappers ────────────────────────────────────────────────────────────
 
@@ -198,13 +201,16 @@ export function buildToolSet(opts: {
 							`Cannot spawn another subagent from depth ${depth}.`,
 					);
 				}
-				return opts.runSubagent(
+				const output = await opts.runSubagent(
 					prompt,
 					depth + 1,
 					agentName,
 					undefined,
 					opts.parentLabel,
 				);
+				const mergeError = getSubagentMergeError(output);
+				if (mergeError) throw new Error(mergeError);
+				return output;
 			},
 			opts.availableAgents,
 			opts.parentLabel,

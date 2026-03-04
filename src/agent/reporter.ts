@@ -25,6 +25,7 @@ export interface StatusBarData {
 export interface SubagentEventData {
 	laneId: number;
 	parentLabel?: string;
+	worktreeBranch?: string;
 	activeLanes: Set<number>;
 }
 

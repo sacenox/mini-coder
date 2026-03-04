@@ -1,7 +1,10 @@
 import * as c from "yoctocolors";
 import { fetchAvailableModels } from "../llm-api/providers.ts";
 import type { ThinkingEffort } from "../llm-api/providers.ts";
-import type { SubagentOutput } from "../tools/subagent.ts";
+import {
+	type SubagentOutput,
+	getSubagentMergeError,
+} from "../tools/subagent.ts";
 
 import {
 	deleteMcpServer,
@@ -43,6 +46,11 @@ export type CommandResult =
 	| { type: "unknown"; command: string }
 	| { type: "exit" }
 	| { type: "inject-user-message"; text: string };
+
+function assertSubagentMerged(output: SubagentOutput): void {
+	const mergeError = getSubagentMergeError(output);
+	if (mergeError) throw new Error(mergeError);
+}
 
 // ─── Command handlers ─────────────────────────────────────────────────────────
 
@@ -343,6 +351,7 @@ async function handleReview(
 
 	try {
 		const output = await ctx.runSubagent(REVIEW_PROMPT(ctx.cwd, focus));
+		assertSubagentMerged(output);
 
 		// Show review results.
 		write(renderMarkdown(output.result));
@@ -385,6 +394,7 @@ async function handleCustomCommand(
 
 	try {
 		const output = await ctx.runSubagent(prompt, cmd.model);
+		assertSubagentMerged(output);
 
 		write(renderMarkdown(output.result));
 		writeln();
