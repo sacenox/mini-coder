@@ -51,9 +51,8 @@ Guidelines:
 - Be concise and precise. Avoid unnecessary preamble.
 - Prefer small, targeted edits over large rewrites.
 - Always read a file before editing it.
-- Use glob to discover files, grep to find patterns, read to inspect contents.
-- Use shell for tests, builds, and git operations.
-- Use subagents for parallel execution and handling large subtasks to protect your context limit.`;
+- Use subagents for all tasks that require a lot of context, like searching code, the web or using shell commands that produce a lot of output.
+- Keep your context clean and focused on the user request, use subagents to achieve this.`;
 
 	if (modelString && isCodexModel(modelString)) {
 		prompt += CODEX_AUTONOMY;

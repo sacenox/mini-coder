@@ -65,7 +65,7 @@ Custom subagents are configured in `.agents`:
 - `./.agents/agents/*.md`
 - `~/.agents/agents/*.md`
 
-(There is no `.claude` compatibility path for agents.)
+(There is no `.claude` compatibility path for agents. Claude doesn't have custom subagents)
 
 ## Precedence and conflicts
 
