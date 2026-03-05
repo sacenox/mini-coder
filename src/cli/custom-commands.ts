@@ -11,6 +11,8 @@ export interface CustomCommand {
 	template: string;
 	/** "global" (~/.agents/) or "local" (./.agents/) — local wins on conflict */
 	source: "global" | "local";
+	/** Where this command should execute */
+	execution: "subagent" | "inline";
 }
 
 // ─── Load all custom commands (global + local, local wins) ───────────────────
@@ -27,6 +29,7 @@ export function loadCustomCommands(cwd: string): Map<string, CustomCommand> {
 			...(meta.model ? { model: meta.model } : {}),
 			template: body,
 			source,
+			execution: meta.execution === "inline" ? "inline" : "subagent",
 		}),
 	});
 }

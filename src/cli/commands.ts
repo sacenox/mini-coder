@@ -403,6 +403,10 @@ async function handleCustomCommand(
 	writeln(`${PREFIX.info} ${label} ${src}`);
 	writeln();
 
+	if (cmd.execution === "inline") {
+		return { type: "inject-user-message", text: prompt };
+	}
+
 	try {
 		const output = await ctx.runSubagent(prompt, cmd.model);
 		assertSubagentMerged(output);

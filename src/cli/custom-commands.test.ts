@@ -40,6 +40,17 @@ describe("loadCustomCommands", () => {
 		expect(cmd?.model).toBe("zen/claude-3-5-haiku");
 		expect(cmd?.template).toBe("Hello $ARGUMENTS");
 		expect(cmd?.source).toBe("local");
+		expect(cmd?.execution).toBe("subagent");
+	});
+
+	test("supports inline execution via frontmatter", () => {
+		writeCmd(
+			dir,
+			"release",
+			"---\ndescription: Release\nexecution: inline\n---\n\nShip it",
+		);
+		const cmd = loadCustomCommands(dir).get("release");
+		expect(cmd?.execution).toBe("inline");
 	});
 
 	test("falls back to name as description when frontmatter has none", () => {
