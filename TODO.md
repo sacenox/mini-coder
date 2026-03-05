@@ -1,23 +1,11 @@
 # TODO
 
+---
+
 ## Write blog posts
 
 - Codex being big dumb and lazy without strong guidance in system prompt/instructions
 - Keeping up codebase health when using agents to develop an applications. Avoid regressions, bad tests, lint etc.
-
----
-
-## Subagents are not really used that much.
-
-The main agent should be making use of these to ensure a clean and enduring context window. Search results, codebase reading, etc bloat the context.
-Is short the main agent should delegate to subagents as much as he can.  Some tools like the exa powered web tools, also generate big responses, which makes sense
-since they are fetching content, but we should analyze them to see if we can trim the data.
-
-- Check the database for suabgent tool usage statistics
-- Check the current language and instructions around the subagent tool
-- Audit read/web tools responses for context bloat (anything that doesn't help the agent's decision making)
-
-Note: I've done some changes to the system-prompt.ts to try and ecourage more subagent usage.
 
 ---
 
@@ -47,4 +35,5 @@ We need to do research first, but maybe we can leverage the hooks feature to ach
 
 ## Deferred fixes
 
-- model-info: in `resolveFromProviderRow`, when canonical capability exists but `contextWindow` is null, fall back to provider row context (`capability.contextWindow ?? row.contextWindow`).
+- model-info: in `resolveFromProviderRow`, when canonical capability exists but `contextWindow` is null, fall back to provider row context (`capability.contextWindow ?? row.contextWindow`). This should have been done as part of the worktrees implementation.
+- Worktrees share bun lockfile and node_modules.  Question this choice, is this really a good idea, or just an opportunity for things to go wrong?
