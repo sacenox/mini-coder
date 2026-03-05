@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+	lstatSync,
+	mkdirSync,
+	realpathSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -7,6 +13,7 @@ import {
 	cleanupBranch,
 	createWorktree,
 	hasDirtyWorkingTree,
+	initializeWorktree,
 	isGitRepo,
 	mergeWorktree,
 	removeWorktree,
@@ -110,6 +117,35 @@ describe("worktree helpers", () => {
 			"untracked file\n",
 		);
 		expect(gitStatusLines(wtPath)).toEqual(gitStatusLines(repoDir));
+
+		await removeWorktree(repoDir, wtPath);
+		await cleanupBranch(repoDir, branch);
+	});
+
+	test("initializes bun dependencies in worktree", async () => {
+		const branch = `mc-sub-init-${Date.now()}`;
+		const wtPath = join(
+			tmpdir(),
+			`mc-wt-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+		);
+		extraDirs.push(wtPath);
+
+		writeFileSync(join(repoDir, "package.json"), "{}\n");
+		writeFileSync(join(repoDir, "bun.lock"), "lock\n");
+		mkdirSync(join(repoDir, "node_modules", "bun-types"), { recursive: true });
+		writeFileSync(
+			join(repoDir, "node_modules", "bun-types", "index.d.ts"),
+			"\n",
+		);
+
+		await createWorktree(repoDir, branch, wtPath);
+		await initializeWorktree(repoDir, wtPath);
+
+		expect(await Bun.file(join(wtPath, "bun.lock")).text()).toBe("lock\n");
+		expect(realpathSync(join(wtPath, "node_modules"))).toBe(
+			realpathSync(join(repoDir, "node_modules")),
+		);
+		expect(lstatSync(join(wtPath, "node_modules")).isSymbolicLink()).toBe(true);
 
 		await removeWorktree(repoDir, wtPath);
 		await cleanupBranch(repoDir, branch);

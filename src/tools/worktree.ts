@@ -1,6 +1,7 @@
 import {
 	chmodSync,
 	copyFileSync,
+	existsSync,
 	lstatSync,
 	mkdirSync,
 	mkdtempSync,
@@ -125,6 +126,42 @@ function copyUntrackedPath(source: string, destination: string): void {
 	}
 	copyFileSync(source, destination);
 	chmodSync(destination, stat.mode);
+}
+
+function copyFileIfMissing(source: string, destination: string): void {
+	if (!existsSync(source) || existsSync(destination)) return;
+	mkdirSync(dirname(destination), { recursive: true });
+	copyFileSync(source, destination);
+}
+
+function linkDirectoryIfMissing(source: string, destination: string): void {
+	if (!existsSync(source) || existsSync(destination)) return;
+	mkdirSync(dirname(destination), { recursive: true });
+	symlinkSync(
+		source,
+		destination,
+		process.platform === "win32" ? "junction" : "dir",
+	);
+}
+
+export async function initializeWorktree(
+	mainCwd: string,
+	worktreeCwd: string,
+): Promise<void> {
+	const [mainRoot, worktreeRoot] = await Promise.all([
+		getRepoRoot(mainCwd),
+		getRepoRoot(worktreeCwd),
+	]);
+	if (!existsSync(join(mainRoot, "package.json"))) return;
+
+	for (const lockfile of ["bun.lock", "bun.lockb"]) {
+		copyFileIfMissing(join(mainRoot, lockfile), join(worktreeRoot, lockfile));
+	}
+
+	linkDirectoryIfMissing(
+		join(mainRoot, "node_modules"),
+		join(worktreeRoot, "node_modules"),
+	);
 }
 
 export async function syncDirtyStateToWorktree(

@@ -9,6 +9,7 @@ import {
 	MergeInProgressError,
 	cleanupBranch,
 	createWorktree,
+	initializeWorktree,
 	isGitRepo,
 	mergeWorktree,
 	removeWorktree,
@@ -70,9 +71,10 @@ export function createSubagentRunner(
 				const nextBranch = makeWorktreeBranch(laneId);
 				const nextPath = makeWorktreePath(laneId);
 				await createWorktree(cwd, nextBranch, nextPath);
-				await syncDirtyStateToWorktree(cwd, nextPath);
 				worktreeBranch = nextBranch;
 				worktreePath = nextPath;
+				await syncDirtyStateToWorktree(cwd, nextPath);
+				await initializeWorktree(cwd, nextPath);
 				subagentCwd = nextPath;
 			}
 
