@@ -10,7 +10,12 @@ import {
 	writeln,
 } from "./cli/output.ts";
 import { initApiLog } from "./llm-api/api-log.ts";
+import {
+	initModelInfoCache,
+	refreshModelInfoInBackground,
+} from "./llm-api/model-info.ts";
 import { autoDiscoverModel } from "./llm-api/providers.ts";
+
 import {
 	getPreferredModel,
 	getPreferredThinkingEffort,
@@ -22,6 +27,8 @@ import { getMostRecentSession, printSessionList } from "./session/manager.ts";
 registerTerminalCleanup();
 initErrorLog();
 initApiLog();
+initModelInfoCache();
+void refreshModelInfoInBackground().catch(() => {});
 
 // ─── CLI argument parsing ─────────────────────────────────────────────────────
 

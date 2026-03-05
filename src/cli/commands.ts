@@ -78,8 +78,8 @@ async function handleModel(ctx: CommandContext, args: string): Promise<void> {
 		const idArg = parts[0] ?? "";
 		let modelId = idArg;
 		if (!idArg.includes("/")) {
-			const models = await fetchAvailableModels();
-			const match = models.find(
+			const snapshot = await fetchAvailableModels();
+			const match = snapshot.models.find(
 				(m) => m.id.split("/").slice(1).join("/") === idArg || m.id === idArg,
 			);
 			if (match) {
@@ -120,7 +120,8 @@ async function handleModel(ctx: CommandContext, args: string): Promise<void> {
 
 	writeln(`${c.dim("  fetching models…")}`);
 
-	const models = await fetchAvailableModels();
+	const snapshot = await fetchAvailableModels();
+	const models = snapshot.models;
 
 	// Clear the "fetching" line
 	process.stdout.write("\x1B[1A\r\x1B[2K");
@@ -135,6 +136,16 @@ async function handleModel(ctx: CommandContext, args: string): Promise<void> {
 			),
 		);
 		return;
+	}
+
+	if (snapshot.stale) {
+		const lastSync = snapshot.lastSyncAt
+			? new Date(snapshot.lastSyncAt).toLocaleString()
+			: "never";
+		const refreshTag = snapshot.refreshing ? " (refreshing in background)" : "";
+		writeln(
+			c.dim(`  model metadata is stale (last sync: ${lastSync})${refreshTag}`),
+		);
 	}
 
 	// Group by provider

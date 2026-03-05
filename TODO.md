@@ -7,17 +7,6 @@
 
 ---
 
-# Context window sizes are out of date
-
-CONTEXT_WINDOW_TABLE in providers.ts is out of date.  Codex 5.3 and 5.2 have 400k tokens context limit not 128.
-This list looks **VERY** wrong, let's get the facts from model.dev and update our list.
-
-`curl https://models.dev/api.json`
-
-Let's use the curl command above to update our table.
-
----
-
 ## Subagents are not really used that much.
 
 The main agent should be making use of these to ensure a clean and enduring context window. Search results, codebase reading, etc bloat the context.
@@ -53,3 +42,9 @@ We should have a closed loop feedback for LSP diagnostics on edits/reads.
 This could potentially be a very big slowdown, waiting for updated diagnostics every edit. This also has bias downsides, stale diagnostics confuse the LLM, and can cause negative distractions.
 
 We need to do research first, but maybe we can leverage the hooks feature to achieve a similar result without the performance penalties? Needs brainstorming
+
+---
+
+## Deferred fixes
+
+- model-info: in `resolveFromProviderRow`, when canonical capability exists but `contextWindow` is null, fall back to provider row context (`capability.contextWindow ?? row.contextWindow`).

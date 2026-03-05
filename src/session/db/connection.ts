@@ -62,6 +62,38 @@ const SCHEMA = `
     key         TEXT PRIMARY KEY,
     value       TEXT NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS model_capabilities (
+    canonical_model_id TEXT PRIMARY KEY,
+    context_window     INTEGER,
+    reasoning          INTEGER NOT NULL,
+    source_provider    TEXT,
+    raw_json           TEXT,
+    updated_at         INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS provider_models (
+    provider           TEXT NOT NULL,
+    provider_model_id  TEXT NOT NULL,
+    display_name       TEXT NOT NULL,
+    canonical_model_id TEXT,
+    context_window     INTEGER,
+    free               INTEGER,
+    updated_at         INTEGER NOT NULL,
+    PRIMARY KEY (provider, provider_model_id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_provider_models_provider
+    ON provider_models(provider);
+
+  CREATE INDEX IF NOT EXISTS idx_provider_models_canonical
+    ON provider_models(canonical_model_id);
+
+  CREATE TABLE IF NOT EXISTS model_info_state (
+    key                TEXT PRIMARY KEY,
+    value              TEXT NOT NULL
+  );
+
+
 
   CREATE TABLE IF NOT EXISTS snapshots (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -1,0 +1,173 @@
+import { describe, expect, test } from "bun:test";
+import {
+	MODEL_INFO_TTL_MS,
+	buildModelMatchIndex,
+	getProvidersToRefreshFromEnv,
+	getRemoteProvidersFromEnv,
+	isProviderVisibleInSnapshot,
+	isStaleTimestamp,
+	matchCanonicalModelId,
+	parseModelsDevCapabilities,
+	resolveModelInfoFromRows,
+} from "./model-info.ts";
+
+describe("provider sync policy", () => {
+	test("freshness providers exclude ollama", () => {
+		expect(
+			getRemoteProvidersFromEnv({
+				OPENAI_API_KEY: "x",
+				GOOGLE_API_KEY: "y",
+			}),
+		).toEqual(["openai", "google"]);
+	});
+
+	test("refresh providers include ollama", () => {
+		expect(getProvidersToRefreshFromEnv({ OPENAI_API_KEY: "x" })).toEqual([
+			"openai",
+			"ollama",
+		]);
+	});
+
+	test("snapshot visibility tracks configured providers", () => {
+		expect(isProviderVisibleInSnapshot("openai", {})).toBe(false);
+		expect(isProviderVisibleInSnapshot("openai", { OPENAI_API_KEY: "x" })).toBe(
+			true,
+		);
+		expect(isProviderVisibleInSnapshot("ollama", {})).toBe(true);
+	});
+});
+
+describe("parseModelsDevCapabilities", () => {
+	test("parses context and reasoning from models.dev payload", () => {
+		const rows = parseModelsDevCapabilities(
+			{
+				openai: {
+					models: {
+						"gpt-5.2": {
+							id: "gpt-5.2",
+							limit: { context: 400_000 },
+							reasoning: true,
+						},
+						"gpt-5.3-codex": {
+							limit: { context: 400_000 },
+							reasoning: true,
+						},
+					},
+				},
+			},
+			123,
+		);
+
+		const byId = new Map(rows.map((row) => [row.canonical_model_id, row]));
+		expect(byId.get("gpt-5.2")?.context_window).toBe(400_000);
+		expect(byId.get("gpt-5.2")?.reasoning).toBe(1);
+		expect(byId.get("gpt-5.3-codex")?.context_window).toBe(400_000);
+		expect(byId.get("gpt-5.3-codex")?.reasoning).toBe(1);
+	});
+});
+
+describe("model match index", () => {
+	test("matches exact canonical ids", () => {
+		const index = buildModelMatchIndex(["openai/gpt-5.2"]);
+		expect(matchCanonicalModelId("OPENAI/GPT-5.2", index)).toBe(
+			"openai/gpt-5.2",
+		);
+	});
+
+	test("uses unique basename alias fallback", () => {
+		const index = buildModelMatchIndex(["openai/gpt-5.2"]);
+		expect(matchCanonicalModelId("gpt-5.2", index)).toBe("openai/gpt-5.2");
+	});
+
+	test("does not match ambiguous basename aliases", () => {
+		const index = buildModelMatchIndex(["openai/gpt-5.2", "custom/gpt-5.2"]);
+		expect(matchCanonicalModelId("gpt-5.2", index)).toBeNull();
+	});
+});
+
+describe("staleness", () => {
+	test("uses 7-day ttl", () => {
+		const now = 1_000_000_000;
+		expect(isStaleTimestamp(null, now)).toBe(true);
+		expect(isStaleTimestamp(now - MODEL_INFO_TTL_MS + 1, now)).toBe(false);
+		expect(isStaleTimestamp(now - MODEL_INFO_TTL_MS - 1, now)).toBe(true);
+	});
+});
+
+describe("resolveModelInfoFromRows", () => {
+	const capabilities = [
+		{
+			canonical_model_id: "gpt-5.2",
+			context_window: 400_000,
+			reasoning: 1,
+			source_provider: "openai",
+			raw_json: null,
+			updated_at: 1,
+		},
+	];
+
+	const providers = [
+		{
+			provider: "openai",
+			provider_model_id: "gpt-5.2",
+			display_name: "GPT-5.2",
+			canonical_model_id: "gpt-5.2",
+			context_window: null,
+			free: 0,
+			updated_at: 1,
+		},
+		{
+			provider: "zen",
+			provider_model_id: "gpt-5.2",
+			display_name: "GPT-5.2",
+			canonical_model_id: "gpt-5.2",
+			context_window: 128_000,
+			free: 0,
+			updated_at: 1,
+		},
+		{
+			provider: "ollama",
+			provider_model_id: "qwen2.5-coder",
+			display_name: "qwen2.5-coder",
+			canonical_model_id: null,
+			context_window: 32_768,
+			free: 0,
+			updated_at: 1,
+		},
+	];
+
+	test("uses canonical capabilities and provider fallback context", () => {
+		expect(
+			resolveModelInfoFromRows("openai/gpt-5.2", capabilities, providers),
+		).toEqual({
+			canonicalModelId: "gpt-5.2",
+			contextWindow: 400_000,
+			reasoning: true,
+		});
+
+		expect(
+			resolveModelInfoFromRows("ollama/qwen2.5-coder", capabilities, providers),
+		).toEqual({
+			canonicalModelId: null,
+			contextWindow: 32_768,
+			reasoning: false,
+		});
+	});
+
+	test("returns same capabilities across providers for same canonical model", () => {
+		const openaiInfo = resolveModelInfoFromRows(
+			"openai/gpt-5.2",
+			capabilities,
+			providers,
+		);
+		const zenInfo = resolveModelInfoFromRows(
+			"zen/gpt-5.2",
+			capabilities,
+			providers,
+		);
+
+		expect(openaiInfo).toEqual(zenInfo);
+		expect(openaiInfo?.contextWindow).toBe(400_000);
+		expect(openaiInfo?.reasoning).toBe(true);
+	});
+});

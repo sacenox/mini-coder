@@ -6,6 +6,14 @@ import type { LanguageModel } from "ai";
 import { createOllama } from "ollama-ai-provider";
 
 import { logApiEvent } from "./api-log.ts";
+import {
+	type AvailableModelsSnapshot,
+	type LiveModel,
+	fetchAvailableModelsSnapshot,
+	getContextWindow as getContextWindowFromCache,
+	supportsThinking as supportsThinkingFromCache,
+} from "./model-info.ts";
+
 // ─── Zen endpoint constants ────────────────────────────────────────────────────
 
 function getFetchWithLogging(): typeof fetch {
@@ -167,53 +175,10 @@ export function parseModelString(modelString: string): {
 	};
 }
 
-// ─── Context window table ─────────────────────────────────────────────────────
-// Maps model ID substrings (matched in order) to token limits.
-// Covers all Zen models plus common direct-provider model families.
-// When a model isn't matched, callers fall back to showing raw token counts.
-
-const CONTEXT_WINDOW_TABLE: Array<[pattern: RegExp, tokens: number]> = [
-	// Claude — all modern models are 200k
-	[/^claude-/, 200_000],
-	// Gemini — all Gemini 3.x are 1M
-	[/^gemini-/, 1_000_000],
-	// GPT-5 series — 128k
-	[/^gpt-5/, 128_000],
-	// GPT-4o / GPT-4 series — 128k
-	[/^gpt-4/, 128_000],
-	// Kimi K2 / K2.5 — 262k
-	[/^kimi-k2/, 262_000],
-	// MiniMax M2 — 196k
-	[/^minimax-m2/, 196_000],
-	// GLM 5 / 4.x — 128k
-	[/^glm-/, 128_000],
-	// Qwen3 Coder — 131k (Qwen3 standard)
-	[/^qwen3-/, 131_000],
-];
 export type ThinkingEffort = "low" | "medium" | "high" | "xhigh";
 
-// Maps model-ID patterns (tested against the bare model ID, not provider/id)
-// to whether the model supports thinking/reasoning.
-// Matched in order; first match wins.
-const REASONING_MODELS: Array<RegExp> = [
-	// Anthropic — Claude 3.5+ and Claude 3.7+ support extended thinking
-	/^claude-3-5-sonnet/,
-	/^claude-3-7/,
-	/^claude-sonnet-4/,
-	/^claude-opus-4/,
-	// OpenAI — o-series and GPT-5 reasoning models
-	/^o1/,
-	/^o3/,
-	/^o4/,
-	/^gpt-5/,
-	// Google — Gemini 2.5+ and Gemini 3.x
-	/^gemini-2\.5/,
-	/^gemini-3/,
-];
-
 export function supportsThinking(modelString: string): boolean {
-	const { modelId } = parseModelString(modelString);
-	return REASONING_MODELS.some((p) => p.test(modelId));
+	return supportsThinkingFromCache(modelString);
 }
 
 // Token budgets for Anthropic extended thinking (budget_tokens mode).
@@ -332,11 +297,7 @@ export function getThinkingProviderOptions(
  * Returns null when the model is unknown.
  */
 export function getContextWindow(modelString: string): number | null {
-	const { modelId } = parseModelString(modelString);
-	for (const [pattern, tokens] of CONTEXT_WINDOW_TABLE) {
-		if (pattern.test(modelId)) return tokens;
-	}
-	return null;
+	return getContextWindowFromCache(modelString);
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -426,76 +387,10 @@ export function availableProviders(): string[] {
 	return providers;
 }
 
-// ─── Live model listing ───────────────────────────────────────────────────────
+// ─── Cached model listing ─────────────────────────────────────────────────────
 
-export interface LiveModel {
-	id: string;
-	displayName: string;
-	provider: string;
-	context?: number | undefined;
-	free?: boolean | undefined;
-}
+export type { LiveModel };
 
-/** Fetch live model list from OpenCode Zen */
-async function fetchZenModels(): Promise<LiveModel[]> {
-	const key = process.env.OPENCODE_API_KEY;
-	if (!key) return [];
-	try {
-		const res = await fetch(`${ZEN_BASE}/models`, {
-			headers: { Authorization: `Bearer ${key}` },
-			signal: AbortSignal.timeout(8000),
-		});
-		if (!res.ok) return [];
-		const json = (await res.json()) as {
-			data?: Array<{ id: string; context_window?: number }>;
-		};
-		const models = json.data ?? [];
-		return models.map((m) => ({
-			id: `zen/${m.id}`,
-			displayName: m.id,
-			provider: "zen",
-			context: m.context_window,
-			free:
-				m.id.endsWith("-free") ||
-				m.id === "gpt-5-nano" ||
-				m.id === "big-pickle",
-		}));
-	} catch {
-		return [];
-	}
-}
-
-/** Fetch live model list from local Ollama */
-async function fetchOllamaModels(): Promise<LiveModel[]> {
-	const base = process.env.OLLAMA_BASE_URL ?? "http://localhost:11434";
-	try {
-		const res = await fetch(`${base}/api/tags`, {
-			signal: AbortSignal.timeout(3000),
-		});
-		if (!res.ok) return [];
-		const json = (await res.json()) as {
-			models?: Array<{ name: string; details?: { parameter_size?: string } }>;
-		};
-		return (json.models ?? []).map((m) => ({
-			id: `ollama/${m.name}`,
-			displayName:
-				m.name +
-				(m.details?.parameter_size ? ` (${m.details.parameter_size})` : ""),
-			provider: "ollama",
-		}));
-	} catch {
-		return [];
-	}
-}
-
-/**
- * Fetch live model lists from all configured providers.
- * Falls back to an empty array per provider on error.
- */
-export async function fetchAvailableModels(): Promise<LiveModel[]> {
-	const [zen, ollama] = await Promise.all([
-		fetchZenModels(),
-		fetchOllamaModels(),
-	]);
-	return [...zen, ...ollama];
+export async function fetchAvailableModels(): Promise<AvailableModelsSnapshot> {
+	return fetchAvailableModelsSnapshot();
 }

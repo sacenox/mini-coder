@@ -4,3 +4,4 @@ export * from "./message-repo.ts";
 export * from "./settings-repo.ts";
 export * from "./mcp-repo.ts";
 export * from "./snapshot-repo.ts";
+export * from "./model-info-repo.ts";
