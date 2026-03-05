@@ -2,6 +2,12 @@
 
 ---
 
+## Subagents id/number/lane could be made more robust
+
+- Currently we use an incremental integer for this, but in a long session with several conversations (user uses /new) it can become confusing (seeing subagent number 16 after /new).  Let's think of a better way to id subagents and their lanes/worktrees.  Maybe with a UUID?
+
+---
+
 ## Write blog posts
 
 - Codex being big dumb and lazy without strong guidance in system prompt/instructions
@@ -35,5 +41,5 @@ We need to do research first, but maybe we can leverage the hooks feature to ach
 
 ## Deferred fixes
 
-- model-info: in `resolveFromProviderRow`, when canonical capability exists but `contextWindow` is null, fall back to provider row context (`capability.contextWindow ?? row.contextWindow`). This should have been done as part of the worktrees implementation.
+- model-info: in `resolveFromProviderRow`, when canonical capability exists but `contextWindow` is null, fall back to provider row context (`capability.contextWindow ?? row.contextWindow`).
 - Worktrees share bun lockfile and node_modules.  Question this choice, is this really a good idea, or just an opportunity for things to go wrong?
