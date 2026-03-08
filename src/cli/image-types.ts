@@ -1,6 +1,6 @@
 // ─── Shared image type constants ──────────────────────────────────────────────
 
-export const IMAGE_EXTENSIONS = new Set([
+const IMAGE_EXTENSIONS = new Set([
 	"png",
 	"jpg",
 	"jpeg",

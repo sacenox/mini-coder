@@ -41,7 +41,7 @@ export interface CommandContext {
 	cwd: string;
 }
 
-export type CommandResult =
+type CommandResult =
 	| { type: "handled" }
 	| { type: "unknown"; command: string }
 	| { type: "exit" }

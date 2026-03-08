@@ -218,7 +218,7 @@ export async function createWorktree(
 	return path;
 }
 
-export type MergeWorktreeResult =
+type MergeWorktreeResult =
 	| { success: true }
 	| { success: false; conflictFiles: string[] };
 

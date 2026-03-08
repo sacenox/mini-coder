@@ -7,7 +7,7 @@ import {
 } from "../tools/snapshot.ts";
 import type { AgentReporter } from "./reporter.ts";
 
-export interface UndoContext {
+interface UndoContext {
 	session: ActiveSession;
 	coreHistory: CoreMessage[];
 	snapshotStack: Array<number | null>;

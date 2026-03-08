@@ -27,7 +27,7 @@ import type { AgentReporter } from "./reporter.ts";
 import { buildSystemPrompt } from "./system-prompt.ts";
 import { buildReadOnlyToolSet } from "./tools.ts";
 
-export interface SessionRunnerOptions {
+interface SessionRunnerOptions {
 	cwd: string;
 	reporter: AgentReporter;
 	tools: ToolDef[];

@@ -2,7 +2,7 @@
 
 import { loadMarkdownConfigs } from "./load-markdown-configs.ts";
 
-export interface Skill {
+interface Skill {
 	name: string;
 	description: string;
 	/** Full content of the SKILL.md (frontmatter + body) */

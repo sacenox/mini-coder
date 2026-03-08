@@ -87,7 +87,7 @@ function withHooks<TInput extends { cwd?: string }, TOutput>(
 
 // ─── Tool registry ────────────────────────────────────────────────────────────
 
-export const MAX_SUBAGENT_DEPTH = 3;
+const MAX_SUBAGENT_DEPTH = 3;
 
 // Names of all local tools that support hooks (MCP tools are excluded).
 const HOOKABLE_TOOLS = [

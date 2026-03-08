@@ -8,7 +8,7 @@ import { hasRalphSignal, runShellPassthrough } from "./agent-helpers.ts";
 import type { AgentReporter } from "./reporter.ts";
 import type { SessionRunner } from "./session-runner.ts";
 
-export interface InputLoopOptions {
+interface InputLoopOptions {
 	cwd: string;
 	reporter: AgentReporter;
 	cmdCtx: CommandContext;

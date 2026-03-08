@@ -88,8 +88,6 @@ export { renderTurn } from "./stream-render.ts";
 export {
 	formatSubagentLabel,
 	renderSubagentEvent,
-	renderToolResult,
-	renderToolCall,
 	renderHook,
 } from "./tool-render.ts";
 export { renderStatusBar } from "./status-bar.ts";

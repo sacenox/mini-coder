@@ -31,7 +31,7 @@ const CODEX_AUTONOMY = `
 - Do NOT ask "shall I proceed?", "shall I start?", "reply X to continue", or any equivalent. Just start.
 - If something is ambiguous, pick the most reasonable interpretation, implement it, and note the assumption at the end.`;
 
-export function isCodexModel(modelString: string): boolean {
+function isCodexModel(modelString: string): boolean {
 	const { modelId } = parseModelString(modelString);
 	return modelId.includes("codex");
 }

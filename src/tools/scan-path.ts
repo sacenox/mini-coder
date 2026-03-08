@@ -1,6 +1,6 @@
 import { relative, resolve, sep } from "node:path";
 
-export interface ScanPathInfo {
+interface ScanPathInfo {
 	absolute: string;
 	relativePath: string;
 	ignoreTargets: readonly string[];

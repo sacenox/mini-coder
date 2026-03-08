@@ -20,7 +20,7 @@ const PROVIDER_SYNC_KEY_PREFIX = "last_provider_sync_at:";
 
 export const MODEL_INFO_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
-export interface ModelInfo {
+interface ModelInfo {
 	canonicalModelId: string | null;
 	contextWindow: number | null;
 	reasoning: boolean;
@@ -65,7 +65,7 @@ interface RuntimeCache {
 	state: Map<string, string>;
 }
 
-export interface ModelMatchIndex {
+interface ModelMatchIndex {
 	exact: Map<string, string>;
 	alias: Map<string, string | null>;
 }
@@ -256,7 +256,7 @@ export function isStaleTimestamp(
 	return now - timestamp > ttlMs;
 }
 
-export function buildRuntimeCache(
+function buildRuntimeCache(
 	capabilityRows: ModelCapabilityRow[],
 	providerRows: ProviderModelRow[],
 	stateRows: Array<{ key: string; value: string }>,
@@ -355,7 +355,7 @@ export function getProvidersToRefreshFromEnv(
 	return [...getRemoteProvidersFromEnv(env), "ollama"];
 }
 
-export function getVisibleProvidersForSnapshotFromEnv(
+function getVisibleProvidersForSnapshotFromEnv(
 	env: Record<string, string | undefined>,
 ): ReadonlySet<string> {
 	return new Set(getProvidersToRefreshFromEnv(env));
@@ -380,7 +380,7 @@ function getProviderSyncKey(provider: string): string {
 	return `${PROVIDER_SYNC_KEY_PREFIX}${provider}`;
 }
 
-export function isModelInfoStale(now = Date.now()): boolean {
+function isModelInfoStale(now = Date.now()): boolean {
 	ensureLoaded();
 	if (isStaleTimestamp(parseStateInt(MODELS_DEV_SYNC_KEY), now)) return true;
 	for (const provider of getProvidersRequiredForFreshness()) {
@@ -655,7 +655,7 @@ export function refreshModelInfoInBackground(opts?: {
 	return refreshInFlight;
 }
 
-export function isModelInfoRefreshing(): boolean {
+function isModelInfoRefreshing(): boolean {
 	return refreshInFlight !== null;
 }
 
@@ -719,7 +719,7 @@ function resolveModelInfoInCache(
 	return null;
 }
 
-export function resolveModelInfo(modelString: string): ModelInfo | null {
+function resolveModelInfo(modelString: string): ModelInfo | null {
 	ensureLoaded();
 	return resolveModelInfoInCache(modelString, runtimeCache);
 }

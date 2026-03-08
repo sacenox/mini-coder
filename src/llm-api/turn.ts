@@ -1,6 +1,5 @@
 import { dynamicTool, jsonSchema, stepCountIs, streamText } from "ai";
 import type { FlexibleSchema, StepResult } from "ai";
-import { z } from "zod";
 import { logApiEvent } from "./api-log.ts";
 import { parseModelString } from "./providers.ts";
 import {
@@ -276,5 +275,3 @@ export async function* runTurn(options: {
 		};
 	}
 }
-
-export { z };

@@ -22,7 +22,7 @@ import { getGitBranch } from "./agent-helpers.ts";
 import { runInputLoop } from "./input-loop.ts";
 import { SessionRunner } from "./session-runner.ts";
 
-export interface AgentOptions {
+interface AgentOptions {
 	model: string;
 	cwd: string;
 	initialThinkingEffort: ThinkingEffort | null;

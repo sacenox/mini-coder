@@ -8,7 +8,7 @@ import { G, writeln } from "./output.ts";
 const HOME = homedir();
 
 /** Strip the `linenum:hash| ` prefix that hashline-formatted tool outputs include. */
-export function stripHashlinePrefix(text: string): string {
+function stripHashlinePrefix(text: string): string {
 	return text.replace(/^\d+:[0-9a-f]{2}\| /, "");
 }
 
@@ -25,7 +25,7 @@ function commonPrefix(paths: string[]): string {
 	return prefix;
 }
 
-export function toolGlyph(name: string): string {
+function toolGlyph(name: string): string {
 	if (name === "glob" || name === "grep") return G.search;
 	if (name === "read") return G.read;
 	if (name === "create" || name === "replace" || name === "insert")
@@ -36,7 +36,7 @@ export function toolGlyph(name: string): string {
 	return G.info;
 }
 
-export function toolCallLine(name: string, args: unknown): string {
+function toolCallLine(name: string, args: unknown): string {
 	const a =
 		args && typeof args === "object" ? (args as Record<string, unknown>) : {};
 
@@ -112,7 +112,7 @@ export function renderHook(
 	}
 }
 
-export function renderDiff(diff: string): void {
+function renderDiff(diff: string): void {
 	if (!diff || diff === "(no changes)") return;
 	for (const line of diff.split("\n")) {
 		if (line.startsWith("+++") || line.startsWith("---")) {
@@ -129,7 +129,7 @@ export function renderDiff(diff: string): void {
 	}
 }
 
-export function renderToolResultInline(
+function renderToolResultInline(
 	toolName: string,
 	result: unknown,
 	isError: boolean,
