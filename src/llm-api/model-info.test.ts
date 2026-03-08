@@ -7,6 +7,7 @@ import {
 	isProviderVisibleInSnapshot,
 	isStaleTimestamp,
 	matchCanonicalModelId,
+	normalizeModelId,
 	parseModelsDevCapabilities,
 	resolveModelInfoFromRows,
 } from "./model-info.ts";
@@ -63,6 +64,68 @@ describe("parseModelsDevCapabilities", () => {
 		expect(byId.get("gpt-5.2")?.reasoning).toBe(1);
 		expect(byId.get("gpt-5.3-codex")?.context_window).toBe(400_000);
 		expect(byId.get("gpt-5.3-codex")?.reasoning).toBe(1);
+	});
+
+	test("normalizes repeated models/ prefixes and merges duplicate providers", () => {
+		const rows = parseModelsDevCapabilities(
+			{
+				google: {
+					models: {
+						"Gemini-2.5-Pro": {
+							id: "models/models/Gemini-2.5-Pro",
+						},
+					},
+				},
+				openai: {
+					models: {
+						"gemini-2.5-pro": {
+							limit: { context: 128.9 },
+							reasoning: true,
+						},
+					},
+				},
+			},
+			456,
+		);
+
+		expect(rows).toEqual([
+			{
+				canonical_model_id: "gemini-2.5-pro",
+				context_window: 128,
+				reasoning: 1,
+				source_provider: "google",
+				raw_json: JSON.stringify({ id: "models/models/Gemini-2.5-Pro" }),
+				updated_at: 456,
+			},
+		]);
+	});
+
+	test("sanitizes invalid context window values", () => {
+		const rows = parseModelsDevCapabilities(
+			{
+				openai: {
+					models: {
+						negative: { limit: { context: -12.9 } },
+						fractional: { limit: { context: 4096.9 } },
+						invalid: { limit: { context: Number.NaN } },
+						stringy: { limit: { context: "128000" } },
+					},
+				},
+			},
+			789,
+		);
+
+		const byId = new Map(rows.map((row) => [row.canonical_model_id, row]));
+		expect(byId.get("negative")?.context_window).toBe(0);
+		expect(byId.get("fractional")?.context_window).toBe(4096);
+		expect(byId.get("invalid")?.context_window).toBeNull();
+		expect(byId.get("stringy")?.context_window).toBeNull();
+	});
+});
+
+describe("normalizeModelId", () => {
+	test("trims, lowercases, and removes repeated models/ prefixes", () => {
+		expect(normalizeModelId("  MODELS/models/GPT-5.2  ")).toBe("gpt-5.2");
 	});
 });
 
