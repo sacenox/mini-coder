@@ -1,10 +1,22 @@
 # TODO
 
+## Disambiguiate CTRL+c to quit vs interrupt/return to prompt
+
+- Let's change it so we use ESC to interrupt gracefully the assistant (cancel)
+
+---
+
+## Weird prompt behaviours related to past
+
+- Weird whitepace when reaching max line length in the terminal
+- `PASTE` word appears verbatim sometimes
+- Extra spaces at the end of the line, pushing the cursor away from the text
+
 ---
 
 ## Subagents id/number/lane could be made more robust
 
-- Currently we use an incremental integer for this, but in a long session with several conversations (user uses /new) it can become confusing (seeing subagent number 16 after /new).  Let's think of a better way to id subagents and their lanes/worktrees.  Maybe with a UUID?
+- Currently we use an incremental integer for this, but in a long session with several conversations (user uses /new) it can become confusing (seeing subagent number 16 after /new). Let's think of a better way to id subagents and their lanes/worktrees. Maybe with a UUID?
 
 ---
 
@@ -23,9 +35,9 @@ We currently have a ton of overlap with these features, Commands run within suba
 
 Let's clean things up:
 
-- `/review` command should use the same code as a custom-commands, consolidate the two.  We can create the global `/review` command in `~/.agents/commands` at app start if it doesn't exist.  That way it can be a pure custom command and the users are encouraged to edit it for their own custom reviews. Never overwrite the file if it exists. Print a line notifying the user that the command was created.
+- `/review` command should use the same code as a custom-commands, consolidate the two. We can create the global `/review` command in `~/.agents/commands` at app start if it doesn't exist. That way it can be a pure custom command and the users are encouraged to edit it for their own custom reviews. Never overwrite the file if it exists. Print a line notifying the user that the command was created.
 
-- Custom commands and custom subagents:  Custom commands just spawn generic subagents with a dedicated prompt, custom agents are just subagents with a dedicated system prompt and a main agent provided prompt.  I believe these are already well implemented, and share most of the code.
+- Custom commands and custom subagents: Custom commands just spawn generic subagents with a dedicated prompt, custom agents are just subagents with a dedicated system prompt and a main agent provided prompt. I believe these are already well implemented, and share most of the code.
 
 ---
 
@@ -42,4 +54,4 @@ We need to do research first, but maybe we can leverage the hooks feature to ach
 ## Deferred fixes
 
 - model-info: in `resolveFromProviderRow`, when canonical capability exists but `contextWindow` is null, fall back to provider row context (`capability.contextWindow ?? row.contextWindow`).
-- Worktrees share bun lockfile and node_modules.  Question this choice, is this really a good idea, or just an opportunity for things to go wrong?
+- Worktrees share bun lockfile and node_modules. Question this choice, is this really a good idea, or just an opportunity for things to go wrong?

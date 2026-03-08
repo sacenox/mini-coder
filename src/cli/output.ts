@@ -72,7 +72,9 @@ export function renderBanner(model: string, cwd: string): void {
 	writeln();
 	writeln(`  ${c.cyan("mc")}  ${c.dim(`mini-coder · v${PACKAGE_VERSION}`)}`);
 	writeln(`  ${c.dim(model)}  ${c.dim("·")}  ${c.dim(cwd)}`);
-	writeln(`  ${c.dim("/help for commands  ·  ctrl+d to exit")}`);
+	writeln(
+		`  ${c.dim("/help for commands  ·  esc cancel  ·  ctrl+c/ctrl+d exit")}`,
+	);
 	writeln();
 }
 

@@ -108,18 +108,15 @@ describe("hasRalphSignal", () => {
 	});
 });
 
-// ─── Ctrl+C / interrupt handling ──────────────────────────────────────────────
+// ─── ESC / Ctrl+C handling ────────────────────────────────────────────────────
 //
 // Behaviour contract:
-//   • During an LLM turn, Ctrl+C cancels the turn and returns to the prompt.
-//   • Ctrl+C when no turn is active exits the process.
+//   • During an LLM turn, ESC cancels the turn and returns to the prompt.
+//   • Ctrl+C exits the process.
 //
 // Architecture:
-//   watchForInterrupt() (input.ts) sets stdin to raw mode and listens for
-//   byte 0x03 (Ctrl+C) directly — no SIGINT involved.  This sidesteps Bun's
-//   unreliable SIGINT delivery when stdin is in raw mode.
-//   registerTerminalCleanup() (output.ts) handles SIGINT for the idle case
-//   (non-TTY, subprocesses sending SIGINT, etc.) and simply calls process.exit.
+//   watchForCancel() (input.ts) sets stdin to raw mode and listens for
+//   byte 0x1B (ESC) to abort the turn, and byte 0x03 (Ctrl+C) to quit.
 //
 // These tests verify the AbortController / abort-signal wiring independently
 // of the actual TTY/stdin machinery.

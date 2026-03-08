@@ -41,6 +41,8 @@ const CTRL_K = "\x0B";
 const CTRL_L = "\x0C";
 const CTRL_R = "\x12";
 const TAB = "\x09";
+const ESC_BYTE = 0x1b;
+const CTRL_C_BYTE = 0x03;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -184,42 +186,65 @@ async function readKey(reader: StreamReader): Promise<string> {
 	return new TextDecoder().decode(value);
 }
 
-// ─── Interrupt watcher (used during LLM turns) ────────────────────────────────
-// While the LLM is streaming we keep stdin in raw mode so that Ctrl+C arrives
-// as byte 0x03. We listen directly on process.stdin via a dedicated 'data'
+// ─── Turn cancel watcher (used during LLM turns) ─────────────────────────────
+// While the LLM is streaming we keep stdin in raw mode so ESC and Ctrl+C arrive
+// as raw bytes. We listen directly on process.stdin via a dedicated 'data'
 // handler — NOT via the shared ReadableStream reader — so that the watcher and
-// readline() never race for the same bytes.  The caller must call the returned
+// readline() never race for the same bytes. The caller must call the returned
 // stop() in a finally block.
 
-export function watchForInterrupt(
-	abortController: AbortController,
-): () => void {
-	if (!process.stdin.isTTY) return () => {};
+export function getTurnControlAction(
+	chunk: Uint8Array,
+): "cancel" | "quit" | null {
+	for (const byte of chunk) {
+		if (byte === ESC_BYTE) return "cancel";
+		if (byte === CTRL_C_BYTE) return "quit";
+	}
+	return null;
+}
 
-	const onInterrupt = () => {
+function exitOnCtrlC(opts?: {
+	printNewline?: boolean;
+	disableBracketedPaste?: boolean;
+}): never {
+	if (opts?.printNewline) process.stdout.write("\n");
+	if (opts?.disableBracketedPaste) process.stdout.write(BPASTE_DISABLE);
+	terminal.setInterruptHandler(null);
+	terminal.setRawMode(false);
+	process.stdin.pause();
+	terminal.restoreTerminal();
+	process.exit(130);
+}
+
+export function watchForCancel(abortController: AbortController): () => void {
+	if (!terminal.isTTY) return () => {};
+
+	const onCancel = () => {
 		cleanup();
 		abortController.abort();
 	};
 
 	const onData = (chunk: Buffer) => {
-		for (const byte of chunk) {
-			if (byte === 0x03) {
-				// Ctrl+C received — abort and clean up immediately.
-				onInterrupt();
-				return;
-			}
+		const action = getTurnControlAction(chunk);
+		if (action === "cancel") {
+			onCancel();
+			return;
+		}
+		if (action === "quit") {
+			cleanup();
+			exitOnCtrlC({ printNewline: true });
 		}
 	};
 
 	const cleanup = () => {
 		process.stdin.removeListener("data", onData);
 		terminal.setInterruptHandler(null);
-		process.stdin.setRawMode(false);
+		terminal.setRawMode(false);
 		process.stdin.pause();
 	};
 
-	terminal.setInterruptHandler(onInterrupt);
-	process.stdin.setRawMode(true);
+	terminal.setInterruptHandler(onCancel);
+	terminal.setRawMode(true);
 	process.stdin.resume();
 	process.stdin.on("data", onData);
 
@@ -267,7 +292,7 @@ export async function readline(opts: {
 	let pasteBuffer: string | null = null; // full text of a pending paste
 	const imageAttachments: ImageAttachment[] = []; // images collected during this prompt
 
-	process.stdin.setRawMode(true);
+	terminal.setRawMode(true);
 	process.stdin.resume();
 	process.stdout.write(BPASTE_ENABLE);
 
@@ -461,8 +486,7 @@ export async function readline(opts: {
 
 			// ── Control keys ──────────────────────────────────────────────────────
 			if (raw === CTRL_C) {
-				process.stdout.write("\n");
-				return { type: "interrupt" };
+				exitOnCtrlC({ printNewline: true, disableBracketedPaste: true });
 			}
 
 			if (raw === CTRL_D) {
@@ -637,7 +661,7 @@ export async function readline(opts: {
 		// Do NOT cancel the shared reader — it is reused across readline() calls.
 		// Just reset raw mode and pause stdin until the next prompt.
 		process.stdout.write(BPASTE_DISABLE);
-		process.stdin.setRawMode(false);
+		terminal.setRawMode(false);
 		process.stdin.pause();
 	}
 }

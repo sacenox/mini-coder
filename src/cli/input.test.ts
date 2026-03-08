@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { pasteLabel } from "./input.ts";
+import { getTurnControlAction, pasteLabel } from "./input.ts";
 
 describe("pasteLabel", () => {
 	test("single short line", () => {
@@ -24,5 +24,24 @@ describe("pasteLabel", () => {
 
 	test("empty string", () => {
 		expect(pasteLabel("")).toBe('[pasted: ""]');
+	});
+});
+
+describe("getTurnControlAction", () => {
+	test("treats ESC as cancel", () => {
+		expect(getTurnControlAction(new Uint8Array([0x1b]))).toBe("cancel");
+	});
+
+	test("treats Ctrl+C as quit", () => {
+		expect(getTurnControlAction(new Uint8Array([0x03]))).toBe("quit");
+	});
+
+	test("uses the first matching control byte in the chunk", () => {
+		expect(getTurnControlAction(new Uint8Array([0x03, 0x1b]))).toBe("quit");
+		expect(getTurnControlAction(new Uint8Array([0x1b, 0x03]))).toBe("cancel");
+	});
+
+	test("ignores unrelated bytes", () => {
+		expect(getTurnControlAction(new Uint8Array([0x61, 0x62, 0x63]))).toBeNull();
 	});
 });

@@ -1,6 +1,6 @@
 import * as c from "yoctocolors";
 import type { ImageAttachment } from "../cli/image-types.ts";
-import { watchForInterrupt } from "../cli/input.ts";
+import { watchForCancel } from "../cli/input.ts";
 import { resolveModel } from "../llm-api/providers.ts";
 import type { ThinkingEffort } from "../llm-api/providers.ts";
 import type { CoreMessage } from "../llm-api/turn.ts";
@@ -107,7 +107,7 @@ export class SessionRunner {
 		abortController.signal.addEventListener("abort", () => {
 			wasAborted = true;
 		});
-		const stopWatcher = watchForInterrupt(abortController);
+		const stopWatcher = watchForCancel(abortController);
 
 		const { text: resolvedText, images: refImages } = await resolveFileRefs(
 			text,

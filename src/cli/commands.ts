@@ -508,7 +508,7 @@ function handleHelp(
 	);
 	writeln();
 	writeln(
-		`  ${c.dim("ctrl+c")}  cancel  ${c.dim("·")}  ${c.dim("ctrl+d")}  exit  ${c.dim("·")}  ${c.dim("ctrl+r")}  history search  ${c.dim("·")}  ${c.dim("↑↓")}  history`,
+		`  ${c.dim("esc")}  cancel response  ${c.dim("·")}  ${c.dim("ctrl+c")}  exit  ${c.dim("·")}  ${c.dim("ctrl+d")}  exit  ${c.dim("·")}  ${c.dim("ctrl+r")}  history search  ${c.dim("·")}  ${c.dim("↑↓")}  history`,
 	);
 	writeln();
 }
