@@ -64,6 +64,7 @@ export async function runInputLoop(opts: InputLoopOptions): Promise<void> {
 					runner.session.messages.push(msg);
 					saveMessages(runner.session.id, [msg], thisTurn);
 					runner.coreHistory.push(msg);
+					runner.snapshotStack.push(null);
 				}
 				continue;
 			}
