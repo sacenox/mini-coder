@@ -1,8 +1,9 @@
 import { existsSync, mkdirSync } from "node:fs";
-import { dirname, join, relative } from "node:path";
+import { dirname } from "node:path";
 import { z } from "zod";
 import type { ToolDef } from "../llm-api/types.ts";
 import { generateDiff } from "./diff.ts";
+import { resolvePath } from "./shared.ts";
 
 const CreateSchema = z.object({
 	path: z.string().describe("File path to write (absolute or relative to cwd)"),
@@ -25,12 +26,7 @@ export const createTool: ToolDef<CreateInput, CreateOutput> = {
 		"For targeted line edits on existing files, **use `replace` or `insert` instead**.",
 	schema: CreateSchema,
 	execute: async (input) => {
-		const cwd = input.cwd ?? process.cwd();
-		const filePath = input.path.startsWith("/")
-			? input.path
-			: join(cwd, input.path);
-
-		const relPath = relative(cwd, filePath);
+		const { filePath, relPath } = resolvePath(input.cwd, input.path);
 
 		const dir = dirname(filePath);
 		if (!existsSync(dir)) mkdirSync(dir, { recursive: true });

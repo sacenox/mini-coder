@@ -1,7 +1,7 @@
-import { join, relative } from "node:path";
 import { z } from "zod";
 import type { ToolDef } from "../llm-api/types.ts";
 import { formatHashLine } from "./hashline.ts";
+import { resolvePath } from "./shared.ts";
 
 const ReadSchema = z.object({
 	path: z.string().describe("File path to read (absolute or relative to cwd)"),
@@ -42,10 +42,7 @@ export const readTool: ToolDef<ReadInput, ReadOutput> = {
 		"paginate by incrementing `line`.",
 	schema: ReadSchema,
 	execute: async (input) => {
-		const cwd = input.cwd ?? process.cwd();
-		const filePath = input.path.startsWith("/")
-			? input.path
-			: join(cwd, input.path);
+		const { filePath, relPath } = resolvePath(input.cwd, input.path);
 
 		const file = Bun.file(filePath);
 		const exists = await file.exists();
@@ -77,7 +74,7 @@ export const readTool: ToolDef<ReadInput, ReadOutput> = {
 			.join("\n");
 
 		return {
-			path: relative(cwd, filePath),
+			path: relPath,
 			content,
 			totalLines,
 			line: clampedStart,

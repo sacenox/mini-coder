@@ -129,6 +129,28 @@ function renderDiff(diff: string): void {
 	}
 }
 
+function formatErrorBadge(result: unknown): string {
+	const msg =
+		typeof result === "string"
+			? result
+			: result instanceof Error
+				? result.message
+				: JSON.stringify(result);
+	const oneLiner = msg.split("\n")[0] ?? msg;
+	return `${G.err} ${c.red(oneLiner)}`;
+}
+
+function formatShellBadge(r: {
+	timedOut: boolean;
+	success: boolean;
+	exitCode: number;
+}): string {
+	return r.timedOut
+		? c.yellow("timeout")
+		: r.success
+			? c.green(`✔ ${r.exitCode}`)
+			: c.red(`✖ ${r.exitCode}`);
+}
 function renderToolResultInline(
 	toolName: string,
 	result: unknown,
@@ -136,23 +158,16 @@ function renderToolResultInline(
 	indent: string,
 ): void {
 	if (isError) {
-		const msg =
-			typeof result === "string"
-				? result
-				: result instanceof Error
-					? result.message
-					: JSON.stringify(result);
-		const oneLiner = msg.split("\n")[0] ?? msg;
-		writeln(`${indent}${G.err} ${c.red(oneLiner)}`);
+		writeln(`${indent}${formatErrorBadge(result)}`);
 		return;
 	}
 
 	if (toolName === "glob") {
-		const r = result as { files?: string[]; truncated?: boolean };
-		if (Array.isArray(r?.files)) {
-			const n = r.files.length;
+		const res = result as { files?: string[]; truncated?: boolean };
+		if (Array.isArray(res?.files)) {
+			const n = res.files.length;
 			writeln(
-				`${indent}${G.info} ${c.dim(n === 0 ? "no matches" : `${n} file${n === 1 ? "" : "s"}${r.truncated ? " (capped)" : ""}`)}`,
+				`${indent}${G.info} ${c.dim(n === 0 ? "no matches" : `${n} file${n === 1 ? "" : "s"}${res.truncated ? " (capped)" : ""}`)}`,
 			);
 			return;
 		}
@@ -198,11 +213,7 @@ function renderToolResultInline(
 			success: boolean;
 			timedOut: boolean;
 		};
-		const badge = r.timedOut
-			? c.yellow("timeout")
-			: r.success
-				? c.green(`✔ ${r.exitCode}`)
-				: c.red(`✖ ${r.exitCode}`);
+		const badge = formatShellBadge(r);
 		writeln(`${indent}${badge}`);
 		return;
 	}
@@ -260,15 +271,7 @@ export function renderToolResult(
 	isError: boolean,
 ): void {
 	if (isError) {
-		const msg =
-			typeof result === "string"
-				? result
-				: result instanceof Error
-					? result.message
-					: JSON.stringify(result);
-		// Trim to one line for error summaries
-		const oneLiner = msg.split("\n")[0] ?? msg;
-		writeln(`    ${G.err} ${c.red(oneLiner)}`);
+		writeln(`    ${formatErrorBadge(result)}`);
 		return;
 	}
 
@@ -384,11 +387,7 @@ export function renderToolResult(
 			timedOut: boolean;
 		};
 
-		const badge = r.timedOut
-			? c.yellow("timeout")
-			: r.success
-				? c.green(`✔ ${r.exitCode}`)
-				: c.red(`✖ ${r.exitCode}`);
+		const badge = formatShellBadge(r);
 
 		writeln(`    ${badge}`);
 

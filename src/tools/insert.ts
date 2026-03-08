@@ -1,8 +1,8 @@
-import { join, relative } from "node:path";
 import { z } from "zod";
 import type { ToolDef } from "../llm-api/types.ts";
 import { generateDiff } from "./diff.ts";
 import { findLineByHash } from "./hashline.ts";
+import { parseAnchor, resolveExistingFile } from "./shared.ts";
 
 const InsertSchema = z.object({
 	path: z.string().describe("File path to edit (absolute or relative to cwd)"),
@@ -34,19 +34,10 @@ export const insertTool: ToolDef<InsertInput, InsertOutput> = {
 		"To replace or delete lines use `replace`. To create a file use `create`.",
 	schema: InsertSchema,
 	execute: async (input) => {
-		const cwd = input.cwd ?? process.cwd();
-		const filePath = input.path.startsWith("/")
-			? input.path
-			: join(cwd, input.path);
-
-		const relPath = relative(cwd, filePath);
-
-		const file = Bun.file(filePath);
-		if (!(await file.exists())) {
-			throw new Error(
-				`File not found: "${relPath}". To create a new file use the \`create\` tool.`,
-			);
-		}
+		const { file, filePath, relPath } = await resolveExistingFile(
+			input.cwd,
+			input.path,
+		);
 
 		const parsed = parseAnchor(input.anchor);
 
@@ -72,34 +63,3 @@ export const insertTool: ToolDef<InsertInput, InsertOutput> = {
 		return { path: relPath, diff };
 	},
 };
-
-interface ParsedAnchor {
-	line: number;
-	hash: string;
-}
-
-function parseAnchor(value: string): ParsedAnchor {
-	const normalized = value.trim().endsWith("|")
-		? value.trim().slice(0, -1)
-		: value;
-	const match = /^\s*(\d+):([0-9a-fA-F]{2})\s*$/.exec(normalized);
-	if (!match) {
-		throw new Error(
-			`Invalid anchor. Expected format: "line:hh" (e.g. "11:a3").`,
-		);
-	}
-
-	const line = Number(match[1]);
-	if (!Number.isInteger(line) || line < 1) {
-		throw new Error("Invalid anchor line number.");
-	}
-
-	const hash = match[2];
-	if (!hash) {
-		throw new Error(
-			`Invalid anchor. Expected format: "line:hh" (e.g. "11:a3").`,
-		);
-	}
-
-	return { line, hash: hash.toLowerCase() };
-}

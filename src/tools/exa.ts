@@ -5,6 +5,31 @@ const ExaSearchSchema = z.object({
 	query: z.string().describe("The search query"),
 });
 
+async function fetchExa(endpoint: string, body: unknown) {
+	const apiKey = process.env.EXA_API_KEY;
+	if (!apiKey) {
+		throw new Error("EXA_API_KEY is not set.");
+	}
+
+	const response = await fetch(`https://api.exa.ai/${endpoint}`, {
+		method: "POST",
+		headers: {
+			"Content-Type": "application/json",
+			"x-api-key": apiKey,
+		},
+		body: JSON.stringify(body),
+	});
+
+	if (!response.ok) {
+		const errorBody = await response.text();
+		throw new Error(
+			`Exa API error: ${response.status} ${response.statusText} - ${errorBody}`,
+		);
+	}
+
+	return await response.json();
+}
+
 export const webSearchTool: ToolDef<
 	z.infer<typeof ExaSearchSchema>,
 	unknown
@@ -13,33 +38,12 @@ export const webSearchTool: ToolDef<
 	description: "Search the web for a query using Exa.",
 	schema: ExaSearchSchema,
 	execute: async (input) => {
-		const apiKey = process.env.EXA_API_KEY;
-		if (!apiKey) {
-			throw new Error("EXA_API_KEY is not set.");
-		}
-
-		const response = await fetch("https://api.exa.ai/search", {
-			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-				"x-api-key": apiKey,
-			},
-			body: JSON.stringify({
-				query: input.query,
-				type: "auto",
-				numResults: 10,
-				contents: { text: { maxCharacters: 4000 } },
-			}),
+		return fetchExa("search", {
+			query: input.query,
+			type: "auto",
+			numResults: 10,
+			contents: { text: { maxCharacters: 4000 } },
 		});
-
-		if (!response.ok) {
-			const errorBody = await response.text();
-			throw new Error(
-				`Exa API error: ${response.status} ${response.statusText} - ${errorBody}`,
-			);
-		}
-
-		return await response.json();
 	},
 };
 
@@ -58,30 +62,9 @@ export const webContentTool: ToolDef<
 	description: "Get the full content of specific URLs using Exa.",
 	schema: ExaContentSchema,
 	execute: async (input) => {
-		const apiKey = process.env.EXA_API_KEY;
-		if (!apiKey) {
-			throw new Error("EXA_API_KEY is not set.");
-		}
-
-		const response = await fetch("https://api.exa.ai/contents", {
-			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-				"x-api-key": apiKey,
-			},
-			body: JSON.stringify({
-				urls: input.urls,
-				text: { maxCharacters: 10000 },
-			}),
+		return fetchExa("contents", {
+			urls: input.urls,
+			text: { maxCharacters: 10000 },
 		});
-
-		if (!response.ok) {
-			const errorBody = await response.text();
-			throw new Error(
-				`Exa API error: ${response.status} ${response.statusText} - ${errorBody}`,
-			);
-		}
-
-		return await response.json();
 	},
 };

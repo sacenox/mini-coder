@@ -1,39 +1,20 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { hashLine } from "./hashline.ts";
 import { insertTool } from "./insert.ts";
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+import { createTestHelpers } from "./test-helpers.ts";
 
-let dir: string;
-
-async function write(name: string, content: string): Promise<string> {
-	await writeFile(join(dir, name), content);
-	return name;
-}
-
-async function read(name: string): Promise<string> {
-	return Bun.file(join(dir, name)).text();
-}
-
-function anchor(lineNum: number, lineContent: string): string {
-	return `${lineNum}:${hashLine(lineContent)}`;
-}
+const { setup, teardown, write, read, anchor, getDir } = createTestHelpers();
 
 // ---------------------------------------------------------------------------
 // Setup / teardown
 // ---------------------------------------------------------------------------
 
 beforeEach(async () => {
-	dir = await mkdtemp(join(tmpdir(), "mc-insert-test-"));
+	await setup("mc-insert-test-");
 });
 
 afterEach(async () => {
-	await rm(dir, { recursive: true, force: true });
+	await teardown();
 });
 
 // ---------------------------------------------------------------------------
@@ -45,7 +26,7 @@ describe("insertTool", () => {
 		const name = await write("f.txt", "a\nb\nc\n");
 		const result = await insertTool.execute({
 			path: name,
-			cwd: dir,
+			cwd: getDir(),
 			anchor: anchor(1, "a"),
 			position: "after",
 			content: "X",
@@ -61,7 +42,7 @@ describe("insertTool", () => {
 		const name = await write("f.txt", "a\nb\nc\n");
 		const result = await insertTool.execute({
 			path: name,
-			cwd: dir,
+			cwd: getDir(),
 			anchor: anchor(2, "b"),
 			position: "before",
 			content: "X",
@@ -76,7 +57,7 @@ describe("insertTool", () => {
 		const name = await write("f.txt", "a\nb\n");
 		await insertTool.execute({
 			path: name,
-			cwd: dir,
+			cwd: getDir(),
 			anchor: anchor(1, "a"),
 			position: "after",
 			content: "X\nY\nZ",
@@ -89,7 +70,7 @@ describe("insertTool", () => {
 		const name = await write("f.txt", "a\nb\n");
 		await insertTool.execute({
 			path: name,
-			cwd: dir,
+			cwd: getDir(),
 			anchor: anchor(1, "a"),
 			position: "before",
 			content: "FIRST",
@@ -102,7 +83,7 @@ describe("insertTool", () => {
 		const name = await write("f.txt", "a\nb\n");
 		await insertTool.execute({
 			path: name,
-			cwd: dir,
+			cwd: getDir(),
 			anchor: anchor(2, "b"),
 			position: "after",
 			content: "LAST",
@@ -115,7 +96,7 @@ describe("insertTool", () => {
 		const name = await write("f.txt", "a\nb\n");
 		const result = await insertTool.execute({
 			path: name,
-			cwd: dir,
+			cwd: getDir(),
 			anchor: anchor(1, "a"),
 			position: "after",
 			content: "X",
@@ -128,7 +109,7 @@ describe("insertTool", () => {
 		const name = await write("f.txt", "a\nb\nc\n");
 		const result = await insertTool.execute({
 			path: name,
-			cwd: dir,
+			cwd: getDir(),
 			anchor: anchor(2, "b"),
 			position: "after",
 			content: "NEW",
@@ -142,7 +123,7 @@ describe("insertTool", () => {
 		await expect(
 			insertTool.execute({
 				path: "missing.txt",
-				cwd: dir,
+				cwd: getDir(),
 				anchor: "1:00",
 				position: "after",
 				content: "X",
@@ -155,7 +136,7 @@ describe("insertTool", () => {
 		await expect(
 			insertTool.execute({
 				path: name,
-				cwd: dir,
+				cwd: getDir(),
 				anchor: "2:ff", // wrong hash for "b"
 				position: "after",
 				content: "X",
@@ -168,7 +149,7 @@ describe("insertTool", () => {
 		await expect(
 			insertTool.execute({
 				path: name,
-				cwd: dir,
+				cwd: getDir(),
 				anchor: "not-an-anchor",
 				position: "before",
 				content: "X",
@@ -179,7 +160,7 @@ describe("insertTool", () => {
 		const name = await write("f.txt", "a\nb\nc\n");
 		await insertTool.execute({
 			path: name,
-			cwd: dir,
+			cwd: getDir(),
 			anchor: `${anchor(2, "b")}|`,
 			position: "after",
 			content: "X",
