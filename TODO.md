@@ -2,15 +2,6 @@
 
 ---
 
-## Weird prompt behaviours related to paste
-
-- Weird whitepace when reaching max line length in the terminal
-- `PASTE` word appears verbatim sometimes
-- Extra spaces at the end of the line, pushing the cursor away from the text
-- Pressing two keys simultaneously triggers the paste styling
-
----
-
 ## Subagents id/number/lane could be made more robust
 
 - Currently we use an incremental integer for this, but in a long session with several conversations (user uses /new) it can become confusing (seeing subagent number 16 after /new). Let's think of a better way to id subagents and their lanes/worktrees. Maybe with a UUID?

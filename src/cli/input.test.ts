@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { getTurnControlAction, pasteLabel } from "./input.ts";
+import {
+	buildPromptDisplay,
+	expandInputBuffer,
+	getTurnControlAction,
+	pasteLabel,
+	pruneInputPasteTokens,
+	renderInputBuffer,
+} from "./input.ts";
 
 describe("pasteLabel", () => {
 	test("single short line", () => {
@@ -24,6 +31,84 @@ describe("pasteLabel", () => {
 
 	test("empty string", () => {
 		expect(pasteLabel("")).toBe('[pasted: ""]');
+	});
+});
+
+const PASTE_A = String.fromCharCode(0xe000);
+const PASTE_B = String.fromCharCode(0xe001);
+
+describe("renderInputBuffer", () => {
+	test("renders each paste token with its own label", () => {
+		const pasteTokens = new Map<string, string>([
+			[PASTE_A, "alpha"],
+			[PASTE_B, "beta\ngamma"],
+		]);
+
+		expect(renderInputBuffer(`x${PASTE_A}y${PASTE_B}z`, pasteTokens)).toBe(
+			'x[pasted: "alpha"]y[pasted: "beta" +1 more line]z',
+		);
+	});
+});
+
+describe("expandInputBuffer", () => {
+	test("expands multiple paste tokens back to their original text", () => {
+		const pasteTokens = new Map<string, string>([
+			[PASTE_A, "alpha"],
+			[PASTE_B, "beta\ngamma"],
+		]);
+
+		expect(expandInputBuffer(`x${PASTE_A}y${PASTE_B}z`, pasteTokens)).toBe(
+			"xalphaybeta\ngammaz",
+		);
+	});
+});
+
+describe("pruneInputPasteTokens", () => {
+	test("removes a paste token after it has been deleted from all buffers", () => {
+		const pasteTokens = new Map<string, string>([
+			[PASTE_A, "alpha"],
+			[PASTE_B, "beta"],
+		]);
+
+		expect(
+			Array.from(pruneInputPasteTokens(pasteTokens, `x${PASTE_B}y`).entries()),
+		).toEqual([[PASTE_B, "beta"]]);
+	});
+
+	test("keeps a paste token while it is still referenced by saved input", () => {
+		const pasteTokens = new Map<string, string>([
+			[PASTE_A, "alpha"],
+			[PASTE_B, "beta"],
+		]);
+
+		expect(
+			Array.from(
+				pruneInputPasteTokens(
+					pasteTokens,
+					`x${PASTE_B}y`,
+					`${PASTE_A}z`,
+				).entries(),
+			),
+		).toEqual([
+			[PASTE_A, "alpha"],
+			[PASTE_B, "beta"],
+		]);
+	});
+});
+
+describe("buildPromptDisplay", () => {
+	test("keeps the cursor aligned with the visible tail of a long line", () => {
+		expect(buildPromptDisplay("abcdefghijklmnopqrstuvwxyz", 26, 10)).toEqual({
+			display: "…rstuvwxyz",
+			cursor: 10,
+		});
+	});
+
+	test("shows ellipses on both sides when the cursor is in the middle", () => {
+		expect(buildPromptDisplay("abcdefghijklmnopqrstuvwxyz", 15, 10)).toEqual({
+			display: "…ghijklmn…",
+			cursor: 10,
+		});
 	});
 });
 

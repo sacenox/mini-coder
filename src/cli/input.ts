@@ -253,8 +253,19 @@ export function watchForCancel(abortController: AbortController): () => void {
 
 // ─── Paste handling ───────────────────────────────────────────────────────────
 
-const PASTE_SENTINEL = "\x00PASTE\x00";
-const PASTE_SENTINEL_LEN = PASTE_SENTINEL.length;
+const PASTE_TOKEN_START = 0xe000;
+const PASTE_TOKEN_END = 0xf8ff;
+
+function createPasteToken(
+	buf: string,
+	pasteTokens: ReadonlyMap<string, string>,
+): string {
+	for (let code = PASTE_TOKEN_START; code <= PASTE_TOKEN_END; code++) {
+		const token = String.fromCharCode(code);
+		if (!buf.includes(token) && !pasteTokens.has(token)) return token;
+	}
+	throw new Error("Too many pasted chunks in a single prompt");
+}
 
 export function pasteLabel(text: string): string {
 	const lines = text.split("\n");
@@ -263,6 +274,81 @@ export function pasteLabel(text: string): string {
 	const extra = lines.length - 1;
 	const more = extra > 0 ? ` +${extra} more line${extra === 1 ? "" : "s"}` : "";
 	return `[pasted: "${preview}"${more}]`;
+}
+
+export function renderInputBuffer(
+	buf: string,
+	pasteTokens: ReadonlyMap<string, string>,
+): string {
+	let out = "";
+	for (let i = 0; i < buf.length; i++) {
+		const ch = buf[i] ?? "";
+		const pasted = pasteTokens.get(ch);
+		out += pasted ? pasteLabel(pasted) : ch;
+	}
+	return out;
+}
+
+export function expandInputBuffer(
+	buf: string,
+	pasteTokens: ReadonlyMap<string, string>,
+): string {
+	let out = "";
+	for (let i = 0; i < buf.length; i++) {
+		const ch = buf[i] ?? "";
+		out += pasteTokens.get(ch) ?? ch;
+	}
+	return out;
+}
+
+export function pruneInputPasteTokens(
+	pasteTokens: ReadonlyMap<string, string>,
+	...buffers: readonly string[]
+): Map<string, string> {
+	const referenced = buffers.join("");
+	const next = new Map<string, string>();
+	for (const [token, text] of pasteTokens) {
+		if (referenced.includes(token)) next.set(token, text);
+	}
+	return next;
+}
+
+function getVisualCursor(
+	buf: string,
+	cursor: number,
+	pasteTokens: ReadonlyMap<string, string>,
+): number {
+	let visual = 0;
+	for (let i = 0; i < Math.min(cursor, buf.length); i++) {
+		const ch = buf[i] ?? "";
+		const pasted = pasteTokens.get(ch);
+		visual += pasted ? pasteLabel(pasted).length : 1;
+	}
+	return visual;
+}
+
+export function buildPromptDisplay(
+	text: string,
+	cursor: number,
+	maxLen: number,
+): { display: string; cursor: number } {
+	const clampedCursor = Math.max(0, Math.min(cursor, text.length));
+	if (maxLen <= 0) return { display: "", cursor: 0 };
+	if (text.length <= maxLen) return { display: text, cursor: clampedCursor };
+
+	let start = Math.max(0, clampedCursor - maxLen);
+	const end = Math.min(text.length, start + maxLen);
+	if (end - start < maxLen) start = Math.max(0, end - maxLen);
+
+	let display = text.slice(start, end);
+	if (start > 0 && display.length > 0) display = `…${display.slice(1)}`;
+	if (end < text.length && display.length > 0)
+		display = `${display.slice(0, -1)}…`;
+
+	return {
+		display,
+		cursor: Math.min(clampedCursor - start, display.length),
+	};
 }
 
 // ─── Main readline function ───────────────────────────────────────────────────
@@ -289,8 +375,25 @@ export async function readline(opts: {
 	let savedInput = ""; // saved current line when navigating history
 	let searchMode = false;
 	let searchQuery = "";
-	let pasteBuffer: string | null = null; // full text of a pending paste
+	const pasteTokens = new Map<string, string>();
 	const imageAttachments: ImageAttachment[] = []; // images collected during this prompt
+
+	function prunePasteTokens(): void {
+		const next = pruneInputPasteTokens(pasteTokens, buf, savedInput);
+		pasteTokens.clear();
+		for (const [token, text] of next) pasteTokens.set(token, text);
+	}
+
+	function insertText(text: string): void {
+		buf = buf.slice(0, cursor) + text + buf.slice(cursor);
+		cursor += text.length;
+	}
+
+	function insertPasteToken(text: string): void {
+		const token = createPasteToken(buf, pasteTokens);
+		pasteTokens.set(token, text);
+		insertText(token);
+	}
 
 	terminal.setRawMode(true);
 	process.stdin.resume();
@@ -300,26 +403,13 @@ export async function readline(opts: {
 
 	function renderPrompt(): void {
 		const cols = process.stdout.columns ?? 80;
-		// Replace paste sentinel and image labels with styled placeholders for display
-		const visualBuf = (
-			pasteBuffer
-				? buf.replace(PASTE_SENTINEL, c.dim(pasteLabel(pasteBuffer)))
-				: buf
-		).replace(/\[image: [^\]]+\]/g, (m) => c.dim(c.cyan(m)));
-
-		// For cursor positioning we need the visual length without the sentinel substitution
-		const visualCursor = pasteBuffer
-			? (() => {
-					const sentinelPos = buf.indexOf(PASTE_SENTINEL);
-					if (sentinelPos === -1 || cursor <= sentinelPos) return cursor;
-					// cursor is after the sentinel: shift by (label len - sentinel len)
-					return cursor - PASTE_SENTINEL_LEN + pasteLabel(pasteBuffer).length;
-				})()
-			: cursor;
-		const display =
-			visualBuf.length > cols - PROMPT_RAW_LEN - 2
-				? `…${visualBuf.slice(-(cols - PROMPT_RAW_LEN - 3))}`
-				: visualBuf;
+		const visualBuf = renderInputBuffer(buf, pasteTokens);
+		const visualCursor = getVisualCursor(buf, cursor, pasteTokens);
+		const { display, cursor: displayCursor } = buildPromptDisplay(
+			visualBuf,
+			visualCursor,
+			Math.max(1, cols - PROMPT_RAW_LEN - 2),
+		);
 
 		const prompt = opts.planMode
 			? PROMPT_PLAN
@@ -328,7 +418,7 @@ export async function readline(opts: {
 				: PROMPT;
 
 		process.stdout.write(
-			`${CLEAR_LINE}${prompt}${display}${CSI}${PROMPT_RAW_LEN + visualCursor + 1}G`,
+			`${CLEAR_LINE}${prompt}${display}${CSI}${PROMPT_RAW_LEN + displayCursor + 1}G`,
 		);
 	}
 
@@ -343,6 +433,7 @@ export async function readline(opts: {
 			buf = savedInput;
 		}
 		cursor = buf.length;
+		prunePasteTokens();
 		renderPrompt();
 	}
 
@@ -404,15 +495,12 @@ export async function readline(opts: {
 				const imageResult = await tryExtractImageFromPaste(pasted, cwd);
 				if (imageResult) {
 					imageAttachments.push(imageResult.attachment);
-					buf = buf.slice(0, cursor) + imageResult.label + buf.slice(cursor);
-					cursor += imageResult.label.length;
+					insertText(imageResult.label);
 					renderPrompt();
 					continue;
 				}
 
-				pasteBuffer = pasted;
-				buf = buf.slice(0, cursor) + PASTE_SENTINEL + buf.slice(cursor);
-				cursor += PASTE_SENTINEL_LEN;
+				insertPasteToken(pasted);
 				renderPrompt();
 				continue;
 			}
@@ -473,7 +561,7 @@ export async function readline(opts: {
 					while (cursor > 0 && buf[cursor - 1] === " ") cursor--;
 					while (cursor > 0 && buf[cursor - 1] !== " ") cursor--;
 					buf = buf.slice(0, cursor) + buf.slice(end);
-					if (pasteBuffer && !buf.includes(PASTE_SENTINEL)) pasteBuffer = null;
+					prunePasteTokens();
 					renderPrompt();
 					continue;
 				}
@@ -512,7 +600,7 @@ export async function readline(opts: {
 				while (cursor > 0 && buf[cursor - 1] === " ") cursor--;
 				while (cursor > 0 && buf[cursor - 1] !== " ") cursor--;
 				buf = buf.slice(0, cursor) + buf.slice(end);
-				if (pasteBuffer && !buf.includes(PASTE_SENTINEL)) pasteBuffer = null;
+				prunePasteTokens();
 				renderPrompt();
 				continue;
 			}
@@ -520,14 +608,14 @@ export async function readline(opts: {
 			if (raw === CTRL_U) {
 				buf = buf.slice(cursor);
 				cursor = 0;
-				if (pasteBuffer && !buf.includes(PASTE_SENTINEL)) pasteBuffer = null;
+				prunePasteTokens();
 				renderPrompt();
 				continue;
 			}
 
 			if (raw === CTRL_K) {
 				buf = buf.slice(0, cursor);
-				if (pasteBuffer && !buf.includes(PASTE_SENTINEL)) pasteBuffer = null;
+				prunePasteTokens();
 				renderPrompt();
 				continue;
 			}
@@ -549,7 +637,7 @@ export async function readline(opts: {
 				if (cursor > 0) {
 					buf = buf.slice(0, cursor - 1) + buf.slice(cursor);
 					cursor--;
-					if (pasteBuffer && !buf.includes(PASTE_SENTINEL)) pasteBuffer = null;
+					prunePasteTokens();
 					renderPrompt();
 				}
 				continue;
@@ -580,11 +668,8 @@ export async function readline(opts: {
 
 			// ── Enter — submit ────────────────────────────────────────────────────
 			if (raw === ENTER || raw === NEWLINE) {
-				// Expand paste sentinel before trimming/submitting
-				const expanded = pasteBuffer
-					? buf.replace(PASTE_SENTINEL, pasteBuffer)
-					: buf;
-				pasteBuffer = null;
+				const expanded = expandInputBuffer(buf, pasteTokens);
+				pasteTokens.clear();
 				const text = expanded.trim();
 				process.stdout.write("\n");
 				buf = "";
@@ -625,35 +710,32 @@ export async function readline(opts: {
 				};
 			}
 
-			// ── Paste detection ───────────────────────────────────────────────────
-			// A chunk with more than one character that isn't an escape sequence is
-			// almost certainly a clipboard paste. Capture it and show a placeholder.
+			// ── Multi-char chunks ──────────────────────────────────────────────────
+			// Bracketed paste is handled above. Other multi-char chunks are usually
+			// coalesced typing or a non-bracketed paste from a terminal that does not
+			// support bracketed paste.
 			if (raw.length > 1) {
-				// Strip trailing newline that some terminals append on paste
-				const pasted = raw.replace(/\r?\n$/, "");
-
-				// Check if this is an image (data URL or image file path)
-				const imageResult = await tryExtractImageFromPaste(pasted, cwd);
+				const chunk = raw.replace(/\r?\n$/, "");
+				const imageResult = await tryExtractImageFromPaste(chunk, cwd);
 				if (imageResult) {
 					imageAttachments.push(imageResult.attachment);
-					// Insert the plain label into buf (no sentinel — nothing to expand at submit)
-					buf = buf.slice(0, cursor) + imageResult.label + buf.slice(cursor);
-					cursor += imageResult.label.length;
+					insertText(imageResult.label);
 					renderPrompt();
 					continue;
 				}
 
-				pasteBuffer = pasted;
-				buf = buf.slice(0, cursor) + PASTE_SENTINEL + buf.slice(cursor);
-				cursor += PASTE_SENTINEL_LEN;
+				if (chunk.includes("\n") || chunk.includes("\r")) {
+					insertPasteToken(chunk);
+				} else {
+					insertText(chunk);
+				}
 				renderPrompt();
 				continue;
 			}
 
 			// ── Printable characters ──────────────────────────────────────────────
 			if (raw >= " " || raw === "\t") {
-				buf = buf.slice(0, cursor) + raw + buf.slice(cursor);
-				cursor++;
+				insertText(raw);
 				renderPrompt();
 			}
 		}
