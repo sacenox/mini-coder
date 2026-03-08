@@ -21,13 +21,12 @@ import { buildToolSet } from "./tools.ts";
 
 import type { ThinkingEffort } from "../llm-api/providers.ts";
 
-function makeWorktreeBranch(laneId: number): string {
-	return `mc-sub-${laneId}-${Date.now()}`;
+function makeWorktreeBranch(laneId: string): string {
+	return `mc-sub-${laneId}`;
 }
 
-function makeWorktreePath(laneId: number): string {
-	const suffix = crypto.randomUUID().replace(/-/g, "").slice(0, 10);
-	return join(tmpdir(), `mc-wt-${laneId}-${suffix}`);
+function makeWorktreePath(laneId: string): string {
+	return join(tmpdir(), `mc-wt-${laneId}`);
 }
 
 export function createSubagentRunner(
@@ -36,8 +35,7 @@ export function createSubagentRunner(
 	getCurrentModel: () => string,
 	getThinkingEffort: () => ThinkingEffort | null,
 ) {
-	let nextLaneId = 1;
-	const activeLanes = new Set<number>();
+	const activeLanes = new Set<string>();
 	const worktreesEnabledPromise = isGitRepo(cwd);
 
 	let mergeLock: Promise<void> = Promise.resolve();
@@ -57,7 +55,7 @@ export function createSubagentRunner(
 		modelOverride?: string,
 		parentLabel?: string,
 	): Promise<SubagentOutput> => {
-		const laneId = nextLaneId++;
+		const laneId = crypto.randomUUID().split("-")[0] as string;
 		activeLanes.add(laneId);
 
 		let subagentCwd = cwd;
@@ -124,7 +122,7 @@ export function createSubagentRunner(
 				reporter.renderSubagentEvent(event, {
 					laneId,
 					...(parentLabel ? { parentLabel } : {}),
-					...(worktreeBranch ? { worktreeBranch } : {}),
+					hasWorktree: !!worktreeBranch,
 					activeLanes,
 				});
 				reporter.startSpinner("thinking");

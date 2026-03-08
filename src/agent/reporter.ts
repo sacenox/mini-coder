@@ -23,10 +23,10 @@ export interface StatusBarData {
 }
 
 export interface SubagentEventData {
-	laneId: number;
+	laneId: string;
 	parentLabel?: string;
-	worktreeBranch?: string;
-	activeLanes: Set<number>;
+	hasWorktree?: boolean;
+	activeLanes: Set<string>;
 }
 
 export interface AgentReporter {

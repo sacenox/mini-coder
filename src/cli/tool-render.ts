@@ -510,40 +510,30 @@ function normalizeParentLaneLabel(parentLabel: string): string {
 	return lanePath || inner;
 }
 
-function shortWorktreeBranch(branch: string): string {
-	const match = branch.match(/^(mc-sub-\d+)-\d+$/);
-	return match?.[1] ?? branch;
-}
-
 export function formatSubagentLabel(
-	laneId: number,
+	laneId: string,
 	parentLabel?: string,
-	worktreeBranch?: string,
 ): string {
 	const parent = parentLabel ? normalizeParentLaneLabel(parentLabel) : "";
 	const numStr = parent ? `${parent}.${laneId}` : `${laneId}`;
-	const branchHint = worktreeBranch
-		? `·${shortWorktreeBranch(worktreeBranch)}`
-		: "";
-	return c.dim(c.cyan(`[${numStr}${branchHint}]`));
+	return c.dim(c.cyan(`[${numStr}]`));
 }
 
-const laneBuffers = new Map<number, string>();
+const laneBuffers = new Map<string, string>();
 
 export function renderSubagentEvent(
 	event: TurnEvent,
 	opts: {
-		laneId: number;
+		laneId: string;
 		parentLabel?: string | undefined;
-		worktreeBranch?: string;
-		activeLanes: Set<number>;
+		hasWorktree?: boolean;
+		activeLanes: Set<string>;
 	},
 ): void {
-	const { laneId, parentLabel, worktreeBranch, activeLanes } = opts;
+	const { laneId, parentLabel, hasWorktree, activeLanes } = opts;
 
-	const labelStr = formatSubagentLabel(laneId, parentLabel, worktreeBranch);
-	const prefix = activeLanes.size > 1 || worktreeBranch ? `${labelStr} ` : "";
-
+	const labelStr = formatSubagentLabel(laneId, parentLabel);
+	const prefix = activeLanes.size > 1 || hasWorktree ? `${labelStr} ` : "";
 	if (event.type === "text-delta") {
 		const buf = (laneBuffers.get(laneId) ?? "") + event.delta;
 		const lines = buf.split("\n");

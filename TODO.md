@@ -1,12 +1,18 @@
 # TODO
 
----
+Agents keep having to resort to rg, something is wrong with our grep implemenation:
 
-## Subagents id/number/lane could be made more robust
-
-- Currently we use an incremental integer for this, but in a long session with several conversations (user uses /new) it can become confusing (seeing subagent number 16 after /new). Let's think of a better way to id subagents and their lanes/worktrees. Maybe with a UUID?
-
----
+```
+  ? grep formatSubagentLabel  *.ts i
+    · no matches
+  $ rg formatSubagentLabel src/
+    ✔ 0
+    │ src/agent/subagent-runner.ts:import { formatSubagentLabel } from "../cli/output.ts";
+    │ src/agent/subagent-runner.ts:                     const laneLabel = formatSubagentLabel(laneId, parentLabel);
+    │ src/cli/tool-render.ts:export function formatSubagentLabel(
+    │ src/cli/tool-render.ts:   const labelStr = formatSubagentLabel(laneId, parentLabel, worktreeBranch);
+    │ src/cli/output.ts:        formatSubagentLabel,
+```
 
 ## Write blog posts
 
