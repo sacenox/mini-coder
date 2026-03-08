@@ -1,19 +1,5 @@
 # TODO
 
-Agents keep having to resort to rg, something is wrong with our grep implemenation:
-
-```
-  ? grep formatSubagentLabel  *.ts i
-    · no matches
-  $ rg formatSubagentLabel src/
-    ✔ 0
-    │ src/agent/subagent-runner.ts:import { formatSubagentLabel } from "../cli/output.ts";
-    │ src/agent/subagent-runner.ts:                     const laneLabel = formatSubagentLabel(laneId, parentLabel);
-    │ src/cli/tool-render.ts:export function formatSubagentLabel(
-    │ src/cli/tool-render.ts:   const labelStr = formatSubagentLabel(laneId, parentLabel, worktreeBranch);
-    │ src/cli/output.ts:        formatSubagentLabel,
-```
-
 ## Write blog posts
 
 - Codex being big dumb and lazy without strong guidance in system prompt/instructions
