@@ -4,7 +4,7 @@
 
 # 👾 mini-coder
 
-> *Small. Fast. Gets out of your way.*
+> _Small. Fast. Gets out of your way._
 
 Hey there! I'm **mini-coder** — a CLI coding agent built for developers who want a sharp tool, not a bloated IDE plugin. Think of me as the pocket knife of AI coding assistants: lightweight, reliable, and always ready.
 
@@ -31,41 +31,44 @@ $ mc
 
 ## 🛠️ What Can I Do?
 
-I come equipped with a tight, reliable set of tools:
+My toolkit is lean on purpose — every tool earns its spot, no passengers:
 
-| Tool | What it does |
-|---|---|
-| 🔍 `glob` | Find files by pattern across your project |
-| 🧲 `grep` | Search file contents with regex |
-| 📖 `read` | Read files (with line-range support) |
-| 📝 `create` | Create a new file or fully overwrite an existing file |
-| ✏️ `replace` | Replace or delete lines using hashline anchors |
-| ➕ `insert` | Insert lines before/after an anchor without replacing |
-| 🐚 `shell` | Run shell commands and see their output |
-| 🤖 `subagent` | Spawn a focused mini-me for parallel subtasks |
+| Tool            | What it does                                                |
+| --------------- | ----------------------------------------------------------- |
+| 🔍 `glob`       | Find files by pattern across your project                   |
+| 🧲 `grep`       | Search file contents with regex                             |
+| 📖 `read`       | Read files (with line-range support)                        |
+| 📝 `create`     | Create a new file or fully overwrite an existing file       |
+| ✏️ `replace`    | Replace or delete lines using hashline anchors              |
+| ➕ `insert`     | Insert lines before/after an anchor without replacing       |
+| 🐚 `shell`      | Run shell commands and see their output                     |
+| 🤖 `subagent`   | Spawn a focused mini-me for parallel subtasks               |
+| 🌐 `webSearch`  | Search the web when `EXA_API_KEY` is set                    |
+| 📄 `webContent` | Fetch full page content from URLs when `EXA_API_KEY` is set |
 
-I can also connect to **MCP servers** (like Exa for web search), giving you superpowers on demand.
+Need more firepower? I connect to **MCP servers** over HTTP or stdio — bolt on external tools whenever the job calls for it.
 
 ---
 
 ## ⚡ Key Features
 
-- **Multi-provider** — set `OPENCODE_API_KEY` for Zen, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`, or just run Ollama locally. I auto-discover whatever's available.
+- **Multi-provider** — set `OPENCODE_API_KEY` for Zen, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY` or `GEMINI_API_KEY`, or just run Ollama locally (`OLLAMA_BASE_URL` optional). I auto-discover whatever's available.
+- **Built-in web search** — set `EXA_API_KEY` and I expose `webSearch` + `webContent` tools.
 - **Session memory** — conversations are saved in a local SQLite database. Resume where you left off with `-c` or pick a specific session with `-r <id>`.
 - **Shell integration** — prefix with `!` to run shell commands inline. Use `@` to reference files in your prompt (with Tab completion).
-- **Slash commands** — `/model` to switch models, `/plan` for read-only thinking mode, `/ralph` for autonomous looping, `/review` for a code review, `/undo` to roll back a turn, `/new` for a clean session, `/mcp` to manage MCP servers. See all with `/help`.
-- **Custom commands** — drop a `.md` file in `.agents/commands/` and it becomes a `/command`. Supports argument placeholders (`$ARGUMENTS`, `$1`…`$9`) and shell interpolation (`` !`cmd` ``). Global commands live in `~/.agents/commands/`. Custom commands take precedence over built-ins. → [docs/custom-commands.md](docs/custom-commands.md)
+- **Slash commands** — `/model` or `/models` to list/switch models, `/model effort <low|medium|high|xhigh|off>` for reasoning effort, `/plan` for read-only thinking mode, `/ralph` for autonomous looping, `/review` for a code review, `/undo` to roll back a turn, `/new` for a clean session, `/mcp list|add|remove` to manage MCP servers, and `/exit` (`/quit`, `/q`) to leave. See all with `/help`.
+- **Custom commands** — drop a `.md` file in `.agents/commands/` and it becomes a `/command`. Claude-compatible `.claude/commands/` works too. Supports argument placeholders (`$ARGUMENTS`, `$1`…`$9`) and shell interpolation (`` !`cmd` ``). Global commands live in `~/.agents/commands/` and `~/.claude/commands/`. Custom commands take precedence over built-ins. → [docs/custom-commands.md](docs/custom-commands.md)
 - **Custom agents** — drop a `.md` file in `.agents/agents/` (or `~/.agents/agents/` globally) and reference it with `@agent-name` in your prompt. The agent runs in its own context window with a custom system prompt and optional model override. → [docs/custom-agents.md](docs/custom-agents.md)
-- **Skills** — place a `SKILL.md` in `.agents/skills/<name>/` and inject it into any prompt with `@skill-name`. Skills are *never* auto-loaded — always explicit. → [docs/skills.md](docs/skills.md)
-- **Post-tool hooks** — drop an executable at `.agents/hooks/post-<tool>` and I'll run it after every matching tool call.
+- **Skills** — place a `SKILL.md` in `.agents/skills/<name>/` and inject it into any prompt with `@skill-name`. Claude-compatible `.claude/skills/<name>/SKILL.md` works too. Skills are _never_ auto-loaded — always explicit. → [docs/skills.md](docs/skills.md)
+- **Post-tool hooks** — drop an executable at `.agents/hooks/post-<tool>` (or `~/.agents/hooks/post-<tool>` globally) and I'll run it after matching built-in tool calls. → [docs/tool-hooks.md](docs/tool-hooks.md)
 - **Beautiful, minimal output** — diffs for edits, formatted trees for file searches, a live status bar with model, git branch, and token counts.
-- **16 ANSI colors only** — my output inherits *your* terminal theme. Dark mode, light mode, Solarized, Gruvbox — I fit right in.
+- **16 ANSI colors only** — my output inherits _your_ terminal theme. Dark mode, light mode, Solarized, Gruvbox — I fit right in.
 
 ---
 
 ## 🧠 Interesting Things About Me
 
-- **I eat my own dog food.** I was built *by* a mini-coder agent. It's agents all the way down. 🐢
+- **I eat my own dog food.** I was built _by_ a mini-coder agent. It's agents all the way down. 🐢
 - **I'm tiny but mighty.** The whole runtime is [Bun.js](https://bun.com) — fast startup, native TypeScript, and a built-in SQLite driver.
 - **I respect existing conventions.** Hook scripts live in `.agents/hooks/`, context in `AGENTS.md` or `CLAUDE.md`, commands in `.agents/commands/`, agents in `.agents/agents/`, skills in `.agents/skills/` — I follow the ecosystem instead of inventing new standards.
 - **I spin while I think.** ⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏ (It's the little things.)
@@ -73,40 +76,51 @@ I can also connect to **MCP servers** (like Exa for web search), giving you supe
 
 ---
 
-## 📁 The `.agents` folder
+## 📁 Config folders
 
-mini-coder follows the [`.agents` convention](https://github.com/agentsmd/agents) used across the AI coding tool ecosystem. Drop files in `.agents/` to extend behaviour for the current repo, or `~/.agents/` to apply them globally.
+I follow the [`.agents` convention](https://github.com/agentsmd/agents) — the shared standard across AI coding tools — and I also speak Claude Code's `.claude` format for **commands** and **skills**. Best of both worlds.
 
-| Path | What it does |
-|---|---|
-| `.agents/commands/*.md` | Custom slash commands (`/name`) |
-| `.agents/agents/*.md` | Custom agents (`@name`) |
-| `.agents/skills/<name>/SKILL.md` | Reusable skill instructions (`@name`) |
-| `.agents/hooks/post-<tool>` | Scripts run after a tool call |
-| `AGENTS.md` | Project context injected into every system prompt |
+| Path                             | What it does                                      |
+| -------------------------------- | ------------------------------------------------- |
+| `.agents/commands/*.md`          | Custom slash commands (`/name`)                   |
+| `.claude/commands/*.md`          | Claude-compatible custom commands                 |
+| `.agents/agents/*.md`            | Custom agents (`@name`)                           |
+| `.agents/skills/<name>/SKILL.md` | Reusable skill instructions (`@name`)             |
+| `.claude/skills/<name>/SKILL.md` | Claude-compatible skills                          |
+| `.agents/hooks/post-<tool>`      | Scripts run after supported built-in tool calls   |
+| `AGENTS.md`                      | Project context injected into every system prompt |
+| `CLAUDE.md`                      | Fallback project context if `AGENTS.md` is absent |
+| `~/.config/mini-coder/AGENTS.md` | Global fallback context                           |
 
-Local always overrides global. The same `~/.agents/` folder is shared with Claude Code, Opencode, and other compatible tools — skills and agents you write once work everywhere.
+The pecking order is straightforward: local beats global, and `.agents` beats `.claude` at the same scope. Worth noting: custom agents are mini-coder-only — `.claude` compatibility is for commands and skills only. → [docs/configs.md](docs/configs.md)
 
 ---
 
-
 ## 🚀 Getting Started
 
+One thing before you dive in: **I run on Bun**. You can install me via npm just fine, but [Bun](https://bun.com) still needs to be on your machine — no way around it.
+
 ```bash
-# Install from npm
+# Install globally
 bun add -g mini-coder
 # or: npm install -g mini-coder
 
-# Set your provider key (pick one — or run Ollama locally)
+# Set a provider key (pick one — or run Ollama locally)
 export OPENCODE_API_KEY=your-zen-key    # recommended
-export ANTHROPIC_API_KEY=your-key       # or direct Anthropic
-export OPENAI_API_KEY=your-key          # or direct OpenAI
+export ANTHROPIC_API_KEY=your-key       # direct Anthropic
+export OPENAI_API_KEY=your-key          # direct OpenAI
+export GOOGLE_API_KEY=your-key          # direct Gemini
+# or: export GEMINI_API_KEY=your-key
 
-# Launch!
+# Optional extras
+export OLLAMA_BASE_URL=http://localhost:11434
+export EXA_API_KEY=your-exa-key         # enables webSearch/webContent
+
+# Launch
 mc
 ```
 
-Or run directly for a quick task:
+Or drop me a prompt straight away and stay in the session:
 
 ```bash
 mc "Refactor the auth module to use async/await"
@@ -115,13 +129,36 @@ mc "Refactor the auth module to use async/await"
 Useful flags:
 
 ```bash
-mc -c                        # continue last session
-mc -r <id>                   # resume a specific session
-mc -l                        # list recent sessions
-mc -m zen/claude-sonnet-4-6  # pick a model
+mc -c                           # continue last session
+mc -r <id>                      # resume a specific session
+mc -l                           # list recent sessions
+mc -m zen/claude-sonnet-4-6     # pick a model
+mc --cwd ~/src/other-project    # set working directory
+mc -h                           # show help
 ```
 
 ---
+
+## 🗃️ App data
+
+Everything I remember lives in `~/.config/mini-coder/` — here's what I'm holding onto:
+
+- `sessions.db` — your full session history, `/undo` snapshots, MCP server config, and model metadata, all in one tidy SQLite file
+- `api.log` — a request/response log for every provider call this run, if you want to peek under the hood
+- `errors.log` — anything that went sideways, caught and written down so you can actually debug it
+- `AGENTS.md` — your global context fallback, quietly injected whenever a repo doesn't bring its own `AGENTS.md` or `CLAUDE.md`
+
+---
+
+## 📚 Go Deeper
+
+The README hits the highlights — the docs have the full story:
+
+- [docs/custom-commands.md](docs/custom-commands.md)
+- [docs/custom-agents.md](docs/custom-agents.md)
+- [docs/skills.md](docs/skills.md)
+- [docs/configs.md](docs/configs.md)
+- [docs/tool-hooks.md](docs/tool-hooks.md)
 
 ## 🗂️ Project Structure
 
@@ -132,7 +169,7 @@ src/
   cli/              # Input, output, slash commands, markdown rendering
   llm-api/          # Provider factory + streaming turn logic
   tools/            # glob, grep, read, create, replace, insert, shell, subagent
-                    #   + hashline anchors, diffs, hooks, snapshots
+                    #   + webSearch, webContent, hashline anchors, diffs, hooks, snapshots
   mcp/              # MCP server connections
   session/          # SQLite-backed session & history management
 ```
@@ -154,16 +191,15 @@ src/
 
 > Accurate. Fast. Focused on the conversation.
 
-I believe the best tools disappear into your workflow. I don't want to be the star of the show — I want *you* to ship great code, faster.
+I believe the best tools disappear into your workflow. I don't want to be the star of the show — I want _you_ to ship great code, faster.
 
 ---
 
 ## 💬 What People Are Saying
 
 > "sean this is fucking sick"
-> — [vpr99](https://github.com/vpr99) (eric)
+> — [vpr99](https://github.com/vpr99)
 
 ---
 
-
-*Built with ❤️ and a healthy obsession with terminal aesthetics.*
+_Built with ❤️ and a healthy obsession with terminal aesthetics._
