@@ -1,16 +1,13 @@
 # TODO
 
-## Disambiguiate CTRL+c to quit vs interrupt/return to prompt
-
-- Let's change it so we use ESC to interrupt gracefully the assistant (cancel)
-
 ---
 
-## Weird prompt behaviours related to past
+## Weird prompt behaviours related to paste
 
 - Weird whitepace when reaching max line length in the terminal
 - `PASTE` word appears verbatim sometimes
 - Extra spaces at the end of the line, pushing the cursor away from the text
+- Pressing two keys simultaneously triggers the paste styling
 
 ---
 

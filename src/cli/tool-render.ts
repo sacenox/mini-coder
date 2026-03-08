@@ -79,7 +79,7 @@ export function toolCallLine(name: string, args: unknown): string {
 	if (name === "shell") {
 		const cmd = String(a.command ?? "");
 		const shortCmd = cmd.length > 72 ? `${cmd.slice(0, 69)}…` : cmd;
-		return `${G.run} ${c.dim("$")} ${shortCmd}`;
+		return `${G.run} ${shortCmd}`;
 	}
 	if (name === "subagent") {
 		const prompt = String(a.prompt ?? "");
