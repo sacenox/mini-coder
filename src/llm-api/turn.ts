@@ -23,20 +23,6 @@ type StreamTextResultFull = StreamTextResult & {
 };
 
 const MAX_STEPS = 50;
-const TOOL_LIMIT_WARNING =
-	"\n\n<system-message>You have reached the maximum number of tool calls. " +
-	"No more tools will be available after this result. " +
-	"Respond with a status update and list what still needs to be done.</system-message>";
-
-export interface ToolLimitWarningPatch {
-	injectedText: string;
-	rawResult: unknown;
-	restoredOutput: {
-		type: "text" | "json";
-		value: unknown;
-	};
-}
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function isZodSchema(s: unknown): boolean {
@@ -44,76 +30,7 @@ function isZodSchema(s: unknown): boolean {
 	return s !== null && typeof s === "object" && "_def" in (s as object);
 }
 
-function stringifyToolResult(result: unknown): string {
-	return typeof result === "string" ? result : String(JSON.stringify(result));
-}
-
-export function createToolLimitWarningPatch(
-	result: unknown,
-): ToolLimitWarningPatch {
-	return {
-		injectedText: stringifyToolResult(result) + TOOL_LIMIT_WARNING,
-		rawResult: result,
-		restoredOutput:
-			typeof result === "string"
-				? { type: "text", value: result }
-				: { type: "json", value: result },
-	};
-}
-
-function findToolLimitWarningPatch(
-	value: unknown,
-	patches: readonly ToolLimitWarningPatch[],
-): ToolLimitWarningPatch | undefined {
-	if (typeof value !== "string") return undefined;
-	return patches.find((candidate) => candidate.injectedText === value);
-}
-
-export function restoreToolLimitWarningResult(
-	result: unknown,
-	patches: readonly ToolLimitWarningPatch[],
-): unknown {
-	return findToolLimitWarningPatch(result, patches)?.rawResult ?? result;
-}
-
-export function stripToolLimitWarningMessages(
-	messages: CoreMessage[],
-	patches: readonly ToolLimitWarningPatch[],
-): CoreMessage[] {
-	if (patches.length === 0) return messages;
-
-	let anyChanged = false;
-	const stripped = messages.map((message) => {
-		if (!Array.isArray(message.content)) return message;
-
-		let contentChanged = false;
-		const content = message.content.map((part) => {
-			if (!part || typeof part !== "object" || !("output" in part)) return part;
-
-			const output = (part as { output?: unknown }).output;
-			if (!output || typeof output !== "object" || !("value" in output))
-				return part;
-
-			const value = (output as { value?: unknown }).value;
-			const patch = findToolLimitWarningPatch(value, patches);
-			if (!patch) return part;
-
-			contentChanged = true;
-			anyChanged = true;
-			return { ...part, output: patch.restoredOutput };
-		});
-
-		return contentChanged ? ({ ...message, content } as CoreMessage) : message;
-	});
-
-	return anyChanged ? stripped : messages;
-}
-
-function toCoreTool(
-	def: ToolDef,
-	claimWarning: () => boolean,
-	recordWarningPatch: (patch: ToolLimitWarningPatch) => void,
-): ReturnType<typeof dynamicTool> {
+function toCoreTool(def: ToolDef): ReturnType<typeof dynamicTool> {
 	// MCP tools pass raw JSON Schema objects; the AI SDK requires them to be
 	// wrapped with jsonSchema(). Zod schemas are passed through as-is.
 	const schema = isZodSchema(def.schema)
@@ -124,16 +41,7 @@ function toCoreTool(
 		inputSchema: schema,
 		execute: async (input: unknown) => {
 			try {
-				const result = await def.execute(input);
-				// On the second-to-last step, append a transient system message to the
-				// first tool result that completes. claimWarning() returns true exactly
-				// once per step so parallel tool calls don't duplicate the warning.
-				if (claimWarning()) {
-					const patch = createToolLimitWarningPatch(result);
-					recordWarningPatch(patch);
-					return patch.injectedText;
-				}
-				return result;
+				return await def.execute(input);
 			} catch (err) {
 				throw err instanceof Error ? err : new Error(String(err));
 			}
@@ -180,32 +88,10 @@ export async function* runTurn(options: {
 		thinkingEffort,
 	} = options;
 
-	// stepCount tracks completed steps (incremented in onStepFinish).
-	// Used to detect the second-to-last step for the warning injection.
 	let stepCount = 0;
-	// warningClaimed resets to false at the start of each step and is flipped to
-	// true by the first tool that completes on the second-to-last step, ensuring
-	// the <system-message> warning appears exactly once even with parallel calls.
-	let warningClaimed = false;
-
-	// Returns true exactly once on the second-to-last step, so parallel tool
-	// calls in the same step only inject the <system-message> warning once.
-	function claimWarning(): boolean {
-		if (stepCount !== MAX_STEPS - 2 || warningClaimed) return false;
-		warningClaimed = true;
-		return true;
-	}
-
-	const toolLimitWarningPatches: ToolLimitWarningPatch[] = [];
 	const toolSet = {} as ToolSet;
 	for (const def of tools) {
-		(toolSet as Record<string, ToolEntry>)[def.name] = toCoreTool(
-			def,
-			claimWarning,
-			(patch) => {
-				toolLimitWarningPatches.push(patch);
-			},
-		);
+		(toolSet as Record<string, ToolEntry>)[def.name] = toCoreTool(def);
 	}
 
 	let inputTokens = 0;
@@ -260,7 +146,6 @@ export async function* runTurn(options: {
 				outputTokens += step.usage?.outputTokens ?? 0;
 				contextTokens = step.usage?.inputTokens ?? contextTokens;
 				stepCount++;
-				warningClaimed = false;
 			},
 			// On the last allowed step, strip all tools so the model is forced to
 			// respond with text — no more tool calls are possible.
@@ -331,17 +216,13 @@ export async function* runTurn(options: {
 				}
 
 				case "tool-result": {
-					const rawResult =
-						"output" in c ? c.output : "result" in c ? c.result : undefined;
 					yield {
 						type: "tool-result",
 						toolCallId: String(c.toolCallId ?? ""),
 						toolName: String(c.toolName ?? ""),
 						// AI SDK v6: property is `output`, not `result`
-						result: restoreToolLimitWarningResult(
-							rawResult,
-							toolLimitWarningPatches,
-						),
+						result:
+							"output" in c ? c.output : "result" in c ? c.result : undefined,
 						isError: "isError" in c ? Boolean(c.isError) : false,
 					};
 					break;
@@ -370,14 +251,7 @@ export async function* runTurn(options: {
 		// across all steps. Accumulating from onStepFinish would cause duplicates
 		// because step.response.messages includes all prior step messages PLUS the
 		// current step's messages on each callback invocation.
-		// The tool-limit warning is only meant to steer the final step of this turn.
-		// Strip it back out before persisting messages into session history.
-
-		const finalResponse = await result.response;
-		const newMessages = stripToolLimitWarningMessages(
-			finalResponse?.messages ?? [],
-			toolLimitWarningPatches,
-		);
+		const newMessages = (await result.response)?.messages ?? [];
 
 		logApiEvent("turn complete", {
 			newMessagesCount: newMessages.length,
