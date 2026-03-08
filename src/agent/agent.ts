@@ -2,25 +2,21 @@ import * as c from "yoctocolors";
 import { loadAgents } from "../cli/agents.ts";
 import type { CommandContext } from "../cli/commands.ts";
 import { tildePath } from "../cli/output.ts";
-import type { AgentReporter } from "./reporter.ts";
-
-import { type ThinkingEffort, getContextWindow } from "../llm-api/providers.ts";
+import { getContextWindow, type ThinkingEffort } from "../llm-api/providers.ts";
 import type { ToolDef } from "../llm-api/types.ts";
 import { connectMcpServer } from "../mcp/client.ts";
-
 import {
 	listMcpServers,
 	setPreferredModel,
 	setPreferredThinkingEffort,
 } from "../session/db/index.ts";
+import { getGitBranch } from "./agent-helpers.ts";
+import { runInputLoop } from "./input-loop.ts";
+import type { AgentReporter } from "./reporter.ts";
+import { SessionRunner } from "./session-runner.ts";
 import { createSubagentRunner } from "./subagent-runner.ts";
 import { buildToolSet } from "./tools.ts";
 import { undoLastTurn } from "./undo-snapshot.ts";
-
-import { getGitBranch } from "./agent-helpers.ts";
-
-import { runInputLoop } from "./input-loop.ts";
-import { SessionRunner } from "./session-runner.ts";
 
 interface AgentOptions {
 	model: string;

@@ -1,13 +1,7 @@
 import type { ToolDef } from "../llm-api/types.ts";
-import { webContentTool, webSearchTool } from "../tools/exa.ts";
-import {
-	type SubagentOutput,
-	createSubagentTool,
-	getSubagentMergeError,
-} from "../tools/subagent.ts";
-
 import type { CreateOutput } from "../tools/create.ts";
 import { createTool } from "../tools/create.ts";
+import { webContentTool, webSearchTool } from "../tools/exa.ts";
 import type { GlobOutput } from "../tools/glob.ts";
 import { globTool } from "../tools/glob.ts";
 import type { GrepOutput } from "../tools/grep.ts";
@@ -31,6 +25,11 @@ import type { ReplaceOutput } from "../tools/replace.ts";
 import { replaceTool } from "../tools/replace.ts";
 import type { ShellOutput } from "../tools/shell.ts";
 import { shellTool } from "../tools/shell.ts";
+import {
+	createSubagentTool,
+	getSubagentMergeError,
+	type SubagentOutput,
+} from "../tools/subagent.ts";
 
 // ─── Tool wrappers ────────────────────────────────────────────────────────────
 

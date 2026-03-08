@@ -2,8 +2,8 @@ import type { CoreMessage } from "../llm-api/turn.ts";
 import { deleteLastTurn } from "../session/db/index.ts";
 import type { ActiveSession } from "../session/manager.ts";
 import {
-	type SnapshotRestoreResult,
 	restoreSnapshot,
+	type SnapshotRestoreResult,
 } from "../tools/snapshot.ts";
 import type { AgentReporter } from "./reporter.ts";
 

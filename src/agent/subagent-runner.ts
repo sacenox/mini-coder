@@ -2,15 +2,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadAgents } from "../cli/agents.ts";
 import { formatSubagentLabel } from "../cli/output.ts";
+import type { ThinkingEffort } from "../llm-api/providers.ts";
 import { resolveModel } from "../llm-api/providers.ts";
 import { type CoreMessage, runTurn } from "../llm-api/turn.ts";
 import type { SubagentOutput } from "../tools/subagent.ts";
 import {
-	MergeInProgressError,
 	cleanupBranch,
 	createWorktree,
 	initializeWorktree,
 	isGitRepo,
+	MergeInProgressError,
 	mergeWorktree,
 	removeWorktree,
 	syncDirtyStateToWorktree,
@@ -18,8 +19,6 @@ import {
 import type { AgentReporter } from "./reporter.ts";
 import { buildSystemPrompt } from "./system-prompt.ts";
 import { buildToolSet } from "./tools.ts";
-
-import type { ThinkingEffort } from "../llm-api/providers.ts";
 
 function makeWorktreeBranch(laneId: string): string {
 	return `mc-sub-${laneId}`;

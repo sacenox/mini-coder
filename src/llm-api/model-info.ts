@@ -1,9 +1,9 @@
 import {
-	type ModelCapabilityRow,
-	type ProviderModelRow,
 	listModelCapabilities,
 	listModelInfoState,
 	listProviderModels,
+	type ModelCapabilityRow,
+	type ProviderModelRow,
 	replaceModelCapabilities,
 	replaceProviderModels,
 	setModelInfoState,

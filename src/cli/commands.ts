@@ -1,16 +1,15 @@
 import * as c from "yoctocolors";
-import { fetchAvailableModels } from "../llm-api/providers.ts";
 import type { ThinkingEffort } from "../llm-api/providers.ts";
-import {
-	type SubagentOutput,
-	getSubagentMergeError,
-} from "../tools/subagent.ts";
-
+import { fetchAvailableModels } from "../llm-api/providers.ts";
 import {
 	deleteMcpServer,
 	listMcpServers,
 	upsertMcpServer,
 } from "../session/db/index.ts";
+import {
+	getSubagentMergeError,
+	type SubagentOutput,
+} from "../tools/subagent.ts";
 import { loadAgents } from "./agents.ts";
 import {
 	type CustomCommand,

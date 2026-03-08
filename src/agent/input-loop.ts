@@ -1,6 +1,6 @@
 import * as c from "yoctocolors";
 import { type CommandContext, handleCommand } from "../cli/commands.ts";
-import { readline, type InputResult } from "../cli/input.ts";
+import { type InputResult, readline } from "../cli/input.ts";
 import { PREFIX } from "../cli/output.ts";
 import type { CoreMessage } from "../llm-api/turn.ts";
 import { saveMessages } from "../session/db/index.ts";

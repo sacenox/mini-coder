@@ -1,4 +1,4 @@
-import { constants, accessSync } from "node:fs";
+import { accessSync, constants } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 

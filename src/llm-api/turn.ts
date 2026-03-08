@@ -1,10 +1,10 @@
-import { dynamicTool, jsonSchema, stepCountIs, streamText } from "ai";
 import type { FlexibleSchema, StepResult } from "ai";
+import { dynamicTool, jsonSchema, stepCountIs, streamText } from "ai";
 import { logApiEvent } from "./api-log.ts";
-import { parseModelString } from "./providers.ts";
 import {
-	type ThinkingEffort,
 	getThinkingProviderOptions,
+	parseModelString,
+	type ThinkingEffort,
 } from "./providers.ts";
 import type { ToolDef, TurnEvent } from "./types.ts";
 

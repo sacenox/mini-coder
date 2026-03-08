@@ -9,12 +9,12 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-	MergeInProgressError,
 	cleanupBranch,
 	createWorktree,
 	hasDirtyWorkingTree,
 	initializeWorktree,
 	isGitRepo,
+	MergeInProgressError,
 	mergeWorktree,
 	removeWorktree,
 	syncDirtyStateToWorktree,

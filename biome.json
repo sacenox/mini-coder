@@ -1,7 +1,9 @@
 {
-	"$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
-	"organizeImports": {
-		"enabled": true
+	"$schema": "https://biomejs.dev/schemas/2.4.6/schema.json",
+	"vcs": {
+		"enabled": true,
+		"clientKind": "git",
+		"useIgnoreFile": true
 	},
 	"formatter": {
 		"enabled": true
@@ -21,7 +23,7 @@
 			"suspicious": {
 				"noDebugger": "error",
 				"noExplicitAny": "error",
-				"noConsoleLog": "error"
+				"noConsole": "error"
 			},
 			"correctness": {
 				"noUnusedVariables": "error",
@@ -32,8 +34,5 @@
 	},
 	"javascript": {
 		"globals": ["Bun", "Timer"]
-	},
-	"files": {
-		"ignore": ["node_modules", "dist"]
 	}
 }
