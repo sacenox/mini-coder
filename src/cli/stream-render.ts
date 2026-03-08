@@ -3,8 +3,8 @@ import type { CoreMessage } from "../llm-api/turn.ts";
 import type { TurnEvent } from "../llm-api/types.ts";
 import { logError } from "./error-log.ts";
 import { parseAppError } from "./error-parse.ts";
-import { renderChunk } from "./markdown.ts";
-import { G, writeln } from "./output.ts";
+import { renderLine } from "./markdown.ts";
+import { G, write, writeln } from "./output.ts";
 import type { Spinner } from "./spinner.ts";
 import { renderToolCall, renderToolResult } from "./tool-render.ts";
 
@@ -20,76 +20,36 @@ export async function renderTurn(
 	let inText = false;
 	let rawBuffer = "";
 	let inFence = false;
-	let printQueue = "";
-	let printPos = 0;
-	let tickerHandle: ReturnType<typeof setTimeout> | null = null;
 
 	let inputTokens = 0;
 	let outputTokens = 0;
 	let contextTokens = 0;
 	let newMessages: CoreMessage[] = [];
 
-	function enqueuePrint(ansi: string): void {
-		printQueue += ansi;
-		if (tickerHandle === null) {
-			scheduleTick();
-		}
-	}
-
-	function tick(): void {
-		tickerHandle = null;
-		if (printPos < printQueue.length) {
-			process.stdout.write(printQueue[printPos] as string);
-			printPos++;
-			scheduleTick();
-		} else {
-			printQueue = "";
-			printPos = 0;
-		}
-	}
-
-	function scheduleTick(): void {
-		tickerHandle = setTimeout(tick, 8);
-	}
-
-	function drainQueue(): void {
-		if (tickerHandle !== null) {
-			clearTimeout(tickerHandle);
-			tickerHandle = null;
-		}
-		if (printPos < printQueue.length) {
-			process.stdout.write(printQueue.slice(printPos));
-		}
-		printQueue = "";
-		printPos = 0;
-	}
-
-	function renderAndTrim(end: number): void {
-		const chunk = rawBuffer.slice(0, end);
-		const rendered = renderChunk(chunk, inFence);
+	function renderAndWrite(raw: string, endWithNewline: boolean): void {
+		const rendered = renderLine(raw, inFence);
 		inFence = rendered.inFence;
-		enqueuePrint(rendered.output);
-		rawBuffer = rawBuffer.slice(end);
+		write(rendered.output);
+		if (endWithNewline) {
+			write("\n");
+		}
 	}
 
-	function flushChunks(): void {
-		let boundary = rawBuffer.indexOf("\n\n");
-		if (boundary !== -1) {
-			renderAndTrim(boundary + 2);
-			flushChunks();
-			return;
-		}
-		boundary = rawBuffer.lastIndexOf("\n");
-		if (boundary !== -1) {
-			renderAndTrim(boundary + 1);
+	function flushCompleteLines(): void {
+		let boundary = rawBuffer.indexOf("\n");
+		while (boundary !== -1) {
+			renderAndWrite(rawBuffer.slice(0, boundary), true);
+			rawBuffer = rawBuffer.slice(boundary + 1);
+			boundary = rawBuffer.indexOf("\n");
 		}
 	}
 
 	function flushAll(): void {
-		if (rawBuffer) {
-			renderAndTrim(rawBuffer.length);
+		if (!rawBuffer) {
+			return;
 		}
-		drainQueue();
+		renderAndWrite(rawBuffer, false);
+		rawBuffer = "";
 	}
 
 	for await (const event of events) {
@@ -97,11 +57,11 @@ export async function renderTurn(
 			case "text-delta": {
 				if (!inText) {
 					spinner.stop();
-					process.stdout.write(`${G.reply} `);
+					write(`${G.reply} `);
 					inText = true;
 				}
 				rawBuffer += event.delta;
-				flushChunks();
+				flushCompleteLines();
 				break;
 			}
 
