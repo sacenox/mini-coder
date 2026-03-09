@@ -3,7 +3,7 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { LanguageModel } from "ai";
-import { createOllama } from "ollama-ai-provider";
+
 
 import { logApiEvent } from "./api-log.ts";
 import {
@@ -342,12 +342,13 @@ export function resolveModel(modelString: string): LanguageModel {
 
 		case "ollama": {
 			const baseURL = process.env.OLLAMA_BASE_URL ?? "http://localhost:11434";
-			const ollamaProvider = createOllama({
+			const ollamaProvider = createOpenAICompatible({
+				name: "ollama",
+				baseURL: `${baseURL}/v1`,
+				apiKey: "ollama",
 				fetch: getFetchWithLogging(),
-				baseURL,
 			});
-			// ollama-ai-provider returns LanguageModelV1; cast to LanguageModel
-			return ollamaProvider(modelId) as unknown as LanguageModel;
+			return ollamaProvider.chatModel(modelId);
 		}
 
 		default:
