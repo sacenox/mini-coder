@@ -2,6 +2,11 @@ import type { CoreMessage } from "./turn.ts";
 
 // ─── Turn events (streamed to the caller) ─────────────────────────────────────
 
+export interface ReasoningDeltaEvent {
+	type: "reasoning-delta";
+	delta: string;
+}
+
 export interface TextDeltaEvent {
 	type: "text-delta";
 	delta: string;
@@ -43,6 +48,7 @@ export interface TurnErrorEvent {
 }
 
 export type TurnEvent =
+	| ReasoningDeltaEvent
 	| TextDeltaEvent
 	| ToolCallStartEvent
 	| ToolResultEvent

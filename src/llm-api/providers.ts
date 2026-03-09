@@ -4,7 +4,6 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { LanguageModel } from "ai";
 
-
 import { logApiEvent } from "./api-log.ts";
 import {
 	type AvailableModelsSnapshot,

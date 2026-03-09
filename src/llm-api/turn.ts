@@ -130,6 +130,8 @@ export async function* runTurn(options: {
 				: {}),
 		};
 
+		let finalMessages: CoreMessage[] = [];
+
 		const streamOpts: StreamTextOptions = {
 			model,
 			messages,
@@ -145,6 +147,16 @@ export async function* runTurn(options: {
 				outputTokens += step.usage?.outputTokens ?? 0;
 				contextTokens = step.usage?.inputTokens ?? contextTokens;
 				stepCount++;
+
+				// Accumulate messages from each step finish.
+				// AI SDK's step.response.messages (or step.messages in newer versions)
+				// contains the authoritative, deduplicated list of all messages
+				// generated across all steps.
+				const s = step as unknown as {
+					response?: { messages?: CoreMessage[] };
+					messages?: CoreMessage[];
+				};
+				finalMessages = s.response?.messages ?? s.messages ?? finalMessages;
 			},
 			// On the last allowed step, strip all tools so the model is forced to
 			// respond with text — no more tool calls are possible.
@@ -175,7 +187,7 @@ export async function* runTurn(options: {
 
 			const c = chunk as StreamChunk;
 
-			if (c.type !== "text-delta") {
+			if (c.type !== "text-delta" && c.type !== "reasoning") {
 				logApiEvent("stream chunk", {
 					type: c.type,
 					toolCallId: c.toolCallId,
@@ -198,6 +210,14 @@ export async function* runTurn(options: {
 								: "";
 					yield {
 						type: "text-delta",
+						delta,
+					};
+					break;
+				}
+				case "reasoning": {
+					const delta = typeof c.textDelta === "string" ? c.textDelta : "";
+					yield {
+						type: "reasoning-delta",
 						delta,
 					};
 					break;
@@ -244,13 +264,12 @@ export async function* runTurn(options: {
 			}
 		}
 
-		// Collect the final response messages after the stream completes.
-		// Using result.response (which resolves to the final step's response)
-		// gives us the authoritative, deduplicated list of all messages generated
-		// across all steps. Accumulating from onStepFinish would cause duplicates
-		// because step.response.messages includes all prior step messages PLUS the
-		// current step's messages on each callback invocation.
-		const newMessages = (await result.response)?.messages ?? [];
+		// We use finalMessages accumulated from onStepFinish instead of awaiting result.response.
+		// Awaiting result.response causes the process to hang indefinitely for Anthropic models in Bun
+		// due to a known bug in @ai-sdk/anthropic's tee() stream usage.
+		// Since step.response.messages includes the full deduplicated list, the last invocation
+		// gives us the exact equivalent without waiting on the broken promise.
+		const newMessages = finalMessages;
 
 		logApiEvent("turn complete", {
 			newMessagesCount: newMessages.length,
