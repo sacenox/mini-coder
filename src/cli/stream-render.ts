@@ -18,6 +18,7 @@ export async function renderTurn(
 	newMessages: CoreMessage[];
 }> {
 	let inText = false;
+	let inReasoning = false;
 	let rawBuffer = "";
 	let inFence = false;
 
@@ -29,9 +30,19 @@ export async function renderTurn(
 	function renderAndWrite(raw: string, endWithNewline: boolean): void {
 		const rendered = renderLine(raw, inFence);
 		inFence = rendered.inFence;
-		write(rendered.output);
+		const finalOutput = inReasoning ? c.dim(rendered.output) : rendered.output;
+		write(finalOutput);
 		if (endWithNewline) {
 			write("\n");
+		}
+	}
+
+	function flushAnyText(): void {
+		if (inText || inReasoning) {
+			flushAll();
+			writeln();
+			inText = false;
+			inReasoning = false;
 		}
 	}
 
@@ -55,6 +66,9 @@ export async function renderTurn(
 	for await (const event of events) {
 		switch (event.type) {
 			case "text-delta": {
+				if (inReasoning) {
+					flushAnyText();
+				}
 				if (!inText) {
 					spinner.stop();
 					write(`${G.reply} `);
@@ -64,13 +78,22 @@ export async function renderTurn(
 				flushCompleteLines();
 				break;
 			}
+			case "reasoning-delta": {
+				if (!inReasoning) {
+					if (inText) {
+						flushAnyText();
+					}
+					spinner.stop();
+					write(`${c.dim("Thinking...")}\n`);
+					inReasoning = true;
+				}
+				rawBuffer += event.delta;
+				flushCompleteLines();
+				break;
+			}
 
 			case "tool-call-start": {
-				if (inText) {
-					flushAll();
-					writeln();
-					inText = false;
-				}
+				flushAnyText();
 				spinner.stop();
 				renderToolCall(event.toolName, event.args);
 				spinner.start(event.toolName);
@@ -85,11 +108,7 @@ export async function renderTurn(
 			}
 
 			case "turn-complete": {
-				if (inText) {
-					flushAll();
-					writeln();
-					inText = false;
-				}
+				flushAnyText();
 				spinner.stop();
 				inputTokens = event.inputTokens;
 				outputTokens = event.outputTokens;
@@ -99,11 +118,7 @@ export async function renderTurn(
 			}
 
 			case "turn-error": {
-				if (inText) {
-					flushAll();
-					writeln();
-					inText = false;
-				}
+				flushAnyText();
 				spinner.stop();
 				const isAbort =
 					event.error.name === "AbortError" ||
