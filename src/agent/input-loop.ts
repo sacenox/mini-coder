@@ -1,6 +1,6 @@
 import * as c from "yoctocolors";
 import { type CommandContext, handleCommand } from "../cli/commands.ts";
-import { readline, type InputResult } from "../cli/input.ts";
+import { type InputResult, readline } from "../cli/input.ts";
 import { PREFIX } from "../cli/output.ts";
 import type { CoreMessage } from "../llm-api/turn.ts";
 import { saveMessages } from "../session/db/index.ts";
@@ -8,7 +8,7 @@ import { hasRalphSignal, runShellPassthrough } from "./agent-helpers.ts";
 import type { AgentReporter } from "./reporter.ts";
 import type { SessionRunner } from "./session-runner.ts";
 
-export interface InputLoopOptions {
+interface InputLoopOptions {
 	cwd: string;
 	reporter: AgentReporter;
 	cmdCtx: CommandContext;
@@ -64,6 +64,7 @@ export async function runInputLoop(opts: InputLoopOptions): Promise<void> {
 					runner.session.messages.push(msg);
 					saveMessages(runner.session.id, [msg], thisTurn);
 					runner.coreHistory.push(msg);
+					runner.snapshotStack.push(null);
 				}
 				continue;
 			}

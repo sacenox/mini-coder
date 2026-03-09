@@ -7,7 +7,6 @@ import type {
 } from "../agent/reporter.ts";
 import type { TurnEvent } from "../llm-api/types.ts";
 import {
-	Spinner,
 	renderError,
 	renderHook,
 	renderInfo,
@@ -15,6 +14,7 @@ import {
 	renderSubagentEvent,
 	renderTurn,
 	restoreTerminal,
+	Spinner,
 	writeln,
 } from "./output.ts";
 

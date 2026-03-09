@@ -82,15 +82,13 @@ export function renderInfo(msg: string): void {
 	writeln(`${G.info} ${c.dim(msg)}`);
 }
 
+export { renderError } from "./error-render.ts";
 // Re-exports
 export { Spinner } from "./spinner.ts";
+export { renderStatusBar } from "./status-bar.ts";
 export { renderTurn } from "./stream-render.ts";
 export {
 	formatSubagentLabel,
-	renderSubagentEvent,
-	renderToolResult,
-	renderToolCall,
 	renderHook,
+	renderSubagentEvent,
 } from "./tool-render.ts";
-export { renderStatusBar } from "./status-bar.ts";
-export { renderError } from "./error-render.ts";

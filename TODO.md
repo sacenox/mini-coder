@@ -1,13 +1,5 @@
 # TODO
 
----
-
-## Subagents id/number/lane could be made more robust
-
-- Currently we use an incremental integer for this, but in a long session with several conversations (user uses /new) it can become confusing (seeing subagent number 16 after /new). Let's think of a better way to id subagents and their lanes/worktrees. Maybe with a UUID?
-
----
-
 ## Write blog posts
 
 - Codex being big dumb and lazy without strong guidance in system prompt/instructions

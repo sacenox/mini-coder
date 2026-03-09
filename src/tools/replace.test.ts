@@ -1,42 +1,20 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { hashLine } from "./hashline.ts";
 import { replaceTool } from "./replace.ts";
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+import { createTestHelpers } from "./test-helpers.ts";
 
-let dir: string;
-
-/** Write a file into the temp dir and return its basename. */
-async function write(name: string, content: string): Promise<string> {
-	await writeFile(join(dir, name), content);
-	return name;
-}
-
-/** Read a file from the temp dir. */
-async function read(name: string): Promise<string> {
-	return Bun.file(join(dir, name)).text();
-}
-
-/** Build an anchor string "line:hash" for the given line content. */
-function anchor(lineNum: number, lineContent: string): string {
-	return `${lineNum}:${hashLine(lineContent)}`;
-}
+const { setup, teardown, write, read, anchor, getDir } = createTestHelpers();
 
 // ---------------------------------------------------------------------------
 // Setup / teardown
 // ---------------------------------------------------------------------------
 
 beforeEach(async () => {
-	dir = await mkdtemp(join(tmpdir(), "mc-replace-test-"));
+	await setup("mc-replace-test-");
 });
 
 afterEach(async () => {
-	await rm(dir, { recursive: true, force: true });
+	await teardown();
 });
 
 // ---------------------------------------------------------------------------
@@ -48,7 +26,7 @@ describe("replaceTool", () => {
 		const name = await write("f.txt", "a\nb\nc\n");
 		const result = await replaceTool.execute({
 			path: name,
-			cwd: dir,
+			cwd: getDir(),
 			startAnchor: anchor(2, "b"),
 			newContent: "B",
 		});
@@ -62,7 +40,7 @@ describe("replaceTool", () => {
 		const name = await write("f.txt", "a\nb\nc\nd\ne\n");
 		const result = await replaceTool.execute({
 			path: name,
-			cwd: dir,
+			cwd: getDir(),
 			startAnchor: anchor(2, "b"),
 			endAnchor: anchor(4, "d"),
 			newContent: "X\nY",
@@ -80,7 +58,7 @@ describe("replaceTool", () => {
 		const name = await write("f.txt", "a\nb\nc\n");
 		const result = await replaceTool.execute({
 			path: name,
-			cwd: dir,
+			cwd: getDir(),
 			startAnchor: anchor(2, "b"),
 		});
 
@@ -93,7 +71,7 @@ describe("replaceTool", () => {
 		const name = await write("f.txt", "a\nb\nc\nd\n");
 		await replaceTool.execute({
 			path: name,
-			cwd: dir,
+			cwd: getDir(),
 			startAnchor: anchor(2, "b"),
 			endAnchor: anchor(3, "c"),
 			newContent: "",
@@ -106,7 +84,7 @@ describe("replaceTool", () => {
 		const name = await write("f.txt", "a\nb\nc\n");
 		const result = await replaceTool.execute({
 			path: name,
-			cwd: dir,
+			cwd: getDir(),
 			startAnchor: anchor(2, "b"),
 			newContent: "b",
 		});
@@ -118,7 +96,7 @@ describe("replaceTool", () => {
 		const name = await write("f.txt", "a\nb\n");
 		const result = await replaceTool.execute({
 			path: name,
-			cwd: dir,
+			cwd: getDir(),
 			startAnchor: anchor(1, "a"),
 			newContent: "A",
 		});
@@ -130,7 +108,7 @@ describe("replaceTool", () => {
 		await expect(
 			replaceTool.execute({
 				path: "missing.txt",
-				cwd: dir,
+				cwd: getDir(),
 				startAnchor: "1:00",
 			}),
 		).rejects.toThrow("File not found");
@@ -141,7 +119,7 @@ describe("replaceTool", () => {
 		await expect(
 			replaceTool.execute({
 				path: name,
-				cwd: dir,
+				cwd: getDir(),
 				startAnchor: "2:ff", // wrong hash for "b"
 			}),
 		).rejects.toThrow("Hash not found");
@@ -152,7 +130,7 @@ describe("replaceTool", () => {
 		await expect(
 			replaceTool.execute({
 				path: name,
-				cwd: dir,
+				cwd: getDir(),
 				startAnchor: anchor(3, "c"),
 				endAnchor: anchor(1, "a"),
 			}),
@@ -164,7 +142,7 @@ describe("replaceTool", () => {
 		await expect(
 			replaceTool.execute({
 				path: name,
-				cwd: dir,
+				cwd: getDir(),
 				startAnchor: "not-an-anchor",
 			}),
 		).rejects.toThrow("Invalid startAnchor");
@@ -173,7 +151,7 @@ describe("replaceTool", () => {
 		const name = await write("f.txt", "a\nb\nc\n");
 		await replaceTool.execute({
 			path: name,
-			cwd: dir,
+			cwd: getDir(),
 			startAnchor: `${anchor(2, "b")}|`,
 			newContent: "B",
 		});

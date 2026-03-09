@@ -56,7 +56,9 @@ export function renderStatusBar(opts: {
 	const right: string[] = [];
 	if (opts.inputTokens > 0 || opts.outputTokens > 0) {
 		right.push(
-			c.dim(`↑${fmtTokens(opts.inputTokens)} ↓${fmtTokens(opts.outputTokens)}`),
+			c.dim(
+				`↑ ${fmtTokens(opts.inputTokens)} ↓ ${fmtTokens(opts.outputTokens)}`,
+			),
 		);
 	}
 	if (opts.contextTokens > 0) {

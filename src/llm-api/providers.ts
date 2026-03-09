@@ -8,7 +8,6 @@ import type { LanguageModel } from "ai";
 import { logApiEvent } from "./api-log.ts";
 import {
 	type AvailableModelsSnapshot,
-	type LiveModel,
 	fetchAvailableModelsSnapshot,
 	getContextWindow as getContextWindowFromCache,
 	supportsThinking as supportsThinkingFromCache,
@@ -177,7 +176,7 @@ export function parseModelString(modelString: string): {
 
 export type ThinkingEffort = "low" | "medium" | "high" | "xhigh";
 
-export function supportsThinking(modelString: string): boolean {
+function supportsThinking(modelString: string): boolean {
 	return supportsThinkingFromCache(modelString);
 }
 
@@ -374,23 +373,7 @@ export function autoDiscoverModel(): string {
 	return "ollama/llama3.2";
 }
 
-/**
- * List all providers that appear to be configured via ENV.
- */
-export function availableProviders(): string[] {
-	const providers: string[] = [];
-	if (process.env.OPENCODE_API_KEY) providers.push("zen");
-	if (process.env.ANTHROPIC_API_KEY) providers.push("anthropic");
-	if (process.env.OPENAI_API_KEY) providers.push("openai");
-	if (process.env.GOOGLE_API_KEY ?? process.env.GEMINI_API_KEY)
-		providers.push("google");
-	providers.push("ollama"); // always listed (local)
-	return providers;
-}
-
 // ─── Cached model listing ─────────────────────────────────────────────────────
-
-export type { LiveModel };
 
 export async function fetchAvailableModels(): Promise<AvailableModelsSnapshot> {
 	return fetchAvailableModelsSnapshot();

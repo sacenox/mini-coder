@@ -1,7 +1,4 @@
-export type SignalHandler = () => void;
-
-export class TerminalIO {
-	private cleanupHandlers: Set<() => void> = new Set();
+class TerminalIO {
 	private rawModeEnabled = false;
 	private interruptHandler: (() => void) | null = null;
 

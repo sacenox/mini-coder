@@ -1,10 +1,10 @@
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { warnConventionConflicts } from "./config-conflicts.ts";
 import { type Frontmatter, parseFrontmatter } from "./frontmatter.ts";
 
-export interface MarkdownConfigLoaderOptions<T> {
+interface MarkdownConfigLoaderOptions<T> {
 	type: "commands" | "skills" | "agents";
 	/** Strategy for file discovery: 'flat' reads dir/*.md, 'nested' reads dir/<name>/SKILL.md */
 	strategy: "flat" | "nested";

@@ -2,7 +2,7 @@
 
 import { loadMarkdownConfigs } from "./load-markdown-configs.ts";
 
-export interface AgentConfig {
+interface AgentConfig {
 	name: string;
 	description: string;
 	/** Override model for this agent (optional) */

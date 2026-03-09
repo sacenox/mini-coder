@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
-	MODEL_INFO_TTL_MS,
 	buildModelMatchIndex,
 	getProvidersToRefreshFromEnv,
 	getRemoteProvidersFromEnv,
 	isProviderVisibleInSnapshot,
 	isStaleTimestamp,
+	MODEL_INFO_TTL_MS,
 	matchCanonicalModelId,
 	normalizeModelId,
 	parseModelsDevCapabilities,

@@ -7,7 +7,7 @@ import type { ToolDef } from "../llm-api/types.ts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export interface McpServerConfig {
+interface McpServerConfig {
 	name: string;
 	/** "http" uses StreamableHTTP (with SSE fallback); "stdio" spawns a process */
 	transport: "http" | "stdio";
@@ -17,7 +17,7 @@ export interface McpServerConfig {
 	env?: Record<string, string>;
 }
 
-export interface McpClient {
+interface McpClient {
 	name: string;
 	tools: ToolDef[];
 	close: () => Promise<void>;

@@ -1,13 +1,13 @@
 import type { CoreMessage } from "../llm-api/turn.ts";
-import { deleteLastTurn } from "../session/db/index.ts";
+import { deleteLastTurn, loadMessages } from "../session/db/index.ts";
 import type { ActiveSession } from "../session/manager.ts";
 import {
-	type SnapshotRestoreResult,
 	restoreSnapshot,
+	type SnapshotRestoreResult,
 } from "../tools/snapshot.ts";
 import type { AgentReporter } from "./reporter.ts";
 
-export interface UndoContext {
+interface UndoContext {
 	session: ActiveSession;
 	coreHistory: CoreMessage[];
 	snapshotStack: Array<number | null>;
@@ -24,33 +24,20 @@ export async function undoLastTurn(ctx: UndoContext): Promise<boolean> {
 	// Nothing to undo if there are no messages
 	if (session.messages.length === 0) return false;
 
-	// Find the message index where the last turn starts (last user message)
-	let lastUserIdx = -1;
-	for (let i = session.messages.length - 1; i >= 0; i--) {
-		if (session.messages[i]?.role === "user") {
-			lastUserIdx = i;
-			break;
-		}
-	}
-	if (lastUserIdx === -1) return false;
-
-	// Trim in-memory DB history
-	session.messages.splice(lastUserIdx);
-
-	// Trim coreHistory to match — find last user message in coreHistory
-	let coreLastUserIdx = -1;
-	for (let i = coreHistory.length - 1; i >= 0; i--) {
-		if (coreHistory[i]?.role === "user") {
-			coreLastUserIdx = i;
-			break;
-		}
-	}
-	if (coreLastUserIdx !== -1) coreHistory.splice(coreLastUserIdx);
-
 	// Delete from DB and decrement turn counter
 	const deleted = deleteLastTurn(session.id);
+	if (!deleted) return false;
+
 	const poppedTurn = snapshotStack.pop() ?? null;
 	if (turnIndex > 0) ctx.setTurnIndex(turnIndex - 1);
+
+	// Sync in-memory history reliably with DB state
+	const remaining = loadMessages(session.id);
+	session.messages.length = 0;
+	session.messages.push(...remaining);
+
+	coreHistory.length = 0;
+	coreHistory.push(...remaining);
 
 	// Restore files from the SQLite snapshot for the turn being undone
 	if (poppedTurn !== null) {

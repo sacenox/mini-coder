@@ -1,8 +1,8 @@
-import { join } from "node:path";
 import { z } from "zod";
 import type { ToolDef } from "../llm-api/types.ts";
 import { formatHashLine } from "./hashline.ts";
 import { loadGitignore } from "./ignore.ts";
+import { getScannedPathInfo } from "./scan-path.ts";
 
 const GrepSchema = z.object({
 	pattern: z.string().describe("Regular expression to search for"),
@@ -39,9 +39,9 @@ export interface GrepOutput {
 }
 
 const DEFAULT_IGNORE = [
-	"node_modules",
-	".git",
-	"dist",
+	"node_modules/**",
+	".git/**",
+	"dist/**",
 	"*.db",
 	"*.db-shm",
 	"*.db-wal",
@@ -69,19 +69,27 @@ export const grepTool: ToolDef<GrepInput, GrepOutput> = {
 		let truncated = false;
 		const ig = await loadGitignore(cwd);
 
-		outer: for await (const relPath of fileGlob.scan({
+		outer: for await (const fromPath of fileGlob.scan({
 			cwd,
 			onlyFiles: true,
 			dot: true,
 		})) {
-			if (ig?.ignores(relPath)) continue;
+			const { absolute, relativePath, ignoreTargets } = getScannedPathInfo(
+				cwd,
+				fromPath,
+			);
+			const firstSegment = relativePath.split("/")[0] ?? "";
 
-			const firstSegment = relPath.split("/")[0] ?? "";
-			// Skip ignored
-			if (ignoreGlob.some((g) => g.match(relPath) || g.match(firstSegment))) {
+			if (ignoreTargets.some((path) => ig?.ignores(path))) continue;
+			if (
+				ignoreTargets.some((candidate) =>
+					ignoreGlob.some((g) => g.match(candidate) || g.match(firstSegment)),
+				)
+			) {
 				continue;
 			}
-			const fullPath = join(cwd, relPath);
+
+			const fullPath = absolute;
 			let text: string;
 			try {
 				text = await Bun.file(fullPath).text();
@@ -112,7 +120,7 @@ export const grepTool: ToolDef<GrepInput, GrepOutput> = {
 				}
 
 				allMatches.push({
-					file: relPath,
+					file: relativePath,
 					line: i + 1,
 					column: match.index + 1,
 					text: formatHashLine(i + 1, line),

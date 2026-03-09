@@ -1,7 +1,8 @@
-import { join, relative } from "node:path";
+import { resolve } from "node:path";
 import { z } from "zod";
 import type { ToolDef } from "../llm-api/types.ts";
 import { loadGitignore } from "./ignore.ts";
+import { getScannedPathInfo } from "./scan-path.ts";
 
 const GlobSchema = z.object({
 	pattern: z
@@ -39,21 +40,27 @@ export const globTool: ToolDef<GlobInput, GlobOutput> = {
 		const matches: Array<{ path: string; mtime: number }> = [];
 
 		for await (const file of glob.scan({ cwd, onlyFiles: true, dot: true })) {
+			const { relativePath, ignoreTargets } = getScannedPathInfo(cwd, file);
+			const firstSegment = relativePath.split("/")[0] ?? "";
+
 			// Check if ignored by .gitignore
-			if (ig?.ignores(file)) continue;
+			if (ignoreTargets.some((path) => ig?.ignores(path))) continue;
 
 			// Check explicit ignore patterns
-			const firstSegment = file.split("/")[0] ?? "";
-			const ignored = ignoreGlobs.some(
-				(g) => g.match(file) || g.match(firstSegment),
+			const ignored = ignoreTargets.some((candidate) =>
+				ignoreGlobs.some((g) => g.match(candidate) || g.match(firstSegment)),
 			);
 			if (ignored) continue;
+
 			try {
-				const fullPath = join(cwd, file);
+				const fullPath = resolve(cwd, relativePath);
 				const stat = (await Bun.file(fullPath).stat?.()) ?? null;
-				matches.push({ path: file, mtime: stat?.mtime?.getTime() ?? 0 });
+				matches.push({
+					path: relativePath,
+					mtime: stat?.mtime?.getTime() ?? 0,
+				});
 			} catch {
-				matches.push({ path: file, mtime: 0 });
+				matches.push({ path: relativePath, mtime: 0 });
 			}
 
 			if (matches.length >= MAX_RESULTS + 1) break;
@@ -65,7 +72,7 @@ export const globTool: ToolDef<GlobInput, GlobOutput> = {
 		// Sort by mtime descending (most recently modified first)
 		matches.sort((a, b) => b.mtime - a.mtime);
 
-		const files = matches.map((m) => relative(cwd, join(cwd, m.path)));
+		const files = matches.map((m) => m.path);
 
 		return { files, count: files.length, truncated };
 	},

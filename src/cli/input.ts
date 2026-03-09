@@ -276,29 +276,33 @@ export function pasteLabel(text: string): string {
 	return `[pasted: "${preview}"${more}]`;
 }
 
-export function renderInputBuffer(
+function processInputBuffer(
 	buf: string,
 	pasteTokens: ReadonlyMap<string, string>,
+	replacer: (ch: string, pasted: string | undefined) => string,
 ): string {
 	let out = "";
 	for (let i = 0; i < buf.length; i++) {
 		const ch = buf[i] ?? "";
-		const pasted = pasteTokens.get(ch);
-		out += pasted ? pasteLabel(pasted) : ch;
+		out += replacer(ch, pasteTokens.get(ch));
 	}
 	return out;
+}
+
+export function renderInputBuffer(
+	buf: string,
+	pasteTokens: ReadonlyMap<string, string>,
+): string {
+	return processInputBuffer(buf, pasteTokens, (ch, pasted) =>
+		pasted ? pasteLabel(pasted) : ch,
+	);
 }
 
 export function expandInputBuffer(
 	buf: string,
 	pasteTokens: ReadonlyMap<string, string>,
 ): string {
-	let out = "";
-	for (let i = 0; i < buf.length; i++) {
-		const ch = buf[i] ?? "";
-		out += pasteTokens.get(ch) ?? ch;
-	}
-	return out;
+	return processInputBuffer(buf, pasteTokens, (ch, pasted) => pasted ?? ch);
 }
 
 export function pruneInputPasteTokens(
@@ -387,6 +391,15 @@ export async function readline(opts: {
 	function insertText(text: string): void {
 		buf = buf.slice(0, cursor) + text + buf.slice(cursor);
 		cursor += text.length;
+	}
+
+	function deleteWordBackward(): void {
+		const end = cursor;
+		while (cursor > 0 && buf[cursor - 1] === " ") cursor--;
+		while (cursor > 0 && buf[cursor - 1] !== " ") cursor--;
+		buf = buf.slice(0, cursor) + buf.slice(end);
+		prunePasteTokens();
+		renderPrompt();
 	}
 
 	function insertPasteToken(text: string): void {
@@ -557,12 +570,7 @@ export async function readline(opts: {
 				}
 				// Alt+Backspace (delete word backward): ESC DEL
 				if (raw === `${ESC}${BACKSPACE}`) {
-					const end = cursor;
-					while (cursor > 0 && buf[cursor - 1] === " ") cursor--;
-					while (cursor > 0 && buf[cursor - 1] !== " ") cursor--;
-					buf = buf.slice(0, cursor) + buf.slice(end);
-					prunePasteTokens();
-					renderPrompt();
+					deleteWordBackward();
 					continue;
 				}
 				if (raw === ESC) {
@@ -596,12 +604,7 @@ export async function readline(opts: {
 
 			if (raw === CTRL_W) {
 				// Delete word before cursor
-				const end = cursor;
-				while (cursor > 0 && buf[cursor - 1] === " ") cursor--;
-				while (cursor > 0 && buf[cursor - 1] !== " ") cursor--;
-				buf = buf.slice(0, cursor) + buf.slice(end);
-				prunePasteTokens();
-				renderPrompt();
+				deleteWordBackward();
 				continue;
 			}
 

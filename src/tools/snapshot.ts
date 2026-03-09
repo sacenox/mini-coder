@@ -18,9 +18,9 @@
 import { readFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import {
-	type SnapshotFile,
 	deleteSnapshot,
 	loadSnapshot,
+	type SnapshotFile,
 	saveSnapshot,
 } from "../session/db/index.ts";
 

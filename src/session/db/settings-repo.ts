@@ -1,6 +1,6 @@
 import { getDb } from "./connection.ts";
 
-export function getSetting(key: string): string | null {
+function getSetting(key: string): string | null {
 	const row = getDb()
 		.query<{ value: string }, [string]>(
 			"SELECT value FROM settings WHERE key = ?",
@@ -9,7 +9,7 @@ export function getSetting(key: string): string | null {
 	return row?.value ?? null;
 }
 
-export function setSetting(key: string, value: string): void {
+function setSetting(key: string, value: string): void {
 	getDb().run(
 		`INSERT INTO settings (key, value) VALUES (?, ?)
      ON CONFLICT(key) DO UPDATE SET value = excluded.value`,

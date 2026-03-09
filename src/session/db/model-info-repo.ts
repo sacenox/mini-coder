@@ -102,15 +102,6 @@ export function replaceProviderModels(
 	run();
 }
 
-export function getModelInfoState(key: string): string | null {
-	const row = getDb()
-		.query<{ value: string }, [string]>(
-			"SELECT value FROM model_info_state WHERE key = ?",
-		)
-		.get(key);
-	return row?.value ?? null;
-}
-
 export function setModelInfoState(key: string, value: string): void {
 	getDb().run(
 		`INSERT INTO model_info_state (key, value) VALUES (?, ?)

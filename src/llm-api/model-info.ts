@@ -1,9 +1,9 @@
 import {
-	type ModelCapabilityRow,
-	type ProviderModelRow,
 	listModelCapabilities,
 	listModelInfoState,
 	listProviderModels,
+	type ModelCapabilityRow,
+	type ProviderModelRow,
 	replaceModelCapabilities,
 	replaceProviderModels,
 	setModelInfoState,
@@ -20,7 +20,7 @@ const PROVIDER_SYNC_KEY_PREFIX = "last_provider_sync_at:";
 
 export const MODEL_INFO_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
-export interface ModelInfo {
+interface ModelInfo {
 	canonicalModelId: string | null;
 	contextWindow: number | null;
 	reasoning: boolean;
@@ -65,7 +65,7 @@ interface RuntimeCache {
 	state: Map<string, string>;
 }
 
-export interface ModelMatchIndex {
+interface ModelMatchIndex {
 	exact: Map<string, string>;
 	alias: Map<string, string | null>;
 }
@@ -256,7 +256,7 @@ export function isStaleTimestamp(
 	return now - timestamp > ttlMs;
 }
 
-export function buildRuntimeCache(
+function buildRuntimeCache(
 	capabilityRows: ModelCapabilityRow[],
 	providerRows: ProviderModelRow[],
 	stateRows: Array<{ key: string; value: string }>,
@@ -355,7 +355,7 @@ export function getProvidersToRefreshFromEnv(
 	return [...getRemoteProvidersFromEnv(env), "ollama"];
 }
 
-export function getVisibleProvidersForSnapshotFromEnv(
+function getVisibleProvidersForSnapshotFromEnv(
 	env: Record<string, string | undefined>,
 ): ReadonlySet<string> {
 	return new Set(getProvidersToRefreshFromEnv(env));
@@ -380,7 +380,7 @@ function getProviderSyncKey(provider: string): string {
 	return `${PROVIDER_SYNC_KEY_PREFIX}${provider}`;
 }
 
-export function isModelInfoStale(now = Date.now()): boolean {
+function isModelInfoStale(now = Date.now()): boolean {
 	ensureLoaded();
 	if (isStaleTimestamp(parseStateInt(MODELS_DEV_SYNC_KEY), now)) return true;
 	for (const provider of getProvidersRequiredForFreshness()) {
@@ -428,32 +428,44 @@ async function fetchZenModels(): Promise<ProviderModelCandidate[] | null> {
 		{ headers: { Authorization: `Bearer ${key}` } },
 		8_000,
 	);
-	if (!isRecord(payload)) return null;
-	const data = payload.data;
-	if (!Array.isArray(data)) return null;
-	const out: ProviderModelCandidate[] = [];
-	for (const item of data) {
-		if (!isRecord(item) || typeof item.id !== "string") continue;
-		const modelId = normalizeModelId(item.id);
-		if (!modelId) continue;
+	return processModelsList(payload, "data", "id", (item, modelId) => {
 		const contextWindow =
 			typeof item.context_window === "number" &&
 			Number.isFinite(item.context_window)
 				? Math.max(0, Math.trunc(item.context_window))
 				: null;
-		out.push({
+		return {
 			providerModelId: modelId,
-			displayName: item.id,
+			displayName: item.id as string,
 			contextWindow,
 			free:
-				item.id.endsWith("-free") ||
+				(item.id as string).endsWith("-free") ||
 				item.id === "gpt-5-nano" ||
 				item.id === "big-pickle",
-		});
+		};
+	});
+}
+
+function processModelsList(
+	payload: unknown,
+	arrayKey: string,
+	idKey: string,
+	mapper: (
+		item: Record<string, unknown>,
+		modelId: string,
+	) => ProviderModelCandidate | null,
+): ProviderModelCandidate[] | null {
+	if (!isRecord(payload) || !Array.isArray(payload[arrayKey])) return null;
+	const out: ProviderModelCandidate[] = [];
+	for (const item of payload[arrayKey] as unknown[]) {
+		if (!isRecord(item) || typeof item[idKey] !== "string") continue;
+		const modelId = normalizeModelId(item[idKey] as string);
+		if (!modelId) continue;
+		const mapped = mapper(item as Record<string, unknown>, modelId);
+		if (mapped) out.push(mapped);
 	}
 	return out;
 }
-
 async function fetchOpenAIModels(): Promise<ProviderModelCandidate[] | null> {
 	const key = process.env.OPENAI_API_KEY;
 	if (!key) return null;
@@ -462,20 +474,12 @@ async function fetchOpenAIModels(): Promise<ProviderModelCandidate[] | null> {
 		{ headers: { Authorization: `Bearer ${key}` } },
 		6_000,
 	);
-	if (!isRecord(payload) || !Array.isArray(payload.data)) return null;
-	const out: ProviderModelCandidate[] = [];
-	for (const item of payload.data) {
-		if (!isRecord(item) || typeof item.id !== "string") continue;
-		const modelId = normalizeModelId(item.id);
-		if (!modelId) continue;
-		out.push({
-			providerModelId: modelId,
-			displayName: item.id,
-			contextWindow: null,
-			free: false,
-		});
-	}
-	return out;
+	return processModelsList(payload, "data", "id", (item, modelId) => ({
+		providerModelId: modelId,
+		displayName: item.id as string,
+		contextWindow: null,
+		free: false,
+	}));
 }
 
 async function fetchAnthropicModels(): Promise<
@@ -493,25 +497,19 @@ async function fetchAnthropicModels(): Promise<
 		},
 		6_000,
 	);
-	if (!isRecord(payload) || !Array.isArray(payload.data)) return null;
-	const out: ProviderModelCandidate[] = [];
-	for (const item of payload.data) {
-		if (!isRecord(item) || typeof item.id !== "string") continue;
-		const modelId = normalizeModelId(item.id);
-		if (!modelId) continue;
+	return processModelsList(payload, "data", "id", (item, modelId) => {
 		const displayName =
 			typeof item.display_name === "string" &&
 			item.display_name.trim().length > 0
 				? item.display_name
-				: item.id;
-		out.push({
+				: (item.id as string);
+		return {
 			providerModelId: modelId,
 			displayName,
 			contextWindow: null,
 			free: false,
-		});
-	}
-	return out;
+		};
+	});
 }
 
 async function fetchGoogleModels(): Promise<ProviderModelCandidate[] | null> {
@@ -522,12 +520,7 @@ async function fetchGoogleModels(): Promise<ProviderModelCandidate[] | null> {
 		{},
 		6_000,
 	);
-	if (!isRecord(payload) || !Array.isArray(payload.models)) return null;
-	const out: ProviderModelCandidate[] = [];
-	for (const item of payload.models) {
-		if (!isRecord(item) || typeof item.name !== "string") continue;
-		const modelId = normalizeModelId(item.name);
-		if (!modelId) continue;
+	return processModelsList(payload, "models", "name", (item, modelId) => {
 		const displayName =
 			typeof item.displayName === "string" && item.displayName.trim().length > 0
 				? item.displayName
@@ -537,38 +530,31 @@ async function fetchGoogleModels(): Promise<ProviderModelCandidate[] | null> {
 			Number.isFinite(item.inputTokenLimit)
 				? Math.max(0, Math.trunc(item.inputTokenLimit))
 				: null;
-		out.push({
+		return {
 			providerModelId: modelId,
 			displayName,
 			contextWindow,
 			free: false,
-		});
-	}
-	return out;
+		};
+	});
 }
 
 async function fetchOllamaModels(): Promise<ProviderModelCandidate[] | null> {
 	const base = process.env.OLLAMA_BASE_URL ?? "http://localhost:11434";
 	const payload = await fetchJson(`${base}/api/tags`, {}, 3_000);
-	if (!isRecord(payload) || !Array.isArray(payload.models)) return null;
-	const out: ProviderModelCandidate[] = [];
-	for (const item of payload.models) {
-		if (!isRecord(item) || typeof item.name !== "string") continue;
-		const modelId = normalizeModelId(item.name);
-		if (!modelId) continue;
+	return processModelsList(payload, "models", "name", (item, modelId) => {
 		const details = item.details;
 		let sizeSuffix = "";
 		if (isRecord(details) && typeof details.parameter_size === "string") {
 			sizeSuffix = ` (${details.parameter_size})`;
 		}
-		out.push({
+		return {
 			providerModelId: modelId,
-			displayName: `${item.name}${sizeSuffix}`,
+			displayName: `${item.name as string}${sizeSuffix}`,
 			contextWindow: null,
 			free: false,
-		});
-	}
-	return out;
+		};
+	});
 }
 
 async function fetchProviderCandidates(
@@ -655,7 +641,7 @@ export function refreshModelInfoInBackground(opts?: {
 	return refreshInFlight;
 }
 
-export function isModelInfoRefreshing(): boolean {
+function isModelInfoRefreshing(): boolean {
 	return refreshInFlight !== null;
 }
 
@@ -719,7 +705,7 @@ function resolveModelInfoInCache(
 	return null;
 }
 
-export function resolveModelInfo(modelString: string): ModelInfo | null {
+function resolveModelInfo(modelString: string): ModelInfo | null {
 	ensureLoaded();
 	return resolveModelInfoInCache(modelString, runtimeCache);
 }

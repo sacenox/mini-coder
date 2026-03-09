@@ -2,13 +2,13 @@
 import * as c from "yoctocolors";
 import { runAgent } from "./agent/agent.ts";
 import { initErrorLog } from "./cli/error-log.ts";
-import { CliReporter } from "./cli/output-reporter.ts";
 import {
 	registerTerminalCleanup,
 	renderBanner,
 	renderError,
 	writeln,
 } from "./cli/output.ts";
+import { CliReporter } from "./cli/output-reporter.ts";
 import { initApiLog } from "./llm-api/api-log.ts";
 import {
 	initModelInfoCache,

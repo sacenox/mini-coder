@@ -1,6 +1,6 @@
 import { getDb } from "./connection.ts";
 
-export interface McpServerRow {
+interface McpServerRow {
 	name: string;
 	transport: string;
 	url: string | null;

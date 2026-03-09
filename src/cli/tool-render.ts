@@ -8,7 +8,7 @@ import { G, writeln } from "./output.ts";
 const HOME = homedir();
 
 /** Strip the `linenum:hash| ` prefix that hashline-formatted tool outputs include. */
-export function stripHashlinePrefix(text: string): string {
+function stripHashlinePrefix(text: string): string {
 	return text.replace(/^\d+:[0-9a-f]{2}\| /, "");
 }
 
@@ -25,7 +25,7 @@ function commonPrefix(paths: string[]): string {
 	return prefix;
 }
 
-export function toolGlyph(name: string): string {
+function toolGlyph(name: string): string {
 	if (name === "glob" || name === "grep") return G.search;
 	if (name === "read") return G.read;
 	if (name === "create" || name === "replace" || name === "insert")
@@ -36,7 +36,7 @@ export function toolGlyph(name: string): string {
 	return G.info;
 }
 
-export function toolCallLine(name: string, args: unknown): string {
+function toolCallLine(name: string, args: unknown): string {
 	const a =
 		args && typeof args === "object" ? (args as Record<string, unknown>) : {};
 
@@ -112,7 +112,7 @@ export function renderHook(
 	}
 }
 
-export function renderDiff(diff: string): void {
+function renderDiff(diff: string): void {
 	if (!diff || diff === "(no changes)") return;
 	for (const line of diff.split("\n")) {
 		if (line.startsWith("+++") || line.startsWith("---")) {
@@ -129,30 +129,45 @@ export function renderDiff(diff: string): void {
 	}
 }
 
-export function renderToolResultInline(
+function formatErrorBadge(result: unknown): string {
+	const msg =
+		typeof result === "string"
+			? result
+			: result instanceof Error
+				? result.message
+				: JSON.stringify(result);
+	const oneLiner = msg.split("\n")[0] ?? msg;
+	return `${G.err} ${c.red(oneLiner)}`;
+}
+
+function formatShellBadge(r: {
+	timedOut: boolean;
+	success: boolean;
+	exitCode: number;
+}): string {
+	return r.timedOut
+		? c.yellow("timeout")
+		: r.success
+			? c.green(`✔ ${r.exitCode}`)
+			: c.red(`✖ ${r.exitCode}`);
+}
+function renderToolResultInline(
 	toolName: string,
 	result: unknown,
 	isError: boolean,
 	indent: string,
 ): void {
 	if (isError) {
-		const msg =
-			typeof result === "string"
-				? result
-				: result instanceof Error
-					? result.message
-					: JSON.stringify(result);
-		const oneLiner = msg.split("\n")[0] ?? msg;
-		writeln(`${indent}${G.err} ${c.red(oneLiner)}`);
+		writeln(`${indent}${formatErrorBadge(result)}`);
 		return;
 	}
 
 	if (toolName === "glob") {
-		const r = result as { files?: string[]; truncated?: boolean };
-		if (Array.isArray(r?.files)) {
-			const n = r.files.length;
+		const res = result as { files?: string[]; truncated?: boolean };
+		if (Array.isArray(res?.files)) {
+			const n = res.files.length;
 			writeln(
-				`${indent}${G.info} ${c.dim(n === 0 ? "no matches" : `${n} file${n === 1 ? "" : "s"}${r.truncated ? " (capped)" : ""}`)}`,
+				`${indent}${G.info} ${c.dim(n === 0 ? "no matches" : `${n} file${n === 1 ? "" : "s"}${res.truncated ? " (capped)" : ""}`)}`,
 			);
 			return;
 		}
@@ -198,11 +213,7 @@ export function renderToolResultInline(
 			success: boolean;
 			timedOut: boolean;
 		};
-		const badge = r.timedOut
-			? c.yellow("timeout")
-			: r.success
-				? c.green(`✔ ${r.exitCode}`)
-				: c.red(`✖ ${r.exitCode}`);
+		const badge = formatShellBadge(r);
 		writeln(`${indent}${badge}`);
 		return;
 	}
@@ -260,15 +271,7 @@ export function renderToolResult(
 	isError: boolean,
 ): void {
 	if (isError) {
-		const msg =
-			typeof result === "string"
-				? result
-				: result instanceof Error
-					? result.message
-					: JSON.stringify(result);
-		// Trim to one line for error summaries
-		const oneLiner = msg.split("\n")[0] ?? msg;
-		writeln(`    ${G.err} ${c.red(oneLiner)}`);
+		writeln(`    ${formatErrorBadge(result)}`);
 		return;
 	}
 
@@ -384,11 +387,7 @@ export function renderToolResult(
 			timedOut: boolean;
 		};
 
-		const badge = r.timedOut
-			? c.yellow("timeout")
-			: r.success
-				? c.green(`✔ ${r.exitCode}`)
-				: c.red(`✖ ${r.exitCode}`);
+		const badge = formatShellBadge(r);
 
 		writeln(`    ${badge}`);
 
@@ -510,40 +509,30 @@ function normalizeParentLaneLabel(parentLabel: string): string {
 	return lanePath || inner;
 }
 
-function shortWorktreeBranch(branch: string): string {
-	const match = branch.match(/^(mc-sub-\d+)-\d+$/);
-	return match?.[1] ?? branch;
-}
-
 export function formatSubagentLabel(
-	laneId: number,
+	laneId: string,
 	parentLabel?: string,
-	worktreeBranch?: string,
 ): string {
 	const parent = parentLabel ? normalizeParentLaneLabel(parentLabel) : "";
 	const numStr = parent ? `${parent}.${laneId}` : `${laneId}`;
-	const branchHint = worktreeBranch
-		? `·${shortWorktreeBranch(worktreeBranch)}`
-		: "";
-	return c.dim(c.cyan(`[${numStr}${branchHint}]`));
+	return c.dim(c.cyan(`[${numStr}]`));
 }
 
-const laneBuffers = new Map<number, string>();
+const laneBuffers = new Map<string, string>();
 
 export function renderSubagentEvent(
 	event: TurnEvent,
 	opts: {
-		laneId: number;
+		laneId: string;
 		parentLabel?: string | undefined;
-		worktreeBranch?: string;
-		activeLanes: Set<number>;
+		hasWorktree?: boolean;
+		activeLanes: Set<string>;
 	},
 ): void {
-	const { laneId, parentLabel, worktreeBranch, activeLanes } = opts;
+	const { laneId, parentLabel, hasWorktree, activeLanes } = opts;
 
-	const labelStr = formatSubagentLabel(laneId, parentLabel, worktreeBranch);
-	const prefix = activeLanes.size > 1 || worktreeBranch ? `${labelStr} ` : "";
-
+	const labelStr = formatSubagentLabel(laneId, parentLabel);
+	const prefix = activeLanes.size > 1 || hasWorktree ? `${labelStr} ` : "";
 	if (event.type === "text-delta") {
 		const buf = (laneBuffers.get(laneId) ?? "") + event.delta;
 		const lines = buf.split("\n");

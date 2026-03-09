@@ -2,15 +2,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadAgents } from "../cli/agents.ts";
 import { formatSubagentLabel } from "../cli/output.ts";
+import type { ThinkingEffort } from "../llm-api/providers.ts";
 import { resolveModel } from "../llm-api/providers.ts";
 import { type CoreMessage, runTurn } from "../llm-api/turn.ts";
 import type { SubagentOutput } from "../tools/subagent.ts";
 import {
-	MergeInProgressError,
 	cleanupBranch,
 	createWorktree,
 	initializeWorktree,
 	isGitRepo,
+	MergeInProgressError,
 	mergeWorktree,
 	removeWorktree,
 	syncDirtyStateToWorktree,
@@ -19,15 +20,12 @@ import type { AgentReporter } from "./reporter.ts";
 import { buildSystemPrompt } from "./system-prompt.ts";
 import { buildToolSet } from "./tools.ts";
 
-import type { ThinkingEffort } from "../llm-api/providers.ts";
-
-function makeWorktreeBranch(laneId: number): string {
-	return `mc-sub-${laneId}-${Date.now()}`;
+function makeWorktreeBranch(laneId: string): string {
+	return `mc-sub-${laneId}`;
 }
 
-function makeWorktreePath(laneId: number): string {
-	const suffix = crypto.randomUUID().replace(/-/g, "").slice(0, 10);
-	return join(tmpdir(), `mc-wt-${laneId}-${suffix}`);
+function makeWorktreePath(laneId: string): string {
+	return join(tmpdir(), `mc-wt-${laneId}`);
 }
 
 export function createSubagentRunner(
@@ -36,8 +34,7 @@ export function createSubagentRunner(
 	getCurrentModel: () => string,
 	getThinkingEffort: () => ThinkingEffort | null,
 ) {
-	let nextLaneId = 1;
-	const activeLanes = new Set<number>();
+	const activeLanes = new Set<string>();
 	const worktreesEnabledPromise = isGitRepo(cwd);
 
 	let mergeLock: Promise<void> = Promise.resolve();
@@ -57,7 +54,7 @@ export function createSubagentRunner(
 		modelOverride?: string,
 		parentLabel?: string,
 	): Promise<SubagentOutput> => {
-		const laneId = nextLaneId++;
+		const laneId = crypto.randomUUID().split("-")[0] as string;
 		activeLanes.add(laneId);
 
 		let subagentCwd = cwd;
@@ -124,7 +121,7 @@ export function createSubagentRunner(
 				reporter.renderSubagentEvent(event, {
 					laneId,
 					...(parentLabel ? { parentLabel } : {}),
-					...(worktreeBranch ? { worktreeBranch } : {}),
+					hasWorktree: !!worktreeBranch,
 					activeLanes,
 				});
 				reporter.startSpinner("thinking");

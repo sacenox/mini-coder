@@ -9,12 +9,12 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-	MergeInProgressError,
 	cleanupBranch,
 	createWorktree,
 	hasDirtyWorkingTree,
 	initializeWorktree,
 	isGitRepo,
+	MergeInProgressError,
 	mergeWorktree,
 	removeWorktree,
 	syncDirtyStateToWorktree,
@@ -71,6 +71,16 @@ describe("worktree helpers", () => {
 		rmSync(repoDir, { recursive: true, force: true });
 	});
 
+	function makeWorktreeDir(name: string) {
+		const branch = `mc-sub-${name}-${Date.now()}`;
+		const wtPath = join(
+			tmpdir(),
+			`mc-wt-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+		);
+		extraDirs.push(wtPath);
+		return { branch, wtPath };
+	}
+
 	test("detects git and non-git directories", async () => {
 		expect(await isGitRepo(repoDir)).toBe(true);
 
@@ -91,12 +101,7 @@ describe("worktree helpers", () => {
 	});
 
 	test("syncs dirty tracked, staged, and untracked state into worktree", async () => {
-		const branch = `mc-sub-dirty-${Date.now()}`;
-		const wtPath = join(
-			tmpdir(),
-			`mc-wt-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-		);
-		extraDirs.push(wtPath);
+		const { branch, wtPath } = makeWorktreeDir("dirty");
 
 		await createWorktree(repoDir, branch, wtPath);
 
@@ -123,12 +128,7 @@ describe("worktree helpers", () => {
 	});
 
 	test("initializes bun dependencies in worktree", async () => {
-		const branch = `mc-sub-init-${Date.now()}`;
-		const wtPath = join(
-			tmpdir(),
-			`mc-wt-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-		);
-		extraDirs.push(wtPath);
+		const { branch, wtPath } = makeWorktreeDir("init");
 
 		writeFileSync(join(repoDir, "package.json"), "{}\n");
 		writeFileSync(join(repoDir, "bun.lock"), "lock\n");
@@ -152,12 +152,7 @@ describe("worktree helpers", () => {
 	});
 
 	test("creates a worktree and merges successfully", async () => {
-		const branch = `mc-sub-1-${Date.now()}`;
-		const wtPath = join(
-			tmpdir(),
-			`mc-wt-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-		);
-		extraDirs.push(wtPath);
+		const { branch, wtPath } = makeWorktreeDir("1");
 
 		await createWorktree(repoDir, branch, wtPath);
 		writeFileSync(join(wtPath, "feature.txt"), "from branch\n");
@@ -175,12 +170,7 @@ describe("worktree helpers", () => {
 	});
 
 	test("returns conflict files when merge conflicts", async () => {
-		const branch = `mc-sub-2-${Date.now()}`;
-		const wtPath = join(
-			tmpdir(),
-			`mc-wt-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-		);
-		extraDirs.push(wtPath);
+		const { branch, wtPath } = makeWorktreeDir("2");
 
 		await createWorktree(repoDir, branch, wtPath);
 
@@ -202,17 +192,8 @@ describe("worktree helpers", () => {
 	});
 
 	test("throws MergeInProgressError when another merge is already in progress", async () => {
-		const branch1 = `mc-sub-3-${Date.now()}`;
-		const branch2 = `mc-sub-4-${Date.now()}`;
-		const wtPath1 = join(
-			tmpdir(),
-			`mc-wt-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-		);
-		const wtPath2 = join(
-			tmpdir(),
-			`mc-wt-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-		);
-		extraDirs.push(wtPath1, wtPath2);
+		const { branch: branch1, wtPath: wtPath1 } = makeWorktreeDir("3");
+		const { branch: branch2, wtPath: wtPath2 } = makeWorktreeDir("4");
 
 		await createWorktree(repoDir, branch1, wtPath1);
 		await createWorktree(repoDir, branch2, wtPath2);
