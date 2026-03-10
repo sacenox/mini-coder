@@ -4,7 +4,6 @@ export interface Frontmatter {
 	description?: string;
 	model?: string;
 	name?: string;
-	execution?: string;
 }
 
 const FM_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
@@ -29,7 +28,6 @@ export function parseFrontmatter(raw: string): {
 		if (key === "name") meta.name = val;
 		if (key === "description") meta.description = val;
 		if (key === "model") meta.model = val;
-		if (key === "execution") meta.execution = val;
 	}
 
 	return { meta, body: (m[2] ?? "").trim() };

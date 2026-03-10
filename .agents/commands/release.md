@@ -1,6 +1,5 @@
 ---
 description: Create a new tagged npm release (patch/minor/major)
-execution: inline
 ---
 
 Create a new npm release for this repo. The bump type is: $1 (default to "patch" if not provided).

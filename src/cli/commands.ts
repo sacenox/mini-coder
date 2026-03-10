@@ -7,9 +7,10 @@ import {
 	upsertMcpServer,
 } from "../session/db/index.ts";
 import {
-	getSubagentMergeError,
+	assertSubagentMerged,
 	type SubagentOutput,
 } from "../tools/subagent.ts";
+
 import { loadAgents } from "./agents.ts";
 import {
 	type CustomCommand,
@@ -45,11 +46,6 @@ type CommandResult =
 	| { type: "unknown"; command: string }
 	| { type: "exit" }
 	| { type: "inject-user-message"; text: string };
-
-function assertSubagentMerged(output: SubagentOutput): void {
-	const mergeError = getSubagentMergeError(output);
-	if (mergeError) throw new Error(mergeError);
-}
 
 // ─── Command handlers ─────────────────────────────────────────────────────────
 
@@ -401,11 +397,6 @@ async function handleCustomCommand(
 	const src = c.dim(`[${srcPath}]`);
 	writeln(`${PREFIX.info} ${label} ${src}`);
 	writeln();
-
-	if (cmd.execution === "inline") {
-		return { type: "inject-user-message", text: prompt };
-	}
-
 	try {
 		const output = await ctx.runSubagent(prompt, cmd.model);
 		assertSubagentMerged(output);

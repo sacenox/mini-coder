@@ -27,19 +27,13 @@ export interface SubagentOutput {
 	mergeConflicts?: string[];
 }
 
-function formatConflictFiles(conflictFiles: string[]): string {
-	if (conflictFiles.length === 0) return "  - (unknown)";
-	return conflictFiles.map((file) => `  - ${file}`).join("\n");
-}
-
-export function getSubagentMergeError(output: SubagentOutput): string | null {
-	if (!output.mergeConflicts) return null;
-	const files = formatConflictFiles(output.mergeConflicts);
-	return `⚠ Merge conflict: subagent changes have conflicts in these files:
-${files}
-
-Resolve the conflicts (remove <<<<, ====, >>>> markers), stage the files with
-\`git add <file>\`, then run \`git merge --continue\` to complete the merge.`;
+export function assertSubagentMerged(output: SubagentOutput): void {
+	if (output.mergeConflicts?.length) {
+		const files = output.mergeConflicts.map((f) => `  - ${f}`).join("\n");
+		throw new Error(
+			`⚠ Merge conflict: subagent changes have conflicts in these files:\n${files}\n\nResolve the conflicts (remove <<<<, ====, >>>> markers), stage the files with \`git add <file>\`, then run \`git merge --continue\` to complete the merge.`,
+		);
+	}
 }
 
 /**

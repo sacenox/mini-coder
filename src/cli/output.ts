@@ -87,7 +87,4 @@ export { renderError } from "./error-render.ts";
 export { Spinner } from "./spinner.ts";
 export { renderStatusBar } from "./status-bar.ts";
 export { renderTurn } from "./stream-render.ts";
-export {
-	renderHook,
-	renderSubagentEvent,
-} from "./tool-render.ts";
+export { renderHook } from "./tool-render.ts";

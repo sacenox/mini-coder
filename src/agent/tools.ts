@@ -26,8 +26,8 @@ import { replaceTool } from "../tools/replace.ts";
 import type { ShellOutput } from "../tools/shell.ts";
 import { shellTool } from "../tools/shell.ts";
 import {
+	assertSubagentMerged,
 	createSubagentTool,
-	getSubagentMergeError,
 	type SubagentOutput,
 } from "../tools/subagent.ts";
 
@@ -195,8 +195,7 @@ export function buildToolSet(opts: {
 					undefined,
 					parentLabel,
 				);
-				const mergeError = getSubagentMergeError(output);
-				if (mergeError) throw new Error(mergeError);
+				assertSubagentMerged(output);
 				return output;
 			},
 			opts.availableAgents,

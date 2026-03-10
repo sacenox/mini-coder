@@ -35,15 +35,11 @@ export async function runAgent(
 ): Promise<SubagentSummary | undefined> {
 	const cwd = opts.cwd;
 	let currentModel = opts.model;
-	let currentThinkingEffort = opts.initialThinkingEffort;
 
-	const runSubagent = createSubagentRunner(
+	const { runSubagent, killAll } = createSubagentRunner(
 		cwd,
-		opts.reporter,
 		() => currentModel,
-		() => currentThinkingEffort,
 	);
-
 	const agents = loadAgents(cwd);
 	const tools: ToolDef[] = buildToolSet({
 		cwd,
@@ -90,6 +86,7 @@ export async function runAgent(
 		sessionId: opts.sessionId,
 		extraSystemPrompt: opts.agentSystemPrompt,
 		isSubagent: opts.headless,
+		killSubprocesses: killAll,
 	});
 
 	const cmdCtx: CommandContext = {
@@ -108,7 +105,6 @@ export async function runAgent(
 		setThinkingEffort: (e) => {
 			runner.currentThinkingEffort = e;
 			setPreferredThinkingEffort(e);
-			currentThinkingEffort = e;
 		},
 		get planMode() {
 			return runner.planMode;

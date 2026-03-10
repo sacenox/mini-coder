@@ -22,13 +22,6 @@ export interface StatusBarData {
 	thinkingEffort?: string | null;
 }
 
-export interface SubagentEventData {
-	laneId: string;
-	parentLabel?: string;
-	hasWorktree?: boolean;
-	activeLanes: Set<string>;
-}
-
 export interface AgentReporter {
 	info(msg: string): void;
 	error(msg: string | Error, hint?: string): void;
@@ -39,7 +32,6 @@ export interface AgentReporter {
 	stopSpinner(): void;
 
 	renderTurn(events: AsyncIterable<TurnEvent>): Promise<TurnResult>;
-	renderSubagentEvent(event: TurnEvent, data: SubagentEventData): void;
 	renderStatusBar(data: StatusBarData): void;
 	renderHook(toolName: string, scriptPath: string, success: boolean): void;
 

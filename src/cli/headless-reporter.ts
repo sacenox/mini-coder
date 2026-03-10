@@ -2,7 +2,6 @@ import { buildAbortMessages, isAbortError } from "../agent/agent-helpers.ts";
 import type {
 	AgentReporter,
 	StatusBarData,
-	SubagentEventData,
 	TurnResult,
 } from "../agent/reporter.ts";
 import type { CoreMessage } from "../llm-api/turn.ts";
@@ -56,7 +55,6 @@ export class HeadlessReporter implements AgentReporter {
 		return { inputTokens, outputTokens, contextTokens, newMessages };
 	}
 
-	renderSubagentEvent(_event: TurnEvent, _data: SubagentEventData): void {}
 	renderStatusBar(_data: StatusBarData): void {}
 	renderHook(_toolName: string, _scriptPath: string, _success: boolean): void {}
 	restoreTerminal(): void {}

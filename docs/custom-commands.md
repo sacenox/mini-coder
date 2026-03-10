@@ -39,7 +39,6 @@ Then in the REPL:
 |---|---|---|
 | `description` | No | Shown in `/help`. Defaults to the command name. |
 | `model` | No | Override the active model for this command (subagent execution). |
-| `execution` | No | Where the command runs: `subagent` (default) or `inline`. |
 
 
 ## Arguments
@@ -119,26 +118,6 @@ List each occurrence with file path and line number. No explanations needed.
 ```
 
 Large models for deep analysis, small models for search and lookup.
-
-## Execution mode
-
-By default, commands run with `execution: subagent` (even if `execution`
-is omitted).
-
-Use `execution: inline` to run the command in the main agent context
-instead of spawning a subagent worktree.
-
-```md
----
-description: Safe release flow
-execution: inline
----
-
-Run the release steps in this main repo checkout.
-```
-
-Use `inline` for repo-sensitive workflows (like release flows) where branch
-context must be exactly the current session branch.
 
 
 ## Precedence

@@ -1,8 +1,5 @@
 import { homedir } from "node:os";
 import * as c from "yoctocolors";
-import type { TurnEvent } from "../llm-api/types.ts";
-import { logError } from "./error-log.ts";
-import { parseAppError } from "./error-parse.ts";
 import { G, writeln } from "./output.ts";
 
 const HOME = homedir();
@@ -36,10 +33,22 @@ function toolGlyph(name: string): string {
 	return G.info;
 }
 
-function toolCallLine(name: string, args: unknown): string {
+function toolCallLine(
+	name: string,
+	args: unknown,
+	toolCallId?: string,
+): string {
 	const a =
 		args && typeof args === "object" ? (args as Record<string, unknown>) : {};
 
+	if (name === "subagent") {
+		const prompt = typeof a.prompt === "string" ? a.prompt : "";
+		const short = prompt.length > 60 ? `${prompt.slice(0, 57)}…` : prompt;
+		const lane = toolCallId
+			? ` ${c.dim(c.cyan(`[${toolCallId.slice(0, 6)}]`))}`
+			: "";
+		return `${G.agent}${lane} ${c.dim("—")} ${short}`;
+	}
 	if (name === "glob") {
 		const pattern = String(a.pattern ?? "");
 		const cwd = a.cwd ? String(a.cwd) : "";
@@ -81,21 +90,19 @@ function toolCallLine(name: string, args: unknown): string {
 		const shortCmd = cmd.length > 72 ? `${cmd.slice(0, 69)}…` : cmd;
 		return `${G.run} ${shortCmd}`;
 	}
-	if (name === "subagent") {
-		const prompt = String(a.prompt ?? "");
-		const shortPrompt = prompt.length > 60 ? `${prompt.slice(0, 57)}…` : prompt;
-		return `${G.agent} ${c.dim("subagent")} ${c.dim(shortPrompt)}`;
-	}
 	if (name.startsWith("mcp_")) {
 		return `${G.mcp} ${c.dim(name)}`;
 	}
 	return `${toolGlyph(name)} ${c.dim(name)}`;
 }
 
-export function renderToolCall(toolName: string, args: unknown): void {
-	writeln(`  ${toolCallLine(toolName, args)}`);
+export function renderToolCall(
+	toolName: string,
+	args: unknown,
+	toolCallId?: string,
+): void {
+	writeln(`  ${toolCallLine(toolName, args, toolCallId)}`);
 }
-
 export function renderHook(
 	toolName: string,
 	scriptPath: string,
@@ -151,124 +158,12 @@ function formatShellBadge(r: {
 			? c.green(`✔ ${r.exitCode}`)
 			: c.red(`✖ ${r.exitCode}`);
 }
-function renderToolResultInline(
-	toolName: string,
-	result: unknown,
-	isError: boolean,
-	indent: string,
-): void {
-	if (isError) {
-		writeln(`${indent}${formatErrorBadge(result)}`);
-		return;
-	}
-
-	if (toolName === "glob") {
-		const res = result as { files?: string[]; truncated?: boolean };
-		if (Array.isArray(res?.files)) {
-			const n = res.files.length;
-			writeln(
-				`${indent}${G.info} ${c.dim(n === 0 ? "no matches" : `${n} file${n === 1 ? "" : "s"}${res.truncated ? " (capped)" : ""}`)}`,
-			);
-			return;
-		}
-	}
-
-	if (toolName === "grep") {
-		const r = result as { matches?: unknown[]; truncated?: boolean };
-		if (Array.isArray(r?.matches)) {
-			const n = r.matches.length;
-			writeln(
-				`${indent}${G.info} ${c.dim(n === 0 ? "no matches" : `${n} match${n === 1 ? "" : "es"}${r.truncated ? " (capped)" : ""}`)}`,
-			);
-			return;
-		}
-	}
-
-	if (toolName === "read") {
-		const r = result as { totalLines: number; truncated: boolean };
-		writeln(
-			`${indent}${G.info} ${c.dim(`${r.totalLines} lines${r.truncated ? " (truncated)" : ""}`)}`,
-		);
-		return;
-	}
-
-	if (toolName === "create") {
-		const r = result as { path: string; created: boolean };
-		const verb = r.created ? c.green("created") : c.dim("overwritten");
-		writeln(`${indent}${G.ok} ${verb} ${r.path}`);
-		return;
-	}
-
-	if (toolName === "replace" || toolName === "insert") {
-		const r = result as { path: string; deleted?: boolean };
-		const verb =
-			toolName === "insert" ? "inserted" : r.deleted ? "deleted" : "replaced";
-		writeln(`${indent}${G.ok} ${c.dim(verb)} ${r.path}`);
-		return;
-	}
-
-	if (toolName === "shell") {
-		const r = result as {
-			exitCode: number;
-			success: boolean;
-			timedOut: boolean;
-		};
-		const badge = formatShellBadge(r);
-		writeln(`${indent}${badge}`);
-		return;
-	}
-
-	if (toolName === "subagent") {
-		// Activity and token counts are now streamed live.
-		return;
-	}
-
-	if (toolName === "webSearch") {
-		const r = result as { results?: unknown[] };
-		if (Array.isArray(r.results)) {
-			const n = r.results.length;
-			writeln(
-				`${indent}${G.info} ${c.dim(n === 0 ? "no results" : `${n} result${n === 1 ? "" : "s"}`)}`,
-			);
-			return;
-		}
-	}
-
-	if (toolName === "webContent") {
-		const r = result as { results?: unknown[] };
-		if (Array.isArray(r.results)) {
-			const n = r.results.length;
-			writeln(
-				`${indent}${G.info} ${c.dim(n === 0 ? "no pages" : `${n} page${n === 1 ? "" : "s"}`)}`,
-			);
-			return;
-		}
-	}
-
-	if (toolName.startsWith("mcp_")) {
-		const content = Array.isArray(result) ? result : [result];
-		const first = (content as Array<{ type?: string; text?: string }>)[0];
-		if (first?.type === "text" && first.text) {
-			const oneLiner = first.text.split("\n")[0] ?? "";
-			if (oneLiner)
-				writeln(
-					`${indent}${G.info} ${c.dim(oneLiner.length > 80 ? `${oneLiner.slice(0, 77)}…` : oneLiner)}`,
-				);
-		}
-		return;
-	}
-
-	// Generic: one-line JSON
-	const text = JSON.stringify(result);
-	writeln(
-		`${indent}${G.info} ${c.dim(text.length > 80 ? `${text.slice(0, 77)}…` : text)}`,
-	);
-}
 
 export function renderToolResult(
 	toolName: string,
 	result: unknown,
 	isError: boolean,
+	toolCallId?: string,
 ): void {
 	if (isError) {
 		writeln(`    ${formatErrorBadge(result)}`);
@@ -411,7 +306,13 @@ export function renderToolResult(
 	}
 
 	if (toolName === "subagent") {
-		// Activity and tokens are streamed live.
+		const r = result as { inputTokens?: number; outputTokens?: number };
+		const lane = toolCallId
+			? ` ${c.dim(c.cyan(`[${toolCallId.slice(0, 6)}]`))}`
+			: "";
+		writeln(
+			`    ${G.read}${lane} ${c.dim(`done (${r.inputTokens ?? 0}in / ${r.outputTokens ?? 0}out tokens)`)}`,
+		);
 		return;
 	}
 
@@ -494,82 +395,4 @@ export function renderToolResult(
 	// Generic fallback — one-line JSON summary
 	const text = JSON.stringify(result);
 	writeln(`    ${c.dim(text.length > 120 ? `${text.slice(0, 117)}…` : text)}`);
-}
-
-function stripAnsiSgr(text: string): string {
-	const esc = String.fromCharCode(0x1b);
-	return text.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "");
-}
-
-function normalizeParentLaneLabel(parentLabel: string): string {
-	const plain = stripAnsiSgr(parentLabel);
-	const match = plain.match(/\[([^\]]+)\]/);
-	const inner = (match?.[1] ?? plain).trim();
-	const lanePath = (inner.split("·")[0] ?? inner).trim();
-	return lanePath || inner;
-}
-
-function formatSubagentLabel(laneId: string, parentLabel?: string): string {
-	const parent = parentLabel ? normalizeParentLaneLabel(parentLabel) : "";
-	const numStr = parent ? `${parent}.${laneId}` : `${laneId}`;
-	return c.dim(c.cyan(`[${numStr}]`));
-}
-
-const laneBuffers = new Map<string, string>();
-
-export function renderSubagentEvent(
-	event: TurnEvent,
-	opts: {
-		laneId: string;
-		parentLabel?: string | undefined;
-		hasWorktree?: boolean;
-		activeLanes: Set<string>;
-	},
-): void {
-	const { laneId, parentLabel, hasWorktree, activeLanes } = opts;
-
-	const labelStr = formatSubagentLabel(laneId, parentLabel);
-	const prefix = activeLanes.size > 1 || hasWorktree ? `${labelStr} ` : "";
-	if (event.type === "text-delta") {
-		const buf = (laneBuffers.get(laneId) ?? "") + event.delta;
-		const lines = buf.split("\n");
-		if (lines.length > 1) {
-			for (let i = 0; i < lines.length - 1; i++) {
-				writeln(`${prefix}${lines[i]}`);
-			}
-			laneBuffers.set(laneId, lines[lines.length - 1] ?? "");
-		} else {
-			laneBuffers.set(laneId, buf);
-		}
-	} else if (event.type === "tool-call-start") {
-		writeln(`${prefix}${toolCallLine(event.toolName, event.args)}`);
-	} else if (event.type === "tool-result") {
-		// Use inlineResultSummary logic directly here
-		renderToolResultInline(
-			event.toolName,
-			event.result,
-			event.isError,
-			`${prefix}  `,
-		);
-	} else if (event.type === "turn-complete") {
-		// Flush buffer if any
-		const buf = laneBuffers.get(laneId);
-		if (buf) {
-			writeln(`${prefix}${buf}`);
-			laneBuffers.delete(laneId);
-		}
-		if (event.inputTokens > 0 || event.outputTokens > 0) {
-			writeln(
-				`${prefix}${c.dim(`↑${event.inputTokens} ↓${event.outputTokens}`)}`,
-			);
-		}
-	} else if (event.type === "turn-error") {
-		laneBuffers.delete(laneId);
-		logError(event.error, "turn");
-		const parsed = parseAppError(event.error);
-		writeln(`${prefix}${G.err} ${c.red(parsed.headline)}`);
-		if (parsed.hint) {
-			writeln(`${prefix}  ${c.dim(parsed.hint)}`);
-		}
-	}
 }

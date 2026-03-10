@@ -1,11 +1,9 @@
-import type { ThinkingEffort } from "../llm-api/providers.ts";
 import type { SubagentOutput, SubagentSummary } from "../tools/subagent.ts";
 import {
 	cleanupBranch,
 	MergeInProgressError,
 	mergeWorktree,
 } from "../tools/worktree.ts";
-import type { AgentReporter } from "./reporter.ts";
 
 /**
  * Resolve the command to invoke a new `mc` subprocess.
@@ -26,9 +24,7 @@ const MAX_SUBAGENT_DEPTH = 10;
 
 export function createSubagentRunner(
 	cwd: string,
-	_reporter: AgentReporter,
 	getCurrentModel: () => string,
-	_getThinkingEffort: () => ThinkingEffort | null,
 ) {
 	// Active subprocess PIDs — used for interrupt propagation (Phase 5).
 	const activePids = new Set<number>();
@@ -156,5 +152,16 @@ export function createSubagentRunner(
 		}
 	};
 
-	return runSubagent;
+	return {
+		runSubagent,
+		killAll: () => {
+			for (const pid of activePids) {
+				try {
+					process.kill(pid, "SIGTERM");
+				} catch {
+					// Process may have already exited.
+				}
+			}
+		},
+	};
 }

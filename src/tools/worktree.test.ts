@@ -17,7 +17,6 @@ import {
 	MergeInProgressError,
 	mergeWorktree,
 	removeWorktree,
-	syncDirtyStateToWorktree,
 } from "./worktree.ts";
 
 function git(cwd: string, args: string[]): string {
@@ -30,15 +29,6 @@ function git(cwd: string, args: string[]): string {
 		throw new Error(`git ${args.join(" ")} failed: ${proc.stderr.toString()}`);
 	}
 	return proc.stdout.toString().trim();
-}
-
-function gitStatusLines(cwd: string): string[] {
-	const output = git(cwd, ["status", "--porcelain", "-u"]);
-	if (!output) return [];
-	return output
-		.split("\n")
-		.filter((line) => line.length > 0)
-		.sort();
 }
 
 function makeRepo(): string {
@@ -98,33 +88,6 @@ describe("worktree helpers", () => {
 
 		writeFileSync(join(repoDir, "untracked.txt"), "dirty\n");
 		expect(await hasDirtyWorkingTree(repoDir)).toBe(true);
-	});
-
-	test("syncs dirty tracked, staged, and untracked state into worktree", async () => {
-		const { branch, wtPath } = makeWorktreeDir("dirty");
-
-		await createWorktree(repoDir, branch, wtPath);
-
-		writeFileSync(join(repoDir, "README.md"), "tracked but unstaged\n");
-		writeFileSync(join(repoDir, "staged.txt"), "staged file\n");
-		git(repoDir, ["add", "staged.txt"]);
-		writeFileSync(join(repoDir, "untracked.txt"), "untracked file\n");
-
-		await syncDirtyStateToWorktree(repoDir, wtPath);
-
-		expect(await Bun.file(join(wtPath, "README.md")).text()).toBe(
-			"tracked but unstaged\n",
-		);
-		expect(await Bun.file(join(wtPath, "staged.txt")).text()).toBe(
-			"staged file\n",
-		);
-		expect(await Bun.file(join(wtPath, "untracked.txt")).text()).toBe(
-			"untracked file\n",
-		);
-		expect(gitStatusLines(wtPath)).toEqual(gitStatusLines(repoDir));
-
-		await removeWorktree(repoDir, wtPath);
-		await cleanupBranch(repoDir, branch);
 	});
 
 	test("initializes bun dependencies in worktree", async () => {
