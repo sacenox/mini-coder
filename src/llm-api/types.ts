@@ -45,6 +45,8 @@ export interface TurnCompleteEvent {
 export interface TurnErrorEvent {
 	type: "turn-error";
 	error: Error;
+	/** Messages from completed steps before the error/abort occurred. */
+	partialMessages: CoreMessage[];
 }
 
 export type TurnEvent =

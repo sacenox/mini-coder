@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { getTurnControlAction } from "../cli/input.ts";
 import type { CoreMessage } from "../llm-api/turn.ts";
 import {
 	extractAssistantText,
@@ -108,43 +109,38 @@ describe("hasRalphSignal", () => {
 	});
 });
 
-// ─── ESC / Ctrl+C handling ────────────────────────────────────────────────────
-//
-// Behaviour contract:
-//   • During an LLM turn, ESC cancels the turn and returns to the prompt.
-//   • Ctrl+C exits the process.
-//
-// Architecture:
-//   watchForCancel() (input.ts) sets stdin to raw mode and listens for
-//   byte 0x1B (ESC) to abort the turn, and byte 0x03 (Ctrl+C) to quit.
-//
-// These tests verify the AbortController / abort-signal wiring independently
-// of the actual TTY/stdin machinery.
+// ─── getTurnControlAction ─────────────────────────────────────────────────────
 
-describe("interrupt via AbortController", () => {
-	test("aborting the controller sets wasAborted via signal listener", () => {
-		const controller = new AbortController();
-		let wasAborted = false;
-		controller.signal.addEventListener("abort", () => {
-			wasAborted = true;
-		});
-		expect(wasAborted).toBe(false);
-		controller.abort();
-		expect(wasAborted).toBe(true);
+describe("getTurnControlAction", () => {
+	test("returns cancel for ESC byte (0x1B)", () => {
+		expect(getTurnControlAction(Buffer.from([0x1b]))).toBe("cancel");
 	});
 
-	test("abort is idempotent — repeated aborts do not throw", () => {
-		const controller = new AbortController();
-		controller.abort();
-		expect(() => controller.abort()).not.toThrow();
-		expect(controller.signal.aborted).toBe(true);
+	test("returns quit for Ctrl+C byte (0x03)", () => {
+		expect(getTurnControlAction(Buffer.from([0x03]))).toBe("quit");
 	});
 
-	test("signal.aborted reflects abort state correctly", () => {
-		const controller = new AbortController();
-		expect(controller.signal.aborted).toBe(false);
-		controller.abort();
-		expect(controller.signal.aborted).toBe(true);
+	test("returns null for regular printable bytes", () => {
+		expect(getTurnControlAction(Buffer.from([0x61]))).toBeNull(); // 'a'
+	});
+
+	test("returns null for multi-byte ESC sequence (arrow keys, function keys)", () => {
+		// Arrow-up: ESC [ A — should NOT cancel
+		expect(getTurnControlAction(Buffer.from([0x1b, 0x5b, 0x41]))).toBeNull();
+		// Arrow-down: ESC [ B
+		expect(getTurnControlAction(Buffer.from([0x1b, 0x5b, 0x42]))).toBeNull();
+	});
+
+	test("returns null for two-byte ESC sequence", () => {
+		expect(getTurnControlAction(Buffer.from([0x1b, 0x66]))).toBeNull(); // Alt+f
+	});
+
+	test("returns quit for Ctrl+C even in multi-byte chunk", () => {
+		expect(getTurnControlAction(Buffer.from([0x61, 0x03, 0x62]))).toBe("quit");
+	});
+
+	test("returns null for empty buffer", () => {
+		expect(getTurnControlAction(Buffer.from([]))).toBeNull();
 	});
 });
 

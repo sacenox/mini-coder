@@ -1,4 +1,5 @@
 import * as c from "yoctocolors";
+import { makeInterruptMessage } from "../agent/agent-helpers.ts";
 import type { CoreMessage } from "../llm-api/turn.ts";
 import type { TurnEvent } from "../llm-api/types.ts";
 import { logError } from "./error-log.ts";
@@ -20,6 +21,8 @@ export async function renderTurn(
 	let inText = false;
 	let inReasoning = false;
 	let rawBuffer = "";
+	let accumulatedText = "";
+
 	let inFence = false;
 
 	let inputTokens = 0;
@@ -75,6 +78,8 @@ export async function renderTurn(
 					inText = true;
 				}
 				rawBuffer += event.delta;
+				accumulatedText += event.delta;
+
 				flushCompleteLines();
 				break;
 			}
@@ -125,7 +130,15 @@ export async function renderTurn(
 					(event.error.name === "Error" &&
 						event.error.message.toLowerCase().includes("abort"));
 				if (isAbort) {
-					writeln(`${G.warn} ${c.dim("interrupted")}`);
+					const stub = makeInterruptMessage("user");
+					const partialContent = accumulatedText
+						? `${accumulatedText}${stub.content}`
+						: (stub.content as string);
+					const partialMsg: CoreMessage = {
+						role: "assistant",
+						content: partialContent,
+					};
+					newMessages = [...event.partialMessages, partialMsg];
 				} else {
 					logError(event.error, "turn");
 					const parsed = parseAppError(event.error);
@@ -133,6 +146,7 @@ export async function renderTurn(
 					if (parsed.hint) {
 						writeln(`  ${c.dim(parsed.hint)}`);
 					}
+					throw event.error;
 				}
 				break;
 			}

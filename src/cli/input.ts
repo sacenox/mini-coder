@@ -41,8 +41,8 @@ const CTRL_K = "\x0B";
 const CTRL_L = "\x0C";
 const CTRL_R = "\x12";
 const TAB = "\x09";
-const ESC_BYTE = 0x1b;
-const CTRL_C_BYTE = 0x03;
+const ESC_BYTE = ESC.charCodeAt(0);
+const CTRL_C_BYTE = CTRL_C.charCodeAt(0);
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -196,8 +196,11 @@ async function readKey(reader: StreamReader): Promise<string> {
 export function getTurnControlAction(
 	chunk: Uint8Array,
 ): "cancel" | "quit" | null {
+	// A bare ESC press sends exactly one byte (0x1B). Multi-byte escape
+	// sequences (arrow keys, function keys, etc.) always follow with more
+	// bytes in the same chunk, so we only cancel on a lone ESC.
+	if (chunk.length === 1 && chunk[0] === ESC_BYTE) return "cancel";
 	for (const byte of chunk) {
-		if (byte === ESC_BYTE) return "cancel";
 		if (byte === CTRL_C_BYTE) return "quit";
 	}
 	return null;
@@ -238,12 +241,10 @@ export function watchForCancel(abortController: AbortController): () => void {
 
 	const cleanup = () => {
 		process.stdin.removeListener("data", onData);
-		terminal.setInterruptHandler(null);
 		terminal.setRawMode(false);
 		process.stdin.pause();
 	};
 
-	terminal.setInterruptHandler(onCancel);
 	terminal.setRawMode(true);
 	process.stdin.resume();
 	process.stdin.on("data", onData);

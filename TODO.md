@@ -5,7 +5,8 @@
 ## Usbaility issues:
 
 - Subagents are way less competent than the main agent
-- ESC doesn't interrupt anything, completly not working.
+
+
 - All models: constant reading almost no action, lot's of wasted tokens, using opencode or claude code is a much more action oriented workflow.
 - Ralph mode is completly broken, most models just exit the loop without completing anything, or after reading the context.
 

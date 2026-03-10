@@ -103,10 +103,6 @@ export class SessionRunner {
 		pastedImages: ImageAttachment[] = [],
 	): Promise<string> {
 		const abortController = new AbortController();
-		let wasAborted = false;
-		abortController.signal.addEventListener("abort", () => {
-			wasAborted = true;
-		});
 		const stopWatcher = watchForCancel(abortController);
 
 		const { text: resolvedText, images: refImages } = await resolveFileRefs(
@@ -139,17 +135,6 @@ export class SessionRunner {
 					}
 				: { role: "user", content: coreContent };
 
-		if (wasAborted) {
-			stopWatcher();
-			const stubMsg = makeInterruptMessage("user");
-			this.session.messages.push(userMsg, stubMsg);
-			saveMessages(this.session.id, [userMsg, stubMsg], thisTurn);
-			this.coreHistory.push(userMsg, stubMsg);
-			this.snapshotStack.push(snapped ? thisTurn : null);
-			touchActiveSession(this.session);
-			return "";
-		}
-
 		this.session.messages.push(userMsg);
 		saveMessages(this.session.id, [userMsg], thisTurn);
 		this.coreHistory.push(userMsg);
@@ -158,7 +143,6 @@ export class SessionRunner {
 		const systemPrompt = buildSystemPrompt(this.cwd, this.currentModel);
 
 		let lastAssistantText = "";
-		let errorStubSaved = false;
 
 		try {
 			this.snapshotStack.push(snapped ? thisTurn : null);
@@ -185,17 +169,6 @@ export class SessionRunner {
 				this.coreHistory.push(...newMessages);
 				this.session.messages.push(...newMessages);
 				saveMessages(this.session.id, newMessages, thisTurn);
-				if (wasAborted) {
-					const note = makeInterruptMessage("user");
-					this.coreHistory.push(note);
-					this.session.messages.push(note);
-					saveMessages(this.session.id, [note], thisTurn);
-				}
-			} else {
-				const stubMsg = makeInterruptMessage("user");
-				this.coreHistory.push(stubMsg);
-				this.session.messages.push(stubMsg);
-				saveMessages(this.session.id, [stubMsg], thisTurn);
 			}
 
 			lastAssistantText = extractAssistantText(newMessages);
@@ -205,17 +178,13 @@ export class SessionRunner {
 			this.lastContextTokens = contextTokens;
 			touchActiveSession(this.session);
 		} catch (err) {
-			if (!errorStubSaved) {
-				errorStubSaved = true;
-				const stubMsg = makeInterruptMessage("error");
-				this.coreHistory.push(stubMsg);
-				this.session.messages.push(stubMsg);
-				saveMessages(this.session.id, [stubMsg], thisTurn);
-			}
+			const stubMsg = makeInterruptMessage("error");
+			this.coreHistory.push(stubMsg);
+			this.session.messages.push(stubMsg);
+			saveMessages(this.session.id, [stubMsg], thisTurn);
 			throw err;
 		} finally {
 			stopWatcher();
-			if (wasAborted) this.ralphMode = false;
 		}
 
 		return lastAssistantText;

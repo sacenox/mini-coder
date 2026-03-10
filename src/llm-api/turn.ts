@@ -100,6 +100,8 @@ export async function* runTurn(options: {
 	// the full conversation history, so later steps have larger prompts).
 	let contextTokens = 0;
 
+	const partialState = { messages: [] as CoreMessage[] };
+
 	try {
 		// OpenAI GPT models use the Responses API (@ai-sdk/openai v3 / ai v6 default),
 		// which honours `instructions` as the authoritative system prompt. Passing it
@@ -130,8 +132,6 @@ export async function* runTurn(options: {
 				: {}),
 		};
 
-		let finalMessages: CoreMessage[] = [];
-
 		const streamOpts: StreamTextOptions = {
 			model,
 			messages,
@@ -156,7 +156,8 @@ export async function* runTurn(options: {
 					response?: { messages?: CoreMessage[] };
 					messages?: CoreMessage[];
 				};
-				finalMessages = s.response?.messages ?? s.messages ?? finalMessages;
+				partialState.messages =
+					s.response?.messages ?? s.messages ?? partialState.messages;
 			},
 			// On the last allowed step, strip all tools so the model is forced to
 			// respond with text — no more tool calls are possible.
@@ -183,8 +184,6 @@ export async function* runTurn(options: {
 
 		// Stream events
 		for await (const chunk of result.fullStream) {
-			if (signal?.aborted) break;
-
 			const c = chunk as StreamChunk;
 
 			if (c.type !== "text-delta" && c.type !== "reasoning") {
@@ -269,7 +268,7 @@ export async function* runTurn(options: {
 		// due to a known bug in @ai-sdk/anthropic's tee() stream usage.
 		// Since step.response.messages includes the full deduplicated list, the last invocation
 		// gives us the exact equivalent without waiting on the broken promise.
-		const newMessages = finalMessages;
+		const newMessages = partialState.messages;
 
 		logApiEvent("turn complete", {
 			newMessagesCount: newMessages.length,
@@ -291,6 +290,7 @@ export async function* runTurn(options: {
 		yield {
 			type: "turn-error",
 			error: err instanceof Error ? err : new Error(String(err)),
+			partialMessages: partialState.messages,
 		};
 	}
 }

@@ -121,9 +121,13 @@ describe("getTurnControlAction", () => {
 		expect(getTurnControlAction(new Uint8Array([0x03]))).toBe("quit");
 	});
 
-	test("uses the first matching control byte in the chunk", () => {
+	test("only cancels on a lone ESC — multi-byte chunks containing ESC are not cancel", () => {
+		// [ESC, Ctrl+C]: not a lone ESC, Ctrl+C still fires quit
+		expect(getTurnControlAction(new Uint8Array([0x1b, 0x03]))).toBe("quit");
+		// [Ctrl+C, ESC]: Ctrl+C fires quit
 		expect(getTurnControlAction(new Uint8Array([0x03, 0x1b]))).toBe("quit");
-		expect(getTurnControlAction(new Uint8Array([0x1b, 0x03]))).toBe("cancel");
+		// Arrow-up sequence ESC [ A: not cancel
+		expect(getTurnControlAction(new Uint8Array([0x1b, 0x5b, 0x41]))).toBeNull();
 	});
 
 	test("ignores unrelated bytes", () => {
