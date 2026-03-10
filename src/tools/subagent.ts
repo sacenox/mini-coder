@@ -17,7 +17,6 @@ export interface SubagentSummary {
 	result: string;
 	inputTokens: number;
 	outputTokens: number;
-	worktreeBranch?: string; // Phase 4
 }
 
 export interface SubagentOutput {

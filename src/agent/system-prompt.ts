@@ -1,25 +1,32 @@
 import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { tildePath } from "../cli/output.ts";
 import { parseModelString } from "../llm-api/providers.ts";
-import { getConfigDir } from "../session/db/index.ts";
 
-function loadContextFile(cwd: string): string | null {
-	const candidates = [
-		join(cwd, "AGENTS.md"),
-		join(cwd, "CLAUDE.md"),
-		join(getConfigDir(), "AGENTS.md"),
-	];
-	for (const p of candidates) {
-		if (existsSync(p)) {
-			try {
-				return readFileSync(p, "utf-8");
-			} catch {
-				// skip
-			}
-		}
+function tryReadFile(p: string): string | null {
+	if (!existsSync(p)) return null;
+	try {
+		return readFileSync(p, "utf-8");
+	} catch {
+		return null;
 	}
-	return null;
+}
+
+function loadGlobalContextFile(): string | null {
+	const globalDir = join(homedir(), ".agents");
+	return (
+		tryReadFile(join(globalDir, "AGENTS.md")) ??
+		tryReadFile(join(globalDir, "CLAUDE.md"))
+	);
+}
+
+export function loadLocalContextFile(cwd: string): string | null {
+	return (
+		tryReadFile(join(cwd, ".agents", "AGENTS.md")) ??
+		tryReadFile(join(cwd, "CLAUDE.md")) ??
+		tryReadFile(join(cwd, "AGENTS.md"))
+	);
 }
 
 const CODEX_AUTONOMY = `
@@ -31,6 +38,8 @@ const CODEX_AUTONOMY = `
 - Do NOT ask "shall I proceed?", "shall I start?", "reply X to continue", or any equivalent. Just start.
 - If something is ambiguous, pick the most reasonable interpretation, implement it, and note the assumption at the end.`;
 
+const SUBAGENT_DELEGATION = `You are running as a subagent. Complete the task directly using your tools. Do not delegate to further subagents unless the subtask is clearly separable and self-contained.`;
+
 function isCodexModel(modelString: string): boolean {
 	const { modelId } = parseModelString(modelString);
 	return modelId.includes("codex");
@@ -40,8 +49,10 @@ export function buildSystemPrompt(
 	cwd: string,
 	modelString?: string,
 	extraSystemPrompt?: string,
+	isSubagent?: boolean,
 ): string {
-	const contextFile = loadContextFile(cwd);
+	const globalContext = loadGlobalContextFile();
+	const localContext = loadLocalContextFile(cwd);
 	const cwdDisplay = tildePath(cwd);
 	const now = new Date().toLocaleString(undefined, { hour12: false });
 
@@ -55,15 +66,25 @@ Guidelines:
 - Be concise and precise. Avoid unnecessary preamble.
 - Prefer small, targeted edits over large rewrites.
 - Always read a file before editing it.
-- Use subagents for all tasks that require a lot of context, like searching code, the web or using shell commands that produce a lot of output.
+- Use the \`subagent\` tool sparingly — only for clearly separable, self-contained subtasks. Prefer doing the work directly.
 - Keep your context clean and focused on the user request, use subagents to achieve this.`;
 
 	if (modelString && isCodexModel(modelString)) {
 		prompt += CODEX_AUTONOMY;
 	}
 
-	if (contextFile) {
-		prompt += `\n\n# Project context\n\n${contextFile}`;
+	if (globalContext || localContext) {
+		prompt += "\n\n# Project context";
+		if (globalContext) {
+			prompt += `\n\n${globalContext}`;
+		}
+		if (localContext) {
+			prompt += `\n\n${localContext}`;
+		}
+	}
+
+	if (isSubagent) {
+		prompt += `\n\n${SUBAGENT_DELEGATION}`;
 	}
 
 	if (extraSystemPrompt) {

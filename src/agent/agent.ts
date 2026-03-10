@@ -90,6 +90,7 @@ export async function runAgent(
 		initialThinkingEffort: opts.initialThinkingEffort,
 		sessionId: opts.sessionId,
 		extraSystemPrompt: opts.agentSystemPrompt,
+		isSubagent: opts.headless,
 	});
 
 	const cmdCtx: CommandContext = {

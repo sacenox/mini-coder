@@ -36,6 +36,7 @@ interface SessionRunnerOptions {
 	initialThinkingEffort: ThinkingEffort | null;
 	sessionId?: string | undefined;
 	extraSystemPrompt?: string | undefined;
+	isSubagent?: boolean | undefined;
 }
 
 export class SessionRunner {
@@ -58,6 +59,7 @@ export class SessionRunner {
 	public totalOut = 0;
 	public lastContextTokens = 0;
 	private extraSystemPrompt: string | undefined;
+	private isSubagent: boolean | undefined;
 
 	constructor(opts: SessionRunnerOptions) {
 		this.cwd = opts.cwd;
@@ -67,6 +69,7 @@ export class SessionRunner {
 		this.currentModel = opts.initialModel;
 		this.currentThinkingEffort = opts.initialThinkingEffort;
 		this.extraSystemPrompt = opts.extraSystemPrompt;
+		this.isSubagent = opts.isSubagent;
 		this.initSession(opts.sessionId);
 	}
 
@@ -147,6 +150,7 @@ export class SessionRunner {
 			this.cwd,
 			this.currentModel,
 			this.extraSystemPrompt,
+			this.isSubagent,
 		);
 
 		let lastAssistantText = "";

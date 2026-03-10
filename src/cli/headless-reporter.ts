@@ -25,9 +25,13 @@ export class HeadlessReporter implements AgentReporter {
 		let outputTokens = 0;
 		let contextTokens = 0;
 		let newMessages: CoreMessage[] = [];
+		let accumulatedText = "";
 
 		for await (const event of events) {
 			switch (event.type) {
+				case "text-delta":
+					accumulatedText += event.delta;
+					break;
 				case "turn-complete":
 					inputTokens = event.inputTokens;
 					outputTokens = event.outputTokens;
@@ -37,7 +41,10 @@ export class HeadlessReporter implements AgentReporter {
 				case "turn-error": {
 					const isAbort = isAbortError(event.error);
 					if (isAbort) {
-						newMessages = buildAbortMessages(event.partialMessages);
+						newMessages = buildAbortMessages(
+							event.partialMessages,
+							accumulatedText,
+						);
 					} else {
 						throw event.error;
 					}
