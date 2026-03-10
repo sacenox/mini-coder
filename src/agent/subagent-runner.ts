@@ -1,5 +1,10 @@
 import type { ThinkingEffort } from "../llm-api/providers.ts";
 import type { SubagentOutput, SubagentSummary } from "../tools/subagent.ts";
+import {
+	cleanupBranch,
+	MergeInProgressError,
+	mergeWorktree,
+} from "../tools/worktree.ts";
 import type { AgentReporter } from "./reporter.ts";
 
 /**
@@ -30,6 +35,37 @@ export function createSubagentRunner(
 
 	// Depth is injected by the parent subprocess via MC_SUBAGENT_DEPTH env var.
 	const subagentDepth = parseInt(process.env.MC_SUBAGENT_DEPTH ?? "0", 10);
+
+	// Merge lock: serialises merge operations from concurrent subagents.
+	let mergeLockTail = Promise.resolve();
+
+	const mergeSubagentBranch = async (
+		branch: string,
+	): Promise<{ mergeConflicts?: string[] }> => {
+		const prev = mergeLockTail;
+		let releaseLock!: () => void;
+		mergeLockTail = new Promise((resolve) => {
+			releaseLock = resolve;
+		});
+		try {
+			await prev;
+			const result = await mergeWorktree(cwd, branch);
+			if (result.success) {
+				await cleanupBranch(cwd, branch);
+				return {};
+			}
+			// Merge produced conflicts — leave branch for user to resolve.
+			return { mergeConflicts: result.conflictFiles };
+		} catch (err) {
+			if (err instanceof MergeInProgressError) {
+				// Another merge is in progress — return its conflict files.
+				return { mergeConflicts: err.conflictFiles };
+			}
+			throw err;
+		} finally {
+			releaseLock();
+		}
+	};
 
 	const runSubagent = async (
 		prompt: string,
@@ -101,11 +137,20 @@ export function createSubagentRunner(
 				);
 			}
 
-			return {
+			const output: SubagentOutput = {
 				result: parsed.result,
 				inputTokens: parsed.inputTokens,
 				outputTokens: parsed.outputTokens,
 			};
+
+			if (parsed.worktreeBranch) {
+				const mergeResult = await mergeSubagentBranch(parsed.worktreeBranch);
+				if (mergeResult.mergeConflicts) {
+					output.mergeConflicts = mergeResult.mergeConflicts;
+				}
+			}
+
+			return output;
 		} finally {
 			activePids.delete(proc.pid);
 		}

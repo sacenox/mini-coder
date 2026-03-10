@@ -1,5 +1,8 @@
 #!/usr/bin/env bun
 import { writeSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import * as c from "yoctocolors";
 import { runAgent } from "./agent/agent.ts";
 import { loadAgents } from "./cli/agents.ts";
@@ -24,6 +27,12 @@ import {
 	getPreferredThinkingEffort,
 } from "./session/db/index.ts";
 import { getMostRecentSession, printSessionList } from "./session/manager.ts";
+import {
+	createWorktree,
+	initializeWorktree,
+	isGitRepo,
+	removeWorktree,
+} from "./tools/worktree.ts";
 
 // Register terminal cleanup handlers as early as possible so the cursor is
 // always restored even if the process crashes or is killed.
@@ -185,6 +194,7 @@ async function main(): Promise<void> {
 
 	if (args.subagent) {
 		// Headless mode: no banner, no interactive loop, single prompt then exit
+		const parentCwd = args.cwd;
 		let agentSystemPrompt: string | undefined;
 		let modelOverride = model;
 
@@ -199,10 +209,52 @@ async function main(): Promise<void> {
 			if (agentConfig.model) modelOverride = agentConfig.model;
 		}
 
+		// Worktree lifecycle: create before run, remove dir after (keep branch for parent to merge).
+		let worktreePath: string | undefined;
+		let worktreeBranch: string | undefined;
+		let runCwd = parentCwd;
+
+		if (await isGitRepo(parentCwd)) {
+			const laneId = crypto.randomUUID().slice(0, 8);
+			worktreeBranch = `mc-sub-${laneId}`;
+			worktreePath = join(tmpdir(), `mc-sub-${laneId}`);
+			try {
+				await createWorktree(parentCwd, worktreeBranch, worktreePath);
+				await initializeWorktree(parentCwd, worktreePath);
+				runCwd = worktreePath;
+			} catch {
+				// Worktree creation failed — fall back to running in the original cwd.
+				worktreeBranch = undefined;
+				worktreePath = undefined;
+			}
+		}
+
+		// SIGTERM handler: clean up worktree directory and branch before exit.
+		process.on("SIGTERM", () => {
+			if (worktreePath) {
+				Bun.spawnSync(["git", "worktree", "remove", "--force", worktreePath], {
+					cwd: parentCwd,
+				});
+			}
+			if (worktreeBranch) {
+				Bun.spawnSync(["git", "branch", "-D", worktreeBranch], {
+					cwd: parentCwd,
+				});
+			}
+			process.exit(1);
+		});
+
+		const cleanupWorktree = async (): Promise<void> => {
+			if (worktreePath) {
+				await removeWorktree(parentCwd, worktreePath).catch(() => {});
+				worktreePath = undefined;
+			}
+		};
+
 		try {
 			const summary = await runAgent({
 				model: modelOverride,
-				cwd: args.cwd,
+				cwd: runCwd,
 				initialThinkingEffort: getPreferredThinkingEffort(),
 				reporter: new HeadlessReporter(),
 				initialPrompt: args.prompt ?? "",
@@ -210,11 +262,17 @@ async function main(): Promise<void> {
 				...(agentSystemPrompt ? { agentSystemPrompt } : {}),
 			});
 
+			await cleanupWorktree();
+
 			if (args.outputFd !== null && summary) {
-				const json = `${JSON.stringify(summary)}\n`;
+				const payload = worktreeBranch
+					? { ...summary, worktreeBranch }
+					: summary;
+				const json = `${JSON.stringify(payload)}\n`;
 				writeSync(args.outputFd, Buffer.from(json));
 			}
 		} catch (err) {
+			await cleanupWorktree();
 			if (args.outputFd !== null) {
 				const json = `${JSON.stringify({ error: String(err) })}\n`;
 				writeSync(args.outputFd, Buffer.from(json));
