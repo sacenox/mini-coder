@@ -70,26 +70,6 @@ error: script "dev" exited with code 1
 
 ---
 
-## Audit language to models
-
-I want to improve some aspects of the agents behaviour in mini-coder.
-
-- More responsible token usage. API costs are escalating in 2026 so it's more important than ever to use as little tokens as possible whithout impacting efficiency.
-- Evaluate our tools descriptions and wording to make sure they are efficient in token usage and clear to the llm (we see some errors of duplicating code by accident for example).
-- Evaluate the output of our tools for token usage considerations.
-- Ensure the system prompts are correct and use up to date wording based on context engineering optimization (check online for latest practices, check opencode, codex and oh-my-pi for context). Make sure we review the codex autonomy texts as well since gpt 5.4 is now out.
-
----
-
-## Write blog posts
-
-- Codex being big dumb and lazy without strong guidance in system prompt/instructions
-- Keeping up codebase health when using agents to develop an applications. Avoid regressions, bad tests, lint etc.
-
----
-
-# Post v1.0.0 work:
-
 ## Custom commands vs built-in commands
 
 Let's clean things up:
@@ -97,6 +77,7 @@ Let's clean things up:
 - `/review` command should use the same code as a custom-commands, consolidate the two. We can create the global `/review` command in `~/.agents/commands` at app start if it doesn't exist. That way it can be a pure custom command and the users are encouraged to edit it for their own custom reviews. Never overwrite the file if it exists. Print a line notifying the user that the command was created.
 - Ensure we are correctly implementing commands, skills and agents. Use the claude code and opencode documentation online to audit our implementations, identify gaps and inconsistencies. We should support both of these types of configs, as well as our .agents.
 - Now that we have subagents as subprocesses, let's review how it impacted these features.
+- We are missing the notion of an active custom agent, we need to add it. It should be documented in the claude code and opencode docs.
 
 ---
 

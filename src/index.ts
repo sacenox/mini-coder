@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
-import { writeSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, writeFileSync, writeSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
 import * as c from "yoctocolors";
@@ -166,6 +166,37 @@ function printHelp(): void {
 	writeln(`  mc -l                        ${c.dim("# list sessions")}`);
 }
 
+// ─── Bootstrap global defaults ────────────────────────────────────────────────
+
+const REVIEW_COMMAND_CONTENT = `---
+description: Review recent changes for correctness, code quality, and performance
+---
+You are a code reviewer. Review recent changes and provide actionable feedback.
+
+$ARGUMENTS
+
+Perform a sensible code review:
+- Correctness: Are the changes in alignment with the goal?
+- Code quality: Is there duplicate, dead, or bad code patterns introduced?
+- Is the code performant?
+- Never flag style choices as bugs, don't be a zealot.
+- Never flag false positives, check before raising an issue.
+
+Output a small summary with only the issues found. If nothing is wrong, say so.
+`;
+
+function bootstrapGlobalDefaults(): void {
+	const commandsDir = join(homedir(), ".agents", "commands");
+	const reviewPath = join(commandsDir, "review.md");
+	if (!existsSync(reviewPath)) {
+		mkdirSync(commandsDir, { recursive: true });
+		writeFileSync(reviewPath, REVIEW_COMMAND_CONTENT, "utf-8");
+		writeln(
+			`${c.green("✓")} created ${c.dim("~/.agents/commands/review.md")} ${c.dim("(edit it to customise your reviews)")}`,
+		);
+	}
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
@@ -197,6 +228,10 @@ async function main(): Promise<void> {
 
 	// Determine model: CLI flag > persisted user preference > auto-discover
 	const model = args.model ?? getPreferredModel() ?? autoDiscoverModel();
+
+	if (!args.subagent) {
+		bootstrapGlobalDefaults();
+	}
 
 	if (args.subagent) {
 		// Headless mode: no banner, no interactive loop, single prompt then exit

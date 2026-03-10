@@ -20,6 +20,7 @@ export interface StatusBarData {
 	contextWindow: number;
 	ralphMode: boolean;
 	thinkingEffort?: string | null;
+	activeAgent?: string | null;
 }
 
 export interface AgentReporter {

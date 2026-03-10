@@ -1,12 +1,18 @@
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-import { loadMarkdownConfigs } from "./load-markdown-configs.ts";
+import {
+	baseConfigFields,
+	loadMarkdownConfigs,
+} from "./load-markdown-configs.ts";
 
-interface AgentConfig {
+export interface AgentConfig {
 	name: string;
 	description: string;
 	/** Override model for this agent (optional) */
 	model?: string;
+	/** Agent mode: "primary" (interactive session), "subagent" (subprocess only), "all" (both).
+	 *  Defaults to "subagent" when omitted for backward compatibility. */
+	mode?: "primary" | "subagent" | "all";
 	/** System prompt (the markdown body after frontmatter) */
 	systemPrompt: string;
 	/** "global" (~/.agents/) or "local" (./.agents/) — local wins on conflict */
@@ -20,13 +26,11 @@ export function loadAgents(cwd: string): Map<string, AgentConfig> {
 		type: "agents",
 		strategy: "flat",
 		cwd,
-		includeClaudeDirs: false,
+		includeClaudeDirs: true,
 		mapConfig: ({ name, meta, body, source }) => ({
-			name,
-			description: meta.description ?? name,
-			...(meta.model ? { model: meta.model } : {}),
+			...baseConfigFields(name, meta, source),
+			...(meta.mode ? { mode: meta.mode } : {}),
 			systemPrompt: body,
-			source,
 		}),
 	});
 }

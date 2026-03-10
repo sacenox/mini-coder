@@ -4,6 +4,20 @@ import { basename, join } from "node:path";
 import { warnConventionConflicts } from "./config-conflicts.ts";
 import { type Frontmatter, parseFrontmatter } from "./frontmatter.ts";
 
+/** Common fields shared by all markdown-based configs (agents, commands, skills). */
+export function baseConfigFields(
+	name: string,
+	meta: Frontmatter,
+	source: "global" | "local",
+) {
+	return {
+		name,
+		description: meta.description ?? name,
+		...(meta.model ? { model: meta.model } : {}),
+		source,
+	} as const;
+}
+
 interface MarkdownConfigLoaderOptions<T> {
 	type: "commands" | "skills" | "agents";
 	/** Strategy for file discovery: 'flat' reads dir/*.md, 'nested' reads dir/<name>/SKILL.md */

@@ -69,4 +69,48 @@ describe("loadAgents", () => {
 		expect(agents.get("reviewer")?.description).toBe("local reviewer");
 		expect(agents.get("reviewer")?.source).toBe("local");
 	});
+
+	test("loads mode field from frontmatter", () => {
+		writeAgent(
+			dir,
+			"orchestrator",
+			"---\ndescription: Primary orchestrator\nmode: primary\n---\n\nYou are the orchestrator.",
+		);
+		const agent = loadAgents(dir).get("orchestrator");
+		expect(agent?.mode).toBe("primary");
+		expect(agent?.systemPrompt).toBe("You are the orchestrator.");
+	});
+
+	test("mode is undefined when not specified", () => {
+		writeAgent(dir, "plain", "Just do the task.");
+		expect(loadAgents(dir).get("plain")?.mode).toBeUndefined();
+	});
+
+	test("loads agents from .claude/agents/ directory", () => {
+		const claudeDir = join(dir, ".claude", "agents");
+		mkdirSync(claudeDir, { recursive: true });
+		writeFileSync(
+			join(claudeDir, "helper.md"),
+			"---\ndescription: Claude helper\n---\n\nHelp with tasks.",
+		);
+		const agents = loadAgents(dir);
+		expect(agents.get("helper")?.description).toBe("Claude helper");
+		expect(agents.get("helper")?.source).toBe("local");
+	});
+
+	test(".agents/agents/ overrides .claude/agents/ for same name", () => {
+		const claudeDir = join(dir, ".claude", "agents");
+		mkdirSync(claudeDir, { recursive: true });
+		writeFileSync(
+			join(claudeDir, "helper.md"),
+			"---\ndescription: claude version\n---\n\nClaude prompt",
+		);
+		writeAgent(
+			dir,
+			"helper",
+			"---\ndescription: agents version\n---\n\nAgents prompt",
+		);
+		const agent = loadAgents(dir).get("helper");
+		expect(agent?.description).toBe("agents version");
+	});
 });

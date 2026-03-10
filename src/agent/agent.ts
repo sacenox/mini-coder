@@ -1,5 +1,5 @@
 import * as c from "yoctocolors";
-import { loadAgents } from "../cli/agents.ts";
+import { type AgentConfig, loadAgents } from "../cli/agents.ts";
 import type { CommandContext } from "../cli/commands.ts";
 import { tildePath } from "../cli/output.ts";
 import { getContextWindow, type ThinkingEffort } from "../llm-api/providers.ts";
@@ -30,6 +30,17 @@ interface AgentOptions {
 	agentSystemPrompt?: string;
 }
 
+/** Agents with mode "primary" are for interactive use only — exclude from subagent tool. */
+function subagentAgents(
+	agents: Map<string, AgentConfig>,
+): Map<string, AgentConfig> {
+	const filtered = new Map<string, AgentConfig>();
+	for (const [name, cfg] of agents) {
+		if (cfg.mode !== "primary") filtered.set(name, cfg);
+	}
+	return filtered;
+}
+
 export async function runAgent(
 	opts: AgentOptions,
 ): Promise<SubagentSummary | undefined> {
@@ -45,7 +56,7 @@ export async function runAgent(
 		cwd,
 		runSubagent,
 		onHook: (tool, path, ok) => opts.reporter.renderHook(tool, path, ok),
-		availableAgents: agents,
+		availableAgents: subagentAgents(agents),
 	});
 
 	const mcpTools: ToolDef[] = [];
@@ -89,6 +100,9 @@ export async function runAgent(
 		killSubprocesses: killAll,
 	});
 
+	// Active primary agent state — name only; the system prompt is stored on runner.
+	let activeAgentName: string | null = null;
+
 	const cmdCtx: CommandContext = {
 		get currentModel() {
 			return runner.currentModel;
@@ -119,7 +133,16 @@ export async function runAgent(
 			runner.planMode = v;
 		},
 		cwd,
-		runSubagent: (prompt, model?) => runSubagent(prompt, undefined, model),
+		runSubagent: (prompt, agentName?, model?) =>
+			runSubagent(prompt, agentName, model),
+
+		get activeAgent() {
+			return activeAgentName;
+		},
+		setActiveAgent: (name, systemPrompt?) => {
+			activeAgentName = name;
+			runner.extraSystemPrompt = systemPrompt;
+		},
 
 		undoLastTurn: () =>
 			undoLastTurn({
@@ -155,6 +178,7 @@ export async function runAgent(
 			contextWindow: getContextWindow(runner.currentModel) ?? 0,
 			ralphMode: runner.ralphMode,
 			thinkingEffort: runner.currentThinkingEffort,
+			activeAgent: activeAgentName,
 		});
 	}
 

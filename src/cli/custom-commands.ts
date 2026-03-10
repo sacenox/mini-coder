@@ -1,12 +1,17 @@
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-import { loadMarkdownConfigs } from "./load-markdown-configs.ts";
+import {
+	baseConfigFields,
+	loadMarkdownConfigs,
+} from "./load-markdown-configs.ts";
 
 export interface CustomCommand {
 	name: string;
 	description: string;
 	/** Override model for this command (optional) */
 	model?: string;
+	/** Run command under a specific agent's system prompt (optional) */
+	agent?: string;
 	/** Raw template string (after frontmatter is stripped) */
 	template: string;
 	/** "global" (~/.agents/) or "local" (./.agents/) — local wins on conflict */
@@ -22,11 +27,9 @@ export function loadCustomCommands(cwd: string): Map<string, CustomCommand> {
 		cwd,
 		includeClaudeDirs: true,
 		mapConfig: ({ name, meta, body, source }) => ({
-			name,
-			description: meta.description ?? name,
-			...(meta.model ? { model: meta.model } : {}),
+			...baseConfigFields(name, meta, source),
+			...(meta.agent ? { agent: meta.agent } : {}),
 			template: body,
-			source,
 		}),
 	});
 }

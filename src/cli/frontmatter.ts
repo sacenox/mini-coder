@@ -4,6 +4,10 @@ export interface Frontmatter {
 	description?: string;
 	model?: string;
 	name?: string;
+	/** Agent mode: "primary" (interactive session), "subagent" (subprocess only), "all" (both) */
+	mode?: "primary" | "subagent" | "all";
+	/** For commands: name of the agent to run the command under */
+	agent?: string;
 }
 
 const FM_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
@@ -28,6 +32,12 @@ export function parseFrontmatter(raw: string): {
 		if (key === "name") meta.name = val;
 		if (key === "description") meta.description = val;
 		if (key === "model") meta.model = val;
+		if (
+			key === "mode" &&
+			(val === "primary" || val === "subagent" || val === "all")
+		)
+			meta.mode = val;
+		if (key === "agent") meta.agent = val;
 	}
 
 	return { meta, body: (m[2] ?? "").trim() };

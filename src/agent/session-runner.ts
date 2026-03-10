@@ -59,7 +59,7 @@ export class SessionRunner {
 	public totalIn = 0;
 	public totalOut = 0;
 	public lastContextTokens = 0;
-	private extraSystemPrompt: string | undefined;
+	public extraSystemPrompt: string | undefined;
 	private isSubagent: boolean | undefined;
 	private killSubprocesses: (() => void) | undefined;
 

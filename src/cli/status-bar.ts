@@ -43,6 +43,7 @@ export function renderStatusBar(opts: {
 	contextWindow: number | null;
 	ralphMode?: boolean;
 	thinkingEffort?: string | null;
+	activeAgent?: string | null;
 }): void {
 	const cols = (process.stdout as NodeJS.WriteStream).columns ?? 80;
 
@@ -52,6 +53,7 @@ export function renderStatusBar(opts: {
 	if (opts.provider && opts.provider !== "zen") left.push(c.dim(opts.provider));
 	left.push(c.dim(opts.sessionId.slice(0, 8)));
 	if (opts.ralphMode) left.push(c.magenta("↻ ralph"));
+	if (opts.activeAgent) left.push(c.green(`@${opts.activeAgent}`));
 
 	const right: string[] = [];
 	if (opts.inputTokens > 0 || opts.outputTokens > 0) {

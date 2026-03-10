@@ -36,7 +36,14 @@ export interface CommandContext {
 	startNewSession: () => void;
 
 	connectMcpServer: (name: string) => Promise<void>;
-	runSubagent: (prompt: string, model?: string) => Promise<SubagentOutput>;
+	runSubagent: (
+		prompt: string,
+		agentName?: string,
+		model?: string,
+	) => Promise<SubagentOutput>;
+
+	activeAgent: string | null;
+	setActiveAgent: (name: string | null, systemPrompt?: string) => void;
 
 	cwd: string;
 }
@@ -326,54 +333,6 @@ async function handleMcp(ctx: CommandContext, args: string): Promise<void> {
 	}
 }
 
-// ─── Review ───────────────────────────────────────────────────────────────────
-
-const REVIEW_PROMPT = (cwd: string, focus: string) => `\
-You are a code reviewer. Review recent changes and provide actionable feedback.
-
-Working directory: ${cwd}
-${focus ? `Review: ${focus}` : "Review the current changes"}
-
-Perform a sensible code review:
-
-- Correctness: Are the changes in alignment with the goal?
-- Code quality: Is there duplicate, dead or bad code patterns introduced or as a result of the changes?
-- Is the code performant?
-- Never flag style choices as bugs, don't be a zeolot.
-- Never flag false positives, if you think something is wrong, check before saying it's an issue.
-
-Output a small summary with only the issues found. If nothing of note was found reply saying that.
-`;
-
-async function handleReview(
-	ctx: CommandContext,
-	args: string,
-): Promise<CommandResult> {
-	const focus = args.trim();
-	writeln(
-		`${PREFIX.info} ${c.cyan("review")} ${c.dim("— spawning review subagent…")}`,
-	);
-	writeln();
-
-	try {
-		const output = await ctx.runSubagent(REVIEW_PROMPT(ctx.cwd, focus));
-		assertSubagentMerged(output);
-
-		// Show review results.
-		write(renderMarkdown(output.result));
-		writeln();
-
-		// Send results to LLM as well.
-		return {
-			type: "inject-user-message",
-			text: `Code review output:\n\n${output.result}\n\n<system-message>Review the findings and summarize them to the user.</system-message>`,
-		};
-	} catch (e) {
-		writeln(`${PREFIX.error} review failed: ${String(e)}`);
-		return { type: "handled" };
-	}
-}
-
 function handleNew(ctx: CommandContext): void {
 	ctx.startNewSession();
 	writeln(
@@ -398,7 +357,7 @@ async function handleCustomCommand(
 	writeln(`${PREFIX.info} ${label} ${src}`);
 	writeln();
 	try {
-		const output = await ctx.runSubagent(prompt, cmd.model);
+		const output = await ctx.runSubagent(prompt, cmd.agent, cmd.model);
 		assertSubagentMerged(output);
 
 		write(renderMarkdown(output.result));
@@ -412,6 +371,61 @@ async function handleCustomCommand(
 		writeln(`${PREFIX.error} /${cmd.name} failed: ${String(e)}`);
 		return { type: "handled" };
 	}
+}
+
+// ─── Agent ────────────────────────────────────────────────────────────────────
+
+function handleAgent(ctx: CommandContext, args: string): void {
+	const raw = args.trim();
+	const agents = loadAgents(ctx.cwd);
+
+	if (!raw) {
+		// List all agents
+		if (agents.size === 0) {
+			writeln(
+				c.dim("  no agents found  (~/.agents/agents/ or .agents/agents/)"),
+			);
+			writeln(
+				c.dim("  /agent <name>  to activate  ·  /agent off  to deactivate"),
+			);
+			return;
+		}
+		writeln();
+		writeln(c.dim("  agents:"));
+		for (const agent of agents.values()) {
+			const modeTag = agent.mode ? c.dim(` [${agent.mode}]`) : "";
+			const srcTag =
+				agent.source === "local" ? c.dim(" (local)") : c.dim(" (global)");
+			const active = ctx.activeAgent === agent.name ? c.cyan(" ◀ active") : "";
+			writeln(
+				`  ${c.magenta(`@${agent.name}`.padEnd(26))} ${c.dim(agent.description)}${modeTag}${srcTag}${active}`,
+			);
+		}
+		writeln();
+		writeln(
+			c.dim("  /agent <name>  to activate  ·  /agent off  to deactivate"),
+		);
+		writeln();
+		return;
+	}
+
+	if (raw.toLowerCase() === "off" || raw.toLowerCase() === "none") {
+		ctx.setActiveAgent(null);
+		writeln(`${PREFIX.info} ${c.dim("active agent cleared")}`);
+		return;
+	}
+
+	const agent = agents.get(raw);
+	if (!agent) {
+		writeln(`${PREFIX.error} agent ${c.cyan(raw)} not found`);
+		return;
+	}
+
+	// Pass the resolved system prompt so setActiveAgent never needs to re-lookup.
+	ctx.setActiveAgent(raw, agent.systemPrompt);
+	writeln(
+		`${PREFIX.success} active agent → ${c.cyan(raw)} ${c.dim("(instructions appended to system prompt)")}`,
+	);
 }
 
 // ─── Help ─────────────────────────────────────────────────────────────────────
@@ -430,7 +444,7 @@ function handleHelp(
 			"/ralph",
 			"toggle ralph mode (autonomous loop, fresh context each iteration)",
 		],
-		["/review [focus]", "run a structured code review on recent changes"],
+		["/agent [name]", "set or clear active primary agent"],
 		["/mcp list", "list MCP servers"],
 		["/mcp add <n> <t> [u]", "add an MCP server"],
 		["/mcp remove <name>", "remove an MCP server"],
@@ -461,10 +475,11 @@ function handleHelp(
 		writeln();
 		writeln(c.dim("  agents  (~/.agents/agents/ or .agents/agents/):"));
 		for (const agent of agents.values()) {
+			const modeTag = agent.mode ? c.dim(` [${agent.mode}]`) : "";
 			const tag =
 				agent.source === "local" ? c.dim(" (local)") : c.dim(" (global)");
 			writeln(
-				`  ${c.magenta(`@${agent.name}`.padEnd(26))} ${c.dim(agent.description)}${tag}`,
+				`  ${c.magenta(`@${agent.name}`.padEnd(26))} ${c.dim(agent.description)}${modeTag}${tag}`,
 			);
 		}
 	}
@@ -536,6 +551,10 @@ export async function handleCommand(
 			handleRalph(ctx);
 			return { type: "handled" };
 
+		case "agent":
+			handleAgent(ctx, args);
+			return { type: "handled" };
+
 		case "mcp":
 			await handleMcp(ctx, args);
 			return { type: "handled" };
@@ -543,9 +562,6 @@ export async function handleCommand(
 		case "new":
 			handleNew(ctx);
 			return { type: "handled" };
-
-		case "review":
-			return await handleReview(ctx, args);
 
 		case "help":
 		case "?":
