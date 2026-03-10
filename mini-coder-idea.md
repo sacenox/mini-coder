@@ -27,6 +27,7 @@ conventions and not introduce more specs. (skills.sh installs to `.agents,AGENTS
 - Press `ESC` at any point during an assistant response to interrupt it: the partial response is preserved in history with an interrupt stub appended (so the LLM retains context), and the user is returned to the prompt silently. `ctrl+c` exits the app. `ctrl+d` (EOF) also exits.
 
 - `glob`, `grep`, `read`, `replace`,`insert`, `create`, `shell`, and `subagent` tools for LLMs
+- `subagent` tool spawns a fresh `mc` subprocess — full capability parity with the main agent, correct working directory, and support for recursive subagents. Custom agents (from `.agents/agents/`) and custom commands (from `.agents/commands/`) are fully supported in subagents.
 - tool hooks support (do command automatically after certain tools)
 - Commands in CLI prompt:
   - `/model` command allows the user to pick a model from connected providers. As well as thinking effort for the model if supported. Selection persists accross sessions.
@@ -64,6 +65,6 @@ Core modules:
 - `llm-api`: Provides the api to intereact with the provider and process the full conversation turn + tool calling.
 - `cli`: Output/UI
 - `agent`: Main agent implementation
-- `tools/subagent`: subagent tool implementation
+- `tools/subagent`: subagent tool — spawns a fresh `mc` subprocess, handles worktree lifecycle and structured result handback
 - `tools/read-write-shell`: all of the tools that use the local filesystem/shell
 - `mcp`: handles connecting to mcp servers
