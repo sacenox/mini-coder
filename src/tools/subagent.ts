@@ -13,6 +13,13 @@ const SubagentInput = z.object({
 
 type SubagentInput = z.infer<typeof SubagentInput>;
 
+export interface SubagentSummary {
+	result: string;
+	inputTokens: number;
+	outputTokens: number;
+	worktreeBranch?: string; // Phase 4
+}
+
 export interface SubagentOutput {
 	result: string;
 	inputTokens: number;

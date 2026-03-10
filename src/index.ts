@@ -1,7 +1,10 @@
 #!/usr/bin/env bun
+import { writeSync } from "node:fs";
 import * as c from "yoctocolors";
 import { runAgent } from "./agent/agent.ts";
+import { loadAgents } from "./cli/agents.ts";
 import { initErrorLog } from "./cli/error-log.ts";
+import { HeadlessReporter } from "./cli/headless-reporter.ts";
 import {
 	registerTerminalCleanup,
 	renderBanner,
@@ -40,6 +43,9 @@ interface CliArgs {
 	prompt: string | null;
 	cwd: string;
 	help: boolean;
+	subagent: boolean;
+	agentName: string | null;
+	outputFd: number | null;
 }
 
 function parseArgs(argv: string[]): CliArgs {
@@ -51,6 +57,9 @@ function parseArgs(argv: string[]): CliArgs {
 		prompt: null,
 		cwd: process.cwd(),
 		help: false,
+		subagent: false,
+		agentName: null,
+		outputFd: null,
 	};
 
 	const positional: string[] = [];
@@ -81,6 +90,17 @@ function parseArgs(argv: string[]): CliArgs {
 			case "-h":
 				args.help = true;
 				break;
+			case "--subagent":
+				args.subagent = true;
+				break;
+			case "--agent":
+				args.agentName = argv[++i] ?? null;
+				break;
+			case "--output-fd": {
+				const fd = parseInt(argv[++i] ?? "", 10);
+				if (!Number.isNaN(fd)) args.outputFd = fd;
+				break;
+			}
 			default:
 				if (!arg.startsWith("-")) positional.push(arg);
 		}
@@ -162,6 +182,47 @@ async function main(): Promise<void> {
 
 	// Determine model: CLI flag > persisted user preference > auto-discover
 	const model = args.model ?? getPreferredModel() ?? autoDiscoverModel();
+
+	if (args.subagent) {
+		// Headless mode: no banner, no interactive loop, single prompt then exit
+		let agentSystemPrompt: string | undefined;
+		let modelOverride = model;
+
+		if (args.agentName) {
+			const agents = loadAgents(args.cwd);
+			const agentConfig = agents.get(args.agentName);
+			if (!agentConfig) {
+				renderError(new Error(`Agent "${args.agentName}" not found`), "agent");
+				process.exit(1);
+			}
+			agentSystemPrompt = agentConfig.systemPrompt;
+			if (agentConfig.model) modelOverride = agentConfig.model;
+		}
+
+		try {
+			const summary = await runAgent({
+				model: modelOverride,
+				cwd: args.cwd,
+				initialThinkingEffort: getPreferredThinkingEffort(),
+				reporter: new HeadlessReporter(),
+				initialPrompt: args.prompt ?? "",
+				headless: true,
+				...(agentSystemPrompt ? { agentSystemPrompt } : {}),
+			});
+
+			if (args.outputFd !== null && summary) {
+				const json = `${JSON.stringify(summary)}\n`;
+				writeSync(args.outputFd, Buffer.from(json));
+			}
+		} catch (err) {
+			if (args.outputFd !== null) {
+				const json = `${JSON.stringify({ error: String(err) })}\n`;
+				writeSync(args.outputFd, Buffer.from(json));
+			}
+			process.exit(1);
+		}
+		return;
+	}
 
 	if (!args.prompt) {
 		// Only show banner for interactive sessions, not piped/one-shot

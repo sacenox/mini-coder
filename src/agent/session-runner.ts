@@ -35,6 +35,7 @@ interface SessionRunnerOptions {
 	initialModel: string;
 	initialThinkingEffort: ThinkingEffort | null;
 	sessionId?: string | undefined;
+	extraSystemPrompt?: string | undefined;
 }
 
 export class SessionRunner {
@@ -56,6 +57,7 @@ export class SessionRunner {
 	public totalIn = 0;
 	public totalOut = 0;
 	public lastContextTokens = 0;
+	private extraSystemPrompt: string | undefined;
 
 	constructor(opts: SessionRunnerOptions) {
 		this.cwd = opts.cwd;
@@ -64,6 +66,7 @@ export class SessionRunner {
 		this.mcpTools = opts.mcpTools;
 		this.currentModel = opts.initialModel;
 		this.currentThinkingEffort = opts.initialThinkingEffort;
+		this.extraSystemPrompt = opts.extraSystemPrompt;
 		this.initSession(opts.sessionId);
 	}
 
@@ -140,7 +143,11 @@ export class SessionRunner {
 		this.coreHistory.push(userMsg);
 
 		const llm = resolveModel(this.currentModel);
-		const systemPrompt = buildSystemPrompt(this.cwd, this.currentModel);
+		const systemPrompt = buildSystemPrompt(
+			this.cwd,
+			this.currentModel,
+			this.extraSystemPrompt,
+		);
 
 		let lastAssistantText = "";
 

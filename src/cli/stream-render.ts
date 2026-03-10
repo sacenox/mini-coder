@@ -1,5 +1,5 @@
 import * as c from "yoctocolors";
-import { makeInterruptMessage } from "../agent/agent-helpers.ts";
+import { buildAbortMessages, isAbortError } from "../agent/agent-helpers.ts";
 import type { CoreMessage } from "../llm-api/turn.ts";
 import type { TurnEvent } from "../llm-api/types.ts";
 import { logError } from "./error-log.ts";
@@ -125,20 +125,12 @@ export async function renderTurn(
 			case "turn-error": {
 				flushAnyText();
 				spinner.stop();
-				const isAbort =
-					event.error.name === "AbortError" ||
-					(event.error.name === "Error" &&
-						event.error.message.toLowerCase().includes("abort"));
+				const isAbort = isAbortError(event.error);
 				if (isAbort) {
-					const stub = makeInterruptMessage("user");
-					const partialContent = accumulatedText
-						? `${accumulatedText}${stub.content}`
-						: (stub.content as string);
-					const partialMsg: CoreMessage = {
-						role: "assistant",
-						content: partialContent,
-					};
-					newMessages = [...event.partialMessages, partialMsg];
+					newMessages = buildAbortMessages(
+						event.partialMessages,
+						accumulatedText,
+					);
 				} else {
 					logError(event.error, "turn");
 					const parsed = parseAppError(event.error);

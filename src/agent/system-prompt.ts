@@ -36,7 +36,11 @@ function isCodexModel(modelString: string): boolean {
 	return modelId.includes("codex");
 }
 
-export function buildSystemPrompt(cwd: string, modelString?: string): string {
+export function buildSystemPrompt(
+	cwd: string,
+	modelString?: string,
+	extraSystemPrompt?: string,
+): string {
 	const contextFile = loadContextFile(cwd);
 	const cwdDisplay = tildePath(cwd);
 	const now = new Date().toLocaleString(undefined, { hour12: false });
@@ -60,6 +64,10 @@ Guidelines:
 
 	if (contextFile) {
 		prompt += `\n\n# Project context\n\n${contextFile}`;
+	}
+
+	if (extraSystemPrompt) {
+		prompt += `\n\n${extraSystemPrompt}`;
 	}
 
 	return prompt;

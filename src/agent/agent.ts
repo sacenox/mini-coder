@@ -10,6 +10,7 @@ import {
 	setPreferredModel,
 	setPreferredThinkingEffort,
 } from "../session/db/index.ts";
+import type { SubagentSummary } from "../tools/subagent.ts";
 import { getGitBranch } from "./agent-helpers.ts";
 import { runInputLoop } from "./input-loop.ts";
 import type { AgentReporter } from "./reporter.ts";
@@ -25,9 +26,13 @@ interface AgentOptions {
 	sessionId?: string;
 	initialPrompt?: string;
 	reporter: AgentReporter;
+	headless?: boolean;
+	agentSystemPrompt?: string;
 }
 
-export async function runAgent(opts: AgentOptions): Promise<void> {
+export async function runAgent(
+	opts: AgentOptions,
+): Promise<SubagentSummary | undefined> {
 	const cwd = opts.cwd;
 	let currentModel = opts.model;
 	let currentThinkingEffort = opts.initialThinkingEffort;
@@ -84,6 +89,7 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		initialModel: currentModel,
 		initialThinkingEffort: opts.initialThinkingEffort,
 		sessionId: opts.sessionId,
+		extraSystemPrompt: opts.agentSystemPrompt,
 	});
 
 	const cmdCtx: CommandContext = {
@@ -156,6 +162,16 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		});
 	}
 
+	if (opts.headless) {
+		const prompt = opts.initialPrompt ?? "";
+		const result = await runner.processUserInput(prompt);
+		return {
+			result,
+			inputTokens: runner.totalIn,
+			outputTokens: runner.totalOut,
+		};
+	}
+
 	if (opts.initialPrompt) {
 		await runner.processUserInput(opts.initialPrompt);
 	}
@@ -167,4 +183,6 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		runner,
 		renderStatusBar: renderStatusBarForSession,
 	});
+
+	return undefined;
 }
