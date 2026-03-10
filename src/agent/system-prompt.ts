@@ -38,7 +38,7 @@ const CODEX_AUTONOMY = `
 - Do NOT ask "shall I proceed?", "shall I start?", "reply X to continue", or any equivalent. Just start.
 - If something is ambiguous, pick the most reasonable interpretation, implement it, and note the assumption at the end.`;
 
-const SUBAGENT_DELEGATION = `You are running as a subagent. Complete the task directly using your tools. Do not delegate to further subagents unless the subtask is clearly separable and self-contained.`;
+const SUBAGENT_DELEGATION = `You are running as a subagent. Complete the task you have been given directly using your tools. Do not spawn further subagents unless the subtask is unambiguously separable and self-contained.`;
 
 function isCodexModel(modelString: string): boolean {
 	const { modelId } = parseModelString(modelString);
@@ -68,7 +68,7 @@ Guidelines:
 - Be concise and precise. Avoid unnecessary preamble.
 - Prefer small, targeted edits over large rewrites.
 - Always read a file before editing it.
-- Use the \`subagent\` tool sparingly — only for clearly separable, self-contained subtasks. Prefer doing the work directly.
+- Use the \`subagent\` tool sparingly — only for clearly separable, self-contained subtasks that benefit from a fresh context window. Prefer doing the work directly.
 - Keep your context clean and focused on the user request.`;
 
 	if (modelString && isCodexModel(modelString)) {

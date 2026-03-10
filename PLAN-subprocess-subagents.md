@@ -145,3 +145,9 @@ When the user hits `ESC`:
 | Manual model resolution in runner | Passed as `--model` CLI flag |
 | `execution: inline` in custom commands | Removed — all commands use subprocess execution |
 | Merge lock in runner | Merges happen in the parent only, sequentially per-lane |
+
+---
+
+## Recursion Cap
+
+An env-var based cap (`MC_SUBAGENT_DEPTH`, max 10) is retained as a safety rail against runaway delegation chains. Unlike the old in-process `depth` parameter it is not a first-class concern of the runner — it is a background guard. Subagents that hit the cap receive a clear error. In practice the cap is generous enough that it should never be reached in normal use.

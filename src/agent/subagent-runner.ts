@@ -26,8 +26,11 @@ export function createSubagentRunner(
 	cwd: string,
 	getCurrentModel: () => string,
 ) {
-	// Active subprocesses — maps pid to branch name (if any) for interrupt cleanup.
-	const activeProcs = new Map<number, string | undefined>();
+	// Active subprocesses — maps proc to branch name (if any) for interrupt cleanup.
+	const activeProcs = new Map<
+		ReturnType<typeof Bun.spawn>,
+		string | undefined
+	>();
 
 	// Depth is injected by the parent subprocess via MC_SUBAGENT_DEPTH env var.
 	const subagentDepth = parseInt(process.env.MC_SUBAGENT_DEPTH ?? "0", 10);
@@ -104,7 +107,8 @@ export function createSubagentRunner(
 			stdio: ["ignore", "inherit", "inherit", "pipe"],
 		});
 
-		activeProcs.set(proc.pid, worktreeBranch);
+		activeProcs.set(proc, worktreeBranch);
+
 		try {
 			const [text] = await Promise.all([
 				Bun.file(proc.stdio[3] as unknown as number).text(),
@@ -151,22 +155,23 @@ export function createSubagentRunner(
 
 			return output;
 		} finally {
-			activeProcs.delete(proc.pid);
+			activeProcs.delete(proc);
 		}
 	};
 
 	return {
 		runSubagent,
 		killAll: () => {
-			for (const [pid, branch] of activeProcs) {
+			for (const [proc, branch] of activeProcs) {
 				try {
-					process.kill(pid, "SIGTERM");
+					proc.kill("SIGTERM");
 				} catch {
 					// Process may have already exited.
 				}
 				if (branch) {
-					// Best-effort: delete the orphan branch the subprocess left behind.
-					cleanupBranch(cwd, branch).catch(() => {});
+					// Wait for the subprocess to exit (so it can remove its worktree dir)
+					// before deleting the branch — git refuses to delete a checked-out branch.
+					proc.exited.then(() => cleanupBranch(cwd, branch)).catch(() => {});
 				}
 			}
 		},

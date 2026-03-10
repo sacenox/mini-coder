@@ -106,7 +106,7 @@ describe("buildSystemPrompt", () => {
 		);
 		expect(prompt).toContain("You are running as a subagent");
 		expect(prompt).toContain(
-			"Do not delegate to further subagents unless the subtask is clearly separable",
+			"Do not spawn further subagents unless the subtask is unambiguously separable",
 		);
 	});
 

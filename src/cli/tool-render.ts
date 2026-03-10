@@ -311,7 +311,7 @@ export function renderToolResult(
 			? ` ${c.dim(c.cyan(`[${toolCallId.slice(0, 6)}]`))}`
 			: "";
 		writeln(
-			`    ${G.read}${lane} ${c.dim(`done (${r.inputTokens ?? 0}in / ${r.outputTokens ?? 0}out tokens)`)}`,
+			`    ${c.cyan("←")}${lane} ${c.dim(`subagent done (${r.inputTokens ?? 0}in / ${r.outputTokens ?? 0}out tokens)`)}`,
 		);
 		return;
 	}
