@@ -21,11 +21,15 @@ export interface AgentConfig {
 
 // ─── Load all agents (global + local, local wins) ─────────────────────────────
 
-export function loadAgents(cwd: string): Map<string, AgentConfig> {
+export function loadAgents(
+	cwd: string,
+	homeDir?: string,
+): Map<string, AgentConfig> {
 	return loadMarkdownConfigs<AgentConfig>({
 		type: "agents",
 		strategy: "flat",
 		cwd,
+		homeDir,
 		includeClaudeDirs: true,
 		mapConfig: ({ name, meta, body, source }) => ({
 			...baseConfigFields(name, meta, source),

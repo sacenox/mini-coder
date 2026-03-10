@@ -35,13 +35,23 @@ interface MarkdownConfigLoaderOptions<T> {
 	/** Whether to include `.claude` fallback dirs */
 	includeClaudeDirs: boolean;
 	cwd: string;
+	/** Override home directory — used in tests to isolate global config loading. */
+	homeDir: string | undefined;
 }
 
 export function loadMarkdownConfigs<T>(
 	opts: MarkdownConfigLoaderOptions<T>,
 ): Map<string, T> {
-	const { type, strategy, nestedFileName, mapConfig, includeClaudeDirs, cwd } =
-		opts;
+	const {
+		type,
+		strategy,
+		nestedFileName,
+		mapConfig,
+		includeClaudeDirs,
+		cwd,
+		homeDir: homeOverride,
+	} = opts;
+	const home = homeOverride ?? homedir();
 
 	function loadFromDir(
 		dir: string,
@@ -97,7 +107,7 @@ export function loadMarkdownConfigs<T>(
 	}
 
 	if (!includeClaudeDirs) {
-		const globalAgentsDir = join(homedir(), ".agents", type);
+		const globalAgentsDir = join(home, ".agents", type);
 		const localAgentsDir = join(cwd, ".agents", type);
 
 		const globalAgents = loadFromDir(globalAgentsDir, "global");
@@ -106,8 +116,8 @@ export function loadMarkdownConfigs<T>(
 		return new Map([...globalAgents, ...localAgents]);
 	}
 
-	const globalAgentsDir = join(homedir(), ".agents", type);
-	const globalClaudeDir = join(homedir(), ".claude", type);
+	const globalAgentsDir = join(home, ".agents", type);
+	const globalClaudeDir = join(home, ".claude", type);
 	const localAgentsDir = join(cwd, ".agents", type);
 	const localClaudeDir = join(cwd, ".claude", type);
 

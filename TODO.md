@@ -70,17 +70,6 @@ error: script "dev" exited with code 1
 
 ---
 
-## Custom commands vs built-in commands
-
-Let's clean things up:
-
-- `/review` command should use the same code as a custom-commands, consolidate the two. We can create the global `/review` command in `~/.agents/commands` at app start if it doesn't exist. That way it can be a pure custom command and the users are encouraged to edit it for their own custom reviews. Never overwrite the file if it exists. Print a line notifying the user that the command was created.
-- Ensure we are correctly implementing commands, skills and agents. Use the claude code and opencode documentation online to audit our implementations, identify gaps and inconsistencies. We should support both of these types of configs, as well as our .agents.
-- Now that we have subagents as subprocesses, let's review how it impacted these features.
-- We are missing the notion of an active custom agent, we need to add it. It should be documented in the claude code and opencode docs.
-
----
-
 ## LSP Diagnostics (not very important, with tool-hooks and strong linting, this is not as necessary, but we should implement asap)
 
 We should have a closed loop feedback for LSP diagnostics on edits/reads.

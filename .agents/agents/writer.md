@@ -1,5 +1,6 @@
 ---
 description: Write short prose in a personal, informal style from topics or resources
+mode: subagent
 model: zen/claude-sonnet-4-6
 ---
 

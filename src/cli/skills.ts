@@ -13,12 +13,13 @@ interface Skill {
 
 // ─── Load all skills (global + local, local wins) ────────────────────────────
 
-export function loadSkills(cwd: string): Map<string, Skill> {
+export function loadSkills(cwd: string, homeDir?: string): Map<string, Skill> {
 	return loadMarkdownConfigs<Skill>({
 		type: "skills",
 		strategy: "nested",
 		nestedFileName: "SKILL.md",
 		cwd,
+		homeDir,
 		includeClaudeDirs: true,
 		mapConfig: ({ name, meta, raw, source }) => ({
 			name,

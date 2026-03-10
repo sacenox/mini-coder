@@ -24,7 +24,7 @@ describe("loadCustomCommands", () => {
 	}
 
 	test("returns empty map when no .agents/commands dir exists", () => {
-		const result = loadCustomCommands(dir);
+		const result = loadCustomCommands(dir, dir);
 		expect(result.size).toBe(0);
 	});
 
@@ -59,7 +59,7 @@ describe("loadCustomCommands", () => {
 		const cmdsDir = join(dir, ".agents", "commands");
 		mkdirSync(cmdsDir, { recursive: true });
 		writeFileSync(join(cmdsDir, "script.sh"), "echo hi");
-		expect(loadCustomCommands(dir).size).toBe(0);
+		expect(loadCustomCommands(dir, dir).size).toBe(0);
 	});
 
 	test("local command overrides global with same name", () => {

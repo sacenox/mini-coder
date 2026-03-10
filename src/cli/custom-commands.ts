@@ -20,11 +20,15 @@ export interface CustomCommand {
 
 // ─── Load all custom commands (global + local, local wins) ───────────────────
 
-export function loadCustomCommands(cwd: string): Map<string, CustomCommand> {
+export function loadCustomCommands(
+	cwd: string,
+	homeDir?: string,
+): Map<string, CustomCommand> {
 	return loadMarkdownConfigs<CustomCommand>({
 		type: "commands",
 		strategy: "flat",
 		cwd,
+		homeDir,
 		includeClaudeDirs: true,
 		mapConfig: ({ name, meta, body, source }) => ({
 			...baseConfigFields(name, meta, source),

@@ -37,6 +37,7 @@ describe("loadMarkdownConfigs", () => {
 			type: "commands",
 			strategy: "flat",
 			cwd: dir,
+			homeDir: dir,
 			includeClaudeDirs: false,
 			mapConfig: ({ body, source }) => ({ body, source }),
 		});
@@ -53,6 +54,7 @@ describe("loadMarkdownConfigs", () => {
 			type: "commands",
 			strategy: "flat",
 			cwd: dir,
+			homeDir: dir,
 			includeClaudeDirs: true,
 			mapConfig: ({ body, source }) => ({ body, source }),
 		});
@@ -73,6 +75,7 @@ describe("loadMarkdownConfigs", () => {
 			strategy: "nested",
 			nestedFileName: "SKILL.md",
 			cwd: dir,
+			homeDir: dir,
 			includeClaudeDirs: false,
 			mapConfig: ({ name, body, source }) => ({ name, body, source }),
 		});
@@ -95,6 +98,7 @@ describe("loadMarkdownConfigs", () => {
 			type: "commands",
 			strategy: "flat",
 			cwd: dir,
+			homeDir: dir,
 			includeClaudeDirs: false,
 			mapConfig: ({ body }) => body,
 		});
