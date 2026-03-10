@@ -14,7 +14,8 @@
 		"lint": "biome check src",
 		"format": "biome format --write src",
 		"knip": "knip",
-		"test": "bun test",
+		"test": "bun test --only-failures",
+		"test:verbose": "bun test",
 		"jscpd": "jscpd src"
 	},
 	"dependencies": {

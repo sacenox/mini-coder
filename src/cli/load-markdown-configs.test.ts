@@ -3,14 +3,18 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadMarkdownConfigs } from "./load-markdown-configs.ts";
+import { terminal } from "./terminal-io.ts";
 
 let dir: string;
+const originalStdoutWrite = terminal.stdoutWrite.bind(terminal);
 
 beforeEach(() => {
 	dir = mkdtempSync(join(tmpdir(), "mc-load-markdown-configs-test-"));
+	terminal.stdoutWrite = () => {};
 });
 
 afterEach(() => {
+	terminal.stdoutWrite = originalStdoutWrite;
 	rmSync(dir, { recursive: true, force: true });
 });
 

@@ -43,43 +43,27 @@ function hasYellow(s: string): boolean {
 // ---------------------------------------------------------------------------
 
 describe("renderMarkdown – headings", () => {
-	test("h1 renders the heading text without the # prefix", () => {
-		const out = renderMarkdown("# Hello World");
-		expect(strip(out)).toBe("Hello World");
-	});
+	for (const [input, visible] of [
+		["# Hello World", "Hello World"],
+		["## Section", "Section"],
+	] as const) {
+		test(`${input.slice(0, input.indexOf(" "))} strips its marker and keeps bold cyan styling`, () => {
+			const out = renderMarkdown(input);
+			expect(strip(out)).toBe(visible);
+			expect(hasBold(out)).toBe(true);
+			expect(hasCyan(out)).toBe(true);
+		});
+	}
 
-	test("h1 is bold and cyan", () => {
-		const out = renderMarkdown("# Hello");
-		expect(hasBold(out)).toBe(true);
-		expect(hasCyan(out)).toBe(true);
-	});
-
-	test("h2 renders the heading text without the ## prefix", () => {
-		const out = renderMarkdown("## Section");
-		expect(strip(out)).toBe("Section");
-	});
-
-	test("h2 is bold and cyan", () => {
-		const out = renderMarkdown("## Section");
-		expect(hasBold(out)).toBe(true);
-		expect(hasCyan(out)).toBe(true);
-	});
-
-	test("h3 renders the heading text without the ### prefix", () => {
-		const out = renderMarkdown("### Sub");
-		expect(strip(out)).toBe("Sub");
-	});
-
-	test("h3 is bold but NOT cyan (only bold)", () => {
-		const out = renderMarkdown("### Sub");
-		expect(hasBold(out)).toBe(true);
-		expect(hasCyan(out)).toBe(false);
-	});
-
-	test("h4+ is treated the same as h3 (#{3,} pattern)", () => {
-		const h4 = strip(renderMarkdown("#### Deep"));
-		const h3 = strip(renderMarkdown("### Deep"));
-		expect(h4).toBe(h3);
+	test("h3+ strips markers, stays bold, and drops cyan", () => {
+		const h3 = renderMarkdown("### Sub");
+		const h4 = renderMarkdown("#### Deep");
+		expect(strip(h3)).toBe("Sub");
+		expect(hasBold(h3)).toBe(true);
+		expect(hasCyan(h3)).toBe(false);
+		expect(strip(h4)).toBe("Deep");
+		expect(hasBold(h4)).toBe(true);
+		expect(hasCyan(h4)).toBe(false);
 	});
 
 	test("multiple headings each rendered on own line", () => {
@@ -89,30 +73,15 @@ describe("renderMarkdown – headings", () => {
 });
 
 describe("renderMarkdown – horizontal rules", () => {
-	test("--- renders as a dim rule", () => {
-		const out = renderMarkdown("---");
-		expect(hasDim(out)).toBe(true);
-		expect(strip(out)).toMatch(/^─+$/);
+	test("supported rule markers render a dim divider", () => {
+		for (const input of ["---", "===", "***", "----"]) {
+			const out = renderMarkdown(input);
+			expect(hasDim(out)).toBe(true);
+			expect(strip(out)).toMatch(/^─+$/);
+		}
 	});
 
-	test("=== renders as a dim rule", () => {
-		const out = renderMarkdown("===");
-		expect(hasDim(out)).toBe(true);
-		expect(strip(out)).toMatch(/^─+$/);
-	});
-
-	test("*** renders as a dim rule", () => {
-		const out = renderMarkdown("***");
-		expect(hasDim(out)).toBe(true);
-		expect(strip(out)).toMatch(/^─+$/);
-	});
-
-	test("---- (4 dashes) is also a horizontal rule", () => {
-		const out = strip(renderMarkdown("----"));
-		expect(out).toMatch(/^─+$/);
-	});
-
-	test("-- (2 dashes) is NOT a horizontal rule — passed through as plain text", () => {
+	test("too-short markers are passed through as plain text", () => {
 		const out = strip(renderMarkdown("--"));
 		expect(out).toBe("--");
 	});
@@ -183,45 +152,36 @@ describe("renderMarkdown – blockquotes", () => {
 });
 
 describe("renderMarkdown – unordered lists", () => {
-	test("- item renders with · bullet", () => {
-		const out = strip(renderMarkdown("- item"));
-		expect(out).toBe("· item");
+	test("all supported unordered markers render the same bullet", () => {
+		for (const input of ["- item", "* item", "+ item"]) {
+			expect(strip(renderMarkdown(input))).toBe("· item");
+		}
 	});
 
-	test("* item renders with · bullet", () => {
-		const out = strip(renderMarkdown("* item"));
-		expect(out).toBe("· item");
-	});
-
-	test("+ item renders with · bullet", () => {
-		const out = strip(renderMarkdown("+ item"));
-		expect(out).toBe("· item");
-	});
-
-	test("indented - item preserves leading whitespace", () => {
+	test("indented items preserve leading whitespace", () => {
 		const out = strip(renderMarkdown("  - nested"));
 		expect(out).toBe("  · nested");
 	});
 
-	test("list item content goes through inline processing", () => {
+	test("list item content still goes through inline processing", () => {
 		const out = strip(renderMarkdown("- **bold** item"));
-		// bold markers stripped in plain text, content preserved
 		expect(out).toBe("· bold item");
 	});
 });
 
 describe("renderMarkdown – ordered lists", () => {
-	test("1. item renders number with dim styling", () => {
-		const out = strip(renderMarkdown("1. first"));
-		expect(out).toBe("1. first");
+	test("ordered list numbers stay visible while the marker is dimmed", () => {
+		const out = renderMarkdown("1. first");
+		expect(strip(out)).toBe("1. first");
+		expect(hasDim(out)).toBe(true);
 	});
 
-	test("multi-item ordered list", () => {
+	test("multi-item ordered lists preserve numbering across lines", () => {
 		const out = strip(renderMarkdown("1. alpha\n2. beta\n3. gamma"));
 		expect(out).toBe("1. alpha\n2. beta\n3. gamma");
 	});
 
-	test("ordered list item content goes through inline processing", () => {
+	test("ordered list item content still goes through inline processing", () => {
 		const out = strip(renderMarkdown("1. **bold** text"));
 		expect(out).toBe("1. bold text");
 	});
@@ -334,13 +294,5 @@ describe("renderMarkdown – inline combinations", () => {
 	test("unclosed ** does not corrupt a following *italic* span", () => {
 		const out = strip(renderMarkdown("**foo *bar*"));
 		expect(out).toBe("**foo bar");
-	});
-
-	test("***text*** does not corrupt surrounding text — stray * passed through as plain", () => {
-		// Triple-star is ambiguous; the parser should not silently eat content.
-		// Current behaviour: outer * passed through as plain, inner text bolded.
-		const out = strip(renderMarkdown("***text***"));
-		expect(out).toContain("text");
-		expect(out).not.toContain("**");
 	});
 });

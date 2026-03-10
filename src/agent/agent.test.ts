@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { getTurnControlAction } from "../cli/input.ts";
 import type { CoreMessage } from "../llm-api/turn.ts";
 import {
 	extractAssistantText,
@@ -106,41 +105,6 @@ describe("hasRalphSignal", () => {
 
 	test("returns false for unrelated text", () => {
 		expect(hasRalphSignal("I finished the task.")).toBe(false);
-	});
-});
-
-// ─── getTurnControlAction ─────────────────────────────────────────────────────
-
-describe("getTurnControlAction", () => {
-	test("returns cancel for ESC byte (0x1B)", () => {
-		expect(getTurnControlAction(Buffer.from([0x1b]))).toBe("cancel");
-	});
-
-	test("returns quit for Ctrl+C byte (0x03)", () => {
-		expect(getTurnControlAction(Buffer.from([0x03]))).toBe("quit");
-	});
-
-	test("returns null for regular printable bytes", () => {
-		expect(getTurnControlAction(Buffer.from([0x61]))).toBeNull(); // 'a'
-	});
-
-	test("returns null for multi-byte ESC sequence (arrow keys, function keys)", () => {
-		// Arrow-up: ESC [ A — should NOT cancel
-		expect(getTurnControlAction(Buffer.from([0x1b, 0x5b, 0x41]))).toBeNull();
-		// Arrow-down: ESC [ B
-		expect(getTurnControlAction(Buffer.from([0x1b, 0x5b, 0x42]))).toBeNull();
-	});
-
-	test("returns null for two-byte ESC sequence", () => {
-		expect(getTurnControlAction(Buffer.from([0x1b, 0x66]))).toBeNull(); // Alt+f
-	});
-
-	test("returns quit for Ctrl+C even in multi-byte chunk", () => {
-		expect(getTurnControlAction(Buffer.from([0x61, 0x03, 0x62]))).toBe("quit");
-	});
-
-	test("returns null for empty buffer", () => {
-		expect(getTurnControlAction(Buffer.from([]))).toBeNull();
 	});
 });
 

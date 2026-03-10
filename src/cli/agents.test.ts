@@ -3,15 +3,19 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadAgents } from "./agents.ts";
+import { terminal } from "./terminal-io.ts";
 
 describe("loadAgents", () => {
 	let dir: string;
+	const originalStdoutWrite = terminal.stdoutWrite.bind(terminal);
 
 	beforeEach(() => {
 		dir = mkdtempSync(join(tmpdir(), "mc-agents-test-"));
+		terminal.stdoutWrite = () => {};
 	});
 
 	afterEach(() => {
+		terminal.stdoutWrite = originalStdoutWrite;
 		rmSync(dir, { recursive: true, force: true });
 	});
 

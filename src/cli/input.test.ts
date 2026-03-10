@@ -121,16 +121,21 @@ describe("getTurnControlAction", () => {
 		expect(getTurnControlAction(new Uint8Array([0x03]))).toBe("quit");
 	});
 
-	test("only cancels on a lone ESC — multi-byte chunks containing ESC are not cancel", () => {
+	test("only cancels on a lone ESC — escape sequences are ignored and Ctrl+C still wins", () => {
 		// [ESC, Ctrl+C]: not a lone ESC, Ctrl+C still fires quit
 		expect(getTurnControlAction(new Uint8Array([0x1b, 0x03]))).toBe("quit");
 		// [Ctrl+C, ESC]: Ctrl+C fires quit
 		expect(getTurnControlAction(new Uint8Array([0x03, 0x1b]))).toBe("quit");
 		// Arrow-up sequence ESC [ A: not cancel
 		expect(getTurnControlAction(new Uint8Array([0x1b, 0x5b, 0x41]))).toBeNull();
+		// Arrow-down sequence ESC [ B: not cancel
+		expect(getTurnControlAction(new Uint8Array([0x1b, 0x5b, 0x42]))).toBeNull();
+		// Two-byte escape sequence such as Alt+f: not cancel
+		expect(getTurnControlAction(new Uint8Array([0x1b, 0x66]))).toBeNull();
 	});
 
-	test("ignores unrelated bytes", () => {
+	test("returns null for empty or unrelated bytes", () => {
+		expect(getTurnControlAction(new Uint8Array([]))).toBeNull();
 		expect(getTurnControlAction(new Uint8Array([0x61, 0x62, 0x63]))).toBeNull();
 	});
 });
