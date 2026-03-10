@@ -4,18 +4,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildSystemPrompt, loadLocalContextFile } from "./system-prompt.ts";
 
-// loadGlobalContextFile reads from ~/.agents which we cannot control in tests.
-// We verify local context loading directly and integration via buildSystemPrompt
-// with a controlled cwd.
-
 let tmpDir: string;
+let fakeHome: string;
 
 beforeEach(() => {
 	tmpDir = mkdtempSync(join(tmpdir(), "mc-test-"));
+	fakeHome = mkdtempSync(join(tmpdir(), "mc-home-"));
 });
 
 afterEach(() => {
 	rmSync(tmpDir, { recursive: true, force: true });
+	rmSync(fakeHome, { recursive: true, force: true });
 });
 
 describe("loadLocalContextFile", () => {
@@ -45,14 +44,26 @@ describe("loadLocalContextFile", () => {
 
 describe("buildSystemPrompt", () => {
 	it("includes base guidelines without context files", () => {
-		const prompt = buildSystemPrompt(tmpDir);
+		const prompt = buildSystemPrompt(
+			tmpDir,
+			undefined,
+			undefined,
+			undefined,
+			fakeHome,
+		);
 		expect(prompt).toContain("You are mini-coder");
 		expect(prompt).toContain("Guidelines:");
 		expect(prompt).not.toContain("# Project context");
 	});
 
 	it("includes delegation guideline in main mode", () => {
-		const prompt = buildSystemPrompt(tmpDir);
+		const prompt = buildSystemPrompt(
+			tmpDir,
+			undefined,
+			undefined,
+			undefined,
+			fakeHome,
+		);
 		expect(prompt).toContain(
 			"Use the `subagent` tool sparingly — only for clearly separable",
 		);
@@ -61,20 +72,38 @@ describe("buildSystemPrompt", () => {
 
 	it("includes local context under # Project context", () => {
 		writeFileSync(join(tmpDir, "AGENTS.md"), "local project info");
-		const prompt = buildSystemPrompt(tmpDir);
+		const prompt = buildSystemPrompt(
+			tmpDir,
+			undefined,
+			undefined,
+			undefined,
+			fakeHome,
+		);
 		expect(prompt).toContain("# Project context");
 		expect(prompt).toContain("local project info");
 	});
 
 	it("has exactly one # Project context section when local context present", () => {
 		writeFileSync(join(tmpDir, "AGENTS.md"), "local info");
-		const prompt = buildSystemPrompt(tmpDir);
+		const prompt = buildSystemPrompt(
+			tmpDir,
+			undefined,
+			undefined,
+			undefined,
+			fakeHome,
+		);
 		const occurrences = prompt.split("# Project context").length - 1;
 		expect(occurrences).toBe(1);
 	});
 
 	it("appends subagent delegation wording in subagent mode", () => {
-		const prompt = buildSystemPrompt(tmpDir, undefined, undefined, true);
+		const prompt = buildSystemPrompt(
+			tmpDir,
+			undefined,
+			undefined,
+			true,
+			fakeHome,
+		);
 		expect(prompt).toContain("You are running as a subagent");
 		expect(prompt).toContain(
 			"Do not delegate to further subagents unless the subtask is clearly separable",
@@ -82,13 +111,25 @@ describe("buildSystemPrompt", () => {
 	});
 
 	it("does not append subagent wording in non-subagent mode", () => {
-		const prompt = buildSystemPrompt(tmpDir, undefined, undefined, false);
+		const prompt = buildSystemPrompt(
+			tmpDir,
+			undefined,
+			undefined,
+			false,
+			fakeHome,
+		);
 		expect(prompt).not.toContain("You are running as a subagent");
 	});
 
 	it("appends extraSystemPrompt after context and subagent wording", () => {
 		writeFileSync(join(tmpDir, "AGENTS.md"), "ctx");
-		const prompt = buildSystemPrompt(tmpDir, undefined, "custom extra", true);
+		const prompt = buildSystemPrompt(
+			tmpDir,
+			undefined,
+			"custom extra",
+			true,
+			fakeHome,
+		);
 		const subagentIdx = prompt.indexOf("You are running as a subagent");
 		const extraIdx = prompt.indexOf("custom extra");
 		const contextIdx = prompt.indexOf("ctx");
@@ -97,8 +138,57 @@ describe("buildSystemPrompt", () => {
 	});
 
 	it("includes cwd and current time in prompt", () => {
-		const prompt = buildSystemPrompt(tmpDir);
+		const prompt = buildSystemPrompt(
+			tmpDir,
+			undefined,
+			undefined,
+			undefined,
+			fakeHome,
+		);
 		expect(prompt).toContain("Current working directory:");
 		expect(prompt).toContain("Current date/time:");
+	});
+
+	it("includes global context when ~/.agents/AGENTS.md present", () => {
+		mkdirSync(join(fakeHome, ".agents"), { recursive: true });
+		writeFileSync(join(fakeHome, ".agents", "AGENTS.md"), "global info");
+		const prompt = buildSystemPrompt(
+			tmpDir,
+			undefined,
+			undefined,
+			undefined,
+			fakeHome,
+		);
+		expect(prompt).toContain("# Project context");
+		expect(prompt).toContain("global info");
+	});
+
+	it("includes both global and local context in order (global before local)", () => {
+		mkdirSync(join(fakeHome, ".agents"), { recursive: true });
+		writeFileSync(join(fakeHome, ".agents", "AGENTS.md"), "global info");
+		writeFileSync(join(tmpDir, "AGENTS.md"), "local info");
+		const prompt = buildSystemPrompt(
+			tmpDir,
+			undefined,
+			undefined,
+			undefined,
+			fakeHome,
+		);
+		expect(prompt).toContain("global info");
+		expect(prompt).toContain("local info");
+		expect(prompt.indexOf("global info")).toBeLessThan(
+			prompt.indexOf("local info"),
+		);
+	});
+
+	it("does not include # Project context when neither global nor local context present", () => {
+		const prompt = buildSystemPrompt(
+			tmpDir,
+			undefined,
+			undefined,
+			undefined,
+			fakeHome,
+		);
+		expect(prompt).not.toContain("# Project context");
 	});
 });

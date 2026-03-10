@@ -13,8 +13,8 @@ function tryReadFile(p: string): string | null {
 	}
 }
 
-function loadGlobalContextFile(): string | null {
-	const globalDir = join(homedir(), ".agents");
+function loadGlobalContextFile(homeDir: string): string | null {
+	const globalDir = join(homeDir, ".agents");
 	return (
 		tryReadFile(join(globalDir, "AGENTS.md")) ??
 		tryReadFile(join(globalDir, "CLAUDE.md"))
@@ -50,8 +50,10 @@ export function buildSystemPrompt(
 	modelString?: string,
 	extraSystemPrompt?: string,
 	isSubagent?: boolean,
+	/** Override home directory — used in tests to isolate global context loading. */
+	homeDir?: string,
 ): string {
-	const globalContext = loadGlobalContextFile();
+	const globalContext = loadGlobalContextFile(homeDir ?? homedir());
 	const localContext = loadLocalContextFile(cwd);
 	const cwdDisplay = tildePath(cwd);
 	const now = new Date().toLocaleString(undefined, { hour12: false });
@@ -67,7 +69,7 @@ Guidelines:
 - Prefer small, targeted edits over large rewrites.
 - Always read a file before editing it.
 - Use the \`subagent\` tool sparingly — only for clearly separable, self-contained subtasks. Prefer doing the work directly.
-- Keep your context clean and focused on the user request, use subagents to achieve this.`;
+- Keep your context clean and focused on the user request.`;
 
 	if (modelString && isCodexModel(modelString)) {
 		prompt += CODEX_AUTONOMY;

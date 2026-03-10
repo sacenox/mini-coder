@@ -55,6 +55,7 @@ interface CliArgs {
 	subagent: boolean;
 	agentName: string | null;
 	outputFd: number | null;
+	worktreeBranch: string | null;
 }
 
 function parseArgs(argv: string[]): CliArgs {
@@ -69,6 +70,7 @@ function parseArgs(argv: string[]): CliArgs {
 		subagent: false,
 		agentName: null,
 		outputFd: null,
+		worktreeBranch: null,
 	};
 
 	const positional: string[] = [];
@@ -110,6 +112,9 @@ function parseArgs(argv: string[]): CliArgs {
 				if (!Number.isNaN(fd)) args.outputFd = fd;
 				break;
 			}
+			case "--worktree-branch":
+				args.worktreeBranch = argv[++i] ?? null;
+				break;
 			default:
 				if (!arg.startsWith("-")) positional.push(arg);
 		}
@@ -211,13 +216,16 @@ async function main(): Promise<void> {
 
 		// Worktree lifecycle: create before run, remove dir after (keep branch for parent to merge).
 		let worktreePath: string | undefined;
-		let worktreeBranch: string | undefined;
+		// Use the branch name the parent assigned (so it can clean up on interrupt).
+		let worktreeBranch: string | undefined = args.worktreeBranch ?? undefined;
 		let runCwd = parentCwd;
 
 		if (await isGitRepo(parentCwd)) {
-			const laneId = crypto.randomUUID().slice(0, 8);
-			worktreeBranch = `mc-sub-${laneId}`;
-			worktreePath = join(tmpdir(), `mc-sub-${laneId}`);
+			if (!worktreeBranch) {
+				// Fallback: generate our own if the parent didn't pass one (shouldn't happen in practice).
+				worktreeBranch = `mc-sub-${crypto.randomUUID().slice(0, 8)}`;
+			}
+			worktreePath = join(tmpdir(), worktreeBranch);
 			try {
 				await createWorktree(parentCwd, worktreeBranch, worktreePath);
 				await initializeWorktree(parentCwd, worktreePath);
@@ -229,15 +237,10 @@ async function main(): Promise<void> {
 			}
 		}
 
-		// SIGTERM handler: clean up worktree directory and branch before exit.
+		// SIGTERM handler: clean up worktree directory only; leave branch for parent to discard.
 		process.on("SIGTERM", () => {
 			if (worktreePath) {
 				Bun.spawnSync(["git", "worktree", "remove", "--force", worktreePath], {
-					cwd: parentCwd,
-				});
-			}
-			if (worktreeBranch) {
-				Bun.spawnSync(["git", "branch", "-D", worktreeBranch], {
 					cwd: parentCwd,
 				});
 			}
