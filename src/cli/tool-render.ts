@@ -509,10 +509,7 @@ function normalizeParentLaneLabel(parentLabel: string): string {
 	return lanePath || inner;
 }
 
-export function formatSubagentLabel(
-	laneId: string,
-	parentLabel?: string,
-): string {
+function formatSubagentLabel(laneId: string, parentLabel?: string): string {
 	const parent = parentLabel ? normalizeParentLaneLabel(parentLabel) : "";
 	const numStr = parent ? `${parent}.${laneId}` : `${laneId}`;
 	return c.dim(c.cyan(`[${numStr}]`));

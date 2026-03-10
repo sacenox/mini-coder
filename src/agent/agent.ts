@@ -47,7 +47,6 @@ export async function runAgent(
 	const agents = loadAgents(cwd);
 	const tools: ToolDef[] = buildToolSet({
 		cwd,
-		depth: 0,
 		runSubagent,
 		onHook: (tool, path, ok) => opts.reporter.renderHook(tool, path, ok),
 		availableAgents: agents,
@@ -124,7 +123,7 @@ export async function runAgent(
 			runner.planMode = v;
 		},
 		cwd,
-		runSubagent: (prompt, model?) => runSubagent(prompt, 0, undefined, model),
+		runSubagent: (prompt, model?) => runSubagent(prompt, undefined, model),
 
 		undoLastTurn: () =>
 			undoLastTurn({

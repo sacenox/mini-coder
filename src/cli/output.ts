@@ -88,7 +88,6 @@ export { Spinner } from "./spinner.ts";
 export { renderStatusBar } from "./status-bar.ts";
 export { renderTurn } from "./stream-render.ts";
 export {
-	formatSubagentLabel,
 	renderHook,
 	renderSubagentEvent,
 } from "./tool-render.ts";
