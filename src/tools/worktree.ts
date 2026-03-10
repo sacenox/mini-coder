@@ -192,3 +192,59 @@ export async function cleanupBranch(
 		);
 	}
 }
+
+/**
+ * Copy all working-tree changes from the main repo into a freshly-created
+ * worktree so the subagent sees current unstaged/staged progress.
+ *
+ * Two classes of change are propagated:
+ *  1. Tracked modifications (staged + unstaged) — applied via `git apply`.
+ *  2. Untracked, non-ignored new files — copied verbatim.
+ *
+ * Errors are silently swallowed so a worktree setup failure never blocks the
+ * subagent; it will simply run without the parent's in-progress changes.
+ */
+export async function applyParentChanges(
+	mainCwd: string,
+	worktreeCwd: string,
+): Promise<void> {
+	try {
+		const [mainRoot, worktreeRoot] = await Promise.all([
+			getRepoRoot(mainCwd),
+			getRepoRoot(worktreeCwd),
+		]);
+
+		// 1. Apply tracked changes (staged + unstaged) via a binary-safe patch.
+		const diffResult = await runGit(mainRoot, ["diff", "HEAD", "--binary"]);
+		if (diffResult.exitCode === 0 && diffResult.stdout.trim()) {
+			const proc = Bun.spawn(["git", "apply", "-"], {
+				cwd: worktreeRoot,
+				stdin: Buffer.from(diffResult.stdout),
+				stdout: "pipe",
+				stderr: "pipe",
+			});
+			await proc.exited;
+		}
+
+		// 2. Copy untracked, non-ignored files (e.g. new source files not yet staged).
+		const untrackedResult = await runGit(mainRoot, [
+			"ls-files",
+			"--others",
+			"--exclude-standard",
+		]);
+		if (untrackedResult.exitCode === 0) {
+			for (const file of splitNonEmptyLines(untrackedResult.stdout)) {
+				try {
+					const src = join(mainRoot, file);
+					const dst = join(worktreeRoot, file);
+					mkdirSync(dirname(dst), { recursive: true });
+					copyFileSync(src, dst);
+				} catch {
+					// Skip files that can't be copied (e.g. symlinks, permissions).
+				}
+			}
+		}
+	} catch {
+		// best-effort; subagent runs without parent's in-progress changes.
+	}
+}

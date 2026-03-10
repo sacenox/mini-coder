@@ -28,6 +28,7 @@ import {
 } from "./session/db/index.ts";
 import { getMostRecentSession, printSessionList } from "./session/manager.ts";
 import {
+	applyParentChanges,
 	createWorktree,
 	initializeWorktree,
 	isGitRepo,
@@ -229,6 +230,7 @@ async function main(): Promise<void> {
 			try {
 				await createWorktree(parentCwd, worktreeBranch, worktreePath);
 				await initializeWorktree(parentCwd, worktreePath);
+				await applyParentChanges(parentCwd, worktreePath);
 				runCwd = worktreePath;
 			} catch {
 				// Worktree creation failed — fall back to running in the original cwd.

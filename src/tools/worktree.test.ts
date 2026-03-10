@@ -9,6 +9,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+	applyParentChanges,
 	cleanupBranch,
 	createWorktree,
 	hasDirtyWorkingTree,
@@ -188,5 +189,64 @@ describe("worktree helpers", () => {
 		await removeWorktree(repoDir, wtPath2);
 		await cleanupBranch(repoDir, branch1);
 		await cleanupBranch(repoDir, branch2);
+	});
+
+	test("applyParentChanges propagates unstaged tracked changes", async () => {
+		const { branch, wtPath } = makeWorktreeDir("apply-unstaged");
+		await createWorktree(repoDir, branch, wtPath);
+
+		writeFileSync(join(repoDir, "README.md"), "unstaged change\n");
+
+		await applyParentChanges(repoDir, wtPath);
+
+		expect(await Bun.file(join(wtPath, "README.md")).text()).toBe(
+			"unstaged change\n",
+		);
+
+		await removeWorktree(repoDir, wtPath);
+		await cleanupBranch(repoDir, branch);
+	});
+
+	test("applyParentChanges propagates staged changes", async () => {
+		const { branch, wtPath } = makeWorktreeDir("apply-staged");
+		await createWorktree(repoDir, branch, wtPath);
+
+		writeFileSync(join(repoDir, "README.md"), "staged change\n");
+		git(repoDir, ["add", "README.md"]);
+
+		await applyParentChanges(repoDir, wtPath);
+
+		expect(await Bun.file(join(wtPath, "README.md")).text()).toBe(
+			"staged change\n",
+		);
+
+		await removeWorktree(repoDir, wtPath);
+		await cleanupBranch(repoDir, branch);
+	});
+
+	test("applyParentChanges copies untracked new files", async () => {
+		const { branch, wtPath } = makeWorktreeDir("apply-untracked");
+		await createWorktree(repoDir, branch, wtPath);
+
+		writeFileSync(join(repoDir, "new-file.ts"), "export const x = 1;\n");
+
+		await applyParentChanges(repoDir, wtPath);
+
+		expect(await Bun.file(join(wtPath, "new-file.ts")).text()).toBe(
+			"export const x = 1;\n",
+		);
+
+		await removeWorktree(repoDir, wtPath);
+		await cleanupBranch(repoDir, branch);
+	});
+
+	test("applyParentChanges no-ops cleanly on a clean tree", async () => {
+		const { branch, wtPath } = makeWorktreeDir("apply-clean");
+		await createWorktree(repoDir, branch, wtPath);
+
+		await expect(applyParentChanges(repoDir, wtPath)).resolves.toBeUndefined();
+
+		await removeWorktree(repoDir, wtPath);
+		await cleanupBranch(repoDir, branch);
 	});
 });
