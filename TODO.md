@@ -11,6 +11,37 @@
 
 ---
 
+## Subagents don't know where they are:
+
+Subagents are trying to guess paths, this is terrible... We need to make sure subagents don't make stupid mistakes like this, it breaks trust, and trust in LLM's is already at an all time low.
+
+```
+▶ @TODO.md let's tackle the first todo and make propper use of shadcn and make a custom theme.
+  ⇢ subagent Read these files and return their full contents:
+1. ~/src…
+  ⇢ subagent In the directory ~/src/99prompt/web, find and return the …
+[ff476f3f] ← read ~/src/99prompt/web/idea.md
+[ff476f3f]   ✖ File not found: ~/src/99prompt/web/idea.md
+[ff476f3f] ← read ~/src/99prompt/web/website.md
+[ff476f3f]   ✖ File not found: ~/src/99prompt/web/website.md
+[ff476f3f] ← read ~/src/99prompt/web/src/app/globals.css
+[ff476f3f]   ✖ File not found: ~/src/99prompt/web/src/app/globals.css
+[ff476f3f] ← read ~/src/99prompt/web/components.json
+[ff476f3f]   ✖ File not found: ~/src/99prompt/web/components.json
+[76f32dc8] ? glob /Users/*/src/99prompt/web/src/components/ui/**/*
+[76f32dc8]   · 1 file
+[76f32dc8] ? glob /Users/*/src/99prompt/web/src/app/**/layout.tsx
+[76f32dc8]   · 3 files
+[76f32dc8] ? glob /Users/*/src/99prompt/web/src/app/[locale]/page.tsx
+[76f32dc8]   · no matches
+[ff476f3f] $ echo $HOME
+[ff476f3f]   ✔ 0
+[ff476f3f] ← read /Users/seancaetanomartin/src/99prompt/web/idea.md
+[ff476f3f]   · 31 lines
+```
+
+---
+
 ## Write blog posts
 
 - Codex being big dumb and lazy without strong guidance in system prompt/instructions
