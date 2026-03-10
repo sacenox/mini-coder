@@ -70,11 +70,14 @@ error: script "dev" exited with code 1
 
 ---
 
-## Usbaility issues:
+## Audit language to models
 
-- **Rewrite subagents as subprocess `mc` sessions** — see `PLAN-subprocess-subagents.md`. The in-process runner is a second-class agent: it guesses paths, can't recurse, breaks Ralph mode, and produces lower-quality output than the main agent. Spawning a real `mc` subprocess fixes all of this in one move while keeping custom agent/command configs fully compatible.
+I want to improve some aspects of the agents behaviour in mini-coder.
 
-- All models: constant reading almost no action, lot's of wasted tokens, using opencode or claude code is a much more action oriented workflow.
+- More responsible token usage. API costs are escalating in 2026 so it's more important than ever to use as little tokens as possible whithout impacting efficiency.
+- Evaluate our tools descriptions and wording to make sure they are efficient in token usage and clear to the llm (we see some errors of duplicating code by accident for example).
+- Evaluate the output of our tools for token usage considerations.
+- Ensure the system prompts are correct and use up to date wording based on context engineering optimization (check online for latest practices, check opencode, codex and oh-my-pi for context)
 
 ---
 
@@ -92,6 +95,8 @@ error: script "dev" exited with code 1
 Let's clean things up:
 
 - `/review` command should use the same code as a custom-commands, consolidate the two. We can create the global `/review` command in `~/.agents/commands` at app start if it doesn't exist. That way it can be a pure custom command and the users are encouraged to edit it for their own custom reviews. Never overwrite the file if it exists. Print a line notifying the user that the command was created.
+- Ensure we are correctly implementing commands, skills and agents. Use the claude code and opencode documentation online to audit our implementations, identify gaps and inconsistencies. We should support both of these types of configs, as well as our .agents.
+- Now that we have subagents as subprocesses, let's review how it impacted these features.
 
 ---
 
@@ -109,3 +114,4 @@ We need to do research first, but maybe we can leverage the hooks feature to ach
 
 - model-info: in `resolveFromProviderRow`, when canonical capability exists but `contextWindow` is null, fall back to provider row context (`capability.contextWindow ?? row.contextWindow`).
 - Worktrees share bun lockfile and node_modules. Question this choice, is this really a good idea, or just an opportunity for things to go wrong?
+- `subagent-runner.ts`: `Bun.file(proc.stdio[3] as unknown as number).text()` — the double-cast signals a type mismatch. Investigate whether `new Response(proc.stdio[3]).text()` is more correct and whether the current form breaks silently across Bun versions.
