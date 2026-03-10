@@ -1,16 +1,4 @@
-import {
-	chmodSync,
-	copyFileSync,
-	existsSync,
-	lstatSync,
-	mkdirSync,
-	mkdtempSync,
-	readlinkSync,
-	rmSync,
-	symlinkSync,
-	writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
+import { copyFileSync, existsSync, mkdirSync, symlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 interface GitResult {
@@ -79,10 +67,6 @@ export async function hasDirtyWorkingTree(cwd: string): Promise<boolean> {
 	return result.stdout.trim().length > 0;
 }
 
-function splitNullSeparated(text: string): string[] {
-	return text.split("\0").filter((value) => value.length > 0);
-}
-
 async function getRepoRoot(cwd: string): Promise<string> {
 	const result = await runGit(cwd, ["rev-parse", "--show-toplevel"]);
 	if (result.exitCode !== 0) {
@@ -93,41 +77,6 @@ async function getRepoRoot(cwd: string): Promise<string> {
 	}
 	return result.stdout.trim();
 }
-
-async function applyPatch(
-	cwd: string,
-	patch: string,
-	args: string[],
-): Promise<void> {
-	if (patch.trim().length === 0) return;
-	const tempDir = mkdtempSync(join(tmpdir(), "mc-worktree-patch-"));
-	const patchPath = join(tempDir, "changes.patch");
-	try {
-		writeFileSync(patchPath, patch);
-		const result = await runGit(cwd, ["apply", ...args, patchPath]);
-		if (result.exitCode !== 0) {
-			throw gitError(
-				"Failed to apply dirty-state patch to worktree",
-				(result.stderr || result.stdout).trim(),
-			);
-		}
-	} finally {
-		rmSync(tempDir, { recursive: true, force: true });
-	}
-}
-
-function copyUntrackedPath(source: string, destination: string): void {
-	const stat = lstatSync(source);
-	mkdirSync(dirname(destination), { recursive: true });
-	if (stat.isSymbolicLink()) {
-		rmSync(destination, { recursive: true, force: true });
-		symlinkSync(readlinkSync(source), destination);
-		return;
-	}
-	copyFileSync(source, destination);
-	chmodSync(destination, stat.mode);
-}
-
 function copyFileIfMissing(source: string, destination: string): void {
 	if (!existsSync(source) || existsSync(destination)) return;
 	mkdirSync(dirname(destination), { recursive: true });
@@ -162,45 +111,6 @@ export async function initializeWorktree(
 		join(mainRoot, "node_modules"),
 		join(worktreeRoot, "node_modules"),
 	);
-}
-
-export async function syncDirtyStateToWorktree(
-	mainCwd: string,
-	worktreeCwd: string,
-): Promise<void> {
-	const [staged, unstaged, untracked, mainRoot, worktreeRoot] =
-		await Promise.all([
-			runGit(mainCwd, ["diff", "--binary", "--cached"]),
-			runGit(mainCwd, ["diff", "--binary"]),
-			runGit(mainCwd, ["ls-files", "--others", "--exclude-standard", "-z"]),
-			getRepoRoot(mainCwd),
-			getRepoRoot(worktreeCwd),
-		]);
-	if (staged.exitCode !== 0) {
-		throw gitError(
-			"Failed to read staged changes",
-			(staged.stderr || staged.stdout).trim(),
-		);
-	}
-	if (unstaged.exitCode !== 0) {
-		throw gitError(
-			"Failed to read unstaged changes",
-			(unstaged.stderr || unstaged.stdout).trim(),
-		);
-	}
-	if (untracked.exitCode !== 0) {
-		throw gitError(
-			"Failed to list untracked files",
-			(untracked.stderr || untracked.stdout).trim(),
-		);
-	}
-
-	await applyPatch(worktreeRoot, staged.stdout, ["--index"]);
-	await applyPatch(worktreeRoot, unstaged.stdout, []);
-
-	for (const relPath of splitNullSeparated(untracked.stdout)) {
-		copyUntrackedPath(join(mainRoot, relPath), join(worktreeRoot, relPath));
-	}
 }
 
 export async function createWorktree(

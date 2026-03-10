@@ -1,7 +1,13 @@
 #!/usr/bin/env bun
+import { writeSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import * as c from "yoctocolors";
 import { runAgent } from "./agent/agent.ts";
+import { loadAgents } from "./cli/agents.ts";
 import { initErrorLog } from "./cli/error-log.ts";
+import { HeadlessReporter } from "./cli/headless-reporter.ts";
 import {
 	registerTerminalCleanup,
 	renderBanner,
@@ -21,6 +27,12 @@ import {
 	getPreferredThinkingEffort,
 } from "./session/db/index.ts";
 import { getMostRecentSession, printSessionList } from "./session/manager.ts";
+import {
+	createWorktree,
+	initializeWorktree,
+	isGitRepo,
+	removeWorktree,
+} from "./tools/worktree.ts";
 
 // Register terminal cleanup handlers as early as possible so the cursor is
 // always restored even if the process crashes or is killed.
@@ -40,6 +52,10 @@ interface CliArgs {
 	prompt: string | null;
 	cwd: string;
 	help: boolean;
+	subagent: boolean;
+	agentName: string | null;
+	outputFd: number | null;
+	worktreeBranch: string | null;
 }
 
 function parseArgs(argv: string[]): CliArgs {
@@ -51,6 +67,10 @@ function parseArgs(argv: string[]): CliArgs {
 		prompt: null,
 		cwd: process.cwd(),
 		help: false,
+		subagent: false,
+		agentName: null,
+		outputFd: null,
+		worktreeBranch: null,
 	};
 
 	const positional: string[] = [];
@@ -80,6 +100,20 @@ function parseArgs(argv: string[]): CliArgs {
 			case "--help":
 			case "-h":
 				args.help = true;
+				break;
+			case "--subagent":
+				args.subagent = true;
+				break;
+			case "--agent":
+				args.agentName = argv[++i] ?? null;
+				break;
+			case "--output-fd": {
+				const fd = parseInt(argv[++i] ?? "", 10);
+				if (!Number.isNaN(fd)) args.outputFd = fd;
+				break;
+			}
+			case "--worktree-branch":
+				args.worktreeBranch = argv[++i] ?? null;
 				break;
 			default:
 				if (!arg.startsWith("-")) positional.push(arg);
@@ -162,6 +196,94 @@ async function main(): Promise<void> {
 
 	// Determine model: CLI flag > persisted user preference > auto-discover
 	const model = args.model ?? getPreferredModel() ?? autoDiscoverModel();
+
+	if (args.subagent) {
+		// Headless mode: no banner, no interactive loop, single prompt then exit
+		const parentCwd = args.cwd;
+		let agentSystemPrompt: string | undefined;
+		let modelOverride = model;
+
+		if (args.agentName) {
+			const agents = loadAgents(args.cwd);
+			const agentConfig = agents.get(args.agentName);
+			if (!agentConfig) {
+				renderError(new Error(`Agent "${args.agentName}" not found`), "agent");
+				process.exit(1);
+			}
+			agentSystemPrompt = agentConfig.systemPrompt;
+			if (agentConfig.model) modelOverride = agentConfig.model;
+		}
+
+		// Worktree lifecycle: create before run, remove dir after (keep branch for parent to merge).
+		let worktreePath: string | undefined;
+		// Use the branch name the parent assigned (so it can clean up on interrupt).
+		let worktreeBranch: string | undefined = args.worktreeBranch ?? undefined;
+		let runCwd = parentCwd;
+
+		if (await isGitRepo(parentCwd)) {
+			if (!worktreeBranch) {
+				// Fallback: generate our own if the parent didn't pass one (shouldn't happen in practice).
+				worktreeBranch = `mc-sub-${crypto.randomUUID().slice(0, 8)}`;
+			}
+			worktreePath = join(tmpdir(), worktreeBranch);
+			try {
+				await createWorktree(parentCwd, worktreeBranch, worktreePath);
+				await initializeWorktree(parentCwd, worktreePath);
+				runCwd = worktreePath;
+			} catch {
+				// Worktree creation failed — fall back to running in the original cwd.
+				worktreeBranch = undefined;
+				worktreePath = undefined;
+			}
+		}
+
+		// SIGTERM handler: clean up worktree directory only; leave branch for parent to discard.
+		process.on("SIGTERM", () => {
+			if (worktreePath) {
+				Bun.spawnSync(["git", "worktree", "remove", "--force", worktreePath], {
+					cwd: parentCwd,
+				});
+			}
+			process.exit(1);
+		});
+
+		const cleanupWorktree = async (): Promise<void> => {
+			if (worktreePath) {
+				await removeWorktree(parentCwd, worktreePath).catch(() => {});
+				worktreePath = undefined;
+			}
+		};
+
+		try {
+			const summary = await runAgent({
+				model: modelOverride,
+				cwd: runCwd,
+				initialThinkingEffort: getPreferredThinkingEffort(),
+				reporter: new HeadlessReporter(),
+				initialPrompt: args.prompt ?? "",
+				headless: true,
+				...(agentSystemPrompt ? { agentSystemPrompt } : {}),
+			});
+
+			await cleanupWorktree();
+
+			if (args.outputFd !== null && summary) {
+				const payload = worktreeBranch
+					? { ...summary, worktreeBranch }
+					: summary;
+				const json = `${JSON.stringify(payload)}\n`;
+				writeSync(args.outputFd, Buffer.from(json));
+			}
+		} catch (err) {
+			await cleanupWorktree();
+			if (args.outputFd !== null) {
+				const json = `${JSON.stringify({ error: String(err) })}\n`;
+				writeSync(args.outputFd, Buffer.from(json));
+			}
+			process.exit(1);
+		}
+		return;
+	}
 
 	if (!args.prompt) {
 		// Only show banner for interactive sessions, not piped/one-shot

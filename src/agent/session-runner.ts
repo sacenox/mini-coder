@@ -35,6 +35,9 @@ interface SessionRunnerOptions {
 	initialModel: string;
 	initialThinkingEffort: ThinkingEffort | null;
 	sessionId?: string | undefined;
+	extraSystemPrompt?: string | undefined;
+	isSubagent?: boolean | undefined;
+	killSubprocesses?: (() => void) | undefined;
 }
 
 export class SessionRunner {
@@ -56,6 +59,9 @@ export class SessionRunner {
 	public totalIn = 0;
 	public totalOut = 0;
 	public lastContextTokens = 0;
+	private extraSystemPrompt: string | undefined;
+	private isSubagent: boolean | undefined;
+	private killSubprocesses: (() => void) | undefined;
 
 	constructor(opts: SessionRunnerOptions) {
 		this.cwd = opts.cwd;
@@ -64,6 +70,9 @@ export class SessionRunner {
 		this.mcpTools = opts.mcpTools;
 		this.currentModel = opts.initialModel;
 		this.currentThinkingEffort = opts.initialThinkingEffort;
+		this.extraSystemPrompt = opts.extraSystemPrompt;
+		this.isSubagent = opts.isSubagent;
+		this.killSubprocesses = opts.killSubprocesses;
 		this.initSession(opts.sessionId);
 	}
 
@@ -105,6 +114,12 @@ export class SessionRunner {
 		const abortController = new AbortController();
 		const stopWatcher = watchForCancel(abortController);
 
+		if (this.killSubprocesses) {
+			const killSubs = this.killSubprocesses;
+			abortController.signal.addEventListener("abort", () => {
+				killSubs();
+			});
+		}
 		const { text: resolvedText, images: refImages } = await resolveFileRefs(
 			text,
 			this.cwd,
@@ -140,7 +155,12 @@ export class SessionRunner {
 		this.coreHistory.push(userMsg);
 
 		const llm = resolveModel(this.currentModel);
-		const systemPrompt = buildSystemPrompt(this.cwd, this.currentModel);
+		const systemPrompt = buildSystemPrompt(
+			this.cwd,
+			this.currentModel,
+			this.extraSystemPrompt,
+			this.isSubagent,
+		);
 
 		let lastAssistantText = "";
 

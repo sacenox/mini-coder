@@ -1,192 +1,179 @@
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { loadAgents } from "../cli/agents.ts";
-import { formatSubagentLabel } from "../cli/output.ts";
-import type { ThinkingEffort } from "../llm-api/providers.ts";
-import { resolveModel } from "../llm-api/providers.ts";
-import { type CoreMessage, runTurn } from "../llm-api/turn.ts";
-import type { SubagentOutput } from "../tools/subagent.ts";
+import type { SubagentOutput, SubagentSummary } from "../tools/subagent.ts";
 import {
 	cleanupBranch,
-	createWorktree,
-	initializeWorktree,
-	isGitRepo,
 	MergeInProgressError,
 	mergeWorktree,
-	removeWorktree,
-	syncDirtyStateToWorktree,
 } from "../tools/worktree.ts";
-import type { AgentReporter } from "./reporter.ts";
-import { buildSystemPrompt } from "./system-prompt.ts";
-import { buildToolSet } from "./tools.ts";
 
-function makeWorktreeBranch(laneId: string): string {
-	return `mc-sub-${laneId}`;
+/**
+ * Resolve the command to invoke a new `mc` subprocess.
+ * - Dev:  process.argv[1] ends with ".ts" → [bun, script]
+ * - Prod: compiled binary → [process.execPath]
+ */
+function getMcCommand(): string[] {
+	const script = process.argv[1];
+	if (script?.endsWith(".ts")) {
+		return [process.execPath, script];
+	}
+	return [process.execPath];
 }
 
-function makeWorktreePath(laneId: string): string {
-	return join(tmpdir(), `mc-wt-${laneId}`);
-}
+// Loose recursion cap passed via environment so subprocess chains are bounded
+// without an in-process depth parameter. Generous enough for real use-cases.
+const MAX_SUBAGENT_DEPTH = 10;
 
 export function createSubagentRunner(
 	cwd: string,
-	reporter: AgentReporter,
 	getCurrentModel: () => string,
-	getThinkingEffort: () => ThinkingEffort | null,
 ) {
-	const activeLanes = new Set<string>();
-	const worktreesEnabledPromise = isGitRepo(cwd);
+	// Active subprocesses — maps proc to branch name (if any) for interrupt cleanup.
+	const activeProcs = new Map<
+		ReturnType<typeof Bun.spawn>,
+		string | undefined
+	>();
 
-	let mergeLock: Promise<void> = Promise.resolve();
-	const withMergeLock = <T>(fn: () => Promise<T>): Promise<T> => {
-		const task = mergeLock.then(fn, fn);
-		mergeLock = task.then(
-			() => undefined,
-			() => undefined,
-		);
-		return task;
+	// Depth is injected by the parent subprocess via MC_SUBAGENT_DEPTH env var.
+	const subagentDepth = parseInt(process.env.MC_SUBAGENT_DEPTH ?? "0", 10);
+
+	// Merge lock: serialises merge operations from concurrent subagents.
+	let mergeLockTail = Promise.resolve();
+
+	const mergeSubagentBranch = async (
+		branch: string,
+	): Promise<{ mergeConflicts?: string[] }> => {
+		const prev = mergeLockTail;
+		let releaseLock!: () => void;
+		mergeLockTail = new Promise((resolve) => {
+			releaseLock = resolve;
+		});
+		try {
+			await prev;
+			const result = await mergeWorktree(cwd, branch);
+			if (result.success) {
+				await cleanupBranch(cwd, branch);
+				return {};
+			}
+			// Merge produced conflicts — leave branch for user to resolve.
+			return { mergeConflicts: result.conflictFiles };
+		} catch (err) {
+			if (err instanceof MergeInProgressError) {
+				// Another merge is in progress — return its conflict files.
+				return { mergeConflicts: err.conflictFiles };
+			}
+			throw err;
+		} finally {
+			releaseLock();
+		}
 	};
 
 	const runSubagent = async (
 		prompt: string,
-		depth = 0,
 		agentName?: string,
 		modelOverride?: string,
-		parentLabel?: string,
+		_parentLabel?: string,
 	): Promise<SubagentOutput> => {
-		const laneId = crypto.randomUUID().split("-")[0] as string;
-		activeLanes.add(laneId);
+		if (subagentDepth >= MAX_SUBAGENT_DEPTH) {
+			throw new Error(
+				`Subagent recursion limit reached (depth ${subagentDepth}). ` +
+					`Cannot spawn another subagent.`,
+			);
+		}
 
-		let subagentCwd = cwd;
-		let worktreeBranch: string | undefined;
-		let worktreePath: string | undefined;
-		let preserveBranchOnFailure = false;
+		const model = modelOverride ?? getCurrentModel();
+		// Parent generates the branch name so it can clean it up on interrupt.
+		const laneId = crypto.randomUUID().slice(0, 8);
+		const worktreeBranch = `mc-sub-${laneId}`;
+		const cmd = [
+			...getMcCommand(),
+			"--subagent",
+			"--cwd",
+			cwd,
+			"--model",
+			model,
+			"--output-fd",
+			"3",
+			"--worktree-branch",
+			worktreeBranch,
+			...(agentName ? ["--agent", agentName] : []),
+			prompt,
+		];
+
+		const proc = Bun.spawn({
+			cmd,
+			env: {
+				...process.env,
+				MC_SUBAGENT_DEPTH: String(subagentDepth + 1),
+			},
+			stdio: ["ignore", "inherit", "inherit", "pipe"],
+		});
+
+		activeProcs.set(proc, worktreeBranch);
 
 		try {
-			const worktreesEnabled = await worktreesEnabledPromise;
-			if (worktreesEnabled) {
-				const nextBranch = makeWorktreeBranch(laneId);
-				const nextPath = makeWorktreePath(laneId);
-				await createWorktree(cwd, nextBranch, nextPath);
-				worktreeBranch = nextBranch;
-				worktreePath = nextPath;
-				await syncDirtyStateToWorktree(cwd, nextPath);
-				await initializeWorktree(cwd, nextPath);
-				subagentCwd = nextPath;
-			}
+			const [text] = await Promise.all([
+				Bun.file(proc.stdio[3] as unknown as number).text(),
+				proc.exited,
+			]);
 
-			const currentModel = getCurrentModel();
-			const allAgents = loadAgents(subagentCwd);
-			const agentConfig = agentName ? allAgents.get(agentName) : undefined;
-			if (agentName && !agentConfig) {
+			const trimmed = text.trim();
+			if (!trimmed) {
 				throw new Error(
-					`Unknown agent "${agentName}". Available agents: ${[...allAgents.keys()].join(", ") || "(none)"}`,
+					`Subagent subprocess produced no output (exit code ${String(proc.exitCode)})`,
 				);
 			}
 
-			const model = modelOverride ?? agentConfig?.model ?? currentModel;
-			const systemPrompt =
-				agentConfig?.systemPrompt ?? buildSystemPrompt(subagentCwd, model);
+			let parsed: SubagentSummary & { error?: string };
+			try {
+				parsed = JSON.parse(trimmed) as SubagentSummary & { error?: string };
+			} catch {
+				throw new Error(
+					`Subagent subprocess wrote non-JSON output (exit code ${String(proc.exitCode)}): ${trimmed.slice(0, 200)}`,
+				);
+			}
 
-			const subMessages: CoreMessage[] = [{ role: "user", content: prompt }];
-			const laneLabel = formatSubagentLabel(laneId, parentLabel);
+			if (parsed.error) {
+				throw new Error(`Subagent failed: ${parsed.error}`);
+			}
+			if (proc.exitCode !== 0) {
+				throw new Error(
+					`Subagent process exited with code ${String(proc.exitCode)}`,
+				);
+			}
 
-			const subTools = buildToolSet({
-				cwd: subagentCwd,
-				depth,
-				runSubagent,
-				onHook: (tool, path, ok) => reporter.renderHook(tool, path, ok),
-				availableAgents: allAgents,
-				parentLabel: laneLabel,
-			}).filter((tool) => tool.name !== "subagent");
+			const output: SubagentOutput = {
+				result: parsed.result,
+				inputTokens: parsed.inputTokens,
+				outputTokens: parsed.outputTokens,
+			};
 
-			const subLlm = resolveModel(model);
-
-			let result = "";
-			let inputTokens = 0;
-			let outputTokens = 0;
-
-			const effort = getThinkingEffort();
-			const events = runTurn({
-				model: subLlm,
-				modelString: model,
-				messages: subMessages,
-				tools: subTools,
-				systemPrompt,
-				...(effort ? { thinkingEffort: effort } : {}),
-			});
-
-			for await (const event of events) {
-				reporter.stopSpinner();
-				reporter.renderSubagentEvent(event, {
-					laneId,
-					...(parentLabel ? { parentLabel } : {}),
-					hasWorktree: !!worktreeBranch,
-					activeLanes,
-				});
-				reporter.startSpinner("thinking");
-				if (event.type === "text-delta") result += event.delta;
-				if (event.type === "turn-complete") {
-					inputTokens = event.inputTokens;
-					outputTokens = event.outputTokens;
+			if (parsed.worktreeBranch) {
+				const mergeResult = await mergeSubagentBranch(parsed.worktreeBranch);
+				if (mergeResult.mergeConflicts) {
+					output.mergeConflicts = mergeResult.mergeConflicts;
 				}
 			}
 
-			const baseOutput: SubagentOutput = { result, inputTokens, outputTokens };
-			const branch = worktreeBranch;
-			const path = worktreePath;
-			if (!branch || !path) return baseOutput;
-
-			preserveBranchOnFailure = true;
-			return await withMergeLock(async () => {
-				try {
-					const mergeResult = await mergeWorktree(cwd, branch);
-					await removeWorktree(cwd, path);
-					if (mergeResult.success) {
-						await cleanupBranch(cwd, branch);
-						return baseOutput;
-					}
-					return {
-						...baseOutput,
-						mergeConflict: {
-							branch,
-							conflictFiles: mergeResult.conflictFiles,
-						},
-					};
-				} catch (error) {
-					if (error instanceof MergeInProgressError) {
-						await removeWorktree(cwd, path);
-						return {
-							...baseOutput,
-							mergeBlocked: {
-								branch,
-								conflictFiles: error.conflictFiles,
-							},
-						};
-					}
-					throw error;
-				}
-			});
-		} catch (error) {
-			if (worktreeBranch && worktreePath) {
-				const branch = worktreeBranch;
-				const path = worktreePath;
-				try {
-					await withMergeLock(async () => {
-						await removeWorktree(cwd, path);
-						if (!preserveBranchOnFailure) {
-							await cleanupBranch(cwd, branch);
-						}
-					});
-				} catch {
-					// Preserve the original subagent failure.
-				}
-			}
-			throw error;
+			return output;
 		} finally {
-			activeLanes.delete(laneId);
+			activeProcs.delete(proc);
 		}
 	};
 
-	return runSubagent;
+	return {
+		runSubagent,
+		killAll: () => {
+			for (const [proc, branch] of activeProcs) {
+				try {
+					proc.kill("SIGTERM");
+				} catch {
+					// Process may have already exited.
+				}
+				if (branch) {
+					// Wait for the subprocess to exit (so it can remove its worktree dir)
+					// before deleting the branch — git refuses to delete a checked-out branch.
+					proc.exited.then(() => cleanupBranch(cwd, branch)).catch(() => {});
+				}
+			}
+		},
+	};
 }

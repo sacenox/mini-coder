@@ -10,6 +10,7 @@ import {
 	setPreferredModel,
 	setPreferredThinkingEffort,
 } from "../session/db/index.ts";
+import type { SubagentSummary } from "../tools/subagent.ts";
 import { getGitBranch } from "./agent-helpers.ts";
 import { runInputLoop } from "./input-loop.ts";
 import type { AgentReporter } from "./reporter.ts";
@@ -25,24 +26,23 @@ interface AgentOptions {
 	sessionId?: string;
 	initialPrompt?: string;
 	reporter: AgentReporter;
+	headless?: boolean;
+	agentSystemPrompt?: string;
 }
 
-export async function runAgent(opts: AgentOptions): Promise<void> {
+export async function runAgent(
+	opts: AgentOptions,
+): Promise<SubagentSummary | undefined> {
 	const cwd = opts.cwd;
 	let currentModel = opts.model;
-	let currentThinkingEffort = opts.initialThinkingEffort;
 
-	const runSubagent = createSubagentRunner(
+	const { runSubagent, killAll } = createSubagentRunner(
 		cwd,
-		opts.reporter,
 		() => currentModel,
-		() => currentThinkingEffort,
 	);
-
 	const agents = loadAgents(cwd);
 	const tools: ToolDef[] = buildToolSet({
 		cwd,
-		depth: 0,
 		runSubagent,
 		onHook: (tool, path, ok) => opts.reporter.renderHook(tool, path, ok),
 		availableAgents: agents,
@@ -84,6 +84,9 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		initialModel: currentModel,
 		initialThinkingEffort: opts.initialThinkingEffort,
 		sessionId: opts.sessionId,
+		extraSystemPrompt: opts.agentSystemPrompt,
+		isSubagent: opts.headless,
+		killSubprocesses: killAll,
 	});
 
 	const cmdCtx: CommandContext = {
@@ -102,7 +105,6 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		setThinkingEffort: (e) => {
 			runner.currentThinkingEffort = e;
 			setPreferredThinkingEffort(e);
-			currentThinkingEffort = e;
 		},
 		get planMode() {
 			return runner.planMode;
@@ -117,7 +119,7 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 			runner.planMode = v;
 		},
 		cwd,
-		runSubagent: (prompt, model?) => runSubagent(prompt, 0, undefined, model),
+		runSubagent: (prompt, model?) => runSubagent(prompt, undefined, model),
 
 		undoLastTurn: () =>
 			undoLastTurn({
@@ -156,6 +158,16 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		});
 	}
 
+	if (opts.headless) {
+		const prompt = opts.initialPrompt ?? "";
+		const result = await runner.processUserInput(prompt);
+		return {
+			result,
+			inputTokens: runner.totalIn,
+			outputTokens: runner.totalOut,
+		};
+	}
+
 	if (opts.initialPrompt) {
 		await runner.processUserInput(opts.initialPrompt);
 	}
@@ -167,4 +179,6 @@ export async function runAgent(opts: AgentOptions): Promise<void> {
 		runner,
 		renderStatusBar: renderStatusBarForSession,
 	});
+
+	return undefined;
 }

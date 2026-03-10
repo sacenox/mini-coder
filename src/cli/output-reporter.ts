@@ -2,7 +2,6 @@ import * as c from "yoctocolors";
 import type {
 	AgentReporter,
 	StatusBarData,
-	SubagentEventData,
 	TurnResult,
 } from "../agent/reporter.ts";
 import type { TurnEvent } from "../llm-api/types.ts";
@@ -11,7 +10,6 @@ import {
 	renderHook,
 	renderInfo,
 	renderStatusBar,
-	renderSubagentEvent,
 	renderTurn,
 	restoreTerminal,
 	Spinner,
@@ -51,10 +49,6 @@ export class CliReporter implements AgentReporter {
 
 	async renderTurn(events: AsyncIterable<TurnEvent>): Promise<TurnResult> {
 		return renderTurn(events, this.spinner);
-	}
-
-	renderSubagentEvent(event: TurnEvent, data: SubagentEventData): void {
-		renderSubagentEvent(event, data);
 	}
 
 	renderStatusBar(data: StatusBarData): void {

@@ -26,8 +26,8 @@ import { replaceTool } from "../tools/replace.ts";
 import type { ShellOutput } from "../tools/shell.ts";
 import { shellTool } from "../tools/shell.ts";
 import {
+	assertSubagentMerged,
 	createSubagentTool,
-	getSubagentMergeError,
 	type SubagentOutput,
 } from "../tools/subagent.ts";
 
@@ -86,8 +86,6 @@ function withHooks<TInput extends { cwd?: string }, TOutput>(
 
 // ─── Tool registry ────────────────────────────────────────────────────────────
 
-const MAX_SUBAGENT_DEPTH = 3;
-
 // Names of all local tools that support hooks (MCP tools are excluded).
 const HOOKABLE_TOOLS = [
 	"glob",
@@ -101,10 +99,8 @@ const HOOKABLE_TOOLS = [
 
 export function buildToolSet(opts: {
 	cwd: string;
-	depth?: number;
 	runSubagent: (
 		prompt: string,
-		depth?: number,
 		agentName?: string,
 		modelOverride?: string,
 		parentLabel?: string,
@@ -115,7 +111,6 @@ export function buildToolSet(opts: {
 	parentLabel?: string;
 }): ToolDef[] {
 	const { cwd, onHook } = opts;
-	const depth = opts.depth ?? 0;
 	const lookupHook = createHookCache(HOOKABLE_TOOLS, cwd);
 
 	const tools: ToolDef[] = [
@@ -193,22 +188,14 @@ export function buildToolSet(opts: {
 			onHook,
 		) as ToolDef,
 		createSubagentTool(
-			async (prompt, agentName) => {
-				if (depth >= MAX_SUBAGENT_DEPTH) {
-					throw new Error(
-						`Subagent depth limit reached (max ${MAX_SUBAGENT_DEPTH}). ` +
-							`Cannot spawn another subagent from depth ${depth}.`,
-					);
-				}
+			async (prompt, agentName, parentLabel) => {
 				const output = await opts.runSubagent(
 					prompt,
-					depth + 1,
 					agentName,
 					undefined,
-					opts.parentLabel,
+					parentLabel,
 				);
-				const mergeError = getSubagentMergeError(output);
-				if (mergeError) throw new Error(mergeError);
+				assertSubagentMerged(output);
 				return output;
 			},
 			opts.availableAgents,

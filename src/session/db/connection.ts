@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-export function getConfigDir(): string {
+function getConfigDir(): string {
 	return join(homedir(), ".config", "mini-coder");
 }
 

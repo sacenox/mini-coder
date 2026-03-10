@@ -28,11 +28,10 @@ describe("parseFrontmatter", () => {
 	});
 
 	test("ignores unknown frontmatter keys", () => {
-		const raw = "---\nname: helper\nfoo: bar\nexecution: inline\n---\n\nRun it";
+		const raw = "---\nname: helper\nfoo: bar\n---\n\nRun it";
 		expect(parseFrontmatter(raw)).toEqual({
 			meta: {
 				name: "helper",
-				execution: "inline",
 			},
 			body: "Run it",
 		});

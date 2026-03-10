@@ -13,46 +13,27 @@ const SubagentInput = z.object({
 
 type SubagentInput = z.infer<typeof SubagentInput>;
 
+export interface SubagentSummary {
+	result: string;
+	inputTokens: number;
+	outputTokens: number;
+	worktreeBranch?: string;
+}
+
 export interface SubagentOutput {
 	result: string;
 	inputTokens: number;
 	outputTokens: number;
-	mergeConflict?: {
-		branch: string;
-		conflictFiles: string[];
-	};
-	mergeBlocked?: {
-		branch: string;
-		conflictFiles: string[];
-	};
+	mergeConflicts?: string[];
 }
 
-function formatConflictFiles(conflictFiles: string[]): string {
-	if (conflictFiles.length === 0) return "  - (unknown)";
-	return conflictFiles.map((file) => `  - ${file}`).join("\n");
-}
-
-export function getSubagentMergeError(output: SubagentOutput): string | null {
-	if (output.mergeConflict) {
-		const files = formatConflictFiles(output.mergeConflict.conflictFiles);
-		return `⚠ Merge conflict: subagent branch "${output.mergeConflict.branch}" has been merged into your working tree
-but has conflicts in these files:
-${files}
-
-Resolve the conflicts (remove <<<<, ====, >>>> markers), stage the files with
-\`git add <file>\`, then run \`git merge --continue\` to complete the merge.`;
+export function assertSubagentMerged(output: SubagentOutput): void {
+	if (output.mergeConflicts?.length) {
+		const files = output.mergeConflicts.map((f) => `  - ${f}`).join("\n");
+		throw new Error(
+			`⚠ Merge conflict: subagent changes have conflicts in these files:\n${files}\n\nResolve the conflicts (remove <<<<, ====, >>>> markers), stage the files with \`git add <file>\`, then run \`git merge --continue\` to complete the merge.`,
+		);
 	}
-	if (output.mergeBlocked) {
-		const files = formatConflictFiles(output.mergeBlocked.conflictFiles);
-		return `⚠ Merge deferred: subagent branch "${output.mergeBlocked.branch}" was not merged because another merge is already in progress.
-Current unresolved files:
-${files}
-
-Resolve the current merge first (remove <<<<, ====, >>>> markers), stage files with
-\`git add <file>\`, run \`git merge --continue\`, then merge the deferred branch with
-\`git merge --no-ff ${output.mergeBlocked.branch}\`.`;
-	}
-	return null;
 }
 
 /**

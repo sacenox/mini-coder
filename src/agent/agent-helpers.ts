@@ -17,6 +17,25 @@ export function makeInterruptMessage(reason: "user" | "error"): CoreMessage {
 	return { role: "assistant", content: text };
 }
 
+export function isAbortError(error: Error): boolean {
+	return (
+		error.name === "AbortError" ||
+		(error.name === "Error" && error.message.toLowerCase().includes("abort"))
+	);
+}
+
+export function buildAbortMessages(
+	partialMessages: CoreMessage[],
+	accumulatedText?: string,
+): CoreMessage[] {
+	const stub = makeInterruptMessage("user");
+	const content = accumulatedText
+		? `${accumulatedText}${stub.content}`
+		: (stub.content as string);
+	const partialMsg: CoreMessage = { role: "assistant", content };
+	return [...partialMessages, partialMsg];
+}
+
 export function extractAssistantText(newMessages: CoreMessage[]): string {
 	const parts: string[] = [];
 	for (const msg of newMessages) {
