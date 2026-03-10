@@ -77,7 +77,7 @@ I want to improve some aspects of the agents behaviour in mini-coder.
 - More responsible token usage. API costs are escalating in 2026 so it's more important than ever to use as little tokens as possible whithout impacting efficiency.
 - Evaluate our tools descriptions and wording to make sure they are efficient in token usage and clear to the llm (we see some errors of duplicating code by accident for example).
 - Evaluate the output of our tools for token usage considerations.
-- Ensure the system prompts are correct and use up to date wording based on context engineering optimization (check online for latest practices, check opencode, codex and oh-my-pi for context)
+- Ensure the system prompts are correct and use up to date wording based on context engineering optimization (check online for latest practices, check opencode, codex and oh-my-pi for context). Make sure we review the codex autonomy texts as well since gpt 5.4 is now out.
 
 ---
 

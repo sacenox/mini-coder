@@ -157,7 +157,6 @@ export class SessionRunner {
 		const llm = resolveModel(this.currentModel);
 		const systemPrompt = buildSystemPrompt(
 			this.cwd,
-			this.currentModel,
 			this.extraSystemPrompt,
 			this.isSubagent,
 		);

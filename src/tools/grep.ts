@@ -18,7 +18,11 @@ const GrepSchema = z.object({
 		.optional()
 		.default(2)
 		.describe("Lines of context to include around each match"),
-	caseSensitive: z.boolean().optional().default(true),
+	caseSensitive: z
+		.boolean()
+		.optional()
+		.default(true)
+		.describe("Case-sensitive search (default: true)"),
 	maxResults: z.number().int().min(1).max(200).optional().default(50),
 });
 

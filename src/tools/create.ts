@@ -21,9 +21,8 @@ export interface CreateOutput {
 export const createTool: ToolDef<CreateInput, CreateOutput> = {
 	name: "create",
 	description:
-		"Create a new file or fully overwrite an existing file with the given content. " +
-		"Use this only for new files. " +
-		"For targeted line edits on existing files, **use `replace` or `insert` instead**.",
+		"Write a file at the given path, creating it or fully replacing its content. " +
+		"**For targeted line edits on existing files use `replace` or `insert` — never `create`.**",
 	schema: CreateSchema,
 	execute: async (input) => {
 		const { filePath, relPath } = resolvePath(input.cwd, input.path);
