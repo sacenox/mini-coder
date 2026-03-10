@@ -1,7 +1,9 @@
 ---
 description: Trigger the n8n workflow to create a blog post using title and content as seeds.
 model: zen/claude-haiku-4-5
+context: fork
 ---
+
 
 Arguments: $ARGUMENTS
 

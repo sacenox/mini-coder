@@ -46,6 +46,8 @@ into the conversation.
 |---|---|---|
 | `description` | No | Shown in `/help`. Defaults to filename. |
 | `model` | No | Override the active model for this agent. |
+| `mode` | No | `primary` — interactive only (via `/agent <name>`); `subagent` — callable via the `subagent` tool only (default); `all` — both. |
+
 
 The markdown body (after frontmatter) is the agent's system prompt.
 

@@ -69,6 +69,29 @@ describe("loadCustomCommands", () => {
 		expect(result.get("search")?.description).toBe("local");
 		expect(result.get("search")?.source).toBe("local");
 	});
+
+	test("loads context: fork from frontmatter", () => {
+		writeCmd(
+			dir,
+			"deploy",
+			"---\ndescription: Deploy\ncontext: fork\n---\n\nDeploy it",
+		);
+		expect(loadCustomCommands(dir).get("deploy")?.context).toBe("fork");
+	});
+
+	test("context is undefined when not specified", () => {
+		writeCmd(dir, "plain", "---\ndescription: Plain\n---\n\nDo it");
+		expect(loadCustomCommands(dir).get("plain")?.context).toBeUndefined();
+	});
+
+	test("loads subtask: true from frontmatter", () => {
+		writeCmd(
+			dir,
+			"analyze",
+			"---\ndescription: Analyze\nsubtask: true\n---\n\nAnalyze it",
+		);
+		expect(loadCustomCommands(dir).get("analyze")?.subtask).toBe(true);
+	});
 });
 
 // ─── expandTemplate ───────────────────────────────────────────────────────────
@@ -145,5 +168,52 @@ describe("expandTemplate", () => {
 	test("no placeholders — template returned unchanged", async () => {
 		const out = await expandTemplate("plain text", "ignored", "/");
 		expect(out).toBe("plain text");
+	});
+});
+
+// ─── @file reference expansion ───────────────────────────────────────────────
+
+describe("expandTemplate @file references", () => {
+	let dir: string;
+
+	beforeEach(() => {
+		dir = mkdtempSync(join(tmpdir(), "mc-fileref-test-"));
+	});
+
+	afterEach(() => {
+		rmSync(dir, { recursive: true, force: true });
+	});
+
+	test("replaces @file with code-fenced content", async () => {
+		writeFileSync(join(dir, "hello.txt"), "world");
+		const out = await expandTemplate("see @hello.txt for details", "", dir);
+		expect(out).toBe("see `hello.txt`:\n```\nworld\n``` for details");
+	});
+
+	test("leaves @token unchanged when file does not exist", async () => {
+		const out = await expandTemplate("@nonexistent.ts", "", dir);
+		expect(out).toBe("@nonexistent.ts");
+	});
+
+	test("handles nested path like @src/foo.ts", async () => {
+		mkdirSync(join(dir, "src"), { recursive: true });
+		writeFileSync(join(dir, "src", "foo.ts"), "export const x = 1;");
+		const out = await expandTemplate("review @src/foo.ts please", "", dir);
+		expect(out).toBe(
+			"review `src/foo.ts`:\n```\nexport const x = 1;\n``` please",
+		);
+	});
+
+	test("non-file @tokens (e.g. email) are left intact", async () => {
+		// no file named "user@example.com" or "example.com" exists in cwd
+		const out = await expandTemplate("contact user@example.com", "", dir);
+		expect(out).toBe("contact user@example.com");
+	});
+
+	test("multiple @file refs in one template are all replaced", async () => {
+		writeFileSync(join(dir, "a.md"), "AAA");
+		writeFileSync(join(dir, "b.md"), "BBB");
+		const out = await expandTemplate("@a.md and @b.md", "", dir);
+		expect(out).toBe("`a.md`:\n```\nAAA\n``` and `b.md`:\n```\nBBB\n```");
 	});
 });

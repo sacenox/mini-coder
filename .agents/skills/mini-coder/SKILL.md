@@ -32,10 +32,12 @@ All config lives under `.agents/` (or `~/.agents/` globally). Local wins over gl
 ### Frontmatter fields
 
 - `description` — shown in `/help` and agent/skill listings
-- `model` — override the LLM model for this config
+- `model` — override the LLM model for this config (commands: only used when `context: fork`)
 - `mode` — `primary` / `subagent` / `all` (agents only; default: `subagent`)
-- `agent` — run command under a named agent's system prompt (commands only)
+- `agent` — run command under a named agent's system prompt (commands: only used when `context: fork`)
 - `name` — override the key name (nested skills only; defaults to folder name)
+- `context` — `fork` to run command as isolated subagent; default is inline in current conversation (commands only; Claude Code standard)
+- `subtask` — `true` to force subagent invocation (commands only; OpenCode compat, equivalent to `context: fork`)
 
 ### Agent modes
 
@@ -47,7 +49,8 @@ All config lives under `.agents/` (or `~/.agents/` globally). Local wins over gl
 
 Every tool is declared in `src/agent/tools.ts`. Core tools: `read`, `glob`, `grep`, `replace`, `insert`, `create`, `shell`, `subagent`, `webSearch`, `webContent`.
 
-Hooks in `.agents/hooks/` fire after `create`, `insert`, and `replace` — currently used to auto-format changed files.
+Hooks in `.agents/hooks/` fire after any of the 7 hookable tools: `glob`, `grep`, `read`, `create`, `replace`, `insert`, `shell`. The repo currently uses `post-create`, `post-insert`, and `post-replace` to auto-format changed files.
+
 
 ## Testing
 

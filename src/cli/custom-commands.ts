@@ -1,5 +1,7 @@
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
 	baseConfigFields,
 	loadMarkdownConfigs,
@@ -8,10 +10,17 @@ import {
 export interface CustomCommand {
 	name: string;
 	description: string;
-	/** Override model for this command (optional) */
+	/** Override model for this command (only applies when running as a subagent) */
 	model?: string;
-	/** Run command under a specific agent's system prompt (optional) */
+	/** Run command under a specific agent's system prompt (only applies when running as a subagent) */
 	agent?: string;
+	/**
+	 * Claude Code: `"fork"` runs the command in an isolated subagent context.
+	 * Default (omitted) runs inline in the current conversation.
+	 */
+	context?: "fork";
+	/** OpenCode: equivalent to `context: "fork"` — forces subagent invocation */
+	subtask?: boolean;
 	/** Raw template string (after frontmatter is stripped) */
 	template: string;
 	/** "global" (~/.agents/) or "local" (./.agents/) — local wins on conflict */
@@ -33,6 +42,8 @@ export function loadCustomCommands(
 		mapConfig: ({ name, meta, body, source }) => ({
 			...baseConfigFields(name, meta, source),
 			...(meta.agent ? { agent: meta.agent } : {}),
+			...(meta.context === "fork" ? { context: "fork" as const } : {}),
+			...(meta.subtask ? { subtask: true } : {}),
 			template: body,
 		}),
 	});
@@ -44,6 +55,7 @@ export function loadCustomCommands(
  * - `$ARGUMENTS` → full args string
  * - `$1`, `$2`, … → positional tokens
  * - `!`cmd`` → stdout of running cmd in a shell
+ * - `@<filepath>` → contents of the file (relative to cwd), wrapped in a code fence
  */
 export async function expandTemplate(
 	template: string,
@@ -102,6 +114,27 @@ export async function expandTemplate(
 			// Timeout or spawn failure — leave output empty.
 		}
 		result = result.replaceAll(match[0], output);
+	}
+
+	// Replace @file references — resolve relative to cwd, wrap in code fence.
+	// Matches @<path> where path is a non-whitespace sequence; silently skips
+	// tokens that don't resolve to an existing file (e.g. email addresses).
+	const FILE_REF_RE = /@([^\s,;!?'")\]]+)/g;
+	const fileMatches = [...result.matchAll(FILE_REF_RE)];
+	for (const match of fileMatches) {
+		const filePath = match[1] ?? "";
+		const fullPath = join(cwd, filePath);
+		if (!existsSync(fullPath)) continue;
+		let content = "";
+		try {
+			content = readFileSync(fullPath, "utf-8");
+		} catch {
+			continue;
+		}
+		result = result.replaceAll(
+			match[0],
+			`\`${filePath}\`:\n\`\`\`\n${content}\n\`\`\``,
+		);
 	}
 
 	return result;

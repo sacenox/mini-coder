@@ -1,7 +1,9 @@
 ---
 description: Search the codebase for a topic using a subagent
 model: zen/claude-haiku-4-5
+context: fork
 ---
+
 
 Search the codebase for: $ARGUMENTS
 

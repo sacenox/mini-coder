@@ -69,4 +69,24 @@ describe("parseFrontmatter", () => {
 			"---\ndescription: Run tests\nagent: build\n---\n\nRun npm test";
 		expect(parseFrontmatter(raw).meta.agent).toBe("build");
 	});
+
+	test("parses context: fork", () => {
+		const raw = "---\ndescription: Deploy\ncontext: fork\n---\n\nDeploy it";
+		expect(parseFrontmatter(raw).meta.context).toBe("fork");
+	});
+
+	test("ignores unknown context values", () => {
+		const raw = "---\ncontext: inline\n---\n\nBody";
+		expect(parseFrontmatter(raw).meta.context).toBeUndefined();
+	});
+
+	test("parses subtask: true", () => {
+		const raw = "---\nsubtask: true\n---\n\nBody";
+		expect(parseFrontmatter(raw).meta.subtask).toBe(true);
+	});
+
+	test("parses subtask: false", () => {
+		const raw = "---\nsubtask: false\n---\n\nBody";
+		expect(parseFrontmatter(raw).meta.subtask).toBe(false);
+	});
 });

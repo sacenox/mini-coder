@@ -20,7 +20,8 @@ Create a markdown file. The filename becomes the command name.
 ```md
 ---
 description: Summarise what changed since yesterday
-model: zen/claude-3-5-haiku
+model: zen/claude-haiku-4-5
+
 ---
 
 Run `!`git log --oneline --since=yesterday`` and summarise the changes
@@ -38,7 +39,11 @@ Then in the REPL:
 | Field | Required | Description |
 |---|---|---|
 | `description` | No | Shown in `/help`. Defaults to the command name. |
-| `model` | No | Override the active model for this command (subagent execution). |
+| `model` | No | Override the active model for this command (only applies when `context: fork`). |
+| `context` | No | Set to `fork` to run the command as an isolated subagent; default runs inline. |
+| `subtask` | No | Set to `true` to force subagent execution (OpenCode-compatible alias for `context: fork`). |
+| `agent` | No | Run the command under a named agent's system prompt (only applies when `context: fork`). |
+
 
 
 ## Arguments
@@ -50,7 +55,8 @@ Use `$ARGUMENTS` for the full argument string, or `$1`, `$2`, … `$9` for indiv
 ```md
 ---
 description: Search the codebase for a topic
-model: zen/claude-3-5-haiku
+model: zen/claude-haiku-4-5
+
 ---
 
 Search the codebase for: $ARGUMENTS
@@ -110,7 +116,8 @@ lightweight tasks regardless of what the session is currently set to.
 ```md
 ---
 description: Quick grep for a symbol
-model: zen/claude-3-5-haiku
+model: zen/claude-haiku-4-5
+
 ---
 
 Find all usages of $ARGUMENTS across the codebase using grep and glob.
@@ -122,8 +129,11 @@ Large models for deep analysis, small models for search and lookup.
 
 ## Precedence
 
-Custom commands shadow built-ins. If you create `.agents/commands/review.md`
-it will replace the built-in `/review` for that project.
+Custom commands shadow built-ins. If you create `.agents/commands/plan.md`
+it will replace the built-in `/plan` for that project. The global `/review`
+command (auto-created at `~/.agents/commands/review.md` on first run) works
+the same way — a local `.agents/commands/review.md` will override it.
+
 
 ## Listing commands
 

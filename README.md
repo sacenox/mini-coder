@@ -56,7 +56,8 @@ Need more firepower? I connect to **MCP servers** over HTTP or stdio — bolt on
 - **Built-in web search** — set `EXA_API_KEY` and I expose `webSearch` + `webContent` tools.
 - **Session memory** — conversations are saved in a local SQLite database. Resume where you left off with `-c` or pick a specific session with `-r <id>`.
 - **Shell integration** — prefix with `!` to run shell commands inline. Use `@` to reference files in your prompt (with Tab completion).
-- **Slash commands** — `/model` or `/models` to list/switch models, `/model effort <low|medium|high|xhigh|off>` for reasoning effort, `/plan` for read-only thinking mode, `/ralph` for autonomous looping, `/review` for a code review, `/undo` to roll back a turn, `/new` for a clean session, `/mcp list|add|remove` to manage MCP servers, and `/exit` (`/quit`, `/q`) to leave. See all with `/help`.
+- **Slash commands** — `/model` or `/models` to list/switch models, `/model effort <low|medium|high|xhigh|off>` for reasoning effort, `/plan` for read-only thinking mode, `/ralph` for autonomous looping, `/review` for a code review (global custom command, auto-created at `~/.agents/commands/review.md`), `/agent [name]` to set or clear an active primary agent, `/undo` to roll back a turn, `/new` for a clean session, `/mcp list|add|remove` to manage MCP servers, and `/exit` (`/quit`, `/q`) to leave. See all with `/help`.
+
 - **Custom commands** — drop a `.md` file in `.agents/commands/` and it becomes a `/command`. Claude-compatible `.claude/commands/` works too. Supports argument placeholders (`$ARGUMENTS`, `$1`…`$9`) and shell interpolation (`` !`cmd` ``). Global commands live in `~/.agents/commands/` and `~/.claude/commands/`. Custom commands take precedence over built-ins. → [docs/custom-commands.md](docs/custom-commands.md)
 - **Custom agents** — drop a `.md` file in `.agents/agents/` (or `~/.agents/agents/` globally) and reference it with `@agent-name` in your prompt. The agent runs in its own context window with a custom system prompt and optional model override. → [docs/custom-agents.md](docs/custom-agents.md)
 - **Skills** — place a `SKILL.md` in `.agents/skills/<name>/` and inject it into any prompt with `@skill-name`. Claude-compatible `.claude/skills/<name>/SKILL.md` works too. Skills are _never_ auto-loaded — always explicit. → [docs/skills.md](docs/skills.md)
@@ -90,7 +91,8 @@ I follow the [`.agents` convention](https://github.com/agentsmd/agents) — the 
 | `.agents/hooks/post-<tool>`      | Scripts run after supported built-in tool calls   |
 | `AGENTS.md`                      | Project context injected into every system prompt |
 | `CLAUDE.md`                      | Fallback project context if `AGENTS.md` is absent |
-| `~/.config/mini-coder/AGENTS.md` | Global fallback context                           |
+| `~/.agents/AGENTS.md`            | Global fallback context                           |
+
 
 The pecking order is straightforward: local beats global, and `.agents` beats `.claude` at the same scope. Worth noting: custom agents are mini-coder-only — `.claude` compatibility is for commands and skills only. → [docs/configs.md](docs/configs.md)
 

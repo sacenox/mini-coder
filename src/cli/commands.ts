@@ -356,6 +356,15 @@ async function handleCustomCommand(
 	const src = c.dim(`[${srcPath}]`);
 	writeln(`${PREFIX.info} ${label} ${src}`);
 	writeln();
+
+	// context: fork (Claude Code) or subtask: true (OpenCode) → isolated subagent.
+	// Default: run inline in the current conversation.
+	const fork = cmd.context === "fork" || cmd.subtask === true;
+
+	if (!fork) {
+		return { type: "inject-user-message", text: prompt };
+	}
+
 	try {
 		const output = await ctx.runSubagent(prompt, cmd.agent, cmd.model);
 		assertSubagentMerged(output);
