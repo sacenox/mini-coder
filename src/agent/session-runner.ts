@@ -131,9 +131,7 @@ export class SessionRunner {
 
 		const coreContent = this.planMode
 			? `${resolvedText}\n\n<system-message>PLAN MODE ACTIVE: Help the user gather context for the plan -- READ ONLY</system-message>`
-			: this.ralphMode
-				? `${resolvedText}\n\n<system-message>RALPH MODE: You are in an autonomous loop. Work iteratively to complete the task. Once the task is fully complete, output \`/ralph\` as your final message to end the loop.</system-message>`
-				: resolvedText;
+			: resolvedText;
 
 		const userMsg: CoreMessage =
 			allImages.length > 0

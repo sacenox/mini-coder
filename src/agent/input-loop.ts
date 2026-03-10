@@ -4,7 +4,11 @@ import { type InputResult, readline } from "../cli/input.ts";
 import { PREFIX } from "../cli/output.ts";
 import type { CoreMessage } from "../llm-api/turn.ts";
 import { saveMessages } from "../session/db/index.ts";
-import { hasRalphSignal, runShellPassthrough } from "./agent-helpers.ts";
+import {
+	buildRalphIterationPrompt,
+	hasRalphSignal,
+	runShellPassthrough,
+} from "./agent-helpers.ts";
 import type { AgentReporter } from "./reporter.ts";
 import type { SessionRunner } from "./session-runner.ts";
 
@@ -15,6 +19,8 @@ interface InputLoopOptions {
 	runner: SessionRunner;
 	renderStatusBar: () => Promise<void>;
 }
+
+const RALPH_MAX_ITERATIONS = 20;
 
 export async function runInputLoop(opts: InputLoopOptions): Promise<void> {
 	const { cwd, reporter, cmdCtx, runner, renderStatusBar } = opts;
@@ -70,29 +76,54 @@ export async function runInputLoop(opts: InputLoopOptions): Promise<void> {
 			}
 
 			case "submit": {
-				const RALPH_MAX_ITERATIONS = 20;
-				let ralphIteration = 1;
-				let lastText = await runner.processUserInput(input.text, input.images);
+				if (!runner.ralphMode) {
+					await runner.processUserInput(input.text, input.images);
+					continue;
+				}
 
-				if (runner.ralphMode) {
-					const goal = input.text;
-					const goalImages = input.images;
-					while (runner.ralphMode) {
-						if (hasRalphSignal(lastText)) {
-							runner.ralphMode = false;
-							reporter.writeText(`${PREFIX.info} ${c.dim("ralph mode off")}`);
-							break;
-						}
-						if (ralphIteration >= RALPH_MAX_ITERATIONS) {
-							reporter.writeText(
-								`${PREFIX.info} ${c.yellow("ralph")} ${c.dim("— max iterations reached, stopping")}`,
-							);
-							runner.ralphMode = false;
-							break;
-						}
-						ralphIteration++;
-						cmdCtx.startNewSession();
-						lastText = await runner.processUserInput(goal, goalImages);
+				// True ralph loop: each iteration is a fresh subprocess.
+				// State persists via the filesystem and git history — NOT the context window.
+				if (input.images && input.images.length > 0) {
+					reporter.writeText(
+						`${PREFIX.info} ${c.yellow("ralph")} ${c.dim("— image attachments are not supported and will be ignored")}`,
+					);
+				}
+				const ralphGoal = buildRalphIterationPrompt(input.text);
+
+				for (
+					let iteration = 1;
+					iteration <= RALPH_MAX_ITERATIONS;
+					iteration++
+				) {
+					reporter.writeText(
+						`${PREFIX.info} ${c.magenta("ralph")} ${c.dim(`— iteration ${String(iteration)}`)}`,
+					);
+
+					let result: string;
+					try {
+						const output = await cmdCtx.runSubagent(ralphGoal);
+						result = output.result;
+					} catch (err) {
+						reporter.writeText(
+							`${PREFIX.info} ${c.yellow("ralph")} ${c.dim(`— iteration ${String(iteration)} failed: ${String(err)}`)}`,
+						);
+						runner.ralphMode = false;
+						break;
+					}
+
+					if (hasRalphSignal(result)) {
+						reporter.writeText(
+							`${PREFIX.info} ${c.dim("ralph — task complete")}`,
+						);
+						runner.ralphMode = false;
+						break;
+					}
+
+					if (iteration === RALPH_MAX_ITERATIONS) {
+						reporter.writeText(
+							`${PREFIX.info} ${c.yellow("ralph")} ${c.dim("— max iterations reached, stopping")}`,
+						);
+						runner.ralphMode = false;
 					}
 				}
 				continue;

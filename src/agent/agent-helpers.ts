@@ -56,6 +56,10 @@ export function hasRalphSignal(text: string): boolean {
 	return /\/ralph\b/.test(text);
 }
 
+export function buildRalphIterationPrompt(goal: string): string {
+	return `${goal}\n\n<system-message>RALPH MODE: Work autonomously toward the goal. Commit your changes to git to persist progress. When the task is fully complete, output \`/ralph\` as your final message. If the task is not yet complete, do NOT output \`/ralph\`.</system-message>`;
+}
+
 export async function resolveFileRefs(
 	text: string,
 	cwd: string,
