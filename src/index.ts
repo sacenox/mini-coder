@@ -23,9 +23,11 @@ import {
 import { autoDiscoverModel } from "./llm-api/providers.ts";
 
 import {
+	getPreferredContextPruningMode,
 	getPreferredModel,
 	getPreferredShowReasoning,
 	getPreferredThinkingEffort,
+	getPreferredToolResultPayloadCapBytes,
 } from "./session/db/index.ts";
 import { getMostRecentSession, printSessionList } from "./session/manager.ts";
 import {
@@ -299,6 +301,9 @@ async function main(): Promise<void> {
 				cwd: runCwd,
 				initialThinkingEffort: getPreferredThinkingEffort(),
 				initialShowReasoning: getPreferredShowReasoning(),
+				initialPruningMode: getPreferredContextPruningMode(),
+				initialToolResultPayloadCapBytes:
+					getPreferredToolResultPayloadCapBytes(),
 				reporter: new HeadlessReporter(),
 				initialPrompt: args.prompt ?? "",
 				headless: true,
@@ -336,6 +341,8 @@ async function main(): Promise<void> {
 			cwd: args.cwd,
 			initialThinkingEffort: getPreferredThinkingEffort(),
 			initialShowReasoning: getPreferredShowReasoning(),
+			initialPruningMode: getPreferredContextPruningMode(),
+			initialToolResultPayloadCapBytes: getPreferredToolResultPayloadCapBytes(),
 			reporter: new CliReporter(),
 		};
 		if (sessionId) agentOpts.sessionId = sessionId;

@@ -3,15 +3,18 @@ import { type AgentConfig, loadAgents } from "../cli/agents.ts";
 import type { CommandContext } from "../cli/commands.ts";
 import { tildePath } from "../cli/output.ts";
 import { getContextWindow, type ThinkingEffort } from "../llm-api/providers.ts";
+import type { ContextPruningMode } from "../llm-api/turn.ts";
 import type { ToolDef } from "../llm-api/types.ts";
 import { connectMcpServer } from "../mcp/client.ts";
 import {
 	getPreferredActiveAgent,
 	listMcpServers,
 	setPreferredActiveAgent,
+	setPreferredContextPruningMode,
 	setPreferredModel,
 	setPreferredShowReasoning,
 	setPreferredThinkingEffort,
+	setPreferredToolResultPayloadCapBytes,
 } from "../session/db/index.ts";
 import type { SubagentSummary } from "../tools/subagent.ts";
 import { getGitBranch } from "./agent-helpers.ts";
@@ -27,6 +30,8 @@ interface AgentOptions {
 	cwd: string;
 	initialThinkingEffort: ThinkingEffort | null;
 	initialShowReasoning: boolean;
+	initialPruningMode: ContextPruningMode;
+	initialToolResultPayloadCapBytes: number;
 	sessionId?: string;
 	initialPrompt?: string;
 	reporter: AgentReporter;
@@ -99,6 +104,8 @@ export async function runAgent(
 		initialModel: currentModel,
 		initialThinkingEffort: opts.initialThinkingEffort,
 		initialShowReasoning: opts.initialShowReasoning,
+		initialPruningMode: opts.initialPruningMode,
+		initialToolResultPayloadCapBytes: opts.initialToolResultPayloadCapBytes,
 		sessionId: opts.sessionId,
 		extraSystemPrompt: opts.agentSystemPrompt,
 		isSubagent: opts.headless,
@@ -142,6 +149,20 @@ export async function runAgent(
 		setShowReasoning: (show) => {
 			runner.showReasoning = show;
 			setPreferredShowReasoning(show);
+		},
+		get pruningMode() {
+			return runner.pruningMode;
+		},
+		setPruningMode: (mode) => {
+			runner.pruningMode = mode;
+			setPreferredContextPruningMode(mode);
+		},
+		get toolResultPayloadCapBytes() {
+			return runner.toolResultPayloadCapBytes;
+		},
+		setToolResultPayloadCapBytes: (bytes) => {
+			runner.toolResultPayloadCapBytes = Math.max(0, bytes);
+			setPreferredToolResultPayloadCapBytes(runner.toolResultPayloadCapBytes);
 		},
 		get planMode() {
 			return runner.planMode;

@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import type { CoreMessage } from "./turn.ts";
 import {
+	applyContextPruning,
+	compactToolResultPayloads,
+	getMessageDiagnostics,
 	getReasoningDeltaFromStreamChunk,
 	isOpenAIGPT,
 	sanitizeGeminiToolMessages,
@@ -220,5 +223,92 @@ describe("sanitizeGeminiToolMessages", () => {
 		expect(sanitizeGeminiToolMessages(messages, "openai/gpt-4o", true)).toEqual(
 			messages,
 		);
+	});
+});
+
+describe("applyContextPruning", () => {
+	test("balanced mode prunes stale tool history", () => {
+		const messages: CoreMessage[] = [
+			{ role: "user", content: "u1" },
+			{
+				role: "assistant",
+				content: [
+					{ type: "tool-call", toolCallId: "a", toolName: "read", input: {} },
+				],
+			} as unknown as CoreMessage,
+			{
+				role: "tool",
+				content: [
+					{
+						type: "tool-result",
+						toolCallId: "a",
+						toolName: "read",
+						output: { text: "payload" },
+					},
+				],
+			} as unknown as CoreMessage,
+			{ role: "user", content: "u2" },
+			{ role: "assistant", content: "a2" },
+			{ role: "user", content: "u3" },
+			{ role: "assistant", content: "a3" },
+			{ role: "user", content: "u4" },
+		];
+
+		const pruned = applyContextPruning(messages, "balanced");
+		expect(pruned.length).toBeLessThan(messages.length);
+		expect(pruned[pruned.length - 1]?.role).toBe("user");
+	});
+});
+
+describe("getMessageDiagnostics", () => {
+	test("aggregates role and tool-result byte stats", () => {
+		const messages: CoreMessage[] = [
+			{ role: "user", content: "hello" },
+			{
+				role: "tool",
+				content: [
+					{
+						type: "tool-result",
+						toolCallId: "1",
+						toolName: "read",
+						output: { value: "abc" },
+					},
+				],
+			} as unknown as CoreMessage,
+		];
+
+		const diagnostics = getMessageDiagnostics(messages);
+		expect(diagnostics.messageCount).toBe(2);
+		expect(diagnostics.totalBytes).toBeGreaterThan(0);
+		expect(diagnostics.roleBreakdown.user?.count).toBe(1);
+		expect(diagnostics.toolResults.count).toBe(1);
+		expect(diagnostics.toolResults.topContributors[0]?.toolName).toBe("read");
+	});
+});
+
+describe("compactToolResultPayloads", () => {
+	test("compacts oversized tool payloads with truncation metadata", () => {
+		const largePayload = "x".repeat(10_000);
+		const messages: CoreMessage[] = [
+			{
+				role: "tool",
+				content: [
+					{
+						type: "tool-result",
+						toolCallId: "1",
+						toolName: "read",
+						output: { blob: largePayload },
+					},
+				],
+			} as unknown as CoreMessage,
+		];
+
+		const compacted = compactToolResultPayloads(messages, 1024);
+		const part = (compacted[0] as { content: Array<Record<string, unknown>> })
+			.content[0];
+		expect(part?.output).toMatchObject({
+			truncated: true,
+			strategy: "head-tail",
+		});
 	});
 });

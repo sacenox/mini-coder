@@ -1,6 +1,7 @@
 import * as c from "yoctocolors";
 import type { ThinkingEffort } from "../llm-api/providers.ts";
 import { fetchAvailableModels } from "../llm-api/providers.ts";
+import type { ContextPruningMode } from "../llm-api/turn.ts";
 import {
 	deleteMcpServer,
 	listMcpServers,
@@ -30,6 +31,10 @@ export interface CommandContext {
 	setThinkingEffort: (effort: ThinkingEffort | null) => void;
 	showReasoning: boolean;
 	setShowReasoning: (show: boolean) => void;
+	pruningMode: ContextPruningMode;
+	setPruningMode: (mode: ContextPruningMode) => void;
+	toolResultPayloadCapBytes: number;
+	setToolResultPayloadCapBytes: (bytes: number) => void;
 	planMode: boolean;
 	setPlanMode: (enabled: boolean) => void;
 	ralphMode: boolean;
@@ -217,6 +222,63 @@ function handleReasoning(ctx: CommandContext, args: string): void {
 		return;
 	}
 	writeln(`${PREFIX.error} usage: /reasoning <on|off>`);
+}
+
+function handleContext(ctx: CommandContext, args: string): void {
+	const [sub, value] = args.trim().split(/\s+/, 2);
+	if (!sub) {
+		const capText =
+			ctx.toolResultPayloadCapBytes <= 0
+				? "off"
+				: `${Math.round(ctx.toolResultPayloadCapBytes / 1024)}KB (${ctx.toolResultPayloadCapBytes} bytes)`;
+		writeln(
+			`${PREFIX.info} pruning=${c.cyan(ctx.pruningMode)}  tool-result-cap=${c.cyan(capText)}`,
+		);
+		writeln(c.dim("  usage: /context prune <off|balanced|aggressive>"));
+		writeln(c.dim("         /context cap <off|bytes|kb>"));
+		return;
+	}
+
+	if (sub === "prune") {
+		if (value === "off" || value === "balanced" || value === "aggressive") {
+			ctx.setPruningMode(value);
+			writeln(`${PREFIX.success} context pruning → ${c.cyan(value)}`);
+			return;
+		}
+		writeln(`${PREFIX.error} usage: /context prune <off|balanced|aggressive>`);
+		return;
+	}
+
+	if (sub === "cap") {
+		if (!value) {
+			writeln(`${PREFIX.error} usage: /context cap <off|bytes|kb>`);
+			return;
+		}
+		if (value === "off") {
+			ctx.setToolResultPayloadCapBytes(0);
+			writeln(`${PREFIX.success} tool-result payload cap disabled`);
+			return;
+		}
+		const capMatch = value.match(/^(\d+)(kb)?$/i);
+		if (!capMatch) {
+			writeln(`${PREFIX.error} invalid cap: ${c.cyan(value)}`);
+			return;
+		}
+		const base = Number.parseInt(capMatch[1] ?? "", 10);
+		const capBytes =
+			(capMatch[2] ?? "").toLowerCase() === "kb" ? base * 1024 : base;
+		if (!Number.isFinite(capBytes) || capBytes < 0) {
+			writeln(`${PREFIX.error} invalid cap: ${c.cyan(value)}`);
+			return;
+		}
+		ctx.setToolResultPayloadCapBytes(capBytes);
+		writeln(
+			`${PREFIX.success} tool-result payload cap → ${c.cyan(`${capBytes} bytes`)}`,
+		);
+		return;
+	}
+
+	writeln(`${PREFIX.error} usage: /context <prune|cap> ...`);
 }
 
 function handlePlan(ctx: CommandContext): void {
@@ -478,6 +540,7 @@ function handleHelp(
 		["/model [id]", "list or switch models (fetches live list)"],
 		["/undo", "remove the last turn from conversation history"],
 		["/reasoning [on|off]", "toggle display of model reasoning output"],
+		["/context [prune|cap]", "configure context pruning and tool-result caps"],
 		["/plan", "toggle plan mode (read-only tools + MCP)"],
 		[
 			"/ralph",
@@ -584,6 +647,10 @@ export async function handleCommand(
 
 		case "reasoning":
 			handleReasoning(ctx, args);
+			return { type: "handled" };
+
+		case "context":
+			handleContext(ctx, args);
 			return { type: "handled" };
 
 		case "plan":

@@ -3,7 +3,7 @@ import type { ImageAttachment } from "../cli/image-types.ts";
 import { watchForCancel } from "../cli/input.ts";
 import type { ThinkingEffort } from "../llm-api/providers.ts";
 import { resolveModel } from "../llm-api/providers.ts";
-import type { CoreMessage } from "../llm-api/turn.ts";
+import type { ContextPruningMode, CoreMessage } from "../llm-api/turn.ts";
 import { runTurn } from "../llm-api/turn.ts";
 import type { ToolDef } from "../llm-api/types.ts";
 import {
@@ -35,6 +35,8 @@ interface SessionRunnerOptions {
 	initialModel: string;
 	initialThinkingEffort: ThinkingEffort | null;
 	initialShowReasoning: boolean;
+	initialPruningMode: ContextPruningMode;
+	initialToolResultPayloadCapBytes: number;
 	sessionId?: string | undefined;
 	extraSystemPrompt?: string | undefined;
 	isSubagent?: boolean | undefined;
@@ -49,6 +51,8 @@ export class SessionRunner {
 	public currentModel: string;
 	public currentThinkingEffort: ThinkingEffort | null;
 	public showReasoning: boolean;
+	public pruningMode: ContextPruningMode;
+	public toolResultPayloadCapBytes: number;
 
 	public session!: ActiveSession;
 	public coreHistory!: CoreMessage[];
@@ -73,6 +77,8 @@ export class SessionRunner {
 		this.currentModel = opts.initialModel;
 		this.currentThinkingEffort = opts.initialThinkingEffort;
 		this.showReasoning = opts.initialShowReasoning;
+		this.pruningMode = opts.initialPruningMode;
+		this.toolResultPayloadCapBytes = opts.initialToolResultPayloadCapBytes;
 		this.extraSystemPrompt = opts.extraSystemPrompt;
 		this.isSubagent = opts.isSubagent;
 		this.killSubprocesses = opts.killSubprocesses;
@@ -177,6 +183,8 @@ export class SessionRunner {
 					: this.tools,
 				systemPrompt,
 				signal: abortController.signal,
+				pruningMode: this.pruningMode,
+				toolResultPayloadCapBytes: this.toolResultPayloadCapBytes,
 				...(this.currentThinkingEffort
 					? { thinkingEffort: this.currentThinkingEffort }
 					: {}),

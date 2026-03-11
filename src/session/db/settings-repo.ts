@@ -1,3 +1,5 @@
+import type { ThinkingEffort } from "../../llm-api/providers.ts";
+import type { ContextPruningMode } from "../../llm-api/turn.ts";
 import { getDb } from "./connection.ts";
 
 function getSetting(key: string): string | null {
@@ -25,8 +27,6 @@ export function setPreferredModel(model: string): void {
 	setSetting("preferred_model", model);
 }
 
-import type { ThinkingEffort } from "../../llm-api/providers.ts";
-
 export function getPreferredThinkingEffort(): ThinkingEffort | null {
 	const v = getSetting("preferred_thinking_effort");
 	if (v === "low" || v === "medium" || v === "high" || v === "xhigh") return v;
@@ -51,6 +51,31 @@ export function getPreferredShowReasoning(): boolean {
 
 export function setPreferredShowReasoning(show: boolean): void {
 	setSetting("preferred_show_reasoning", show ? "true" : "false");
+}
+
+export function getPreferredContextPruningMode(): ContextPruningMode {
+	const v = getSetting("preferred_context_pruning_mode");
+	if (v === "off" || v === "balanced" || v === "aggressive") return v;
+	return "balanced";
+}
+
+export function setPreferredContextPruningMode(mode: ContextPruningMode): void {
+	setSetting("preferred_context_pruning_mode", mode);
+}
+
+export function getPreferredToolResultPayloadCapBytes(): number {
+	const v = getSetting("preferred_tool_result_payload_cap_bytes");
+	if (v === null) return 16 * 1024;
+	const parsed = Number.parseInt(v, 10);
+	if (!Number.isFinite(parsed) || parsed < 0) return 16 * 1024;
+	return parsed;
+}
+
+export function setPreferredToolResultPayloadCapBytes(bytes: number): void {
+	setSetting(
+		"preferred_tool_result_payload_cap_bytes",
+		String(Math.max(0, bytes)),
+	);
 }
 
 export function getPreferredActiveAgent(): string | null {
