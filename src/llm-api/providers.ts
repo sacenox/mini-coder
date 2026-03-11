@@ -200,11 +200,26 @@ function clampEffort(
 	return ORDER[Math.min(i, m)] as ThinkingEffort;
 }
 
+const GEMINI_TOOL_CALL_AFFECTED_MODELS = /^gemini-(2\.5|3)/;
+
+export function shouldDisableGeminiThinkingForTools(
+	modelString: string,
+): boolean {
+	const { provider, modelId } = parseModelString(modelString);
+	if (provider !== "google" && provider !== "zen") return false;
+	return GEMINI_TOOL_CALL_AFFECTED_MODELS.test(modelId);
+}
+
 export function getThinkingProviderOptions(
 	modelString: string,
 	effort: ThinkingEffort,
+	hasTools = false,
 ): Record<string, unknown> | null {
 	if (!supportsThinking(modelString)) return null;
+
+	if (hasTools && shouldDisableGeminiThinkingForTools(modelString)) {
+		return null;
+	}
 
 	const { provider, modelId } = parseModelString(modelString);
 
@@ -218,7 +233,6 @@ export function getThinkingProviderOptions(
 			/^claude-3-7/.test(modelId) ||
 			/^claude-sonnet-4/.test(modelId) ||
 			/^claude-opus-4/.test(modelId);
-
 		if (isAdaptive) {
 			// Adaptive: effort string ("low"|"medium"|"high"|"max")
 			// xhigh maps to "max" for Opus; clamp to "high" for others.

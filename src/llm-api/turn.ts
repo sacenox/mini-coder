@@ -4,6 +4,7 @@ import { logApiEvent } from "./api-log.ts";
 import {
 	getThinkingProviderOptions,
 	parseModelString,
+	shouldDisableGeminiThinkingForTools,
 	type ThinkingEffort,
 } from "./providers.ts";
 import type { ToolDef, TurnEvent } from "./types.ts";
@@ -46,6 +47,105 @@ function toCoreTool(def: ToolDef): ReturnType<typeof dynamicTool> {
 			}
 		},
 	});
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return value !== null && typeof value === "object";
+}
+
+function normalizeProviderOptions<T>(part: T): T {
+	if (!isRecord(part)) return part;
+	if (
+		part.providerOptions !== undefined ||
+		part.providerMetadata === undefined
+	) {
+		return part;
+	}
+	return {
+		...part,
+		providerOptions: part.providerMetadata,
+	} as T;
+}
+
+function normalizeMessageProviderOptions(message: CoreMessage): CoreMessage {
+	if (!Array.isArray(message.content)) return message;
+	return {
+		...message,
+		content: message.content.map((part) =>
+			normalizeProviderOptions(part),
+		) as CoreMessage["content"],
+	} as CoreMessage;
+}
+
+function getGeminiThoughtSignature(part: unknown): string | null {
+	if (!isRecord(part)) return null;
+	const providerOptions = isRecord(part.providerOptions)
+		? part.providerOptions
+		: isRecord(part.providerMetadata)
+			? part.providerMetadata
+			: null;
+	if (!providerOptions) return null;
+
+	for (const provider of ["google", "vertex"] as const) {
+		const metadata = providerOptions[provider];
+		if (!isRecord(metadata)) continue;
+		const signature = metadata.thoughtSignature;
+		if (typeof signature === "string" && signature.length > 0) {
+			return signature;
+		}
+	}
+
+	return null;
+}
+
+function isToolCallPart(part: unknown): part is Record<string, unknown> {
+	return isRecord(part) && part.type === "tool-call";
+}
+
+function assistantMessageHasUnsignedGeminiToolCall(
+	message: CoreMessage,
+): boolean {
+	if (message.role !== "assistant" || !Array.isArray(message.content)) {
+		return false;
+	}
+
+	for (const part of message.content) {
+		if (!isToolCallPart(part)) continue;
+		if (getGeminiThoughtSignature(part) === null) return true;
+	}
+
+	return false;
+}
+
+export function sanitizeGeminiToolMessages(
+	messages: CoreMessage[],
+	modelString: string,
+	hasTools: boolean,
+): CoreMessage[] {
+	if (!hasTools || !shouldDisableGeminiThinkingForTools(modelString)) {
+		return messages;
+	}
+
+	let sanitized = messages.map((message) =>
+		normalizeMessageProviderOptions(message),
+	);
+
+	while (true) {
+		const brokenIndex = sanitized.findIndex((message) =>
+			assistantMessageHasUnsignedGeminiToolCall(message),
+		);
+		if (brokenIndex === -1) return sanitized;
+
+		const nextUserIndex = sanitized.findIndex(
+			(message, index) => index > brokenIndex && message.role === "user",
+		);
+		if (nextUserIndex !== -1) {
+			sanitized = sanitized.slice(nextUserIndex);
+			continue;
+		}
+
+		return sanitized.slice(0, brokenIndex);
+	}
 }
 
 // ─── Main turn function ───────────────────────────────────────────────────────
@@ -112,8 +212,21 @@ export async function* runTurn(options: {
 
 		logApiEvent("turn start", { modelString, messageCount: messages.length });
 
+		const toolCount = Object.keys(toolSet).length;
+		const turnMessages = sanitizeGeminiToolMessages(
+			messages,
+			modelString,
+			toolCount > 0,
+		);
+		if (turnMessages.length !== messages.length) {
+			logApiEvent("gemini tool history truncated", {
+				modelString,
+				originalMessages: messages.length,
+				sanitizedMessages: turnMessages.length,
+			});
+		}
 		const thinkingOpts = thinkingEffort
-			? getThinkingProviderOptions(modelString, thinkingEffort)
+			? getThinkingProviderOptions(modelString, thinkingEffort, toolCount > 0)
 			: null;
 
 		const mergedProviderOptions = {
@@ -134,7 +247,7 @@ export async function* runTurn(options: {
 
 		const streamOpts: StreamTextOptions = {
 			model,
-			messages,
+			messages: turnMessages,
 			tools: toolSet,
 			stopWhen: stepCountIs(MAX_STEPS),
 			onStepFinish: (step: StepResult<ToolSet>) => {
