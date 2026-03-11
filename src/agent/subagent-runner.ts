@@ -30,6 +30,15 @@ function getMcCommand(): string[] {
 // without an in-process depth parameter. Generous enough for real use-cases.
 const MAX_SUBAGENT_DEPTH = 10;
 
+function formatSubagentDiagnostics(stdout: string, stderr: string): string {
+	const lines = [...stderr.split("\n"), ...stdout.split("\n")]
+		.map((line) => line.trim())
+		.filter(Boolean);
+	if (lines.length === 0) return "";
+	const tail = lines.slice(-6).join(" | ");
+	return ` (diagnostics: ${tail.slice(0, 300)})`;
+}
+
 export function createSubagentRunner(
 	cwd: string,
 	getCurrentModel: () => string,
@@ -75,21 +84,26 @@ export function createSubagentRunner(
 				...process.env,
 				MC_SUBAGENT_DEPTH: String(subagentDepth + 1),
 			},
-			stdio: ["ignore", "inherit", "inherit", "pipe"],
+			// Keep subagent stdout/stderr isolated so transient tool errors or warnings
+			// don't leak into the parent UI. We only surface these streams on failure.
+			stdio: ["ignore", "pipe", "pipe", "pipe"],
 		});
 
 		activeProcs.add(proc);
 
 		try {
-			const [text] = await Promise.all([
+			const [text, stdout, stderr] = await Promise.all([
 				Bun.file(proc.stdio[3] as number).text(),
+				new Response(proc.stdout).text(),
+				new Response(proc.stderr).text(),
 				proc.exited,
 			]);
+			const diagnostics = formatSubagentDiagnostics(stdout, stderr);
 
 			const trimmed = text.trim();
 			if (!trimmed) {
 				throw new Error(
-					`Subagent subprocess produced no output (exit code ${String(proc.exitCode)})`,
+					`Subagent subprocess produced no output (exit code ${String(proc.exitCode)})${diagnostics}`,
 				);
 			}
 
@@ -98,16 +112,16 @@ export function createSubagentRunner(
 				parsed = JSON.parse(trimmed) as SubagentSummary & { error?: string };
 			} catch {
 				throw new Error(
-					`Subagent subprocess wrote non-JSON output (exit code ${String(proc.exitCode)}): ${trimmed.slice(0, 200)}`,
+					`Subagent subprocess wrote non-JSON output (exit code ${String(proc.exitCode)}): ${trimmed.slice(0, 200)}${diagnostics}`,
 				);
 			}
 
 			if (parsed.error) {
-				throw new Error(`Subagent failed: ${parsed.error}`);
+				throw new Error(`Subagent failed: ${parsed.error}${diagnostics}`);
 			}
 			if (proc.exitCode !== 0) {
 				throw new Error(
-					`Subagent process exited with code ${String(proc.exitCode)}`,
+					`Subagent process exited with code ${String(proc.exitCode)}${diagnostics}`,
 				);
 			}
 
