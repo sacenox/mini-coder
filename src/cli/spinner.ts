@@ -1,6 +1,6 @@
 import * as c from "yoctocolors";
 
-const FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+export const SPINNER_FRAMES = ["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"];
 
 export class Spinner {
 	private frame = 0;
@@ -27,7 +27,7 @@ export class Spinner {
 	}
 
 	private _tick(): void {
-		const f = FRAMES[this.frame++ % FRAMES.length] ?? "⠋";
+		const f = SPINNER_FRAMES[this.frame++ % SPINNER_FRAMES.length] ?? "⣾";
 		const label = this.label ? c.dim(` ${this.label}`) : "";
 		process.stderr.write(`\r${c.dim(f)}${label}`);
 	}
