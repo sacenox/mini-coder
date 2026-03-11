@@ -360,6 +360,58 @@ describe("stripGPTCommentaryFromHistory", () => {
 			messages,
 		);
 	});
+
+	const commentaryAssistantMessage = {
+		role: "assistant",
+		content: [
+			{
+				type: "text",
+				text: "to=functions.shell json{}",
+				providerOptions: { openai: { phase: "commentary" } },
+			},
+		],
+	} as unknown as CoreMessage;
+
+	function expectOnlyUserMessages(result: CoreMessage[]) {
+		expect(result).toHaveLength(2);
+		expect(result[0]).toEqual({ role: "user", content: "go" });
+		expect(result[1]).toEqual({ role: "user", content: "next" });
+	}
+
+	test("drops assistant message whose entire content is commentary", () => {
+		const messages: CoreMessage[] = [
+			{ role: "user", content: "go" },
+			commentaryAssistantMessage,
+			{ role: "user", content: "next" },
+		];
+
+		const result = stripGPTCommentaryFromHistory(messages, "openai/gpt-5.4");
+		expectOnlyUserMessages(result);
+	});
+
+	test("drops commentary-only assistant message and its orphaned tool-result message", () => {
+		const orphanedToolResult = {
+			role: "tool",
+			content: [
+				{
+					type: "tool-result",
+					toolCallId: "t1",
+					toolName: "shell",
+					output: { text: "result" },
+				},
+			],
+		} as unknown as CoreMessage;
+
+		const messages: CoreMessage[] = [
+			{ role: "user", content: "go" },
+			commentaryAssistantMessage,
+			orphanedToolResult,
+			{ role: "user", content: "next" },
+		];
+
+		const result = stripGPTCommentaryFromHistory(messages, "openai/gpt-5.4");
+		expectOnlyUserMessages(result);
+	});
 });
 
 describe("applyContextPruning", () => {

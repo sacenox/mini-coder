@@ -422,17 +422,44 @@ export function stripGPTCommentaryFromHistory(
 	if (!isOpenAIGPT(modelString)) return messages;
 
 	let mutated = false;
-	const result = messages.map((message) => {
-		if (message.role !== "assistant" || !Array.isArray(message.content)) {
-			return message;
+	const result: CoreMessage[] = [];
+	let skipToolResults = false;
+
+	for (const message of messages) {
+		// If the previous assistant message was fully dropped, skip any
+		// immediately-following tool-result messages that would be orphaned.
+		if (skipToolResults) {
+			if (message.role === "tool") {
+				mutated = true;
+				continue;
+			}
+			skipToolResults = false;
 		}
+
+		if (message.role !== "assistant" || !Array.isArray(message.content)) {
+			result.push(message);
+			continue;
+		}
+
 		const filtered = message.content.filter(
 			(part) => !isCommentaryTextPart(part),
 		);
-		if (filtered.length === message.content.length) return message;
-		mutated = true;
-		return { ...message, content: filtered } as CoreMessage;
-	});
+
+		if (filtered.length === message.content.length) {
+			// Nothing stripped — keep as-is.
+			result.push(message);
+		} else if (filtered.length === 0) {
+			// All parts were commentary: drop the entire message and any
+			// tool-result messages that immediately follow it.
+			mutated = true;
+			skipToolResults = true;
+		} else {
+			// Some parts stripped but message still has content — keep it.
+			mutated = true;
+			result.push({ ...message, content: filtered } as CoreMessage);
+		}
+	}
+
 	return mutated ? result : messages;
 }
 
