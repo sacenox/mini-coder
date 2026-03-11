@@ -1,52 +1,52 @@
 # TODO
 
-## Custom subagents are broken:
+## Worktrees feature is not working as expected.
 
-They are being called with the wrong arguments, or something is going wrong in the call, see the errors bellow:
+Currently it completly breaks the subagent tool as the changes are discard when the subprocess exits. They are never consolidated with the current agents filesystem, essentially making subagents no-op always.
 
-Claude attempt:
+Our worktrees implementation never worked correctly, and I think we need to remove it for now. Let's take the opportunity to simplify and refactor for better code readability and organization of the code.
 
-```
-◆ Now I have all the context I need. Handing off to the writer! 🖊️
-  ⇢ [toolu_] — Write an exciting blog post draft announcing that mini-co…
-⣟ subagenterror: Script not found "zen/claude-sonnet-4-6"
-    ✖ Subagent subprocess produced no output (exit code 1)
-```
+---
 
-Kimi 2.5 attempts:
+## ESC cleared the whole last turn from memory
 
-```
- I have a good understanding of the project now. Let me delegate to the writer agent to create an exciting blog post about reaching v1 and stable release. I should provide the writer with context about what features we've implemented.
-  ⇢ [functi] — Write an exciting blog post draft announcing that mini-co…
-◆ error: File not found "zen/kimi-k2.5"
-    ✖ Subagent subprocess produced no output (exit code 1)
+See the output bellow, once interrupted and prompted about it's actions, the assitant was not aware of any previous input from the user. Notice the context numbers also reset to 0%.
 
-  The subagent didn't produce output. Let me try again with a more direct prompt and see if there's an issue with the writer agent.
-◆  Let me check the writer agent configuration and try again:
-  ← read .agents/agents/writer.md
-    · .agents/agents/writer.md  44 lines
-◆
-  The writer agent looks fine. The issue might be with how the subagent is being invoked or there's some error. Let me try running the writer subagent again with a simpler prompt.
-◆
-  ⇢ [functi] — Write an exciting blog post draft about mini-coder reachi…
-◆ error: File not found "zen/kimi-k2.5"
-    ✖ Subagent subprocess produced no output (exit code 1)
-
-  The subagent is failing silently. Let me try to debug this by running the subagent command manually to see what's happening.
-◆   Let me debug the subagent issue:
-  $ cd ~/src/mini-coder && mc @writer "Write a 100 word blog post about c…
-    timeout
- The user is asking me to delegate to the "writer" subagent to write a 100-word blog post about coding agents. I need to use the `subagent` tool with the `agentName` set to "writer" and provide an appropriate prompt.
-    │   ⇢ [functi] — Write a 100 word blog post about coding agents. Informal,…
-◆ error: File not found "zen/kimi-k2.5"
-    │     ✖ Subagent subprocess produced no output (exit code 1)
-```
+It should have seen it's previous work and have context of the conversation.
 
 ```
-◆  Now let me try using the subagent correctly:
-  ⇢ [functi] — Write an exciting blog post draft about mini-coder reachi…
-◆ error: File not found "zen/kimi-k2.5"
-    ✖ Subagent subprocess produced no output (exit code 1)
+⣻ replace    ✔ hook post-replace
+    ✔ replaced src/tools/worktree.test.ts
+    --- src/tools/worktree.test.ts
+    +++ src/tools/worktree.test.ts
+    @@ -167,12 +167,13 @@
+
+                writeFileSync(join(wtPath1, "README.md"), "branch one\n");
+                git(wtPath1, ["commit", "-am", "branch one"]);
+    -
+    -           writeFileSync(join(wtPath2, "README.md"), "branch two\n");
+    -           git(wtPath2, ["commit", "-am", "branch two"]);
+
+    -           const firstMerge = await mergeWorktree(repoDir, branch1);
+    -           expect(firstMerge.success).toBe(false);
+    +           // Start a manual merge to create a merge in progress state
+    +           try {
+    +                   git(repoDir, ["merge", branch1]);
+    +           } catch {
+    +                   // This is expected to fail with conflicts
+    +           }
+
+                try {
+                        await mergeWorktree(repoDir, branch2);
+gemini-3.1-pro  ✦ high  🤔  mmmgnqvc  ~/src/mini-coder  ⎇ main  ctx 40.3k/1048.6k 4%  ↑ 464.1k ↓ 11.7k
+▶
+gemini-3.1-pro  ✦ high  🤔  mmmgnqvc  ~/src/mini-coder  ⎇ main  ctx 40.3k/1048.6k 4%  ↑ 464.1k ↓ 11.7k
+▶ What are you doing? Did you read what I told you?
+◆ I am ready to assist you. I have read the guidelines and understand my role as mini-coder, a small and fast CLI coding agent.
+
+I'm prepared to use my tools to search, read, edit code, run commands, and execute tests as needed to implement solutions autonomously. What would you like me to work on?
+gemini-3.1-pro  ✦ high  🤔  mmmgnqvc  ~/src/mini-coder  ⎇ main  ctx 1.6k/1048.6k 0%  ↑ 465.8k ↓ 11.9k
+▶
 ```
 
 ---
