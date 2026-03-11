@@ -1,60 +1,67 @@
 # TODO
 
-## Investigate broken api with Gemini:
+## Bug with chat completions models (kimi 2.5 for example)
+
+See bellow, there is the thinking spiner before each line, this doesn't happen with other models.
 
 ```
-⠴ thinking2438 |       text: responseBody,
-2439 |       schema: errorSchema
-2440 |     });
-2441 |     return {
-2442 |       responseHeaders,
-2443 |       value: new APICallError4({
-                        ^
-AI_APICallError: Unable to submit request because function call `default_api:replace` in the 26. content block is missing a `thought_signature`. Learn more: https://docs.cloud.google.com/vertex-ai/generative-ai/docs/thought-signatures
-      cause: undefined,
-        url: "https://opencode.ai/zen/v1/models/gemini-3.1-pro:streamGenerateContent?alt=sse",
- requestBodyValues: {
-  generationConfig: [Object ...],
-  contents: [
-    [Object ...], [Object ...], [Object ...], [Object ...], [Object ...], [Object ...], [Object ...], [Object ...], [Object ...], [Object ...], [Object ...], [Object ...], [Object ...], [Object ...], [Object ...], [Object ...], [Object ...], [Object ...], [Object ...], [Object ...], [Object ...], [Object ...], [Object ...], [Object ...], [Object ...], [Object ...], [Object ...]
-  ],
-  systemInstruction: [Object ...],
-  safetySettings: undefined,
-  tools: [
-    [Object ...]
-  ],
-  toolConfig: [Object ...],
-  cachedContent: undefined,
-  labels: undefined,
-},
- statusCode: 400,
- responseHeaders: {
-  "cf-ray": "9da99240986c1124-ORD",
-  connection: "keep-alive",
-  "content-type": "text/event-stream",
-  date: "Wed, 11 Mar 2026 09:35:55 GMT",
-  server: "cloudflare",
-  "transfer-encoding": "chunked",
-},
- responseBody: "{\n  \"error\": {\n    \"code\": 400,\n    \"message\": \"Unable to submit request because function call `default_api:replace` in the 26. content block is missing a `thought_signature`. Learn more: https://docs.cloud.google.com/vertex-ai/generative-ai/docs/thought-signatures\",\n    \"status\": \"INVALID_ARGUMENT\"\n  }\n}\n",
- isRetryable: false,
-       data: {
-  error: [Object ...],
-},
- vercel.ai.error: true,
- vercel.ai.error.AI_APICallError: true,
+⠦ thinkingAdd reasoning indicator (e.g., "🤔" or "thinking") when `showReasoning` is true
 
-      at /Users/seancaetanomartin/src/mini-coder/node_modules/@ai-sdk/provider-utils/dist/index.mjs:2443:18
-      at /Users/seancaetanomartin/src/mini-coder/node_modules/@ai-sdk/provider-utils/dist/index.mjs:2286:34
-      at processTicksAndRejections (native:7:39)
+⠧ thinkingPhase 5: Update Command Context & CLI Commands
+⠏ thinkingFiles: `src/cli/commands.ts`, `src/agent/session-runner.ts`, `src/index.ts`
 
-✖ API error 400
-  https://opencode.ai/zen/v1/models/gemini-3.1-pro:streamGenerateContent?alt=sse
-✖ API error 400
-  https://opencode.ai/zen/v1/models/gemini-3.1-pro:streamGenerateContent?alt=sse
+⠋ thinking1. Add `showReasoning` to `CommandContext`
+⠹ thinking2. Add `/reasoning` command to toggle (on|off)
+⠸ thinking3. Load/save preference from settings repo
+⠼ thinking4. Pass setting through to `SessionRunner` and reporter
+
+⠦ thinkingPhase 6: Update Output Reporter & Headless Reporter
+⠧ thinkingFiles: `src/cli/output-reporter.ts`, `src/cli/headless-reporter.ts`
+
+⠋ thinking1. Accept and forward `showReasoning` option
+⠙ thinking2. Headless reporter: still consume reasoning events (for accumulation) but never render
+
+Phase 7: Agent Integration
+Files: `src/agent/agent.ts`
+
+⠹ thinking1. Load `getShowReasoning()` preference
+2. Pass to `CommandContext` and `SessionRunner`
+⠸ thinking3. Update status bar calls to include reasoning flag
+
+⠼ thinkingPhase 8: Help & Documentation
+Files: `src/cli/commands.ts`
+
+⠴ thinkingAdd `/reasoning` to help text
+
+────────────────────────────────────────
+
+⠦ thinkingFiles to Modify (in dependency order):
+
+⠧ thinking1. `src/session/db/settings-repo.ts` - Add new setting functions
+⠇ thinking2. `src/llm-api/types.ts` - Add reasoning to TurnResult (if needed)
+⠋ thinking3. `src/agent/reporter.ts` - Update StatusBarData
+4. `src/cli/stream-render.ts` - Add showReasoning option
+⠙ thinking5. `src/cli/status-bar.ts` - Add reasoning indicator
+⠹ thinking6. `src/cli/output-reporter.ts` - Forward option
+⠸ thinking7. `src/cli/headless-reporter.ts` - Handle reasoning events
+⠼ thinking8. `src/cli/commands.ts` - Add /reasoning command
+⠴ thinking9. `src/agent/session-runner.ts` - Accept and pass through setting
+⠦ thinking10. `src/agent/agent.ts` - Load preference, wire up
+⠧ thinking11. `src/index.ts` - Load preference on startup
+⠇ thinking12. `src/session/db/index.ts` - Export new functions
+
+⠏ thinkingThis is a clean, incremental change that:
+⠋ thinking· Maintains backward compatibility (defaults to showing reasoning)
+⠙ thinking· Separates the "reasoning effort" setting from "reasoning display" setting
+⠹ thinking· Properly accumulates reasoning text for message history
+⠼ thinking· Works in both interactive and headless modes
+kimi-k2.5  ✦ high  mmm7tm8p  ~/src/mini-coder  ⎇ main  ctx 37.9k/262.1k 14%  ↑ 172.2k ↓ 2.3k
+▶
 ```
 
-## Gpt 5.4 starts printing garbage:
+---
+
+## Gpt 5.4 starts printing tool calls as the assistant message:
 
 ```
   ← read src/llm-api/turn.test.ts:108+50
@@ -88,6 +95,10 @@ AI_APICallError: Unable to submit request because function call `default_api:rep
 error: script "dev" exited with code 130
 ```
 
+I was not able to reproduce the same behaviour with opencode using the same provider. Which points to an issue with our code.
+
+---
+
 ## Gpt codex context window maxinng out
 
 I've noticed several sessions with codex spark that error because the context got too big for the model:
@@ -111,6 +122,8 @@ error: script "dev" exited with code 1
 ```
 
 The same task with GPT 5.4: `ctx 82.8k/1050.0k 8%` used on 82k in context. I know spark is a smaller context, but I'm suprised by how often we max out the 128k context.
+
+---
 
 ## LSP Diagnostics (not very important, with tool-hooks and strong linting, this is not as necessary, but we should implement asap)
 
