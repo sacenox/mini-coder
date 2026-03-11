@@ -170,6 +170,7 @@ function printHelp(): void {
 
 const REVIEW_COMMAND_CONTENT = `---
 description: Review recent changes for correctness, code quality, and performance
+context: fork
 ---
 You are a code reviewer. Review recent changes and provide actionable feedback.
 

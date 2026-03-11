@@ -1,9 +1,5 @@
 # TODO
 
-## Tool hook issue
-
-- If the hook alters the code, like a formatting hook like we use, the llm sees the diff before the formatting change, causing unecessary re-reads. The post tool hooks should run before we send the output diff to the agent.
-
 ## Investigate error:
 
 ```
