@@ -1,5 +1,8 @@
 # TODO
 
+- Investigate why orc subagent never calls subgents.
+- Rememeber active agent accross sessions.
+
 ## Investigate error:
 
 ```
