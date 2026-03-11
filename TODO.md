@@ -201,3 +201,4 @@ We need to do research first, but maybe we can leverage the hooks feature to ach
 - model-info: in `resolveFromProviderRow`, when canonical capability exists but `contextWindow` is null, fall back to provider row context (`capability.contextWindow ?? row.contextWindow`).
 - Worktrees share bun lockfile and node_modules. Question this choice, is this really a good idea, or just an opportunity for things to go wrong?
 - `subagent-runner.ts`: `Bun.file(proc.stdio[3] as unknown as number).text()` — the double-cast signals a type mismatch. Investigate whether `new Response(proc.stdio[3]).text()` is more correct and whether the current form breaks silently across Bun versions.
+- `worktree.ts` tracked-change sync: `copyFileSync` turns symlinks into regular files. Preserve symlinks via `lstatSync(...).isSymbolicLink()` + `readlinkSync`/`symlinkSync` (or restore git-native apply for tracked changes).

@@ -1,4 +1,10 @@
-import { copyFileSync, existsSync, mkdirSync, symlinkSync } from "node:fs";
+import {
+	copyFileSync,
+	existsSync,
+	mkdirSync,
+	rmSync,
+	symlinkSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 
 interface GitResult {
@@ -198,12 +204,60 @@ export async function cleanupBranch(
  * worktree so the subagent sees current unstaged/staged progress.
  *
  * Two classes of change are propagated:
- *  1. Tracked modifications (staged + unstaged) — applied via `git apply`.
+ *  1. Tracked modifications (staged + unstaged) — synced from `git diff --name-status HEAD`.
  *  2. Untracked, non-ignored new files — copied verbatim.
  *
  * Errors are silently swallowed so a worktree setup failure never blocks the
  * subagent; it will simply run without the parent's in-progress changes.
  */
+function shouldSkipUntrackedPath(path: string): boolean {
+	return path === "node_modules" || path.startsWith("node_modules/");
+}
+
+async function syncTrackedChanges(
+	mainRoot: string,
+	worktreeRoot: string,
+): Promise<void> {
+	const trackedResult = await runGit(mainRoot, [
+		"diff",
+		"--name-status",
+		"-M",
+		"HEAD",
+	]);
+	if (trackedResult.exitCode !== 0) return;
+
+	for (const line of splitNonEmptyLines(trackedResult.stdout)) {
+		const [statusToken, firstPath, secondPath] = line.split("\t");
+		const status = statusToken?.trim() ?? "";
+		if (!status || !firstPath) continue;
+
+		if (status.startsWith("R") || status.startsWith("C")) {
+			if (!secondPath) continue;
+			const src = join(mainRoot, secondPath);
+			const dst = join(worktreeRoot, secondPath);
+			if (existsSync(src)) {
+				mkdirSync(dirname(dst), { recursive: true });
+				copyFileSync(src, dst);
+			}
+			if (status.startsWith("R")) {
+				rmSync(join(worktreeRoot, firstPath), { force: true });
+			}
+			continue;
+		}
+
+		if (status.startsWith("D")) {
+			rmSync(join(worktreeRoot, firstPath), { force: true });
+			continue;
+		}
+
+		const src = join(mainRoot, firstPath);
+		const dst = join(worktreeRoot, firstPath);
+		if (!existsSync(src)) continue;
+		mkdirSync(dirname(dst), { recursive: true });
+		copyFileSync(src, dst);
+	}
+}
+
 export async function applyParentChanges(
 	mainCwd: string,
 	worktreeCwd: string,
@@ -214,17 +268,8 @@ export async function applyParentChanges(
 			getRepoRoot(worktreeCwd),
 		]);
 
-		// 1. Apply tracked changes (staged + unstaged) via a binary-safe patch.
-		const diffResult = await runGit(mainRoot, ["diff", "HEAD", "--binary"]);
-		if (diffResult.exitCode === 0 && diffResult.stdout.trim()) {
-			const proc = Bun.spawn(["git", "apply", "-"], {
-				cwd: worktreeRoot,
-				stdin: Buffer.from(diffResult.stdout),
-				stdout: "pipe",
-				stderr: "pipe",
-			});
-			await proc.exited;
-		}
+		// 1. Sync tracked changes (staged + unstaged) by status.
+		await syncTrackedChanges(mainRoot, worktreeRoot);
 
 		// 2. Copy untracked, non-ignored files (e.g. new source files not yet staged).
 		const untrackedResult = await runGit(mainRoot, [
@@ -234,6 +279,7 @@ export async function applyParentChanges(
 		]);
 		if (untrackedResult.exitCode === 0) {
 			for (const file of splitNonEmptyLines(untrackedResult.stdout)) {
+				if (shouldSkipUntrackedPath(file)) continue;
 				try {
 					const src = join(mainRoot, file);
 					const dst = join(worktreeRoot, file);

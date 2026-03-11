@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
+	existsSync,
 	lstatSync,
 	mkdirSync,
 	realpathSync,
@@ -234,6 +235,41 @@ describe("worktree helpers", () => {
 
 		expect(await Bun.file(join(wtPath, "new-file.ts")).text()).toBe(
 			"export const x = 1;\n",
+		);
+
+		await removeWorktree(repoDir, wtPath);
+		await cleanupBranch(repoDir, branch);
+	});
+
+	test("applyParentChanges propagates tracked renames", async () => {
+		const { branch, wtPath } = makeWorktreeDir("apply-rename");
+		await createWorktree(repoDir, branch, wtPath);
+
+		git(repoDir, ["mv", "README.md", "GUIDE.md"]);
+
+		await applyParentChanges(repoDir, wtPath);
+
+		expect(await Bun.file(join(wtPath, "GUIDE.md")).text()).toBe("hello\n");
+		expect(existsSync(join(wtPath, "README.md"))).toBe(false);
+
+		await removeWorktree(repoDir, wtPath);
+		await cleanupBranch(repoDir, branch);
+	});
+
+	test("applyParentChanges skips untracked node_modules contents", async () => {
+		const { branch, wtPath } = makeWorktreeDir("apply-node-modules");
+		await createWorktree(repoDir, branch, wtPath);
+
+		mkdirSync(join(repoDir, "node_modules", "fake"), { recursive: true });
+		writeFileSync(
+			join(repoDir, "node_modules", "fake", "index.js"),
+			"module.exports = 1;\n",
+		);
+
+		await applyParentChanges(repoDir, wtPath);
+
+		expect(existsSync(join(wtPath, "node_modules", "fake", "index.js"))).toBe(
+			false,
 		);
 
 		await removeWorktree(repoDir, wtPath);
