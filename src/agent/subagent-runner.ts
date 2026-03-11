@@ -33,7 +33,10 @@ export function createSubagentRunner(
 	>();
 
 	// Depth is injected by the parent subprocess via MC_SUBAGENT_DEPTH env var.
-	const subagentDepth = parseInt(process.env.MC_SUBAGENT_DEPTH ?? "0", 10);
+	const subagentDepth = Number.parseInt(
+		process.env.MC_SUBAGENT_DEPTH ?? "0",
+		10,
+	);
 
 	// Merge lock: serialises merge operations from concurrent subagents.
 	let mergeLockTail = Promise.resolve();

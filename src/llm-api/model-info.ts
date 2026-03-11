@@ -17,7 +17,8 @@ const MODELS_DEV_URL = "https://models.dev/api.json";
 
 const MODELS_DEV_SYNC_KEY = "last_models_dev_sync_at";
 const PROVIDER_SYNC_KEY_PREFIX = "last_provider_sync_at:";
-
+const CACHE_VERSION_KEY = "model_info_cache_version";
+const CACHE_VERSION = 2;
 export const MODEL_INFO_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 interface ModelInfo {
@@ -382,6 +383,7 @@ function getProviderSyncKey(provider: string): string {
 
 function isModelInfoStale(now = Date.now()): boolean {
 	ensureLoaded();
+	if (parseStateInt(CACHE_VERSION_KEY) !== CACHE_VERSION) return true;
 	if (isStaleTimestamp(parseStateInt(MODELS_DEV_SYNC_KEY), now)) return true;
 	for (const provider of getProvidersRequiredForFreshness()) {
 		const providerSync = parseStateInt(getProviderSyncKey(provider));
@@ -423,27 +425,29 @@ async function fetchModelsDevPayload(): Promise<unknown | null> {
 async function fetchZenModels(): Promise<ProviderModelCandidate[] | null> {
 	const key = process.env.OPENCODE_API_KEY;
 	if (!key) return null;
-	const payload = await fetchJson(
+	return fetchPaginatedModelsList(
 		`${ZEN_BASE}/models`,
 		{ headers: { Authorization: `Bearer ${key}` } },
 		8_000,
+		"data",
+		"id",
+		(item, modelId) => {
+			const contextWindow =
+				typeof item.context_window === "number" &&
+				Number.isFinite(item.context_window)
+					? Math.max(0, Math.trunc(item.context_window))
+					: null;
+			return {
+				providerModelId: modelId,
+				displayName: item.id as string,
+				contextWindow,
+				free:
+					(item.id as string).endsWith("-free") ||
+					item.id === "gpt-5-nano" ||
+					item.id === "big-pickle",
+			};
+		},
 	);
-	return processModelsList(payload, "data", "id", (item, modelId) => {
-		const contextWindow =
-			typeof item.context_window === "number" &&
-			Number.isFinite(item.context_window)
-				? Math.max(0, Math.trunc(item.context_window))
-				: null;
-		return {
-			providerModelId: modelId,
-			displayName: item.id as string,
-			contextWindow,
-			free:
-				(item.id as string).endsWith("-free") ||
-				item.id === "gpt-5-nano" ||
-				item.id === "big-pickle",
-		};
-	});
 }
 
 function processModelsList(
@@ -466,20 +470,60 @@ function processModelsList(
 	}
 	return out;
 }
+
+async function fetchPaginatedModelsList(
+	url: string,
+	init: RequestInit,
+	timeoutMs: number,
+	arrayKey: string,
+	idKey: string,
+	mapper: (
+		item: Record<string, unknown>,
+		modelId: string,
+	) => ProviderModelCandidate | null,
+): Promise<ProviderModelCandidate[] | null> {
+	const out: ProviderModelCandidate[] = [];
+	const seen = new Set<string>();
+	const baseUrl = new URL(url);
+	let nextAfter: string | null = null;
+
+	for (let page = 0; page < 10; page += 1) {
+		const currentUrl = new URL(baseUrl);
+		if (nextAfter !== null) currentUrl.searchParams.set("after", nextAfter);
+		const payload = await fetchJson(currentUrl.toString(), init, timeoutMs);
+		const rows = processModelsList(payload, arrayKey, idKey, mapper);
+		if (rows === null) {
+			return null;
+		}
+		for (const row of rows) {
+			if (seen.has(row.providerModelId)) continue;
+			seen.add(row.providerModelId);
+			out.push(row);
+		}
+		if (!isRecord(payload)) break;
+		if (payload.has_more !== true || typeof payload.last_id !== "string") break;
+		nextAfter = payload.last_id;
+	}
+
+	return out;
+}
+
 async function fetchOpenAIModels(): Promise<ProviderModelCandidate[] | null> {
 	const key = process.env.OPENAI_API_KEY;
 	if (!key) return null;
-	const payload = await fetchJson(
+	return fetchPaginatedModelsList(
 		`${OPENAI_BASE}/v1/models`,
 		{ headers: { Authorization: `Bearer ${key}` } },
 		6_000,
+		"data",
+		"id",
+		(item, modelId) => ({
+			providerModelId: modelId,
+			displayName: item.id as string,
+			contextWindow: null,
+			free: false,
+		}),
 	);
-	return processModelsList(payload, "data", "id", (item, modelId) => ({
-		providerModelId: modelId,
-		displayName: item.id as string,
-		contextWindow: null,
-		free: false,
-	}));
 }
 
 async function fetchAnthropicModels(): Promise<
@@ -624,6 +668,7 @@ async function refreshModelInfoInternal(): Promise<void> {
 		replaceProviderModels(result.provider, rows);
 		setModelInfoState(getProviderSyncKey(result.provider), String(now));
 	}
+	setModelInfoState(CACHE_VERSION_KEY, String(CACHE_VERSION));
 
 	loadCacheFromDb();
 }

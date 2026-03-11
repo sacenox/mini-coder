@@ -109,7 +109,7 @@ function parseArgs(argv: string[]): CliArgs {
 				args.agentName = argv[++i] ?? null;
 				break;
 			case "--output-fd": {
-				const fd = parseInt(argv[++i] ?? "", 10);
+				const fd = Number.parseInt(argv[++i] ?? "", 10);
 				if (!Number.isNaN(fd)) args.outputFd = fd;
 				break;
 			}
