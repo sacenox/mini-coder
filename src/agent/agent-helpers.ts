@@ -57,7 +57,7 @@ export function hasRalphSignal(text: string): boolean {
 }
 
 export function buildRalphIterationPrompt(goal: string): string {
-	return `${goal}\n\n<system-message>RALPH MODE: Work autonomously toward the goal. Commit your changes to git to persist progress. When the task is fully complete, output \`/ralph\` as your final message. If the task is not yet complete, do NOT output \`/ralph\`.</system-message>`;
+	return `${goal}\n\n<system-message>RALPH MODE: Work autonomously toward the goal. **Only when the task is fully complete**, output \`/ralph\` as your final message.</system-message>`;
 }
 
 export async function resolveFileRefs(
