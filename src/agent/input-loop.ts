@@ -101,9 +101,12 @@ export async function runInputLoop(opts: InputLoopOptions): Promise<void> {
 
 					let result: string;
 					try {
+						cmdCtx.startSpinner("ralph");
 						const output = await cmdCtx.runSubagent(ralphGoal);
 						result = output.result;
+						cmdCtx.stopSpinner();
 					} catch (err) {
+						cmdCtx.stopSpinner();
 						reporter.writeText(
 							`${PREFIX.info} ${c.yellow("ralph")} ${c.dim(`— iteration ${String(iteration)} failed: ${String(err)}`)}`,
 						);
