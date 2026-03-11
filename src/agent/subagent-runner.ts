@@ -7,15 +7,28 @@ import {
 
 /**
  * Resolve the command to invoke a new `mc` subprocess.
- * - Dev:  process.argv[1] ends with ".ts" → [bun, script]
- * - Prod: compiled binary → [process.execPath]
+ * - Dev / installed JS: Bun runs a script entrypoint → [bun, script]
+ * - Compiled binary: no script entrypoint is available → [process.execPath]
  */
-function getMcCommand(): string[] {
-	const script = process.argv[1];
-	if (script?.endsWith(".ts")) {
-		return [process.execPath, script];
+export function resolveMcCommand(
+	execPath: string,
+	mainModule: string | undefined,
+	argv1: string | undefined,
+): string[] {
+	const script =
+		mainModule &&
+		!mainModule.endsWith("/[eval]") &&
+		!mainModule.endsWith("\\[eval]")
+			? mainModule
+			: argv1;
+	if (script && /\.(?:[cm]?[jt]s)$/.test(script)) {
+		return [execPath, script];
 	}
-	return [process.execPath];
+	return [execPath];
+}
+
+function getMcCommand(): string[] {
+	return resolveMcCommand(process.execPath, Bun.main, process.argv[1]);
 }
 
 // Loose recursion cap passed via environment so subprocess chains are bounded
