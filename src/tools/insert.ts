@@ -3,6 +3,7 @@ import type { ToolDef } from "../llm-api/types.ts";
 import { generateDiff } from "./diff.ts";
 import { findLineByHash } from "./hashline.ts";
 import { parseAnchor, resolveExistingFile } from "./shared.ts";
+import type { WriteResultMeta } from "./write-result.ts";
 
 const InsertSchema = z.object({
 	path: z.string().describe("File path to edit (absolute or relative to cwd)"),
@@ -17,15 +18,17 @@ const InsertSchema = z.object({
 
 type InsertInput = z.infer<typeof InsertSchema> & { cwd?: string };
 
-export interface InsertOutput {
+interface InsertOutput {
 	path: string;
 	diff: string;
 }
 
+export interface InsertToolOutput extends InsertOutput, WriteResultMeta {}
+
 const HASH_NOT_FOUND_ERROR =
 	"Hash not found. Re-read the file to get current anchors.";
 
-export const insertTool: ToolDef<InsertInput, InsertOutput> = {
+export const insertTool: ToolDef<InsertInput, InsertToolOutput> = {
 	name: "insert",
 	description:
 		"Insert new lines before or after an anchor line in an existing file. " +
@@ -60,6 +63,11 @@ export const insertTool: ToolDef<InsertInput, InsertOutput> = {
 		await Bun.write(filePath, updated);
 
 		const diff = generateDiff(relPath, original, updated);
-		return { path: relPath, diff };
+		return {
+			path: relPath,
+			diff,
+			_filePath: filePath,
+			_before: original,
+		};
 	},
 };

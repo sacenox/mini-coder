@@ -1,5 +1,5 @@
 import type { ToolDef } from "../llm-api/types.ts";
-import type { CreateOutput } from "../tools/create.ts";
+import type { CreateToolOutput } from "../tools/create.ts";
 import { createTool } from "../tools/create.ts";
 import { webContentTool, webSearchTool } from "../tools/exa.ts";
 import type { GlobOutput } from "../tools/glob.ts";
@@ -17,11 +17,11 @@ import {
 	hookEnvForShell,
 	runHook,
 } from "../tools/hooks.ts";
-import type { InsertOutput } from "../tools/insert.ts";
+import type { InsertToolOutput } from "../tools/insert.ts";
 import { insertTool } from "../tools/insert.ts";
 import type { ReadOutput } from "../tools/read.ts";
 import { readTool } from "../tools/read.ts";
-import type { ReplaceOutput } from "../tools/replace.ts";
+import type { ReplaceToolOutput } from "../tools/replace.ts";
 import { replaceTool } from "../tools/replace.ts";
 import type { ShellOutput } from "../tools/shell.ts";
 import { shellTool } from "../tools/shell.ts";
@@ -30,6 +30,10 @@ import {
 	createSubagentTool,
 	type SubagentOutput,
 } from "../tools/subagent.ts";
+import {
+	finalizeWriteResult,
+	stripWriteResultMeta,
+} from "../tools/write-result.ts";
 
 // ─── Tool wrappers ────────────────────────────────────────────────────────────
 
@@ -55,19 +59,28 @@ type EnvBuilder<TInput, TOutput> = (
 	input: TInput,
 ) => Record<string, string>;
 
+type ResultFinalizer<TOutput, TFinalOutput> = (
+	result: TOutput,
+) => Promise<TFinalOutput>;
+
 /**
  * Wrap a tool to fire its post-hook (if one exists) after each successful execute.
  * Hooks are looked up via the session-scoped cache — no filesystem access per call.
  * Errors are always swallowed. onHook is called with the result so the caller can
  * render a UI line.
  */
-function withHooks<TInput extends { cwd?: string }, TOutput>(
+function withHooks<
+	TInput extends { cwd?: string },
+	TOutput,
+	TFinalOutput = TOutput,
+>(
 	tool: ToolDef<TInput, TOutput>,
 	lookupHook: (toolName: string) => string | null,
 	cwd: string,
 	buildEnv: EnvBuilder<TInput, TOutput>,
 	onHook: (toolName: string, scriptPath: string, success: boolean) => void,
-): ToolDef<TInput, TOutput> {
+	finalizeResult?: ResultFinalizer<TOutput, TFinalOutput>,
+): ToolDef<TInput, TFinalOutput> {
 	const originalExecute = tool.execute;
 	return {
 		...tool,
@@ -78,8 +91,15 @@ function withHooks<TInput extends { cwd?: string }, TOutput>(
 				const env = buildEnv(result, input);
 				const success = await runHook(hookScript, env, cwd);
 				onHook(tool.name, hookScript, success);
+				if (finalizeResult) return finalizeResult(result);
+				return result as TFinalOutput;
 			}
-			return result;
+			if (finalizeResult) {
+				return stripWriteResultMeta(
+					result as TOutput & { _filePath: string; _before: string },
+				) as TFinalOutput;
+			}
+			return result as TFinalOutput;
 		},
 	};
 }
@@ -149,32 +169,35 @@ export function buildToolSet(opts: {
 		withHooks(
 			withCwdDefault(createTool as ToolDef, cwd) as ToolDef<
 				{ cwd?: string },
-				CreateOutput
+				CreateToolOutput
 			>,
 			lookupHook,
 			cwd,
 			(result) => hookEnvForCreate(result, cwd),
 			onHook,
+			finalizeWriteResult,
 		) as ToolDef,
 		withHooks(
 			withCwdDefault(replaceTool as ToolDef, cwd) as ToolDef<
 				{ cwd?: string },
-				ReplaceOutput
+				ReplaceToolOutput
 			>,
 			lookupHook,
 			cwd,
 			(result) => hookEnvForReplace(result, cwd),
 			onHook,
+			finalizeWriteResult,
 		) as ToolDef,
 		withHooks(
 			withCwdDefault(insertTool as ToolDef, cwd) as ToolDef<
 				{ cwd?: string },
-				InsertOutput
+				InsertToolOutput
 			>,
 			lookupHook,
 			cwd,
 			(result) => hookEnvForInsert(result, cwd),
 			onHook,
+			finalizeWriteResult,
 		) as ToolDef,
 		// Shell and subagent
 		withHooks(

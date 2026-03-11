@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { ToolDef } from "../llm-api/types.ts";
 import { generateDiff } from "./diff.ts";
 import { resolvePath } from "./shared.ts";
+import type { WriteResultMeta } from "./write-result.ts";
 
 const CreateSchema = z.object({
 	path: z.string().describe("File path to write (absolute or relative to cwd)"),
@@ -12,13 +13,15 @@ const CreateSchema = z.object({
 
 type CreateInput = z.infer<typeof CreateSchema> & { cwd?: string };
 
-export interface CreateOutput {
+interface CreateOutput {
 	path: string;
 	diff: string;
 	created: boolean;
 }
 
-export const createTool: ToolDef<CreateInput, CreateOutput> = {
+export interface CreateToolOutput extends CreateOutput, WriteResultMeta {}
+
+export const createTool: ToolDef<CreateInput, CreateToolOutput> = {
 	name: "create",
 	description:
 		"Write a file at the given path, creating it or fully replacing its content. " +
@@ -37,6 +40,12 @@ export const createTool: ToolDef<CreateInput, CreateOutput> = {
 		await Bun.write(filePath, input.content);
 
 		const diff = generateDiff(relPath, before, input.content);
-		return { path: relPath, diff, created };
+		return {
+			path: relPath,
+			diff,
+			created,
+			_filePath: filePath,
+			_before: before,
+		};
 	},
 };

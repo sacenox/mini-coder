@@ -3,6 +3,7 @@ import type { ToolDef } from "../llm-api/types.ts";
 import { generateDiff } from "./diff.ts";
 import { findLineByHash } from "./hashline.ts";
 import { parseAnchor, resolveExistingFile } from "./shared.ts";
+import type { WriteResultMeta } from "./write-result.ts";
 
 const ReplaceSchema = z.object({
 	path: z.string().describe("File path to edit (absolute or relative to cwd)"),
@@ -25,16 +26,18 @@ const ReplaceSchema = z.object({
 
 type ReplaceInput = z.infer<typeof ReplaceSchema> & { cwd?: string };
 
-export interface ReplaceOutput {
+interface ReplaceOutput {
 	path: string;
 	diff: string;
 	deleted: boolean;
 }
 
+export interface ReplaceToolOutput extends ReplaceOutput, WriteResultMeta {}
+
 const HASH_NOT_FOUND_ERROR =
 	"Hash not found. Re-read the file to get current anchors.";
 
-export const replaceTool: ToolDef<ReplaceInput, ReplaceOutput> = {
+export const replaceTool: ToolDef<ReplaceInput, ReplaceToolOutput> = {
 	name: "replace",
 	description:
 		"Replace or delete a range of lines in an existing file using hashline anchors. " +
@@ -90,6 +93,12 @@ export const replaceTool: ToolDef<ReplaceInput, ReplaceOutput> = {
 		await Bun.write(filePath, updated);
 
 		const diff = generateDiff(relPath, original, updated);
-		return { path: relPath, diff, deleted: replacement.length === 0 };
+		return {
+			path: relPath,
+			diff,
+			deleted: replacement.length === 0,
+			_filePath: filePath,
+			_before: original,
+		};
 	},
 };
