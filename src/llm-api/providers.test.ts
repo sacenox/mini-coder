@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
-import { shouldDisableGeminiThinkingForTools } from "./providers.ts";
+import {
+	getThinkingProviderOptions,
+	shouldDisableGeminiThinkingForTools,
+} from "./providers.ts";
 
 describe("shouldDisableGeminiThinkingForTools", () => {
 	test("enables workaround for affected Gemini versions", () => {
@@ -29,5 +32,20 @@ describe("shouldDisableGeminiThinkingForTools", () => {
 		expect(shouldDisableGeminiThinkingForTools("zen/some-other-model")).toBe(
 			false,
 		);
+	});
+});
+
+describe("getThinkingProviderOptions", () => {
+	test("requests OpenAI reasoning summary for GPT reasoning models", () => {
+		expect(
+			getThinkingProviderOptions("openai/gpt-5.3-codex", "medium", false),
+		).toEqual({
+			openai: { reasoningEffort: "medium", reasoningSummary: "auto" },
+		});
+		expect(
+			getThinkingProviderOptions("zen/gpt-5.3-codex", "high", false),
+		).toEqual({
+			openai: { reasoningEffort: "high", reasoningSummary: "auto" },
+		});
 	});
 });

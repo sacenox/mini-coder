@@ -260,7 +260,7 @@ export function getThinkingProviderOptions(
 		// xhigh only valid on gpt-5.2+, o4+; clamp for others.
 		const supportsXhigh = /^gpt-5\.[2-9]/.test(modelId) || /^o4/.test(modelId);
 		const clamped = supportsXhigh ? effort : clampEffort(effort, "high");
-		return { openai: { reasoningEffort: clamped } };
+		return { openai: { reasoningEffort: clamped, reasoningSummary: "auto" } };
 	}
 
 	// Google Gemini (direct or via Zen routing through @ai-sdk/google)

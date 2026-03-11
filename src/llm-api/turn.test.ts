@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { CoreMessage } from "./turn.ts";
-import { isOpenAIGPT, sanitizeGeminiToolMessages } from "./turn.ts";
+import {
+	getReasoningDeltaFromStreamChunk,
+	isOpenAIGPT,
+	sanitizeGeminiToolMessages,
+} from "./turn.ts";
 
 describe("isOpenAIGPT", () => {
 	test("matches openai/gpt-* models", () => {
@@ -23,6 +27,32 @@ describe("isOpenAIGPT", () => {
 		expect(isOpenAIGPT("anthropic/claude-sonnet-4-5")).toBe(false);
 		expect(isOpenAIGPT("google/gemini-2.0-flash")).toBe(false);
 		expect(isOpenAIGPT("zen/claude-sonnet-4-6")).toBe(false);
+	});
+});
+
+describe("getReasoningDeltaFromStreamChunk", () => {
+	test("reads SDK reasoning-delta text field", () => {
+		expect(
+			getReasoningDeltaFromStreamChunk({
+				type: "reasoning-delta",
+				text: "step by step",
+			}),
+		).toBe("step by step");
+	});
+
+	test("keeps compatibility with legacy reasoning textDelta field", () => {
+		expect(
+			getReasoningDeltaFromStreamChunk({
+				type: "reasoning",
+				textDelta: "legacy reasoning",
+			}),
+		).toBe("legacy reasoning");
+	});
+
+	test("returns null for non-reasoning chunks", () => {
+		expect(
+			getReasoningDeltaFromStreamChunk({ type: "text-delta", text: "hi" }),
+		).toBe(null);
 	});
 });
 

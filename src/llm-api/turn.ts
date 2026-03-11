@@ -16,6 +16,17 @@ type ToolSet = NonNullable<StreamTextOptions["tools"]>;
 type ToolEntry = ToolSet extends Record<string, infer T> ? T : never;
 type StreamChunk = { type?: string; [key: string]: unknown };
 
+export function getReasoningDeltaFromStreamChunk(
+	chunk: StreamChunk,
+): string | null {
+	if (chunk.type !== "reasoning-delta" && chunk.type !== "reasoning") {
+		return null;
+	}
+	if (typeof chunk.text === "string") return chunk.text;
+	if (typeof chunk.textDelta === "string") return chunk.textDelta;
+	return "";
+}
+
 type StreamTextResult = ReturnType<typeof streamText>;
 type StreamTextResultFull = StreamTextResult & {
 	fullStream: AsyncIterable<StreamChunk>;
@@ -210,9 +221,20 @@ export async function* runTurn(options: {
 		const useInstructions =
 			systemPrompt !== undefined && isOpenAIGPT(modelString);
 
-		logApiEvent("turn start", { modelString, messageCount: messages.length });
-
 		const toolCount = Object.keys(toolSet).length;
+		const thinkingOpts = thinkingEffort
+			? getThinkingProviderOptions(modelString, thinkingEffort, toolCount > 0)
+			: null;
+		const reasoningSummaryRequested =
+			isRecord(thinkingOpts) &&
+			isRecord(thinkingOpts.openai) &&
+			typeof thinkingOpts.openai.reasoningSummary === "string";
+		logApiEvent("turn start", {
+			modelString,
+			messageCount: messages.length,
+			reasoningSummaryRequested,
+		});
+
 		const turnMessages = sanitizeGeminiToolMessages(
 			messages,
 			modelString,
@@ -225,9 +247,6 @@ export async function* runTurn(options: {
 				sanitizedMessages: turnMessages.length,
 			});
 		}
-		const thinkingOpts = thinkingEffort
-			? getThinkingProviderOptions(modelString, thinkingEffort, toolCount > 0)
-			: null;
 
 		const mergedProviderOptions = {
 			...(useInstructions
@@ -306,7 +325,11 @@ export async function* runTurn(options: {
 		for await (const chunk of result.fullStream) {
 			const c = chunk as StreamChunk;
 
-			if (c.type !== "text-delta" && c.type !== "reasoning") {
+			if (
+				c.type !== "text-delta" &&
+				c.type !== "reasoning" &&
+				c.type !== "reasoning-delta"
+			) {
 				logApiEvent("stream chunk", {
 					type: c.type,
 					toolCallId: c.toolCallId,
@@ -333,8 +356,10 @@ export async function* runTurn(options: {
 					};
 					break;
 				}
+				case "reasoning-delta":
 				case "reasoning": {
-					const delta = typeof c.textDelta === "string" ? c.textDelta : "";
+					const delta = getReasoningDeltaFromStreamChunk(c);
+					if (delta === null) break;
 					yield {
 						type: "reasoning-delta",
 						delta,
