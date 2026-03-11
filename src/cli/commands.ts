@@ -370,7 +370,6 @@ async function handleCustomCommand(
 	try {
 		ctx.startSpinner("subagent");
 		const output = await ctx.runSubagent(prompt, cmd.agent, cmd.model);
-		ctx.stopSpinner();
 		assertSubagentMerged(output);
 
 		write(renderMarkdown(output.result));
@@ -381,9 +380,10 @@ async function handleCustomCommand(
 			text: `/${cmd.name} output:\n\n${output.result}\n\n<system-message>Summarize the findings above to the user.</system-message>`,
 		};
 	} catch (e) {
-		ctx.stopSpinner();
 		writeln(`${PREFIX.error} /${cmd.name} failed: ${String(e)}`);
 		return { type: "handled" };
+	} finally {
+		ctx.stopSpinner();
 	}
 }
 
