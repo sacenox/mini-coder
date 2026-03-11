@@ -281,7 +281,7 @@ export async function* runTurn(options: {
 				return undefined;
 			},
 
-			...(systemPrompt ? { system: systemPrompt } : {}),
+			...(systemPrompt && !useInstructions ? { system: systemPrompt } : {}),
 			...(Object.keys(mergedProviderOptions).length > 0
 				? { providerOptions: mergedProviderOptions }
 				: {}),
