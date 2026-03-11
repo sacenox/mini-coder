@@ -23,6 +23,7 @@ export interface SubagentOutput {
 	result: string;
 	inputTokens: number;
 	outputTokens: number;
+	agentName?: string;
 }
 
 /**

@@ -116,6 +116,7 @@ export function createSubagentRunner(
 				inputTokens: parsed.inputTokens,
 				outputTokens: parsed.outputTokens,
 			};
+			if (agentName) output.agentName = agentName;
 
 			return output;
 		} finally {

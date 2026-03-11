@@ -36,7 +36,7 @@ function toolGlyph(name: string): string {
 function toolCallLine(
 	name: string,
 	args: unknown,
-	toolCallId?: string,
+	_toolCallId?: string,
 ): string {
 	const a =
 		args && typeof args === "object" ? (args as Record<string, unknown>) : {};
@@ -44,10 +44,10 @@ function toolCallLine(
 	if (name === "subagent") {
 		const prompt = typeof a.prompt === "string" ? a.prompt : "";
 		const short = prompt.length > 60 ? `${prompt.slice(0, 57)}…` : prompt;
-		const lane = toolCallId
-			? ` ${c.dim(c.cyan(`[${toolCallId.slice(0, 6)}]`))}`
-			: "";
-		return `${G.agent}${lane} ${c.dim("—")} ${short}`;
+		const agentName =
+			typeof a.agentName === "string" && a.agentName ? a.agentName : "";
+		const label = agentName ? ` ${c.dim(c.cyan(`[@${agentName}]`))}` : "";
+		return `${G.agent}${label} ${c.dim("—")} ${short}`;
 	}
 	if (name === "glob") {
 		const pattern = String(a.pattern ?? "");
@@ -163,7 +163,7 @@ export function renderToolResult(
 	toolName: string,
 	result: unknown,
 	isError: boolean,
-	toolCallId?: string,
+	_toolCallId?: string,
 ): void {
 	if (isError) {
 		writeln(`    ${formatErrorBadge(result)}`);
@@ -306,12 +306,14 @@ export function renderToolResult(
 	}
 
 	if (toolName === "subagent") {
-		const r = result as { inputTokens?: number; outputTokens?: number };
-		const lane = toolCallId
-			? ` ${c.dim(c.cyan(`[${toolCallId.slice(0, 6)}]`))}`
-			: "";
+		const r = result as {
+			inputTokens?: number;
+			outputTokens?: number;
+			agentName?: string;
+		};
+		const label = r.agentName ? ` ${c.dim(c.cyan(`[@${r.agentName}]`))}` : "";
 		writeln(
-			`    ${c.cyan("←")}${lane} ${c.dim(`subagent done (${r.inputTokens ?? 0}in / ${r.outputTokens ?? 0}out tokens)`)}`,
+			`    ${c.cyan("←")}${label} ${c.dim(`subagent done (${r.inputTokens ?? 0}in / ${r.outputTokens ?? 0}out tokens)`)}`,
 		);
 		return;
 	}
