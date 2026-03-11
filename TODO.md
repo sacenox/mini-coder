@@ -2,7 +2,6 @@
 
 - Investigate why orc subagent never calls subagents.
 - Remember active agent across sessions.
-- When a command spawns a subagent, there is no spinner shown
 
 ## Investigate error:
 

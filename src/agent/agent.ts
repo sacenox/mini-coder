@@ -171,6 +171,8 @@ export async function runAgent(
 				reporter: opts.reporter,
 			}),
 		connectMcpServer: connectAndAddMcp,
+		startSpinner: (label?: string) => opts.reporter.startSpinner(label),
+		stopSpinner: () => opts.reporter.stopSpinner(),
 		startNewSession: () => runner.startNewSession(),
 	};
 
