@@ -1,46 +1,5 @@
 # TODO
 
-## ESC cleared the whole last turn from memory
-
-See the output bellow, once interrupted and prompted about it's actions, the assitant was not aware of any previous input from the user. Notice the context numbers also reset to 0%.
-
-It should have seen it's previous work and have context of the conversation.
-
-```
-⣻ replace    ✔ hook post-replace
-    ✔ replaced src/tools/worktree.test.ts
-    --- src/tools/worktree.test.ts
-    +++ src/tools/worktree.test.ts
-    @@ -167,12 +167,13 @@
-
-                writeFileSync(join(wtPath1, "README.md"), "branch one\n");
-                git(wtPath1, ["commit", "-am", "branch one"]);
-    -
-    -           writeFileSync(join(wtPath2, "README.md"), "branch two\n");
-    -           git(wtPath2, ["commit", "-am", "branch two"]);
-
-    -           const firstMerge = await mergeWorktree(repoDir, branch1);
-    -           expect(firstMerge.success).toBe(false);
-    +           // Start a manual merge to create a merge in progress state
-    +           try {
-    +                   git(repoDir, ["merge", branch1]);
-    +           } catch {
-    +                   // This is expected to fail with conflicts
-    +           }
-
-                try {
-                        await mergeWorktree(repoDir, branch2);
-gemini-3.1-pro  ✦ high  🤔  mmmgnqvc  ~/src/mini-coder  ⎇ main  ctx 40.3k/1048.6k 4%  ↑ 464.1k ↓ 11.7k
-▶
-gemini-3.1-pro  ✦ high  🤔  mmmgnqvc  ~/src/mini-coder  ⎇ main  ctx 40.3k/1048.6k 4%  ↑ 464.1k ↓ 11.7k
-▶ What are you doing? Did you read what I told you?
-◆ I am ready to assist you. I have read the guidelines and understand my role as mini-coder, a small and fast CLI coding agent.
-
-I'm prepared to use my tools to search, read, edit code, run commands, and execute tests as needed to implement solutions autonomously. What would you like me to work on?
-gemini-3.1-pro  ✦ high  🤔  mmmgnqvc  ~/src/mini-coder  ⎇ main  ctx 1.6k/1048.6k 0%  ↑ 465.8k ↓ 11.9k
-▶
-```
-
 ---
 
 ## LSP Diagnostics (not very important, with tool-hooks and strong linting, this is not as necessary, but we should implement asap)
