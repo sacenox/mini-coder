@@ -7,6 +7,7 @@ import {
 	getReasoningDeltaFromStreamChunk,
 	isOpenAIGPT,
 	sanitizeGeminiToolMessages,
+	stripGPTCommentaryFromHistory,
 } from "./turn.ts";
 
 describe("isOpenAIGPT", () => {
@@ -221,6 +222,141 @@ describe("sanitizeGeminiToolMessages", () => {
 		];
 
 		expect(sanitizeGeminiToolMessages(messages, "openai/gpt-4o", true)).toEqual(
+			messages,
+		);
+	});
+});
+
+describe("stripGPTCommentaryFromHistory", () => {
+	test("strips commentary text parts from GPT assistant messages", () => {
+		const messages: CoreMessage[] = [
+			{ role: "user", content: "do the task" },
+			{
+				role: "assistant",
+				content: [
+					{
+						type: "text",
+						text: "I'll call shell: to=functions.shell json{...}",
+						providerOptions: {
+							openai: { itemId: "msg-1", phase: "commentary" },
+						},
+					},
+					{
+						type: "tool-call",
+						toolCallId: "call-1",
+						toolName: "shell",
+						input: { command: "ls" },
+					},
+				],
+			} as unknown as CoreMessage,
+			{
+				role: "tool",
+				content: [
+					{
+						type: "tool-result",
+						toolCallId: "call-1",
+						toolName: "shell",
+						output: { type: "text", value: "file.txt" },
+					},
+				],
+			} as unknown as CoreMessage,
+			{
+				role: "assistant",
+				content: [
+					{
+						type: "text",
+						text: "Done!",
+						providerOptions: {
+							openai: { itemId: "msg-2", phase: "final_answer" },
+						},
+					},
+				],
+			} as unknown as CoreMessage,
+		];
+
+		const result = stripGPTCommentaryFromHistory(
+			messages,
+			"openai/gpt-5.3-codex",
+		);
+
+		// commentary part stripped from first assistant message
+		const firstAssistant = result[1] as {
+			role: "assistant";
+			content: Array<Record<string, unknown>>;
+		};
+		expect(firstAssistant.content).toHaveLength(1);
+		expect(firstAssistant.content[0]?.type).toBe("tool-call");
+
+		// final_answer text preserved in second assistant message
+		const secondAssistant = result[3] as {
+			role: "assistant";
+			content: Array<Record<string, unknown>>;
+		};
+		expect(secondAssistant.content).toHaveLength(1);
+		expect(secondAssistant.content[0]?.type).toBe("text");
+	});
+
+	test("also strips when phase is in providerMetadata (legacy field)", () => {
+		const messages: CoreMessage[] = [
+			{
+				role: "assistant",
+				content: [
+					{
+						type: "text",
+						text: "thinking...",
+						providerMetadata: {
+							openai: { itemId: "msg-x", phase: "commentary" },
+						},
+					},
+					{ type: "text", text: "result", providerOptions: {} },
+				],
+			} as unknown as CoreMessage,
+		];
+
+		const result = stripGPTCommentaryFromHistory(messages, "zen/gpt-5.4");
+		const assistant = result[0] as {
+			role: "assistant";
+			content: Array<Record<string, unknown>>;
+		};
+		expect(assistant.content).toHaveLength(1);
+		expect(assistant.content[0]?.text).toBe("result");
+	});
+
+	test("leaves non-GPT models untouched", () => {
+		const messages: CoreMessage[] = [
+			{
+				role: "assistant",
+				content: [
+					{
+						type: "text",
+						text: "thinking...",
+						providerOptions: { openai: { phase: "commentary" } },
+					},
+				],
+			} as unknown as CoreMessage,
+		];
+
+		expect(
+			stripGPTCommentaryFromHistory(messages, "anthropic/claude-sonnet-4-5"),
+		).toBe(messages);
+	});
+
+	test("returns same reference when no commentary parts are present", () => {
+		const messages: CoreMessage[] = [
+			{ role: "user", content: "hi" },
+			{
+				role: "assistant",
+				content: [
+					{
+						type: "text",
+						text: "hello",
+						providerOptions: { openai: { phase: "final_answer" } },
+					},
+				],
+			} as unknown as CoreMessage,
+		];
+
+		expect(stripGPTCommentaryFromHistory(messages, "openai/gpt-4o")).toBe(
 			messages,
 		);
 	});

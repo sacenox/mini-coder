@@ -305,13 +305,20 @@ function normalizeMessageProviderOptions(message: CoreMessage): CoreMessage {
 	} as CoreMessage;
 }
 
-function getGeminiThoughtSignature(part: unknown): string | null {
+/**
+ * Reads the effective provider-options record for a content part, checking
+ * both the modern `providerOptions` field and the legacy `providerMetadata`
+ * alias (used by some older AI SDK versions and Gemini adapters).
+ */
+function getPartProviderOptions(part: unknown): Record<string, unknown> | null {
 	if (!isRecord(part)) return null;
-	const providerOptions = isRecord(part.providerOptions)
-		? part.providerOptions
-		: isRecord(part.providerMetadata)
-			? part.providerMetadata
-			: null;
+	if (isRecord(part.providerOptions)) return part.providerOptions;
+	if (isRecord(part.providerMetadata)) return part.providerMetadata;
+	return null;
+}
+
+function getGeminiThoughtSignature(part: unknown): string | null {
+	const providerOptions = getPartProviderOptions(part);
 	if (!providerOptions) return null;
 
 	for (const provider of ["google", "vertex"] as const) {
@@ -374,6 +381,59 @@ export function sanitizeGeminiToolMessages(
 
 		return sanitized.slice(0, brokenIndex);
 	}
+}
+
+/**
+ * Returns the phase of a text content part for OpenAI Responses API models.
+ * GPT-5 reasoning models emit "commentary" text parts (thinking-out-loud text
+ * like `to=functions.shell json{...}`) before their actual function calls.
+ * These are distinct from the "final_answer" phase which is real output.
+ */
+function getOpenAITextPhase(part: unknown): string | null {
+	const providerOptions = getPartProviderOptions(part);
+	if (!providerOptions) return null;
+	const openai = providerOptions.openai;
+	if (!isRecord(openai)) return null;
+	return typeof openai.phase === "string" ? openai.phase : null;
+}
+
+function isCommentaryTextPart(part: unknown): boolean {
+	if (!isRecord(part) || part.type !== "text") return false;
+	return getOpenAITextPhase(part) === "commentary";
+}
+
+/**
+ * Strip `phase:"commentary"` text parts from assistant messages for GPT
+ * (Responses API) models.
+ *
+ * GPT-5 reasoning models produce commentary parts before tool calls — text
+ * like "I'll call the shell function: to=functions.shell json{...}".  These
+ * parts are useful during the current turn (the user can see the model
+ * thinking) but must not leak into persistent conversation history.  When fed
+ * back on subsequent turns the model pattern-matches on them and starts
+ * reproducing that format as plain text instead of making real function calls,
+ * resulting in garbled output with repeated `to=functions.<name> json{...}`
+ * strings.
+ */
+export function stripGPTCommentaryFromHistory(
+	messages: CoreMessage[],
+	modelString: string,
+): CoreMessage[] {
+	if (!isOpenAIGPT(modelString)) return messages;
+
+	let mutated = false;
+	const result = messages.map((message) => {
+		if (message.role !== "assistant" || !Array.isArray(message.content)) {
+			return message;
+		}
+		const filtered = message.content.filter(
+			(part) => !isCommentaryTextPart(part),
+		);
+		if (filtered.length === message.content.length) return message;
+		mutated = true;
+		return { ...message, content: filtered } as CoreMessage;
+	});
+	return mutated ? result : messages;
 }
 
 // ─── Main turn function ───────────────────────────────────────────────────────
@@ -471,12 +531,20 @@ export async function* runTurn(options: {
 			});
 		}
 
+		const gptSanitizedMessages = stripGPTCommentaryFromHistory(
+			geminiSanitizedMessages,
+			modelString,
+		);
+		if (gptSanitizedMessages !== geminiSanitizedMessages) {
+			logApiEvent("gpt commentary stripped from history", { modelString });
+		}
+
 		logApiEvent(
 			"turn context pre-prune",
-			getMessageDiagnostics(geminiSanitizedMessages),
+			getMessageDiagnostics(gptSanitizedMessages),
 		);
 		const prunedMessages = applyContextPruning(
-			geminiSanitizedMessages,
+			gptSanitizedMessages,
 			pruningMode,
 		);
 		logApiEvent(

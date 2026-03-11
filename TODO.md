@@ -1,29 +1,5 @@
 # TODO
 
-## Gpt codex context window maxinng out
-
-I've noticed several sessions with codex spark that error because the context got too big for the model:
-
-```
-  ← read node_modules/@ai-sdk/google/src/google-generative-ai-language-model.ts:680+120
-    · node_modules/@ai-sdk/google/src/google-generative-ai-language-model.ts  lines 680–799 of 1057  (truncated)
-⠙ thinking{
-  type: "error",
-  sequence_number: 2,
-  error: {
-    type: "invalid_request_error",
-    code: "context_length_exceeded",
-    message: "Your input exceeds the context window of this model. Please adjust your input and try again.",
-    param: "input",
-  },
-}
-✖ [object Object]
-✖ [object Object]
-error: script "dev" exited with code 1
-```
-
-The same task with GPT 5.4: `ctx 82.8k/1050.0k 8%` used on 82k in context. I know spark is a smaller context, but I'm suprised by how often we max out the 128k context.
-
 ---
 
 ## LSP Diagnostics (not very important, with tool-hooks and strong linting, this is not as necessary, but we should implement asap)
@@ -79,6 +55,8 @@ error: script "dev" exited with code 130
 ```
 
 I was not able to reproduce the same behaviour with opencode using the same provider. Which points to an issue with our code.
+
+The issue is more rare, but still happening agfter the fix we tried. Let's investigate further and try to find the real root cause.
 
 ---
 
