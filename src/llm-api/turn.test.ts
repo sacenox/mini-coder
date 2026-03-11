@@ -129,6 +129,8 @@ describe("sanitizeGeminiToolMessages", () => {
 
 	test("drops earlier broken Gemini tool turns and keeps the latest user turn", () => {
 		const messages = [
+			{ role: "user", content: "healthy turn" },
+			{ role: "assistant", content: "healthy response" },
 			{ role: "user", content: "broken turn" },
 			{
 				role: "assistant",
@@ -170,7 +172,7 @@ describe("sanitizeGeminiToolMessages", () => {
 
 		expect(
 			sanitizeGeminiToolMessages(messages, "google/gemini-2.5-pro", true),
-		).toEqual(messages.slice(4));
+		).toEqual([...messages.slice(0, 3), ...messages.slice(6)]);
 	});
 
 	test("copies legacy providerMetadata into providerOptions for Gemini tool calls", () => {

@@ -375,7 +375,10 @@ export function sanitizeGeminiToolMessages(
 			(message, index) => index > brokenIndex && message.role === "user",
 		);
 		if (nextUserIndex !== -1) {
-			sanitized = sanitized.slice(nextUserIndex);
+			sanitized = [
+				...sanitized.slice(0, brokenIndex),
+				...sanitized.slice(nextUserIndex),
+			];
 			continue;
 		}
 
