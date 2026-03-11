@@ -112,7 +112,7 @@ export async function runInputLoop(opts: InputLoopOptions): Promise<void> {
 
 				// True ralph loop: each iteration is a fresh subprocess.
 				// State persists via the filesystem and git history — NOT the context window.
-				if (input.images && input.images.length > 0) {
+				if (allImages.length > 0) {
 					reporter.writeText(
 						`${PREFIX.info} ${c.yellow("ralph")} ${c.dim("— image attachments are not supported and will be ignored")}`,
 					);
