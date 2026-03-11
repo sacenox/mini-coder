@@ -8,6 +8,7 @@ import {
 	isOpenAIGPT,
 	sanitizeGeminiToolMessages,
 	stripGPTCommentaryFromHistory,
+	stripOpenAIItemIdsFromHistory,
 } from "./turn.ts";
 
 describe("isOpenAIGPT", () => {
@@ -413,6 +414,76 @@ describe("stripGPTCommentaryFromHistory", () => {
 
 		const result = stripGPTCommentaryFromHistory(messages, "openai/gpt-5.4");
 		expectOnlyUserMessages(result);
+	});
+});
+
+describe("stripOpenAIItemIdsFromHistory", () => {
+	test("removes openai itemId metadata from assistant content parts", () => {
+		const messages: CoreMessage[] = [
+			{ role: "user", content: "go" },
+			{
+				role: "assistant",
+				content: [
+					{
+						type: "text",
+						text: "thinking",
+						providerOptions: {
+							openai: { itemId: "msg_123", phase: "commentary" },
+						},
+					},
+					{
+						type: "tool-call",
+						toolCallId: "call_1",
+						toolName: "read",
+						input: { path: "README.md" },
+						providerMetadata: {
+							openai: { itemId: "fc_456" },
+						},
+					},
+				],
+			} as unknown as CoreMessage,
+		];
+
+		const result = stripOpenAIItemIdsFromHistory(messages, "zen/gpt-5.3-codex");
+		const assistant = result[1] as {
+			role: "assistant";
+			content: Array<Record<string, unknown>>;
+		};
+		expect(
+			(
+				assistant.content[0]?.providerOptions as {
+					openai?: { itemId?: string; phase?: string };
+				}
+			)?.openai?.itemId,
+		).toBeUndefined();
+		expect(
+			(
+				assistant.content[1]?.providerMetadata as {
+					openai?: { itemId?: string };
+				}
+			)?.openai?.itemId,
+		).toBeUndefined();
+	});
+
+	test("leaves non-gpt providers untouched", () => {
+		const messages: CoreMessage[] = [
+			{
+				role: "assistant",
+				content: [
+					{
+						type: "text",
+						text: "hello",
+						providerOptions: {
+							openai: { itemId: "msg_123", phase: "final_answer" },
+						},
+					},
+				],
+			} as unknown as CoreMessage,
+		];
+
+		expect(
+			stripOpenAIItemIdsFromHistory(messages, "anthropic/claude-sonnet-4-5"),
+		).toBe(messages);
 	});
 });
 

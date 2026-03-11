@@ -305,6 +305,61 @@ function normalizeMessageProviderOptions(message: CoreMessage): CoreMessage {
 	} as CoreMessage;
 }
 
+function stripOpenAIItemIdFromPart(part: unknown): {
+	part: unknown;
+	changed: boolean;
+} {
+	if (!isRecord(part)) return { part, changed: false };
+
+	let changed = false;
+	const nextPart = { ...part };
+
+	const dropItemId = (field: "providerOptions" | "providerMetadata"): void => {
+		const source = nextPart[field];
+		if (!isRecord(source)) return;
+		const openai = source.openai;
+		if (!isRecord(openai) || !("itemId" in openai)) return;
+
+		const nextOpenAI = { ...openai };
+		delete nextOpenAI.itemId;
+		nextPart[field] = { ...source, openai: nextOpenAI };
+		changed = true;
+	};
+
+	dropItemId("providerOptions");
+	dropItemId("providerMetadata");
+
+	return { part: changed ? nextPart : part, changed };
+}
+
+export function stripOpenAIItemIdsFromHistory(
+	messages: CoreMessage[],
+	modelString: string,
+): CoreMessage[] {
+	if (!isOpenAIGPT(modelString)) return messages;
+
+	let mutated = false;
+	const result = messages.map((message) => {
+		if (!Array.isArray(message.content)) return message;
+
+		let contentMutated = false;
+		const content = message.content.map((part) => {
+			const cleaned = stripOpenAIItemIdFromPart(part);
+			if (cleaned.changed) contentMutated = true;
+			return cleaned.part;
+		});
+
+		if (!contentMutated) return message;
+		mutated = true;
+		return {
+			...message,
+			content: content as CoreMessage["content"],
+		} as CoreMessage;
+	});
+
+	return mutated ? result : messages;
+}
+
 /**
  * Reads the effective provider-options record for a content part, checking
  * both the modern `providerOptions` field and the legacy `providerMetadata`
@@ -469,9 +524,8 @@ export function stripGPTCommentaryFromHistory(
 // ─── Main turn function ───────────────────────────────────────────────────────
 
 /**
- * Returns true when the model string refers to an OpenAI GPT model, which uses
- * the Responses API and honours the `instructions` provider option as the
- * authoritative system prompt (rather than a system-role message in `input`).
+ * Returns true when the model string refers to an OpenAI GPT model routed
+ * through the OpenAI SDK stack (direct OpenAI or Zen OpenAI).
  */
 export function isOpenAIGPT(modelString: string): boolean {
 	const { provider, modelId } = parseModelString(modelString);
@@ -526,11 +580,9 @@ export async function* runTurn(options: {
 
 	try {
 		// OpenAI GPT models use the Responses API (@ai-sdk/openai v3 / ai v6 default),
-		// which honours `instructions` as the authoritative system prompt. Passing it
-		// as a system-role message in `input` works but is treated as a lower-priority
-		// user turn, causing the model to deprioritise the instructions.
-		const useInstructions =
-			systemPrompt !== undefined && isOpenAIGPT(modelString);
+		// but we keep prompts only in `system` messages for consistency across
+		// providers and to avoid prompting shape drift on GPT reasoning models.
+		const useInstructions = false;
 
 		const toolCount = Object.keys(toolSet).length;
 		const thinkingOpts = thinkingEffort
@@ -569,12 +621,20 @@ export async function* runTurn(options: {
 			logApiEvent("gpt commentary stripped from history", { modelString });
 		}
 
+		const openAIItemIdsStrippedMessages = stripOpenAIItemIdsFromHistory(
+			gptSanitizedMessages,
+			modelString,
+		);
+		if (openAIItemIdsStrippedMessages !== gptSanitizedMessages) {
+			logApiEvent("openai item ids stripped from history", { modelString });
+		}
+
 		logApiEvent(
 			"turn context pre-prune",
-			getMessageDiagnostics(gptSanitizedMessages),
+			getMessageDiagnostics(openAIItemIdsStrippedMessages),
 		);
 		const prunedMessages = applyContextPruning(
-			gptSanitizedMessages,
+			openAIItemIdsStrippedMessages,
 			pruningMode,
 		);
 		logApiEvent(
@@ -594,16 +654,25 @@ export async function* runTurn(options: {
 		}
 
 		const mergedProviderOptions = {
-			...(useInstructions
-				? { openai: { instructions: systemPrompt, store: false } }
-				: {}),
 			...(thinkingOpts ?? {}),
-			...(useInstructions && thinkingOpts?.openai
+			...(isOpenAIGPT(modelString)
 				? {
 						openai: {
-							instructions: systemPrompt,
 							store: false,
-							...(thinkingOpts.openai as object),
+							...(isRecord(thinkingOpts?.openai)
+								? (thinkingOpts.openai as object)
+								: {}),
+						},
+					}
+				: {}),
+			...(useInstructions && systemPrompt
+				? {
+						openai: {
+							...(isRecord(thinkingOpts?.openai)
+								? (thinkingOpts.openai as object)
+								: {}),
+							store: false,
+							instructions: systemPrompt,
 						},
 					}
 				: {}),
