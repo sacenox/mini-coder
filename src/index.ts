@@ -24,6 +24,7 @@ import { autoDiscoverModel } from "./llm-api/providers.ts";
 
 import {
 	getPreferredModel,
+	getPreferredShowReasoning,
 	getPreferredThinkingEffort,
 } from "./session/db/index.ts";
 import { getMostRecentSession, printSessionList } from "./session/manager.ts";
@@ -297,6 +298,7 @@ async function main(): Promise<void> {
 				model: modelOverride,
 				cwd: runCwd,
 				initialThinkingEffort: getPreferredThinkingEffort(),
+				initialShowReasoning: getPreferredShowReasoning(),
 				reporter: new HeadlessReporter(),
 				initialPrompt: args.prompt ?? "",
 				headless: true,
@@ -333,6 +335,7 @@ async function main(): Promise<void> {
 			model,
 			cwd: args.cwd,
 			initialThinkingEffort: getPreferredThinkingEffort(),
+			initialShowReasoning: getPreferredShowReasoning(),
 			reporter: new CliReporter(),
 		};
 		if (sessionId) agentOpts.sessionId = sessionId;

@@ -10,6 +10,7 @@ import {
 	listMcpServers,
 	setPreferredActiveAgent,
 	setPreferredModel,
+	setPreferredShowReasoning,
 	setPreferredThinkingEffort,
 } from "../session/db/index.ts";
 import type { SubagentSummary } from "../tools/subagent.ts";
@@ -25,6 +26,7 @@ interface AgentOptions {
 	model: string;
 	cwd: string;
 	initialThinkingEffort: ThinkingEffort | null;
+	initialShowReasoning: boolean;
 	sessionId?: string;
 	initialPrompt?: string;
 	reporter: AgentReporter;
@@ -96,6 +98,7 @@ export async function runAgent(
 		mcpTools,
 		initialModel: currentModel,
 		initialThinkingEffort: opts.initialThinkingEffort,
+		initialShowReasoning: opts.initialShowReasoning,
 		sessionId: opts.sessionId,
 		extraSystemPrompt: opts.agentSystemPrompt,
 		isSubagent: opts.headless,
@@ -132,6 +135,13 @@ export async function runAgent(
 		setThinkingEffort: (e) => {
 			runner.currentThinkingEffort = e;
 			setPreferredThinkingEffort(e);
+		},
+		get showReasoning() {
+			return runner.showReasoning;
+		},
+		setShowReasoning: (show) => {
+			runner.showReasoning = show;
+			setPreferredShowReasoning(show);
 		},
 		get planMode() {
 			return runner.planMode;
@@ -195,6 +205,7 @@ export async function runAgent(
 			ralphMode: runner.ralphMode,
 			thinkingEffort: runner.currentThinkingEffort,
 			activeAgent: activeAgentName,
+			showReasoning: runner.showReasoning,
 		});
 	}
 

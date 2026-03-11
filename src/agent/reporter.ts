@@ -6,6 +6,7 @@ export interface TurnResult {
 	outputTokens: number;
 	contextTokens: number;
 	newMessages: CoreMessage[];
+	reasoningText: string;
 }
 
 export interface StatusBarData {
@@ -21,6 +22,7 @@ export interface StatusBarData {
 	ralphMode: boolean;
 	thinkingEffort?: string | null;
 	activeAgent?: string | null;
+	showReasoning?: boolean;
 }
 
 export interface AgentReporter {
@@ -32,7 +34,10 @@ export interface AgentReporter {
 	startSpinner(label?: string): void;
 	stopSpinner(): void;
 
-	renderTurn(events: AsyncIterable<TurnEvent>): Promise<TurnResult>;
+	renderTurn(
+		events: AsyncIterable<TurnEvent>,
+		opts?: { showReasoning?: boolean },
+	): Promise<TurnResult>;
 	renderStatusBar(data: StatusBarData): void;
 	renderHook(toolName: string, scriptPath: string, success: boolean): void;
 

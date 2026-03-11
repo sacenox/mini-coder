@@ -47,8 +47,11 @@ export class CliReporter implements AgentReporter {
 		this.spinner.stop();
 	}
 
-	async renderTurn(events: AsyncIterable<TurnEvent>): Promise<TurnResult> {
-		return renderTurn(events, this.spinner);
+	async renderTurn(
+		events: AsyncIterable<TurnEvent>,
+		opts?: { showReasoning?: boolean },
+	): Promise<TurnResult> {
+		return renderTurn(events, this.spinner, opts);
 	}
 
 	renderStatusBar(data: StatusBarData): void {

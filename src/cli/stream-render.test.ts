@@ -65,6 +65,7 @@ describe("renderTurn", () => {
 			outputTokens: 2,
 			contextTokens: 3,
 			newMessages: [],
+			reasoningText: "",
 		});
 	});
 
@@ -101,5 +102,33 @@ describe("renderTurn", () => {
 		expect(hasAnsi(lines[0] ?? "", "[2m")).toBe(true);
 		expect(hasAnsi(lines[1] ?? "", "[33m")).toBe(true);
 		expect(hasAnsi(lines[2] ?? "", "[2m")).toBe(true);
+	});
+	test("can hide reasoning output while still accumulating reasoning text", async () => {
+		captureStdout();
+
+		const result = await renderTurn(
+			eventsFrom([
+				{ type: "reasoning-delta", delta: "step 1\nstep 2" },
+				{ type: "text-delta", delta: "final" },
+				done(),
+			]),
+			new Spinner(),
+			{ showReasoning: false },
+		);
+
+		expect(strip(stdout)).toBe("◆ final\n");
+		expect(result.reasoningText).toBe("step 1\nstep 2");
+	});
+
+	test("renders reasoning output by default and accumulates it", async () => {
+		captureStdout();
+
+		const result = await renderTurn(
+			eventsFrom([{ type: "reasoning-delta", delta: "thinking" }, done()]),
+			new Spinner(),
+		);
+
+		expect(strip(stdout)).toBe("Thinking...\nthinking\n");
+		expect(result.reasoningText).toBe("thinking");
 	});
 });

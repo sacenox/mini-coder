@@ -19,17 +19,24 @@ export class HeadlessReporter implements AgentReporter {
 	startSpinner(_label?: string): void {}
 	stopSpinner(): void {}
 
-	async renderTurn(events: AsyncIterable<TurnEvent>): Promise<TurnResult> {
+	async renderTurn(
+		events: AsyncIterable<TurnEvent>,
+		_opts?: { showReasoning?: boolean },
+	): Promise<TurnResult> {
 		let inputTokens = 0;
 		let outputTokens = 0;
 		let contextTokens = 0;
 		let newMessages: CoreMessage[] = [];
 		let accumulatedText = "";
+		let reasoningText = "";
 
 		for await (const event of events) {
 			switch (event.type) {
 				case "text-delta":
 					accumulatedText += event.delta;
+					break;
+				case "reasoning-delta":
+					reasoningText += event.delta;
 					break;
 				case "turn-complete":
 					inputTokens = event.inputTokens;
@@ -52,7 +59,13 @@ export class HeadlessReporter implements AgentReporter {
 			}
 		}
 
-		return { inputTokens, outputTokens, contextTokens, newMessages };
+		return {
+			inputTokens,
+			outputTokens,
+			contextTokens,
+			newMessages,
+			reasoningText,
+		};
 	}
 
 	renderStatusBar(_data: StatusBarData): void {}

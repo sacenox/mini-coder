@@ -42,6 +42,17 @@ export function setPreferredThinkingEffort(
 		setSetting("preferred_thinking_effort", effort);
 	}
 }
+
+export function getPreferredShowReasoning(): boolean {
+	const v = getSetting("preferred_show_reasoning");
+	if (v === null) return true;
+	return v !== "false";
+}
+
+export function setPreferredShowReasoning(show: boolean): void {
+	setSetting("preferred_show_reasoning", show ? "true" : "false");
+}
+
 export function getPreferredActiveAgent(): string | null {
 	return getSetting("preferred_active_agent");
 }

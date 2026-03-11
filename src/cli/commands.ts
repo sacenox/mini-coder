@@ -28,6 +28,8 @@ export interface CommandContext {
 	setModel: (model: string) => void;
 	thinkingEffort: ThinkingEffort | null;
 	setThinkingEffort: (effort: ThinkingEffort | null) => void;
+	showReasoning: boolean;
+	setShowReasoning: (show: boolean) => void;
 	planMode: boolean;
 	setPlanMode: (enabled: boolean) => void;
 	ralphMode: boolean;
@@ -193,6 +195,28 @@ async function handleModel(ctx: CommandContext, args: string): Promise<void> {
 			"  /model effort <low|medium|high|xhigh|off>  to set thinking effort",
 		),
 	);
+}
+
+function handleReasoning(ctx: CommandContext, args: string): void {
+	const mode = args.trim().toLowerCase();
+	if (!mode) {
+		ctx.setShowReasoning(!ctx.showReasoning);
+		writeln(
+			`${PREFIX.success} reasoning display ${ctx.showReasoning ? c.green("on") : c.dim("off")}`,
+		);
+		return;
+	}
+	if (mode === "on") {
+		ctx.setShowReasoning(true);
+		writeln(`${PREFIX.success} reasoning display ${c.green("on")}`);
+		return;
+	}
+	if (mode === "off") {
+		ctx.setShowReasoning(false);
+		writeln(`${PREFIX.success} reasoning display ${c.dim("off")}`);
+		return;
+	}
+	writeln(`${PREFIX.error} usage: /reasoning <on|off>`);
 }
 
 function handlePlan(ctx: CommandContext): void {
@@ -453,6 +477,7 @@ function handleHelp(
 	const cmds: [string, string][] = [
 		["/model [id]", "list or switch models (fetches live list)"],
 		["/undo", "remove the last turn from conversation history"],
+		["/reasoning [on|off]", "toggle display of model reasoning output"],
 		["/plan", "toggle plan mode (read-only tools + MCP)"],
 		[
 			"/ralph",
@@ -555,6 +580,10 @@ export async function handleCommand(
 
 		case "undo":
 			await handleUndo(ctx);
+			return { type: "handled" };
+
+		case "reasoning":
+			handleReasoning(ctx, args);
 			return { type: "handled" };
 
 		case "plan":

@@ -34,6 +34,7 @@ interface SessionRunnerOptions {
 	mcpTools: ToolDef[];
 	initialModel: string;
 	initialThinkingEffort: ThinkingEffort | null;
+	initialShowReasoning: boolean;
 	sessionId?: string | undefined;
 	extraSystemPrompt?: string | undefined;
 	isSubagent?: boolean | undefined;
@@ -47,6 +48,7 @@ export class SessionRunner {
 	public mcpTools: ToolDef[];
 	public currentModel: string;
 	public currentThinkingEffort: ThinkingEffort | null;
+	public showReasoning: boolean;
 
 	public session!: ActiveSession;
 	public coreHistory!: CoreMessage[];
@@ -70,6 +72,7 @@ export class SessionRunner {
 		this.mcpTools = opts.mcpTools;
 		this.currentModel = opts.initialModel;
 		this.currentThinkingEffort = opts.initialThinkingEffort;
+		this.showReasoning = opts.initialShowReasoning;
 		this.extraSystemPrompt = opts.extraSystemPrompt;
 		this.isSubagent = opts.isSubagent;
 		this.killSubprocesses = opts.killSubprocesses;
@@ -180,7 +183,9 @@ export class SessionRunner {
 			});
 
 			const { inputTokens, outputTokens, contextTokens, newMessages } =
-				await this.reporter.renderTurn(events);
+				await this.reporter.renderTurn(events, {
+					showReasoning: this.showReasoning,
+				});
 
 			if (newMessages.length > 0) {
 				this.coreHistory.push(...newMessages);

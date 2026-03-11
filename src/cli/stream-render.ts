@@ -12,16 +12,20 @@ import { renderToolCall, renderToolResult } from "./tool-render.ts";
 export async function renderTurn(
 	events: AsyncIterable<TurnEvent>,
 	spinner: Spinner,
+	opts?: { showReasoning?: boolean },
 ): Promise<{
 	inputTokens: number;
 	outputTokens: number;
 	contextTokens: number;
 	newMessages: CoreMessage[];
+	reasoningText: string;
 }> {
+	const showReasoning = opts?.showReasoning ?? true;
 	let inText = false;
 	let inReasoning = false;
 	let rawBuffer = "";
 	let accumulatedText = "";
+	let accumulatedReasoning = "";
 
 	let inFence = false;
 
@@ -84,6 +88,10 @@ export async function renderTurn(
 				break;
 			}
 			case "reasoning-delta": {
+				accumulatedReasoning += event.delta;
+				if (!showReasoning) {
+					break;
+				}
 				if (!inReasoning) {
 					if (inText) {
 						flushAnyText();
@@ -150,5 +158,11 @@ export async function renderTurn(
 		}
 	}
 
-	return { inputTokens, outputTokens, contextTokens, newMessages };
+	return {
+		inputTokens,
+		outputTokens,
+		contextTokens,
+		newMessages,
+		reasoningText: accumulatedReasoning,
+	};
 }
