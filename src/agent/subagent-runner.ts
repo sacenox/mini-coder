@@ -29,6 +29,29 @@ function getMcCommand(): string[] {
 // Loose recursion cap passed via environment so subprocess chains are bounded
 // without an in-process depth parameter. Generous enough for real use-cases.
 const MAX_SUBAGENT_DEPTH = 10;
+async function consumeTail(
+	stream: ReadableStream | null,
+	maxBytes = 8192,
+): Promise<string> {
+	if (!stream) return "";
+	const reader = stream.getReader();
+	const decoder = new TextDecoder();
+	let tail = "";
+	try {
+		while (true) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			tail += decoder.decode(value, { stream: true });
+			if (tail.length > maxBytes * 2) {
+				tail = tail.slice(-maxBytes);
+			}
+		}
+		tail += decoder.decode();
+	} finally {
+		reader.releaseLock();
+	}
+	return tail.length > maxBytes ? tail.slice(-maxBytes) : tail;
+}
 
 function formatSubagentDiagnostics(stdout: string, stderr: string): string {
 	const lines = [...stderr.split("\n"), ...stdout.split("\n")]
@@ -94,8 +117,8 @@ export function createSubagentRunner(
 		try {
 			const [text, stdout, stderr] = await Promise.all([
 				Bun.file(proc.stdio[3] as number).text(),
-				new Response(proc.stdout).text(),
-				new Response(proc.stderr).text(),
+				consumeTail(proc.stdout),
+				consumeTail(proc.stderr),
 				proc.exited,
 			]);
 			const diagnostics = formatSubagentDiagnostics(stdout, stderr);

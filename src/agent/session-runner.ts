@@ -18,11 +18,7 @@ import {
 	touchActiveSession,
 } from "../session/manager.ts";
 import { takeSnapshot } from "../tools/snapshot.ts";
-import {
-	extractAssistantText,
-	makeInterruptMessage,
-	resolveFileRefs,
-} from "./agent-helpers.ts";
+import { extractAssistantText, makeInterruptMessage } from "./agent-helpers.ts";
 import type { AgentReporter } from "./reporter.ts";
 import { buildSystemPrompt } from "./system-prompt.ts";
 import { buildReadOnlyToolSet } from "./tools.ts";
@@ -129,18 +125,14 @@ export class SessionRunner {
 				killSubs();
 			});
 		}
-		const { text: resolvedText, images: refImages } = await resolveFileRefs(
-			text,
-			this.cwd,
-		);
-		const allImages = [...pastedImages, ...refImages];
+		const allImages = [...pastedImages];
 		const thisTurn = this.turnIndex++;
 
 		const snapped = await takeSnapshot(this.cwd, this.session.id, thisTurn);
 
 		const coreContent = this.planMode
-			? `${resolvedText}\n\n<system-message>PLAN MODE ACTIVE: Help the user gather context for the plan -- READ ONLY</system-message>`
-			: resolvedText;
+			? `${text}\n\n<system-message>PLAN MODE ACTIVE: Help the user gather context for the plan -- READ ONLY</system-message>`
+			: text;
 
 		const userMsg: CoreMessage =
 			allImages.length > 0

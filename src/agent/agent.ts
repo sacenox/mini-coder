@@ -1,8 +1,7 @@
 import * as c from "yoctocolors";
 import { type AgentConfig, loadAgents } from "../cli/agents.ts";
-import type { CommandContext } from "../cli/commands.ts";
-import { tildePath } from "../cli/output.ts";
-import { getContextWindow, type ThinkingEffort } from "../llm-api/providers.ts";
+import type { CommandContext } from "../cli/types.ts";
+import type { ThinkingEffort } from "../llm-api/providers.ts";
 import type { ContextPruningMode } from "../llm-api/turn.ts";
 import type { ToolDef } from "../llm-api/types.ts";
 import { connectMcpServer } from "../mcp/client.ts";
@@ -16,9 +15,6 @@ import {
 	setPreferredThinkingEffort,
 	setPreferredToolResultPayloadCapBytes,
 } from "../session/db/index.ts";
-import type { SubagentSummary } from "../tools/subagent.ts";
-import { getGitBranch } from "./agent-helpers.ts";
-import { runInputLoop } from "./input-loop.ts";
 import type { AgentReporter } from "./reporter.ts";
 import { SessionRunner } from "./session-runner.ts";
 import { createSubagentRunner } from "./subagent-runner.ts";
@@ -33,7 +29,6 @@ interface AgentOptions {
 	initialPruningMode: ContextPruningMode;
 	initialToolResultPayloadCapBytes: number;
 	sessionId?: string;
-	initialPrompt?: string;
 	reporter: AgentReporter;
 	headless?: boolean;
 	agentSystemPrompt?: string;
@@ -50,9 +45,10 @@ function subagentAgents(
 	return filtered;
 }
 
-export async function runAgent(
-	opts: AgentOptions,
-): Promise<SubagentSummary | undefined> {
+export async function initAgent(opts: AgentOptions): Promise<{
+	runner: SessionRunner;
+	cmdCtx: CommandContext;
+}> {
 	const cwd = opts.cwd;
 	let currentModel = opts.model;
 
@@ -207,50 +203,5 @@ export async function runAgent(
 		startNewSession: () => runner.startNewSession(),
 	};
 
-	async function renderStatusBarForSession(): Promise<void> {
-		const branch = await getGitBranch(cwd);
-		const provider = runner.currentModel.split("/")[0] ?? "";
-		const modelShort = runner.currentModel.split("/").slice(1).join("/");
-		const cwdDisplay = tildePath(cwd);
-
-		opts.reporter.renderStatusBar({
-			model: modelShort,
-			provider,
-			cwd: cwdDisplay,
-			gitBranch: branch,
-			sessionId: runner.session.id,
-			inputTokens: runner.totalIn,
-			outputTokens: runner.totalOut,
-			contextTokens: runner.lastContextTokens,
-			contextWindow: getContextWindow(runner.currentModel) ?? 0,
-			ralphMode: runner.ralphMode,
-			thinkingEffort: runner.currentThinkingEffort,
-			activeAgent: activeAgentName,
-			showReasoning: runner.showReasoning,
-		});
-	}
-
-	if (opts.headless) {
-		const prompt = opts.initialPrompt ?? "";
-		const result = await runner.processUserInput(prompt);
-		return {
-			result,
-			inputTokens: runner.totalIn,
-			outputTokens: runner.totalOut,
-		};
-	}
-
-	if (opts.initialPrompt) {
-		await runner.processUserInput(opts.initialPrompt);
-	}
-
-	await runInputLoop({
-		cwd,
-		reporter: opts.reporter,
-		cmdCtx,
-		runner,
-		renderStatusBar: renderStatusBarForSession,
-	});
-
-	return undefined;
+	return { runner, cmdCtx };
 }
