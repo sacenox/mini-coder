@@ -152,6 +152,8 @@ function printHelp(): void {
 		["ANTHROPIC_API_KEY", "Anthropic direct"],
 		["OPENAI_API_KEY", "OpenAI direct"],
 		["GOOGLE_API_KEY", "Google Gemini direct"],
+		["GEMINI_API_KEY", "Gemini direct (alias for GOOGLE_API_KEY)"],
+		["EXA_API_KEY", "Enables webSearch and webContent tools"],
 		["OLLAMA_BASE_URL", "Ollama base URL (default: http://localhost:11434)"],
 	];
 	for (const [env, desc] of envs) {

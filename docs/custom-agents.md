@@ -1,7 +1,7 @@
 # Custom Agents
 
-An agent is a subagent with a custom system prompt and optional model override.
-Use `@agent-name` anywhere in your prompt to route the message through it.
+A custom agent is a reusable system prompt with an optional model override.
+You can activate one with `/agent <name>`, and non-`primary` agents are also exposed to the `subagent` tool.
 
 ## Where to put them
 
@@ -9,8 +9,10 @@ Use `@agent-name` anywhere in your prompt to route the message through it.
 |---|---|
 | `.agents/agents/*.md` | Current repo only |
 | `~/.agents/agents/*.md` | All projects (global) |
+| `.claude/agents/*.md` | Current repo only (`.claude` layout) |
+| `~/.claude/agents/*.md` | All projects (global, `.claude` layout) |
 
-Local agents override global ones with the same name.
+Local agents override global ones with the same name. At the same scope, `.agents` wins over `.claude`.
 
 ## Create an agent
 
@@ -33,12 +35,11 @@ No flattery. End with a one-line verdict.
 Then in the REPL:
 
 ```
-@reviewer review the auth module for race conditions
+/agent reviewer
+review the auth module for race conditions
 ```
 
-The rest of the message (everything except the `@reviewer` token) becomes
-the prompt. The agent runs in its own context window and returns its output
-into the conversation.
+You can also mention `@reviewer` in a prompt as a naming convention, and agent names participate in `@` tab completion alongside skills and files.
 
 ## Frontmatter fields
 
@@ -46,22 +47,22 @@ into the conversation.
 |---|---|---|
 | `description` | No | Shown in `/help`. Defaults to filename. |
 | `model` | No | Override the active model for this agent. |
-| `mode` | No | `primary` — interactive only (via `/agent <name>`); `subagent` — callable via the `subagent` tool only (default); `all` — both. |
-
+| `mode` | No | Controls whether the agent is exposed through the `subagent` tool. `primary` excludes it from that tool and is intended for `/agent`. `subagent`, `all`, and an omitted value all keep it available to the `subagent` tool. Any loaded agent can currently still be selected with `/agent <name>`. |
 
 The markdown body (after frontmatter) is the agent's system prompt.
 
 ## Combining with files
 
-`@file` references are resolved before the agent fires:
+File references are resolved before the prompt is sent:
 
 ```
-@reviewer @src/auth/session.ts check this file for issues
+/agent reviewer
+@src/auth/session.ts check this file for issues
 ```
 
 ## Tab completion
 
-Type `@` and press `Tab` to autocomplete agent names alongside files.
+Type `@` and press `Tab` to autocomplete agent names alongside skills and files.
 
 ## Listing agents
 

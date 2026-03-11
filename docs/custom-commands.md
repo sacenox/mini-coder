@@ -8,8 +8,10 @@ Custom commands let you define reusable prompts that run as `/command` in the mi
 |---|---|
 | `.agents/commands/*.md` | Current repo only |
 | `~/.agents/commands/*.md` | All projects (global) |
+| `.claude/commands/*.md` | Current repo only (Claude-compatible) |
+| `~/.claude/commands/*.md` | All projects (global, Claude-compatible) |
 
-Local commands override global ones with the same name.
+Local commands override global ones with the same name. At the same scope, `.agents` wins over `.claude`.
 
 ## Create a command
 
@@ -21,7 +23,6 @@ Create a markdown file. The filename becomes the command name.
 ---
 description: Summarise what changed since yesterday
 model: zen/claude-haiku-4-5
-
 ---
 
 Run `!`git log --oneline --since=yesterday`` and summarise the changes
@@ -44,8 +45,6 @@ Then in the REPL:
 | `subtask` | No | Set to `true` to force subagent execution (OpenCode-compatible alias for `context: fork`). |
 | `agent` | No | Run the command under a named agent's system prompt (only applies when `context: fork`). |
 
-
-
 ## Arguments
 
 Use `$ARGUMENTS` for the full argument string, or `$1`, `$2`, … `$9` for individual tokens.
@@ -56,7 +55,6 @@ Use `$ARGUMENTS` for the full argument string, or `$1`, `$2`, … `$9` for indiv
 ---
 description: Search the codebase for a topic
 model: zen/claude-haiku-4-5
-
 ---
 
 Search the codebase for: $ARGUMENTS
@@ -117,7 +115,6 @@ lightweight tasks regardless of what the session is currently set to.
 ---
 description: Quick grep for a symbol
 model: zen/claude-haiku-4-5
-
 ---
 
 Find all usages of $ARGUMENTS across the codebase using grep and glob.
@@ -126,14 +123,12 @@ List each occurrence with file path and line number. No explanations needed.
 
 Large models for deep analysis, small models for search and lookup.
 
-
 ## Precedence
 
 Custom commands shadow built-ins. If you create `.agents/commands/plan.md`
 it will replace the built-in `/plan` for that project. The global `/review`
 command (auto-created at `~/.agents/commands/review.md` on first run) works
 the same way — a local `.agents/commands/review.md` will override it.
-
 
 ## Listing commands
 

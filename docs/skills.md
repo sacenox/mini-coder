@@ -15,8 +15,10 @@ Each skill is a folder containing a `SKILL.md`:
 |---|---|
 | `.agents/skills/<name>/SKILL.md` | Current repo only |
 | `~/.agents/skills/<name>/SKILL.md` | All projects (global) |
+| `.claude/skills/<name>/SKILL.md` | Current repo only (Claude-compatible) |
+| `~/.claude/skills/<name>/SKILL.md` | All projects (global, Claude-compatible) |
 
-Local skills override global ones with the same name.
+Local skills override global ones with the same name. At the same scope, `.agents` wins over `.claude`.
 
 ## Create a skill
 
@@ -60,7 +62,7 @@ included in the message sent to the LLM.
 
 ## Tab completion
 
-Type `@` and press `Tab` to autocomplete skill names alongside files.
+Type `@` and press `Tab` to autocomplete skill names alongside agents and files.
 
 ## Listing skills
 

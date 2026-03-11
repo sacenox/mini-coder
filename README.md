@@ -56,10 +56,10 @@ Need more firepower? I connect to **MCP servers** over HTTP or stdio — bolt on
 - **Built-in web search** — set `EXA_API_KEY` and I expose `webSearch` + `webContent` tools.
 - **Session memory** — conversations are saved in a local SQLite database. Resume where you left off with `-c` or pick a specific session with `-r <id>`.
 - **Shell integration** — prefix with `!` to run shell commands inline. Use `@` to reference files in your prompt (with Tab completion).
-- **Slash commands** — `/model` or `/models` to list/switch models, `/model effort <low|medium|high|xhigh|off>` for reasoning effort, `/plan` for read-only thinking mode, `/ralph` for autonomous looping, `/review` for a code review (global custom command, auto-created at `~/.agents/commands/review.md`), `/agent [name]` to set or clear an active primary agent, `/undo` to roll back a turn, `/new` for a clean session, `/mcp list|add|remove` to manage MCP servers, and `/exit` (`/quit`, `/q`) to leave. See all with `/help`.
+- **Slash commands** — `/model` or `/models` to list/switch models, `/model effort <low|medium|high|xhigh|off>` for reasoning effort, `/reasoning [on|off]` to toggle reasoning display, `/context` to inspect or tune pruning/tool-result caps, `/plan` for read-only thinking mode, `/ralph` for autonomous looping, `/review` for a code review (global custom command, auto-created at `~/.agents/commands/review.md`), `/agent [name]` to set or clear an active primary agent, `/undo` to roll back a turn, `/new` for a clean session, `/mcp list|add|remove` to manage MCP servers, and `/exit` (`/quit`, `/q`) to leave. See all with `/help`.
 
 - **Custom commands** — drop a `.md` file in `.agents/commands/` and it becomes a `/command`. Claude-compatible `.claude/commands/` works too. Supports argument placeholders (`$ARGUMENTS`, `$1`…`$9`) and shell interpolation (`` !`cmd` ``). Global commands live in `~/.agents/commands/` and `~/.claude/commands/`. Custom commands take precedence over built-ins. → [docs/custom-commands.md](docs/custom-commands.md)
-- **Custom agents** — drop a `.md` file in `.agents/agents/` (or `~/.agents/agents/` globally) and reference it with `@agent-name` in your prompt. The agent runs in its own context window with a custom system prompt and optional model override. → [docs/custom-agents.md](docs/custom-agents.md)
+- **Custom agents** — drop a `.md` file in `.agents/agents/` or `.claude/agents/` (or `~/.agents/agents/` / `~/.claude/agents/` globally) and activate it with `/agent [name]`. Agent definitions are also exposed to subagent delegation unless `mode: primary`. `@agent-name` is supported for completion and is a useful prompt convention. → [docs/custom-agents.md](docs/custom-agents.md)
 - **Skills** — place a `SKILL.md` in `.agents/skills/<name>/` and inject it into any prompt with `@skill-name`. Claude-compatible `.claude/skills/<name>/SKILL.md` works too. Skills are _never_ auto-loaded — always explicit. → [docs/skills.md](docs/skills.md)
 - **Post-tool hooks** — drop an executable at `.agents/hooks/post-<tool>` (or `~/.agents/hooks/post-<tool>` globally) and I'll run it after matching built-in tool calls. → [docs/tool-hooks.md](docs/tool-hooks.md)
 - **Beautiful, minimal output** — diffs for edits, formatted trees for file searches, a live status bar with model, git branch, and token counts.
@@ -73,28 +73,32 @@ Need more firepower? I connect to **MCP servers** over HTTP or stdio — bolt on
 - **I'm tiny but mighty.** The whole runtime is [Bun.js](https://bun.com) — fast startup, native TypeScript, and a built-in SQLite driver.
 - **I respect existing conventions.** Hook scripts live in `.agents/hooks/`, context in `AGENTS.md` or `CLAUDE.md`, commands in `.agents/commands/`, agents in `.agents/agents/`, skills in `.agents/skills/` — I follow the ecosystem instead of inventing new standards.
 - **I spin while I think.** ⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏ (It's the little things.)
-- **I can clone myself.** The `subagent` tool lets me spin up parallel instances of myself to tackle independent subtasks simultaneously. Divide and conquer! (Up to 3 levels deep.)
+- **I can clone myself.** The `subagent` tool lets me spin up parallel instances of myself to tackle independent subtasks simultaneously. Divide and conquer! (Up to 10 levels deep.)
 
 ---
 
 ## 📁 Config folders
 
-I follow the [`.agents` convention](https://github.com/agentsmd/agents) — the shared standard across AI coding tools — and I also speak Claude Code's `.claude` format for **commands** and **skills**. Best of both worlds.
+I follow the [`.agents` convention](https://github.com/agentsmd/agents) — the shared standard across AI coding tools — and I also understand `.claude` layouts for **commands**, **skills**, and **agents**.
 
-| Path                             | What it does                                      |
-| -------------------------------- | ------------------------------------------------- |
-| `.agents/commands/*.md`          | Custom slash commands (`/name`)                   |
-| `.claude/commands/*.md`          | Claude-compatible custom commands                 |
-| `.agents/agents/*.md`            | Custom agents (`@name`)                           |
-| `.agents/skills/<name>/SKILL.md` | Reusable skill instructions (`@name`)             |
-| `.claude/skills/<name>/SKILL.md` | Claude-compatible skills                          |
-| `.agents/hooks/post-<tool>`      | Scripts run after supported built-in tool calls   |
-| `AGENTS.md`                      | Project context injected into every system prompt |
-| `CLAUDE.md`                      | Fallback project context if `AGENTS.md` is absent |
-| `~/.agents/AGENTS.md`            | Global fallback context                           |
+| Path                             | What it does                                          |
+| -------------------------------- | ----------------------------------------------------- |
+| `.agents/commands/*.md`          | Custom slash commands (`/name`)                       |
+| `.claude/commands/*.md`          | Claude-compatible custom commands                     |
+| `.agents/agents/*.md`            | Custom agents                                         |
+| `.claude/agents/*.md`            | Alternate `.claude` path for custom agents            |
+| `.agents/skills/<name>/SKILL.md` | Reusable skill instructions (`@name`)                 |
+| `.claude/skills/<name>/SKILL.md` | Claude-compatible skills                              |
+| `.agents/hooks/post-<tool>`      | Scripts run after supported built-in tool calls       |
+| `.agents/AGENTS.md`              | Preferred local project context                       |
+| `CLAUDE.md`                      | Local fallback context if `.agents/AGENTS.md` is absent |
+| `AGENTS.md`                      | Local fallback context if `.agents/AGENTS.md` and `CLAUDE.md` are absent |
+| `~/.agents/AGENTS.md`            | Preferred global context, prepended before local context |
+| `~/.agents/CLAUDE.md`            | Global fallback context if `~/.agents/AGENTS.md` is absent |
 
+Global commands, agents, and skills also work from `~/.agents/...` and `~/.claude/...`.
 
-The pecking order is straightforward: local beats global, and `.agents` beats `.claude` at the same scope. Worth noting: custom agents are mini-coder-only — `.claude` compatibility is for commands and skills only. → [docs/configs.md](docs/configs.md)
+For commands, skills, and agents: local overrides global, and `.agents` overrides `.claude` at the same scope. Context files are combined differently: global context is injected first, then local context. → [docs/configs.md](docs/configs.md)
 
 ---
 
@@ -148,7 +152,6 @@ Everything I remember lives in `~/.config/mini-coder/` — here's what I'm holdi
 - `sessions.db` — your full session history, `/undo` snapshots, MCP server config, and model metadata, all in one tidy SQLite file
 - `api.log` — a request/response log for every provider call this run, if you want to peek under the hood
 - `errors.log` — anything that went sideways, caught and written down so you can actually debug it
-- `AGENTS.md` — your global context fallback, quietly injected whenever a repo doesn't bring its own `AGENTS.md` or `CLAUDE.md`
 
 ---
 

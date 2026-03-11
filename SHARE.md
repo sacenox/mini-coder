@@ -12,8 +12,9 @@ mc
 - **Session memory** — local SQLite, resume with `mc -c`
 - **Shell integration** — `!command` inline, `@file` references with tab completion
 - **Subagents** — spawns parallel agents for independent subtasks
-- **MCP support** — connect tools like Exa web search
-- **Hooks** — auto-run scripts after any tool call via `.agents/hooks/`
+- **Built-in web search** — enable Exa-backed `webSearch`/`webContent` with `EXA_API_KEY`
+- **MCP support** — connect external tools and servers
+- **Hooks** — auto-run scripts after supported built-in tool calls via `.agents/hooks/`
 - **16 ANSI colors** — inherits your terminal theme, always
 
 No telemetry. No cloud accounts. No bloat.

@@ -16,27 +16,34 @@ Elegant output that focus on the conversation with the agent and their actions.
 Accurate and reliable core set of features.
 Fast and performant
 Community oriented, all of the inspirations have their own dotfile format, try to follow the existing
-conventions and not introduce more specs. (skills.sh installs to `.agents,AGENTS.md` which could be a good one for us)
+conventions and not introduce more specs. (`.agents` / `AGENTS.md`, while also supporting adjacent conventions like `.claude`)
 
 ## Features:
 
 - Auto discovery of providers via ENV (Example: OPENCODE_API_KEY), or local servers (Example: ollama)
 - Session management and command to create new/resume/list with local sqlite file.
-- Seamless shell integration with aliases and completions with `!` in prompt input.
-- Reference files, skills, agents from the working directory and global community configs with `@` in prompt input
+- Seamless shell integration with `!` in prompt input.
+- Reference files and skills from the working directory and global configs with `@` in prompt input, plus autocomplete for files, skills, and agents.
 - Press `ESC` at any point during an assistant response to interrupt it: the partial response is preserved in history with an interrupt stub appended (so the LLM retains context), and the user is returned to the prompt silently. `ctrl+c` exits the app. `ctrl+d` (EOF) also exits.
 
 - `glob`, `grep`, `read`, `replace`,`insert`, `create`, `shell`, and `subagent` tools for LLMs
-- `subagent` tool spawns a fresh `mc` subprocess — full capability parity with the main agent, correct working directory, and support for recursive subagents. Custom agents (from `.agents/agents/`) and custom commands (from `.agents/commands/`) are fully supported in subagents.
-- tool hooks support (do command automatically after certain tools)
+- Optional `webSearch` and `webContent` tools when `EXA_API_KEY` is set.
+- `subagent` tool spawns a fresh `mc` subprocess — full capability parity with the main agent, support for recursive subagents (up to 10 levels), and git worktree isolation/merge-back when available. Custom agents and custom commands from `.agents` and `.claude` are supported in subagents.
+- tool hooks support for supported built-in tools
 - Commands in CLI prompt:
   - `/model` command allows the user to pick a model from connected providers. As well as thinking effort for the model if supported. Selection persists accross sessions.
-  - `/review` command sends a subagent with a specific prompt to review code well
-  - `/mcp` list/add/remove mcp servers. servers are stored in sqlite
+  - `/undo` removes the last turn from conversation history.
+  - `/reasoning` toggles display of model reasoning output.
+  - `/context` configures context pruning and tool-result caps.
+  - `/review` reviews recent changes via a global command installed at app start (`~/.agents/commands/review.md`), and can be customized or shadowed locally.
+
   - `/plan` for a read-only mode (`/plan` again to turn off)
   - `/ralph` for a ralph loop mode (by Geoffrey Huntley, who described it simply: “Ralph is a Bash loop.”)
-- Connect to streaming MCPs (Example: https://exa.ai/docs/reference/exa-mcp)
-- Image and clipboard support, pasting images and text
+  - `/agent` sets or clears the active primary agent.
+  - `/mcp` list/add/remove mcp servers. servers are stored in sqlite
+  - `/new` starts a new session with clean context.
+- Connect to MCP servers over Streamable HTTP / SSE fallback or stdio.
+- Image support in prompt input, including pasted image data URLs and pasted image file paths.
 
 ## UI/Output
 
@@ -46,7 +53,7 @@ conventions and not introduce more specs. (skills.sh installs to `.agents,AGENTS
   - Read tools (glob, grep, read) show the tool call with args fomatted for output
   - Edit tools show the diff applied
   - Shell tools show the command called and their output
-- status bar under prompt, with current model/provider/cwd/git branch/unique context size/token ouput/token input
+- status bar under prompt, with current model/provider/session/git branch/active agent/thinking effort/context usage/token input/token output
 - some prompt animation when a turn is processing.
 
 ## Tech stack
@@ -65,6 +72,6 @@ Core modules:
 - `llm-api`: Provides the api to intereact with the provider and process the full conversation turn + tool calling.
 - `cli`: Output/UI
 - `agent`: Main agent implementation
-- `tools/subagent`: subagent tool — spawns a fresh `mc` subprocess, handles worktree lifecycle and structured result handback
-- `tools/read-write-shell`: all of the tools that use the local filesystem/shell
+- `tools`: local filesystem, shell, subagent, and web/search helpers
+- `session`: sqlite-backed sessions, settings, model info, and MCP server storage
 - `mcp`: handles connecting to mcp servers
