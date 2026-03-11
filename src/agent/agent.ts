@@ -6,7 +6,9 @@ import { getContextWindow, type ThinkingEffort } from "../llm-api/providers.ts";
 import type { ToolDef } from "../llm-api/types.ts";
 import { connectMcpServer } from "../mcp/client.ts";
 import {
+	getPreferredActiveAgent,
 	listMcpServers,
+	setPreferredActiveAgent,
 	setPreferredModel,
 	setPreferredThinkingEffort,
 } from "../session/db/index.ts";
@@ -101,7 +103,18 @@ export async function runAgent(
 	});
 
 	// Active primary agent state — name only; the system prompt is stored on runner.
-	let activeAgentName: string | null = null;
+	let activeAgentName: string | null = getPreferredActiveAgent();
+	if (opts.agentSystemPrompt) {
+		activeAgentName = null;
+	} else if (activeAgentName) {
+		const agentCfg = agents.get(activeAgentName);
+		if (agentCfg) {
+			runner.extraSystemPrompt = agentCfg.systemPrompt;
+		} else {
+			activeAgentName = null;
+			setPreferredActiveAgent(null);
+		}
+	}
 
 	const cmdCtx: CommandContext = {
 		get currentModel() {
@@ -142,6 +155,7 @@ export async function runAgent(
 		setActiveAgent: (name, systemPrompt?) => {
 			activeAgentName = name;
 			runner.extraSystemPrompt = systemPrompt;
+			setPreferredActiveAgent(name);
 		},
 
 		undoLastTurn: () =>

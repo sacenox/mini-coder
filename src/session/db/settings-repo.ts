@@ -42,3 +42,14 @@ export function setPreferredThinkingEffort(
 		setSetting("preferred_thinking_effort", effort);
 	}
 }
+export function getPreferredActiveAgent(): string | null {
+	return getSetting("preferred_active_agent");
+}
+
+export function setPreferredActiveAgent(agent: string | null): void {
+	if (agent === null) {
+		getDb().run("DELETE FROM settings WHERE key = 'preferred_active_agent'");
+	} else {
+		setSetting("preferred_active_agent", agent);
+	}
+}
