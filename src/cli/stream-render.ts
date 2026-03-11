@@ -100,7 +100,6 @@ export async function renderTurn(
 						flushAnyText();
 					}
 					spinner.stop();
-					write(`${c.dim("Thinking...")}\n`);
 					inReasoning = true;
 				}
 				rawBuffer += event.delta;

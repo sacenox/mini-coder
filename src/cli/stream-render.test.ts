@@ -128,7 +128,8 @@ describe("renderTurn", () => {
 			new Spinner(),
 		);
 
-		expect(strip(stdout)).toBe("Thinking...\nthinking\n");
+		expect(strip(stdout)).toBe("thinking\n");
+		expect(hasAnsi(stdout, "[2m")).toBe(true);
 		expect(result.reasoningText).toBe("thinking");
 	});
 
