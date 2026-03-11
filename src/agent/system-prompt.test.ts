@@ -48,6 +48,11 @@ describe("buildSystemPrompt", () => {
 		expect(prompt).toContain("You are mini-coder");
 		expect(prompt).toContain("Guidelines:");
 		expect(prompt).not.toContain("# Project context");
+		expect(prompt).toContain("# Safety and risk boundaries");
+		expect(prompt).toContain("# Workspace guardrails");
+		expect(prompt).toContain("# Progress communication");
+		expect(prompt).toContain("# Final response style");
+		expect(prompt).toContain("Do not guess unknown facts");
 	});
 
 	it("includes local context under # Project context", () => {
