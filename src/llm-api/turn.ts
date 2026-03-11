@@ -173,6 +173,13 @@ export async function* runTurn(options: {
 				? { providerOptions: mergedProviderOptions }
 				: {}),
 			...(signal ? { abortSignal: signal } : {}),
+			experimental_repairToolCall: async ({ toolCall }) => {
+				// To avoid 400 Bad Request from the API when it receives malformed JSON
+				// in the assistant's tool_calls history, we repair it to a minimal valid JSON.
+				// This allows the framework to parse it, fail schema validation gracefully,
+				// and send a proper validation error back to the model without crashing the step loop.
+				return { ...toolCall, args: "{}" };
+			},
 		};
 
 		const result = streamText(streamOpts) as StreamTextResultFull;
