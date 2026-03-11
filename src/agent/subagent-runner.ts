@@ -1,9 +1,4 @@
 import type { SubagentOutput, SubagentSummary } from "../tools/subagent.ts";
-import {
-	cleanupBranch,
-	MergeInProgressError,
-	mergeWorktree,
-} from "../tools/worktree.ts";
 
 /**
  * Resolve the command to invoke a new `mc` subprocess.
@@ -39,11 +34,8 @@ export function createSubagentRunner(
 	cwd: string,
 	getCurrentModel: () => string,
 ) {
-	// Active subprocesses — maps proc to branch name (if any) for interrupt cleanup.
-	const activeProcs = new Map<
-		ReturnType<typeof Bun.spawn>,
-		string | undefined
-	>();
+	// Active subprocesses for interrupt cleanup.
+	const activeProcs = new Set<ReturnType<typeof Bun.spawn>>();
 
 	// Depth is injected by the parent subprocess via MC_SUBAGENT_DEPTH env var.
 	const subagentDepth = Number.parseInt(
@@ -51,42 +43,10 @@ export function createSubagentRunner(
 		10,
 	);
 
-	// Merge lock: serialises merge operations from concurrent subagents.
-	let mergeLockTail = Promise.resolve();
-
-	const mergeSubagentBranch = async (
-		branch: string,
-	): Promise<{ mergeConflicts?: string[] }> => {
-		const prev = mergeLockTail;
-		let releaseLock!: () => void;
-		mergeLockTail = new Promise((resolve) => {
-			releaseLock = resolve;
-		});
-		try {
-			await prev;
-			const result = await mergeWorktree(cwd, branch);
-			if (result.success) {
-				await cleanupBranch(cwd, branch);
-				return {};
-			}
-			// Merge produced conflicts — leave branch for user to resolve.
-			return { mergeConflicts: result.conflictFiles };
-		} catch (err) {
-			if (err instanceof MergeInProgressError) {
-				// Another merge is in progress — return its conflict files.
-				return { mergeConflicts: err.conflictFiles };
-			}
-			throw err;
-		} finally {
-			releaseLock();
-		}
-	};
-
 	const runSubagent = async (
 		prompt: string,
 		agentName?: string,
 		modelOverride?: string,
-		_parentLabel?: string,
 	): Promise<SubagentOutput> => {
 		if (subagentDepth >= MAX_SUBAGENT_DEPTH) {
 			throw new Error(
@@ -96,9 +56,6 @@ export function createSubagentRunner(
 		}
 
 		const model = modelOverride ?? getCurrentModel();
-		// Parent generates the branch name so it can clean it up on interrupt.
-		const laneId = crypto.randomUUID().slice(0, 8);
-		const worktreeBranch = `mc-sub-${laneId}`;
 		const cmd = [
 			...getMcCommand(),
 			"--subagent",
@@ -108,8 +65,6 @@ export function createSubagentRunner(
 			model,
 			"--output-fd",
 			"3",
-			"--worktree-branch",
-			worktreeBranch,
 			...(agentName ? ["--agent", agentName] : []),
 			prompt,
 		];
@@ -123,11 +78,11 @@ export function createSubagentRunner(
 			stdio: ["ignore", "inherit", "inherit", "pipe"],
 		});
 
-		activeProcs.set(proc, worktreeBranch);
+		activeProcs.add(proc);
 
 		try {
 			const [text] = await Promise.all([
-				Bun.file(proc.stdio[3] as unknown as number).text(),
+				Bun.file(proc.stdio[3] as number).text(),
 				proc.exited,
 			]);
 
@@ -162,13 +117,6 @@ export function createSubagentRunner(
 				outputTokens: parsed.outputTokens,
 			};
 
-			if (parsed.worktreeBranch) {
-				const mergeResult = await mergeSubagentBranch(parsed.worktreeBranch);
-				if (mergeResult.mergeConflicts) {
-					output.mergeConflicts = mergeResult.mergeConflicts;
-				}
-			}
-
 			return output;
 		} finally {
 			activeProcs.delete(proc);
@@ -178,16 +126,11 @@ export function createSubagentRunner(
 	return {
 		runSubagent,
 		killAll: () => {
-			for (const [proc, branch] of activeProcs) {
+			for (const proc of activeProcs) {
 				try {
 					proc.kill("SIGTERM");
 				} catch {
 					// Process may have already exited.
-				}
-				if (branch) {
-					// Wait for the subprocess to exit (so it can remove its worktree dir)
-					// before deleting the branch — git refuses to delete a checked-out branch.
-					proc.exited.then(() => cleanupBranch(cwd, branch)).catch(() => {});
 				}
 			}
 		},

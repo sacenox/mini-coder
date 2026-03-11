@@ -1,13 +1,5 @@
 # TODO
 
-## Worktrees feature is not working as expected.
-
-Currently it completly breaks the subagent tool as the changes are discard when the subprocess exits. They are never consolidated with the current agents filesystem, essentially making subagents no-op always.
-
-Our worktrees implementation never worked correctly, and I think we need to remove it for now. Let's take the opportunity to simplify and refactor for better code readability and organization of the code.
-
----
-
 ## ESC cleared the whole last turn from memory
 
 See the output bellow, once interrupted and prompted about it's actions, the assitant was not aware of any previous input from the user. Notice the context numbers also reset to 0%.
@@ -64,6 +56,3 @@ We need to do research first, but maybe we can leverage the hooks feature to ach
 ## Deferred fixes
 
 - model-info: in `resolveFromProviderRow`, when canonical capability exists but `contextWindow` is null, fall back to provider row context (`capability.contextWindow ?? row.contextWindow`).
-- Worktrees share bun lockfile and node_modules. Question this choice, is this really a good idea, or just an opportunity for things to go wrong?
-- `subagent-runner.ts`: `Bun.file(proc.stdio[3] as unknown as number).text()` — the double-cast signals a type mismatch. Investigate whether `new Response(proc.stdio[3]).text()` is more correct and whether the current form breaks silently across Bun versions.
-- `worktree.ts` tracked-change sync: `copyFileSync` turns symlinks into regular files. Preserve symlinks via `lstatSync(...).isSymbolicLink()` + `readlinkSync`/`symlinkSync` (or restore git-native apply for tracked changes).

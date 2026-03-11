@@ -28,7 +28,7 @@ conventions and not introduce more specs. (`.agents` / `AGENTS.md`, while also s
 
 - `glob`, `grep`, `read`, `replace`,`insert`, `create`, `shell`, and `subagent` tools for LLMs
 - Optional `webSearch` and `webContent` tools when `EXA_API_KEY` is set.
-- `subagent` tool spawns a fresh `mc` subprocess — full capability parity with the main agent, support for recursive subagents (up to 10 levels), and git worktree isolation/merge-back when available. Custom agents and custom commands from `.agents` and `.claude` are supported in subagents.
+- `subagent` tool spawns a fresh `mc` subprocess — full capability parity with the main agent, support for recursive subagents (up to 10 levels). Custom agents and custom commands from `.agents` and `.claude` are supported in subagents.
 - tool hooks support for supported built-in tools
 - Commands in CLI prompt:
   - `/model` command allows the user to pick a model from connected providers. As well as thinking effort for the model if supported. Selection persists accross sessions.

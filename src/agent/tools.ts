@@ -25,11 +25,7 @@ import type { ReplaceToolOutput } from "../tools/replace.ts";
 import { replaceTool } from "../tools/replace.ts";
 import type { ShellOutput } from "../tools/shell.ts";
 import { shellTool } from "../tools/shell.ts";
-import {
-	assertSubagentMerged,
-	createSubagentTool,
-	type SubagentOutput,
-} from "../tools/subagent.ts";
+import { createSubagentTool, type SubagentOutput } from "../tools/subagent.ts";
 import {
 	finalizeWriteResult,
 	stripWriteResultMeta,
@@ -123,12 +119,10 @@ export function buildToolSet(opts: {
 		prompt: string,
 		agentName?: string,
 		modelOverride?: string,
-		parentLabel?: string,
 	) => Promise<SubagentOutput>;
 
 	onHook: (toolName: string, scriptPath: string, success: boolean) => void;
 	availableAgents: ReadonlyMap<string, { description: string }>;
-	parentLabel?: string;
 }): ToolDef[] {
 	const { cwd, onHook } = opts;
 	const lookupHook = createHookCache(HOOKABLE_TOOLS, cwd);
@@ -210,20 +204,10 @@ export function buildToolSet(opts: {
 			(result, input) => hookEnvForShell(result, input, cwd),
 			onHook,
 		) as ToolDef,
-		createSubagentTool(
-			async (prompt, agentName, parentLabel) => {
-				const output = await opts.runSubagent(
-					prompt,
-					agentName,
-					undefined,
-					parentLabel,
-				);
-				assertSubagentMerged(output);
-				return output;
-			},
-			opts.availableAgents,
-			opts.parentLabel,
-		) as ToolDef,
+		createSubagentTool(async (prompt, agentName) => {
+			const output = await opts.runSubagent(prompt, agentName, undefined);
+			return output;
+		}, opts.availableAgents) as ToolDef,
 	];
 
 	if (process.env.EXA_API_KEY) {

@@ -7,10 +7,7 @@ import {
 	listMcpServers,
 	upsertMcpServer,
 } from "../session/db/index.ts";
-import {
-	assertSubagentMerged,
-	type SubagentOutput,
-} from "../tools/subagent.ts";
+import type { SubagentOutput } from "../tools/subagent.ts";
 
 import { loadAgents } from "./agents.ts";
 import {
@@ -456,7 +453,6 @@ async function handleCustomCommand(
 	try {
 		ctx.startSpinner("subagent");
 		const output = await ctx.runSubagent(prompt, cmd.agent, cmd.model);
-		assertSubagentMerged(output);
 
 		write(renderMarkdown(output.result));
 		writeln();
