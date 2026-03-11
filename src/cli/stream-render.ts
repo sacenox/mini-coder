@@ -35,6 +35,9 @@ export async function renderTurn(
 	let newMessages: CoreMessage[] = [];
 
 	function renderAndWrite(raw: string, endWithNewline: boolean): void {
+		// Defensive stop: some providers stream tiny chunks and spinner ticks can
+		// interleave with stdout writes unless we stop right before each render.
+		spinner.stop();
 		const rendered = renderLine(raw, inFence);
 		inFence = rendered.inFence;
 		const finalOutput = inReasoning ? c.dim(rendered.output) : rendered.output;

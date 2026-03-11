@@ -131,4 +131,25 @@ describe("renderTurn", () => {
 		expect(strip(stdout)).toBe("Thinking...\nthinking\n");
 		expect(result.reasoningText).toBe("thinking");
 	});
+
+	test("stops spinner defensively before each rendered line", async () => {
+		captureStdout();
+		const spinner = new Spinner();
+		let stopCalls = 0;
+		spinner.stop = () => {
+			stopCalls++;
+		};
+
+		await renderTurn(
+			eventsFrom([
+				{ type: "text-delta", delta: "line 1\n" },
+				{ type: "text-delta", delta: "line 2\n" },
+				done(),
+			]),
+			spinner,
+		);
+
+		expect(strip(stdout)).toBe("◆ line 1\nline 2\n\n");
+		expect(stopCalls).toBeGreaterThanOrEqual(2);
+	});
 });
