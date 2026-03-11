@@ -64,7 +64,6 @@ Guidelines:
 - Prefer small, targeted edits over large rewrites.
 - Always read a file before editing it. Prefer dedicated tools (read, glob, grep, replace, insert) over shell for file operations.
 - Make parallel tool calls when reads/searches are independent — don't wait for one to start the next.
-- Use the \`subagent\` tool sparingly — only for clearly separable, self-contained subtasks that benefit from a fresh context window. Prefer doing the work directly.
 - Keep your context clean and focused on the user request.
 
 # Tool output format

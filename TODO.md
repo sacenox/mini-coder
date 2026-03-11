@@ -1,7 +1,6 @@
 # TODO
 
 - Investigate why orc subagent never calls subagents.
-- Remember active agent across sessions.
 
 ## Investigate error:
 

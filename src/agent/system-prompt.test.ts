@@ -50,14 +50,6 @@ describe("buildSystemPrompt", () => {
 		expect(prompt).not.toContain("# Project context");
 	});
 
-	it("includes delegation guideline in main mode", () => {
-		const prompt = buildSystemPrompt(tmpDir, undefined, undefined, fakeHome);
-		expect(prompt).toContain(
-			"Use the `subagent` tool sparingly — only for clearly separable",
-		);
-		expect(prompt).not.toContain("You are running as a subagent");
-	});
-
 	it("includes local context under # Project context", () => {
 		writeFileSync(join(tmpDir, "AGENTS.md"), "local project info");
 		const prompt = buildSystemPrompt(tmpDir, undefined, undefined, fakeHome);
