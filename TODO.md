@@ -1,56 +1,5 @@
 # TODO
 
-## Worktree issues with subagents
-
-Subagents don't see the unstaged changes of the repo, see bellow:
-
-Agent implemented a change in the system prompt, then the user requested two reviews, one without arguments that should have defaulted to unstaged changes, but the reviewer looked at the reasoning commit.
-
-Then when prompted to review unstaged changes directly in another /review call, it clearly doesn't see any changes other than the node_modules folder.
-
-Output bellow:
-
-```
-Recommended practice for GPT models (incl. codex) in our stack
-
-· ✅ Keep GPT/codex on Responses endpoint.
-· ✅ Use one system-guidance channel per request:
-  · either top-level `instructions` (preferred for Responses),
-  · or developer/system message in `input/system`.
-· ❌ Don’t send the same long prompt in both `instructions` and `system` simultaneously.
-
-So the change we made (`system` only when `!useInstructions`) aligns with recommended practice and should reduce prompt-shape confusion without affecting history.
-gpt-5.3-codex  ✦ medium  🤔  mmm8yarz  @orc  ~/src/mini-coder  ⎇ feat/reasoning-display-control  ctx 167.4k/400.0k 42%  ↑ 6056.0k ↓ 13.1k
-▶ /review
-· review [~/.agents/commands/review.md]
-
-⠹ subagentNo actionable issues found in the recent changes.
-
-I checked correctness against the feature goal (reasoning display toggle + wiring), looked for regressions/duplication/dead patterns, and didn’t find any bugs or clear performance problems.
-◆ Review summary: no actionable issues found.
-
-· Changes appear correct against the intended goal.
-· No regressions identified.
-· No obvious duplication/dead code patterns introduced.
-· No clear performance concerns observed.
-
-So from this review pass, the update looks good to keep.
-gpt-5.3-codex  ✦ medium  🤔  mmm8yarz  @orc  ~/src/mini-coder  ⎇ feat/reasoning-display-control  ctx 167.7k/400.0k 42%  ↑ 6223.7k ↓ 13.2k
-▶ /review unstaged changes
-· review [~/.agents/commands/review.md]
-
-· Repository hygiene issue: There is an untracked `node_modules` directory (`?? node_modules`). This should not be part of repo changes; remove it from the working tree (or ensure it’s ignored) before committing/reviewing further.
-◆ Review found one actionable repo-hygiene issue:
-
-· There is an untracked `node_modules` directory (`?? node_modules`).
-
-This should not be included in repo changes. Remove it from the working tree (or ensure it’s ignored) before continuing with commit/review.
-gpt-5.3-codex  ✦ medium  🤔  mmm8yarz  @orc  ~/src/mini-coder  ⎇ feat/reasoning-display-control  ctx 167.8k/400.0k 42%  ↑ 6391.5k ↓ 13.2k
-▶
-```
-
----
-
 ## Bug with chat completions models (kimi 2.5 for example)
 
 See bellow, there is the thinking spiner before each line, this doesn't happen with other models.
