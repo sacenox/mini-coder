@@ -1,5 +1,5 @@
 ---
-description: Write short prose in a personal, informal style from topics or resources
+description: Writes blog posts drafts.
 mode: subagent
 ---
 

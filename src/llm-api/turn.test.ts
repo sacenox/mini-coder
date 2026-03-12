@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { CoreMessage } from "./turn.ts";
 import {
+	annotateAnthropicCacheBreakpoints,
 	applyContextPruning,
 	compactToolResultPayloads,
 	getMessageDiagnostics,
@@ -727,5 +728,87 @@ describe("compactToolResultPayloads", () => {
 	test("rewraps compacted typed text output into json schema", () => {
 		const largePayload = "x".repeat(10_000);
 		expectCompactedJsonOutput({ type: "text", value: largePayload });
+	});
+});
+
+describe("annotateAnthropicCacheBreakpoints", () => {
+	test("adds cache control to system prompt and removes it from returned systemPrompt", () => {
+		const messages: CoreMessage[] = [{ role: "user", content: "hello" }];
+		const {
+			messages: annotated,
+			systemPrompt,
+			diagnostics,
+		} = annotateAnthropicCacheBreakpoints(messages, "System rules");
+
+		expect(systemPrompt).toBeUndefined();
+		expect(annotated.length).toBe(2);
+		expect(annotated[0]).toEqual({
+			role: "system",
+			content: "System rules",
+			providerOptions: {
+				anthropic: { cacheControl: { type: "ephemeral" } },
+			},
+		});
+		expect(diagnostics.breakpointsAdded).toBe(1);
+	});
+
+	test("adds breakpoint to second to last message if there are enough messages", () => {
+		const messages: CoreMessage[] = [
+			{ role: "user", content: "m1" },
+			{ role: "assistant", content: "m2" },
+			{ role: "user", content: "m3" },
+			{ role: "assistant", content: "m4" },
+		];
+		const {
+			messages: annotated,
+			systemPrompt,
+			diagnostics,
+		} = annotateAnthropicCacheBreakpoints(messages, undefined);
+
+		expect(systemPrompt).toBeUndefined();
+		expect(annotated.length).toBe(4);
+		// 2nd to last message is index 2 (m3)
+		expect(annotated[2]).toEqual({
+			role: "user",
+			content: "m3",
+			providerOptions: {
+				anthropic: { cacheControl: { type: "ephemeral" } },
+			},
+		});
+		expect(annotated[3]?.providerOptions).toBeUndefined();
+		expect(diagnostics.breakpointsAdded).toBe(1);
+	});
+
+	test("handles system prompt and second to last message together", () => {
+		const messages: CoreMessage[] = [
+			{ role: "user", content: "m1" },
+			{ role: "assistant", content: "m2" },
+			{ role: "user", content: "m3" },
+		];
+		const {
+			messages: annotated,
+			systemPrompt,
+			diagnostics,
+		} = annotateAnthropicCacheBreakpoints(messages, "System rules");
+
+		expect(systemPrompt).toBeUndefined();
+		expect(annotated.length).toBe(4);
+
+		// system message
+		expect(annotated[0]).toEqual({
+			role: "system",
+			content: "System rules",
+			providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
+		});
+
+		// 2nd to last message was index 1 of the original array, which is "assistant m2".
+		// Now it is at index 2 of annotated array.
+		expect(annotated[2]).toEqual({
+			role: "assistant",
+			content: "m2",
+			providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
+		});
+
+		expect(diagnostics.breakpointsAdded).toBe(2);
 	});
 });

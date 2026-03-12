@@ -73,6 +73,7 @@ const FINAL_MESSAGE = `
 const SUBAGENT_DELEGATION = `You are running as a subagent. Complete the task you have been given directly using your tools. Do not spawn further subagents unless the subtask is unambiguously separable and self-contained.`;
 
 export function buildSystemPrompt(
+	sessionTimeAnchor: string,
 	cwd: string,
 	extraSystemPrompt?: string,
 	isSubagent?: boolean,
@@ -82,13 +83,11 @@ export function buildSystemPrompt(
 	const globalContext = loadGlobalContextFile(homeDir ?? homedir());
 	const localContext = loadLocalContextFile(cwd);
 	const cwdDisplay = tildePath(cwd);
-	const now = new Date().toLocaleString(undefined, { hour12: false });
-
 	let prompt = `You are mini-coder, a small and fast CLI coding agent.
 You have access to tools to read files, search code, make edits, run shell commands, and spawn subagents.
 
 Current working directory: ${cwdDisplay}
-Current date/time: ${now}
+Current date/time: ${sessionTimeAnchor}
 
 Guidelines:
 - Be concise and precise. Avoid unnecessary preamble.

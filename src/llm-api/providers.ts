@@ -288,6 +288,67 @@ export function getThinkingProviderOptions(
 	// return null and let the call proceed without thinking options.
 	return null;
 }
+interface CachingOptions {
+	enabled: boolean;
+	openaiRetention?: "in_memory" | "24h";
+	googleCachedContent?: string | null;
+	googleExplicitCachingCompatible?: boolean;
+}
+
+type CacheFamily = "openai" | "google" | "anthropic" | "none";
+
+export function getCacheFamily(modelString: string): CacheFamily {
+	const { provider, modelId } = parseModelString(modelString);
+
+	if (
+		provider === "anthropic" ||
+		(provider === "zen" && modelId.startsWith("claude-"))
+	) {
+		return "anthropic";
+	}
+
+	if (
+		provider === "openai" ||
+		(provider === "zen" &&
+			(modelId.startsWith("gpt-") || modelId.startsWith("o")))
+	) {
+		return "openai";
+	}
+
+	if (
+		provider === "google" ||
+		(provider === "zen" && modelId.startsWith("gemini-"))
+	) {
+		return "google";
+	}
+
+	return "none";
+}
+
+export function getCachingProviderOptions(
+	modelString: string,
+	opts: CachingOptions,
+): Record<string, unknown> | null {
+	if (!opts.enabled) return null;
+
+	const family = getCacheFamily(modelString);
+
+	if (family === "openai") {
+		return {
+			openai: { promptCacheRetention: opts.openaiRetention ?? "in_memory" },
+		};
+	}
+
+	if (
+		family === "google" &&
+		opts.googleCachedContent &&
+		opts.googleExplicitCachingCompatible !== false
+	) {
+		return { google: { cachedContent: opts.googleCachedContent } };
+	}
+
+	return null;
+}
 
 /**
  * Return the known context window size (in tokens) for a model string.

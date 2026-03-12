@@ -8,6 +8,8 @@ import {
 } from "ai";
 import { logApiEvent } from "./api-log.ts";
 import {
+	getCacheFamily,
+	getCachingProviderOptions,
 	getThinkingProviderOptions,
 	parseModelString,
 	type ThinkingEffort,
@@ -624,12 +626,83 @@ export function isOpenAIGPT(modelString: string): boolean {
 	);
 }
 
+export function annotateAnthropicCacheBreakpoints(
+	turnMessages: CoreMessage[],
+	systemPrompt?: string,
+): {
+	messages: CoreMessage[];
+	systemPrompt?: string;
+	diagnostics: { breakpointsAdded: number; stableIdx: number };
+} {
+	const finalMessages = [...turnMessages];
+	let breakpointsAdded = 0;
+
+	// Breakpoint 2: The last user message or 2nd to last message,
+	// to cache the conversation history minus the very last turn.
+	const stableIdx = finalMessages.length > 2 ? finalMessages.length - 2 : -1;
+	if (stableIdx >= 0 && finalMessages[stableIdx]) {
+		const msg = finalMessages[stableIdx];
+		finalMessages[stableIdx] = {
+			...msg,
+			providerOptions: {
+				...(msg?.providerOptions ?? {}),
+				anthropic: {
+					...((msg?.providerOptions?.anthropic as Record<string, unknown>) ??
+						{}),
+					cacheControl: { type: "ephemeral" },
+				},
+			},
+		} as CoreMessage;
+		breakpointsAdded++;
+	}
+
+	// Breakpoint 1: the system prompt
+	let finalSystemPrompt = systemPrompt;
+	if (systemPrompt) {
+		finalMessages.unshift({
+			role: "system",
+			content: systemPrompt,
+			providerOptions: {
+				anthropic: { cacheControl: { type: "ephemeral" } },
+			},
+		});
+		finalSystemPrompt = undefined; // Do not send as top-level system
+		breakpointsAdded++;
+	}
+
+	return {
+		messages: finalMessages,
+		...(finalSystemPrompt !== undefined
+			? { systemPrompt: finalSystemPrompt }
+			: {}),
+		diagnostics: { breakpointsAdded, stableIdx },
+	};
+}
+
 /**
  * Run a single agent turn against the model.
  *
  * Yields TurnEvents as they arrive, then yields a final TurnCompleteEvent
  * (or TurnErrorEvent on failure).
  */
+// helper for deep merge
+const mergeDeep = (
+	target: Record<string, unknown>,
+	source: Record<string, unknown>,
+) => {
+	const output: Record<string, unknown> = { ...target };
+	for (const key in source) {
+		const sVal = source[key];
+		const tVal = target[key];
+		if (isRecord(sVal) && isRecord(tVal)) {
+			output[key] = { ...tVal, ...sVal };
+		} else {
+			output[key] = sVal;
+		}
+	}
+	return output;
+};
+
 export async function* runTurn(options: {
 	model: CoreModel;
 	modelString: string;
@@ -640,6 +713,9 @@ export async function* runTurn(options: {
 	thinkingEffort?: ThinkingEffort;
 	pruningMode?: ContextPruningMode;
 	toolResultPayloadCapBytes?: number;
+	promptCachingEnabled?: boolean;
+	openaiPromptCacheRetention?: "in_memory" | "24h";
+	googleCachedContent?: string | null;
 }): AsyncGenerator<TurnEvent> {
 	const {
 		model,
@@ -650,6 +726,9 @@ export async function* runTurn(options: {
 		signal,
 		thinkingEffort,
 		pruningMode = "balanced",
+		promptCachingEnabled = true,
+		openaiPromptCacheRetention = "in_memory",
+		googleCachedContent = null,
 		toolResultPayloadCapBytes = DEFAULT_TOOL_RESULT_PAYLOAD_CAP_BYTES,
 	} = options;
 
@@ -745,8 +824,21 @@ export async function* runTurn(options: {
 				diagnostics: getMessageDiagnostics(turnMessages),
 			});
 		}
-
-		const mergedProviderOptions = {
+		const cacheFamily = getCacheFamily(modelString);
+		const googleExplicitCachingCompatible = toolCount === 0 && !systemPrompt;
+		const cacheOpts = getCachingProviderOptions(modelString, {
+			enabled: promptCachingEnabled,
+			openaiRetention: openaiPromptCacheRetention,
+			googleCachedContent,
+			googleExplicitCachingCompatible,
+		});
+		logApiEvent("prompt caching configured", {
+			enabled: promptCachingEnabled,
+			cacheFamily,
+			cacheOpts,
+			googleExplicitCachingCompatible,
+		});
+		let mergedProviderOptions = {
 			...(thinkingOpts ?? {}),
 			...(isOpenAIGPT(modelString)
 				? {
@@ -771,9 +863,26 @@ export async function* runTurn(options: {
 				: {}),
 		};
 
+		if (cacheOpts) {
+			mergedProviderOptions = mergeDeep(mergedProviderOptions, cacheOpts);
+		}
+
+		let finalMessages = turnMessages;
+		let finalSystemPrompt = systemPrompt;
+
+		if (cacheFamily === "anthropic" && promptCachingEnabled) {
+			const annotated = annotateAnthropicCacheBreakpoints(
+				turnMessages,
+				systemPrompt,
+			);
+			finalMessages = annotated.messages;
+			finalSystemPrompt = annotated.systemPrompt;
+			logApiEvent("Anthropic prompt caching", annotated.diagnostics);
+		}
+
 		const streamOpts: StreamTextOptions = {
 			model,
-			messages: turnMessages,
+			messages: finalMessages,
 			tools: toolSet,
 			stopWhen: stepCountIs(MAX_STEPS),
 			onStepFinish: (step: StepResult<ToolSet>) => {
@@ -807,7 +916,9 @@ export async function* runTurn(options: {
 				return undefined;
 			},
 
-			...(systemPrompt && !useInstructions ? { system: systemPrompt } : {}),
+			...(finalSystemPrompt && !useInstructions
+				? { system: finalSystemPrompt }
+				: {}),
 			...(Object.keys(mergedProviderOptions).length > 0
 				? { providerOptions: mergedProviderOptions }
 				: {}),

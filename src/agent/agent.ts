@@ -10,7 +10,10 @@ import {
 	listMcpServers,
 	setPreferredActiveAgent,
 	setPreferredContextPruningMode,
+	setPreferredGoogleCachedContent,
 	setPreferredModel,
+	setPreferredOpenAIPromptCacheRetention,
+	setPreferredPromptCachingEnabled,
 	setPreferredShowReasoning,
 	setPreferredThinkingEffort,
 	setPreferredToolResultPayloadCapBytes,
@@ -28,6 +31,9 @@ interface AgentOptions {
 	initialShowReasoning: boolean;
 	initialPruningMode: ContextPruningMode;
 	initialToolResultPayloadCapBytes: number;
+	initialPromptCachingEnabled: boolean;
+	initialOpenAIPromptCacheRetention: "in_memory" | "24h";
+	initialGoogleCachedContent: string | null;
 	sessionId?: string;
 	reporter: AgentReporter;
 	headless?: boolean;
@@ -102,6 +108,9 @@ export async function initAgent(opts: AgentOptions): Promise<{
 		initialShowReasoning: opts.initialShowReasoning,
 		initialPruningMode: opts.initialPruningMode,
 		initialToolResultPayloadCapBytes: opts.initialToolResultPayloadCapBytes,
+		initialPromptCachingEnabled: opts.initialPromptCachingEnabled,
+		initialOpenAIPromptCacheRetention: opts.initialOpenAIPromptCacheRetention,
+		initialGoogleCachedContent: opts.initialGoogleCachedContent,
 		sessionId: opts.sessionId,
 		extraSystemPrompt: opts.agentSystemPrompt,
 		isSubagent: opts.headless,
@@ -159,6 +168,27 @@ export async function initAgent(opts: AgentOptions): Promise<{
 		setToolResultPayloadCapBytes: (bytes) => {
 			runner.toolResultPayloadCapBytes = Math.max(0, bytes);
 			setPreferredToolResultPayloadCapBytes(runner.toolResultPayloadCapBytes);
+		},
+		get promptCachingEnabled() {
+			return runner.promptCachingEnabled;
+		},
+		setPromptCachingEnabled: (enabled) => {
+			runner.promptCachingEnabled = enabled;
+			setPreferredPromptCachingEnabled(enabled);
+		},
+		get openaiPromptCacheRetention() {
+			return runner.openaiPromptCacheRetention;
+		},
+		setOpenAIPromptCacheRetention: (retention) => {
+			runner.openaiPromptCacheRetention = retention;
+			setPreferredOpenAIPromptCacheRetention(retention);
+		},
+		get googleCachedContent() {
+			return runner.googleCachedContent;
+		},
+		setGoogleCachedContent: (contentId) => {
+			runner.googleCachedContent = contentId;
+			setPreferredGoogleCachedContent(contentId);
 		},
 		get planMode() {
 			return runner.planMode;

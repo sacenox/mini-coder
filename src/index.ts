@@ -26,7 +26,10 @@ import { autoDiscoverModel } from "./llm-api/providers.ts";
 
 import {
 	getPreferredContextPruningMode,
+	getPreferredGoogleCachedContent,
 	getPreferredModel,
+	getPreferredOpenAIPromptCacheRetention,
+	getPreferredPromptCachingEnabled,
 	getPreferredShowReasoning,
 	getPreferredThinkingEffort,
 	getPreferredToolResultPayloadCapBytes,
@@ -103,6 +106,10 @@ async function main(): Promise<void> {
 				initialPruningMode: getPreferredContextPruningMode(),
 				initialToolResultPayloadCapBytes:
 					getPreferredToolResultPayloadCapBytes(),
+				initialPromptCachingEnabled: getPreferredPromptCachingEnabled(),
+				initialOpenAIPromptCacheRetention:
+					getPreferredOpenAIPromptCacheRetention(),
+				initialGoogleCachedContent: getPreferredGoogleCachedContent(),
 				reporter: new HeadlessReporter(),
 				headless: true,
 				...(agentSystemPrompt ? { agentSystemPrompt } : {}),
@@ -146,6 +153,10 @@ async function main(): Promise<void> {
 			initialShowReasoning: getPreferredShowReasoning(),
 			initialPruningMode: getPreferredContextPruningMode(),
 			initialToolResultPayloadCapBytes: getPreferredToolResultPayloadCapBytes(),
+			initialPromptCachingEnabled: getPreferredPromptCachingEnabled(),
+			initialOpenAIPromptCacheRetention:
+				getPreferredOpenAIPromptCacheRetention(),
+			initialGoogleCachedContent: getPreferredGoogleCachedContent(),
 			reporter: new CliReporter(),
 		};
 		if (sessionId) agentOpts.sessionId = sessionId;

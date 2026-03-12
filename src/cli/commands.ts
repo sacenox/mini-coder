@@ -244,6 +244,59 @@ function handleContext(ctx: CommandContext, args: string): void {
 
 	writeln(`${PREFIX.error} usage: /context <prune|cap> ...`);
 }
+function handleCache(ctx: CommandContext, args: string): void {
+	const [sub, value] = args.trim().split(/\s+/, 2);
+
+	if (!sub) {
+		const gCache = ctx.googleCachedContent
+			? c.cyan(ctx.googleCachedContent)
+			: "off";
+		writeln(
+			`${PREFIX.info} prompt-caching=${ctx.promptCachingEnabled ? c.green("on") : c.dim("off")}  openai-retention=${c.cyan(ctx.openaiPromptCacheRetention)}  gemini-cache=${gCache}`,
+		);
+		writeln(c.dim("  usage: /cache <on|off>"));
+		writeln(c.dim("         /cache openai <in_memory|24h>"));
+		writeln(c.dim("         /cache gemini <off|cachedContents/...>"));
+		return;
+	}
+
+	if (sub === "on" || sub === "off") {
+		ctx.setPromptCachingEnabled(sub === "on");
+		writeln(
+			`${PREFIX.success} prompt caching → ${sub === "on" ? c.green("on") : c.dim("off")}`,
+		);
+		return;
+	}
+
+	if (sub === "openai") {
+		if (value === "in_memory" || value === "24h") {
+			ctx.setOpenAIPromptCacheRetention(value);
+			writeln(
+				`${PREFIX.success} openai prompt cache retention → ${c.cyan(value)}`,
+			);
+			return;
+		}
+		writeln(`${PREFIX.error} usage: /cache openai <in_memory|24h>`);
+		return;
+	}
+
+	if (sub === "gemini") {
+		if (!value) {
+			writeln(`${PREFIX.error} usage: /cache gemini <off|cachedContents/...>`);
+			return;
+		}
+		if (value === "off") {
+			ctx.setGoogleCachedContent(null);
+			writeln(`${PREFIX.success} gemini cached content → ${c.dim("off")}`);
+			return;
+		}
+		ctx.setGoogleCachedContent(value);
+		writeln(`${PREFIX.success} gemini cached content → ${c.cyan(value)}`);
+		return;
+	}
+
+	writeln(`${PREFIX.error} usage: /cache <on|off|openai|gemini> ...`);
+}
 
 function handlePlan(ctx: CommandContext): void {
 	ctx.setPlanMode(!ctx.planMode);
@@ -614,6 +667,9 @@ export async function handleCommand(
 
 		case "context":
 			handleContext(ctx, args);
+			return { type: "handled" };
+		case "cache":
+			handleCache(ctx, args);
 			return { type: "handled" };
 
 		case "plan":

@@ -33,6 +33,9 @@ interface SessionRunnerOptions {
 	initialShowReasoning: boolean;
 	initialPruningMode: ContextPruningMode;
 	initialToolResultPayloadCapBytes: number;
+	initialPromptCachingEnabled: boolean;
+	initialOpenAIPromptCacheRetention: "in_memory" | "24h";
+	initialGoogleCachedContent: string | null;
 	sessionId?: string | undefined;
 	extraSystemPrompt?: string | undefined;
 	isSubagent?: boolean | undefined;
@@ -49,8 +52,12 @@ export class SessionRunner {
 	public showReasoning: boolean;
 	public pruningMode: ContextPruningMode;
 	public toolResultPayloadCapBytes: number;
+	public promptCachingEnabled: boolean;
+	public openaiPromptCacheRetention: "in_memory" | "24h";
+	public googleCachedContent: string | null;
 
 	public session!: ActiveSession;
+	public sessionTimeAnchor!: string;
 	public coreHistory!: CoreMessage[];
 	public turnIndex = 1;
 	public snapshotStack: Array<number | null> = [];
@@ -75,6 +82,9 @@ export class SessionRunner {
 		this.showReasoning = opts.initialShowReasoning;
 		this.pruningMode = opts.initialPruningMode;
 		this.toolResultPayloadCapBytes = opts.initialToolResultPayloadCapBytes;
+		this.promptCachingEnabled = opts.initialPromptCachingEnabled;
+		this.openaiPromptCacheRetention = opts.initialOpenAIPromptCacheRetention;
+		this.googleCachedContent = opts.initialGoogleCachedContent;
 		this.extraSystemPrompt = opts.extraSystemPrompt;
 		this.isSubagent = opts.isSubagent;
 		this.killSubprocesses = opts.killSubprocesses;
@@ -103,6 +113,7 @@ export class SessionRunner {
 		// (including providerOptions/providerMetadata thought-signature fields and
 		// part ordering); do not reconstruct tool-call history on resume.
 
+		this.sessionTimeAnchor = new Date(this.session.createdAt).toISOString();
 		this.coreHistory = [...this.session.messages];
 	}
 
@@ -114,6 +125,7 @@ export class SessionRunner {
 		this.totalIn = 0;
 		this.totalOut = 0;
 		this.lastContextTokens = 0;
+		this.sessionTimeAnchor = new Date(this.session.createdAt).toISOString();
 		this.snapshotStack.length = 0;
 	}
 
@@ -160,6 +172,7 @@ export class SessionRunner {
 
 		const llm = resolveModel(this.currentModel);
 		const systemPrompt = buildSystemPrompt(
+			this.sessionTimeAnchor,
 			this.cwd,
 			this.extraSystemPrompt,
 			this.isSubagent,
@@ -182,6 +195,9 @@ export class SessionRunner {
 				signal: abortController.signal,
 				pruningMode: this.pruningMode,
 				toolResultPayloadCapBytes: this.toolResultPayloadCapBytes,
+				promptCachingEnabled: this.promptCachingEnabled,
+				openaiPromptCacheRetention: this.openaiPromptCacheRetention,
+				googleCachedContent: this.googleCachedContent,
 				...(this.currentThinkingEffort
 					? { thinkingEffort: this.currentThinkingEffort }
 					: {}),

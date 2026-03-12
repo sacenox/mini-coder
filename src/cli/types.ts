@@ -13,6 +13,12 @@ export interface CommandContext {
 	setPruningMode: (mode: ContextPruningMode) => void;
 	toolResultPayloadCapBytes: number;
 	setToolResultPayloadCapBytes: (bytes: number) => void;
+	promptCachingEnabled: boolean;
+	setPromptCachingEnabled: (enabled: boolean) => void;
+	openaiPromptCacheRetention: "in_memory" | "24h";
+	setOpenAIPromptCacheRetention: (retention: "in_memory" | "24h") => void;
+	googleCachedContent: string | null;
+	setGoogleCachedContent: (contentId: string | null) => void;
 	planMode: boolean;
 	setPlanMode: (enabled: boolean) => void;
 	ralphMode: boolean;
