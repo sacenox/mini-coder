@@ -1,7 +1,5 @@
 # TODO
 
-- Some errors from subagents are surfacing in the output, these mislead the user to think the subagent is stopped or broken, but most of the errors are recoverable or transient tool errors.
-
 ---
 
 ## LSP Diagnostics (not very important, with tool-hooks and strong linting, this is not as necessary, but we should implement asap)

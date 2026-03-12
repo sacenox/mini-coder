@@ -241,6 +241,7 @@ export function getReasoningDeltaFromStreamChunk(
 	}
 	if (typeof chunk.text === "string") return chunk.text;
 	if (typeof chunk.textDelta === "string") return chunk.textDelta;
+	if (typeof chunk.delta === "string") return chunk.delta;
 	return "";
 }
 

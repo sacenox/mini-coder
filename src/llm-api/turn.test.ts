@@ -54,6 +54,15 @@ describe("getReasoningDeltaFromStreamChunk", () => {
 		).toBe("legacy reasoning");
 	});
 
+	test("reads SDK reasoning-delta delta field", () => {
+		expect(
+			getReasoningDeltaFromStreamChunk({
+				type: "reasoning",
+				delta: "new delta",
+			}),
+		).toBe("new delta");
+	});
+
 	test("returns null for non-reasoning chunks", () => {
 		expect(
 			getReasoningDeltaFromStreamChunk({ type: "text-delta", text: "hi" }),
