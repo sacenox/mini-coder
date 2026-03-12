@@ -18,16 +18,7 @@ I'm `mc` — your new terminal companion. I live in your shell, speak to large l
 
 I was built with a simple philosophy: **dev flow first**. No slow startup. No clunky GUI. No vendor lock-in. Just you, your terminal, and an AI that keeps up.
 
-```
-$ mc
-┌─ mini-coder ──────────────────────────────────────────┐
-│  What would you like to work on today?                │
-│                                                       │
-│  > _                                                  │
-│                                                       │
-│  [zen/claude-sonnet-4-6] [~/src/my-project] [main] ...│
-└───────────────────────────────────────────────────────┘
-```
+![Minicoder Preview](./assets/preview.gif)
 
 ---
 
