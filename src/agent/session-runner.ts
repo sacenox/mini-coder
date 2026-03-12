@@ -98,6 +98,11 @@ export class SessionRunner {
 			this.session = newSession(this.currentModel, this.cwd);
 		}
 		this.turnIndex = getMaxTurnIndex(this.session.id) + 1;
+		// Persistence invariant: load this history via lossless JSON serialization only.
+		// Model-authored messages must remain byte-for-byte equivalent in structure
+		// (including providerOptions/providerMetadata thought-signature fields and
+		// part ordering); do not reconstruct tool-call history on resume.
+
 		this.coreHistory = [...this.session.messages];
 	}
 
@@ -190,6 +195,11 @@ export class SessionRunner {
 			if (newMessages.length > 0) {
 				this.coreHistory.push(...newMessages);
 				this.session.messages.push(...newMessages);
+				// Persistence invariant: save model-authored messages with lossless JSON
+				// serialization and preserve exact shape/ordering (including
+				// providerOptions/providerMetadata thought-signature fields). Never
+				// reconstruct tool-call history during save/load.
+
 				saveMessages(this.session.id, newMessages, thisTurn);
 			}
 

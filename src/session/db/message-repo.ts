@@ -13,6 +13,11 @@ export function saveMessages(
      VALUES (?, ?, ?, ?)`,
 	);
 	const now = Date.now();
+	// Persistence invariant: write CoreMessage as lossless JSON (no reshaping) so
+	// model-authored payloads round-trip exactly, including providerOptions /
+	// providerMetadata thought signatures and part ordering required for Gemini
+	// tool-call replay correctness.
+
 	for (const msg of msgs) {
 		stmt.run(sessionId, JSON.stringify(msg), turnIndex, now);
 	}
@@ -54,6 +59,11 @@ export function loadMessages(sessionId: string): CoreMessage[] {
 		.all(sessionId);
 
 	const messages: CoreMessage[] = [];
+	// Persistence invariant: load by parsing stored JSON verbatim; do not
+	// reconstruct tool-call history or normalize parts, because model-authored
+	// messages must round-trip exactly (providerOptions / providerMetadata thought
+	// signatures + part ordering) for Gemini replay correctness.
+
 	for (const row of rows) {
 		try {
 			messages.push(JSON.parse(row.payload) as CoreMessage);

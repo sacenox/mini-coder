@@ -71,121 +71,111 @@ describe("getReasoningDeltaFromStreamChunk", () => {
 });
 
 describe("sanitizeGeminiToolMessages", () => {
-	test("truncates the current Gemini tool turn when any tool call lacks a thought signature", () => {
-		const messages = [
-			{ role: "user", content: "older turn" },
+	const healthyGeminiToolTurn = (userContent: string): CoreMessage[] =>
+		[
+			{ role: "user", content: userContent },
 			{
 				role: "assistant",
 				content: [
 					{
 						type: "tool-call",
-						toolCallId: "old-call",
+						toolCallId: "healthy-call",
 						toolName: "read",
 						input: {},
-						providerOptions: { google: { thoughtSignature: "sig-old" } },
+						providerOptions: { google: { thoughtSignature: "sig-ok" } },
 					},
 				],
 			},
 			{
 				role: "tool",
-				content: [] as unknown as CoreMessage["content"],
+				content: [
+					{
+						type: "tool-result",
+						toolCallId: "healthy-call",
+						toolName: "read",
+						output: { type: "json", value: { ok: true } },
+					},
+				],
 			},
+		] as unknown as CoreMessage[];
+
+	const brokenGeminiToolTurn = (toolCallId = "broken-call"): CoreMessage[] =>
+		[
+			{
+				role: "assistant",
+				content: [
+					{
+						type: "tool-call",
+						toolCallId,
+						toolName: "replace",
+						input: {},
+					},
+				],
+			},
+			{
+				role: "tool",
+				content: [
+					{
+						type: "tool-result",
+						toolCallId,
+						toolName: "replace",
+						output: { type: "json", value: { ok: false } },
+					},
+				],
+			},
+		] as unknown as CoreMessage[];
+
+	test("valid signed single call preserved", () => {
+		const messages: CoreMessage[] = [
 			{ role: "user", content: "current turn" },
 			{
 				role: "assistant",
 				content: [
 					{
 						type: "tool-call",
-						toolCallId: "ok-call",
-						toolName: "read",
-						input: {},
-						providerOptions: { google: { thoughtSignature: "sig-ok" } },
-					},
-					{
-						type: "tool-call",
-						toolCallId: "broken-call",
-						toolName: "replace",
-						input: {},
-					},
-				],
-			},
-			{
-				role: "tool",
-				content: [
-					{
-						type: "tool-result",
-						toolCallId: "ok-call",
-						toolName: "read",
-						output: { type: "json", value: { ok: true } },
-					},
-					{
-						type: "tool-result",
-						toolCallId: "broken-call",
-						toolName: "replace",
-						output: { type: "json", value: { ok: true } },
-					},
-				],
-			},
-		] as unknown as CoreMessage[];
-
-		const sanitized = sanitizeGeminiToolMessages(
-			messages,
-			"zen/gemini-3.1-pro",
-			true,
-		);
-
-		expect(sanitized).toEqual(messages.slice(0, 4));
-	});
-
-	test("drops earlier broken Gemini tool turns and keeps the latest user turn", () => {
-		const messages = [
-			{ role: "user", content: "healthy turn" },
-			{ role: "assistant", content: "healthy response" },
-			{ role: "user", content: "broken turn" },
-			{
-				role: "assistant",
-				content: [
-					{
-						type: "tool-call",
-						toolCallId: "signed-call",
+						toolCallId: "call-1",
 						toolName: "read",
 						input: {},
 						providerOptions: { google: { thoughtSignature: "sig-1" } },
 					},
-					{
-						type: "tool-call",
-						toolCallId: "unsigned-call",
-						toolName: "replace",
-						input: {},
-					},
 				],
-			},
-			{
-				role: "tool",
-				content: [] as unknown as CoreMessage["content"],
-			},
-			{ role: "assistant", content: "done" },
-			{ role: "user", content: "latest turn" },
+			} as unknown as CoreMessage,
+		];
+
+		expect(
+			sanitizeGeminiToolMessages(messages, "google/gemini-2.5-pro", true),
+		).toEqual(messages);
+	});
+
+	test("valid parallel calls with only first signed preserved", () => {
+		const messages: CoreMessage[] = [
+			{ role: "user", content: "parallel call turn" },
 			{
 				role: "assistant",
 				content: [
 					{
 						type: "tool-call",
-						toolCallId: "latest-call",
+						toolCallId: "signed-anchor",
 						toolName: "read",
 						input: {},
-						providerOptions: { google: { thoughtSignature: "sig-2" } },
+						providerOptions: { google: { thoughtSignature: "sig-anchor" } },
+					},
+					{
+						type: "tool-call",
+						toolCallId: "unsigned-followup",
+						toolName: "replace",
+						input: {},
 					},
 				],
-			},
-		] as unknown as CoreMessage[];
+			} as unknown as CoreMessage,
+		];
 
 		expect(
-			sanitizeGeminiToolMessages(messages, "google/gemini-2.5-pro", true),
-		).toEqual([...messages.slice(0, 3), ...messages.slice(6)]);
+			sanitizeGeminiToolMessages(messages, "zen/gemini-3.1-pro", true),
+		).toEqual(messages);
 	});
 
-	test("copies legacy providerMetadata into providerOptions for Gemini tool calls", () => {
+	test("legacy providerMetadata recognized and normalized into providerOptions", () => {
 		const messages = [
 			{ role: "user", content: "current turn" },
 			{
@@ -196,7 +186,7 @@ describe("sanitizeGeminiToolMessages", () => {
 						toolCallId: "call-1",
 						toolName: "read",
 						input: {},
-						providerMetadata: { google: { thoughtSignature: "sig-1" } },
+						providerMetadata: { google: { thoughtSignature: "sig-legacy" } },
 					},
 				],
 			},
@@ -207,17 +197,89 @@ describe("sanitizeGeminiToolMessages", () => {
 			"google/gemini-2.5-pro",
 			true,
 		);
-
 		const assistant = sanitized[1] as {
 			role: "assistant";
 			content: Array<Record<string, unknown>>;
 		};
 		expect(assistant.content[0]?.providerOptions).toEqual({
-			google: { thoughtSignature: "sig-1" },
+			google: { thoughtSignature: "sig-legacy" },
 		});
 	});
 
-	test("leaves non-Gemini models untouched", () => {
+	test("malformed assistant/tool before current user preserves that user and later messages", () => {
+		const messages = [
+			...healthyGeminiToolTurn("healthy turn"),
+			...brokenGeminiToolTurn(),
+			{ role: "user", content: "current prompt" },
+			{ role: "assistant", content: "plain response" },
+		] as unknown as CoreMessage[];
+
+		expect(
+			sanitizeGeminiToolMessages(messages, "google/gemini-2.5-pro", true),
+		).toEqual([...messages.slice(0, 3), ...messages.slice(5)]);
+	});
+
+	test("malformed latest turn without trailing user still truncates tail from broken assistant onward", () => {
+		const messages = [
+			...healthyGeminiToolTurn("healthy turn"),
+			{ role: "user", content: "latest turn" },
+			...brokenGeminiToolTurn(),
+		] as unknown as CoreMessage[];
+
+		expect(
+			sanitizeGeminiToolMessages(messages, "google/gemini-2.5-pro", true),
+		).toEqual(messages.slice(0, 4));
+	});
+
+	test("earlier valid turns remain when latest turn repaired", () => {
+		const messages = [
+			{ role: "user", content: "turn 1" },
+			{
+				role: "assistant",
+				content: [
+					{
+						type: "tool-call",
+						toolCallId: "turn1-call",
+						toolName: "read",
+						input: {},
+						providerOptions: { google: { thoughtSignature: "sig-turn1" } },
+					},
+				],
+			},
+			{
+				role: "tool",
+				content: [
+					{
+						type: "tool-result",
+						toolCallId: "turn1-call",
+						toolName: "read",
+						output: { type: "json", value: { data: 1 } },
+					},
+				],
+			},
+			{ role: "user", content: "turn 2" },
+			{
+				role: "assistant",
+				content: [
+					{
+						type: "tool-call",
+						toolCallId: "turn2-broken",
+						toolName: "replace",
+						input: {},
+					},
+				],
+			},
+		] as unknown as CoreMessage[];
+
+		const sanitized = sanitizeGeminiToolMessages(
+			messages,
+			"zen/gemini-3.1-pro",
+			true,
+		);
+		expect(sanitized).toEqual(messages.slice(0, 4));
+	});
+
+	test("non-Gemini untouched", () => {
 		const messages: CoreMessage[] = [
 			{ role: "user", content: "go" },
 			{
@@ -230,12 +292,80 @@ describe("sanitizeGeminiToolMessages", () => {
 						input: {},
 					},
 				],
-			},
+			} as unknown as CoreMessage,
 		];
 
 		expect(sanitizeGeminiToolMessages(messages, "openai/gpt-4o", true)).toEqual(
 			messages,
 		);
+	});
+
+	test("no Gemini tool-call assistant messages => no-op", () => {
+		const messages: CoreMessage[] = [
+			{ role: "user", content: "hello" },
+			{ role: "assistant", content: "plain text response" },
+			{ role: "user", content: "next" },
+			{
+				role: "tool",
+				content: [
+					{
+						type: "tool-result",
+						toolCallId: "orphan",
+						toolName: "read",
+						output: { type: "text", value: "ok" },
+					},
+				],
+			} as unknown as CoreMessage,
+		];
+
+		expect(
+			sanitizeGeminiToolMessages(messages, "google/gemini-2.5-pro", true),
+		).toEqual(messages);
+	});
+
+	test("regression: sanitizer no longer removes up to next user turn for older broken turns", () => {
+		const messages = [
+			{ role: "user", content: "older broken turn" },
+			{
+				role: "assistant",
+				content: [
+					{
+						type: "tool-call",
+						toolCallId: "older-broken",
+						toolName: "replace",
+						input: {},
+					},
+				],
+			},
+			{
+				role: "tool",
+				content: [
+					{
+						type: "tool-result",
+						toolCallId: "older-broken",
+						toolName: "replace",
+						output: { type: "json", value: { stale: true } },
+					},
+				],
+			},
+			{ role: "user", content: "latest turn" },
+			{
+				role: "assistant",
+				content: [
+					{
+						type: "tool-call",
+						toolCallId: "latest-valid",
+						toolName: "read",
+						input: {},
+						providerOptions: { google: { thoughtSignature: "sig-latest" } },
+					},
+				],
+			},
+		] as unknown as CoreMessage[];
+
+		expect(
+			sanitizeGeminiToolMessages(messages, "google/gemini-2.5-pro", true),
+		).toEqual(messages);
 	});
 });
 

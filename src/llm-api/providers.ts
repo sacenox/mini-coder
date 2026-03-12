@@ -200,26 +200,12 @@ function clampEffort(
 	return ORDER[Math.min(i, m)] as ThinkingEffort;
 }
 
-const GEMINI_TOOL_CALL_AFFECTED_MODELS = /^gemini-(2\.5|3)/;
-
-export function shouldDisableGeminiThinkingForTools(
-	modelString: string,
-): boolean {
-	const { provider, modelId } = parseModelString(modelString);
-	if (provider !== "google" && provider !== "zen") return false;
-	return GEMINI_TOOL_CALL_AFFECTED_MODELS.test(modelId);
-}
-
 export function getThinkingProviderOptions(
 	modelString: string,
 	effort: ThinkingEffort,
-	hasTools = false,
+	_hasTools = false,
 ): Record<string, unknown> | null {
 	if (!supportsThinking(modelString)) return null;
-
-	if (hasTools && shouldDisableGeminiThinkingForTools(modelString)) {
-		return null;
-	}
 
 	const { provider, modelId } = parseModelString(modelString);
 

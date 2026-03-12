@@ -1,39 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import {
-	getThinkingProviderOptions,
-	shouldDisableGeminiThinkingForTools,
-} from "./providers.ts";
-
-describe("shouldDisableGeminiThinkingForTools", () => {
-	test("enables workaround for affected Gemini versions", () => {
-		expect(shouldDisableGeminiThinkingForTools("zen/gemini-3.1-pro")).toBe(
-			true,
-		);
-		expect(shouldDisableGeminiThinkingForTools("google/gemini-2.5-pro")).toBe(
-			true,
-		);
-		expect(
-			shouldDisableGeminiThinkingForTools("google/gemini-2.5-flash-preview"),
-		).toBe(true);
-	});
-
-	test("does not enable workaround for non-affected providers", () => {
-		expect(
-			shouldDisableGeminiThinkingForTools("anthropic/claude-4-sonnet"),
-		).toBe(false);
-		expect(shouldDisableGeminiThinkingForTools("openai/gpt-4o")).toBe(false);
-	});
-
-	test("does not enable workaround for unrelated Gemini models", () => {
-		expect(shouldDisableGeminiThinkingForTools("google/gemini-1.5-pro")).toBe(
-			false,
-		);
-		expect(shouldDisableGeminiThinkingForTools("zen/some-other-model")).toBe(
-			false,
-		);
-	});
-});
+import { getThinkingProviderOptions } from "./providers.ts";
 
 describe("getThinkingProviderOptions", () => {
 	test("requests OpenAI reasoning summary for GPT reasoning models", () => {
@@ -46,6 +13,32 @@ describe("getThinkingProviderOptions", () => {
 			getThinkingProviderOptions("zen/gpt-5.3-codex", "high", false),
 		).toEqual({
 			openai: { reasoningEffort: "high", reasoningSummary: "auto" },
+		});
+	});
+
+	test("returns Gemini 2.5 thinking options even when tools are enabled", () => {
+		expect(
+			getThinkingProviderOptions("google/gemini-2.5-pro", "medium", true),
+		).toEqual({
+			google: {
+				thinkingConfig: {
+					includeThoughts: true,
+					thinkingBudget: 8_192,
+				},
+			},
+		});
+	});
+
+	test("returns Gemini 3 thinking options for zen models even when tools are enabled", () => {
+		expect(
+			getThinkingProviderOptions("zen/gemini-3.1-pro", "xhigh", true),
+		).toEqual({
+			google: {
+				thinkingConfig: {
+					includeThoughts: true,
+					thinkingLevel: "high",
+				},
+			},
 		});
 	});
 });

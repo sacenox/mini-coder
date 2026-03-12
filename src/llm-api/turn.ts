@@ -10,7 +10,6 @@ import { logApiEvent } from "./api-log.ts";
 import {
 	getThinkingProviderOptions,
 	parseModelString,
-	shouldDisableGeminiThinkingForTools,
 	type ThinkingEffort,
 } from "./providers.ts";
 import type { ToolDef, TurnEvent } from "./types.ts";
@@ -408,19 +407,119 @@ function isToolCallPart(part: unknown): part is Record<string, unknown> {
 	return isRecord(part) && part.type === "tool-call";
 }
 
-function assistantMessageHasUnsignedGeminiToolCall(
-	message: CoreMessage,
-): boolean {
+function isGeminiModelFamily(modelString: string): boolean {
+	const { provider, modelId } = parseModelString(modelString);
+	return (
+		(provider === "google" || provider === "zen") &&
+		modelId.startsWith("gemini-")
+	);
+}
+
+type GeminiToolHistoryRepairReason = "missing-signature-anchor";
+
+function validateGeminiAssistantToolCallMessage(message: CoreMessage): {
+	valid: boolean;
+	reason: GeminiToolHistoryRepairReason | null;
+} {
 	if (message.role !== "assistant" || !Array.isArray(message.content)) {
-		return false;
+		return { valid: true, reason: null };
 	}
 
+	let firstToolCallPartSeen = false;
 	for (const part of message.content) {
 		if (!isToolCallPart(part)) continue;
-		if (getGeminiThoughtSignature(part) === null) return true;
+		if (firstToolCallPartSeen) continue;
+		firstToolCallPartSeen = true;
+		if (getGeminiThoughtSignature(part) === null) {
+			return { valid: false, reason: "missing-signature-anchor" };
+		}
 	}
 
-	return false;
+	return { valid: true, reason: null };
+}
+
+function sanitizeGeminiToolMessagesWithMetadata(
+	messages: CoreMessage[],
+	modelString: string,
+	hasTools: boolean,
+): {
+	messages: CoreMessage[];
+	repaired: boolean;
+	reason: GeminiToolHistoryRepairReason | null;
+	repairedFromIndex: number;
+	droppedMessageCount: number;
+	tailOnlyAffected: boolean;
+} {
+	if (!hasTools || !isGeminiModelFamily(modelString)) {
+		return {
+			messages,
+			repaired: false,
+			reason: null,
+			repairedFromIndex: -1,
+			droppedMessageCount: 0,
+			tailOnlyAffected: true,
+		};
+	}
+
+	const normalized = messages.map((message) =>
+		normalizeMessageProviderOptions(message),
+	);
+
+	for (let index = normalized.length - 1; index >= 0; index -= 1) {
+		const message = normalized[index];
+		if (!message) continue;
+		if (message.role !== "assistant" || !Array.isArray(message.content))
+			continue;
+		if (!message.content.some((part) => isToolCallPart(part))) continue;
+
+		const validation = validateGeminiAssistantToolCallMessage(message);
+		if (validation.valid) {
+			return {
+				messages: normalized,
+				repaired: false,
+				reason: null,
+				repairedFromIndex: -1,
+				droppedMessageCount: 0,
+				tailOnlyAffected: true,
+			};
+		}
+
+		const nextUserIndex = normalized.findIndex(
+			(candidate, candidateIndex) =>
+				candidateIndex > index && candidate?.role === "user",
+		);
+		if (nextUserIndex === -1) {
+			return {
+				messages: normalized.slice(0, index),
+				repaired: true,
+				reason: validation.reason,
+				repairedFromIndex: index,
+				droppedMessageCount: normalized.length - index,
+				tailOnlyAffected: true,
+			};
+		}
+
+		return {
+			messages: [
+				...normalized.slice(0, index),
+				...normalized.slice(nextUserIndex),
+			],
+			repaired: true,
+			reason: validation.reason,
+			repairedFromIndex: index,
+			droppedMessageCount: nextUserIndex - index,
+			tailOnlyAffected: false,
+		};
+	}
+
+	return {
+		messages: normalized,
+		repaired: false,
+		reason: null,
+		repairedFromIndex: -1,
+		droppedMessageCount: 0,
+		tailOnlyAffected: true,
+	};
 }
 
 export function sanitizeGeminiToolMessages(
@@ -428,33 +527,8 @@ export function sanitizeGeminiToolMessages(
 	modelString: string,
 	hasTools: boolean,
 ): CoreMessage[] {
-	if (!hasTools || !shouldDisableGeminiThinkingForTools(modelString)) {
-		return messages;
-	}
-
-	let sanitized = messages.map((message) =>
-		normalizeMessageProviderOptions(message),
-	);
-
-	while (true) {
-		const brokenIndex = sanitized.findIndex((message) =>
-			assistantMessageHasUnsignedGeminiToolCall(message),
-		);
-		if (brokenIndex === -1) return sanitized;
-
-		const nextUserIndex = sanitized.findIndex(
-			(message, index) => index > brokenIndex && message.role === "user",
-		);
-		if (nextUserIndex !== -1) {
-			sanitized = [
-				...sanitized.slice(0, brokenIndex),
-				...sanitized.slice(nextUserIndex),
-			];
-			continue;
-		}
-
-		return sanitized.slice(0, brokenIndex);
-	}
+	return sanitizeGeminiToolMessagesWithMetadata(messages, modelString, hasTools)
+		.messages;
 }
 
 /**
@@ -616,16 +690,19 @@ export async function* runTurn(options: {
 			toolResultPayloadCapBytes,
 		});
 
-		const geminiSanitizedMessages = sanitizeGeminiToolMessages(
+		const geminiSanitizationResult = sanitizeGeminiToolMessagesWithMetadata(
 			messages,
 			modelString,
 			toolCount > 0,
 		);
-		if (geminiSanitizedMessages.length !== messages.length) {
-			logApiEvent("gemini tool history truncated", {
+		const geminiSanitizedMessages = geminiSanitizationResult.messages;
+		if (geminiSanitizationResult.repaired) {
+			logApiEvent("gemini tool history repaired", {
 				modelString,
-				originalMessages: messages.length,
-				sanitizedMessages: geminiSanitizedMessages.length,
+				reason: geminiSanitizationResult.reason,
+				repairedFromIndex: geminiSanitizationResult.repairedFromIndex,
+				droppedMessageCount: geminiSanitizationResult.droppedMessageCount,
+				tailOnlyAffected: geminiSanitizationResult.tailOnlyAffected,
 			});
 		}
 
