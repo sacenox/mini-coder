@@ -36,13 +36,18 @@ import {
 /**
  * Inject a default cwd if not provided by the LLM.
  */
-function withCwdDefault(tool: ToolDef, cwd: string): ToolDef {
+function withCwdDefault(
+	tool: ToolDef,
+	cwd: string,
+	snapshotCallback?: (filePath: string) => Promise<void>,
+): ToolDef {
 	const originalExecute = tool.execute;
 	return {
 		...tool,
 		execute: async (input: unknown) => {
 			const withDefault = {
 				cwd,
+				...(snapshotCallback ? { snapshotCallback } : {}),
 				...(typeof input === "object" && input ? input : {}),
 			};
 			return originalExecute(withDefault);
@@ -123,6 +128,7 @@ export function buildToolSet(opts: {
 
 	onHook: (toolName: string, scriptPath: string, success: boolean) => void;
 	availableAgents: ReadonlyMap<string, { description: string }>;
+	snapshotCallback?: (filePath: string) => Promise<void>;
 }): ToolDef[] {
 	const { cwd, onHook } = opts;
 	const lookupHook = createHookCache(HOOKABLE_TOOLS, cwd);
@@ -161,10 +167,11 @@ export function buildToolSet(opts: {
 		) as ToolDef,
 		// Write: create/overwrite, replace/delete, insert
 		withHooks(
-			withCwdDefault(createTool as ToolDef, cwd) as ToolDef<
-				{ cwd?: string },
-				CreateToolOutput
-			>,
+			withCwdDefault(
+				createTool as ToolDef,
+				cwd,
+				opts.snapshotCallback,
+			) as ToolDef<{ cwd?: string }, CreateToolOutput>,
 			lookupHook,
 			cwd,
 			(result) => hookEnvForCreate(result, cwd),
@@ -172,10 +179,11 @@ export function buildToolSet(opts: {
 			finalizeWriteResult,
 		) as ToolDef,
 		withHooks(
-			withCwdDefault(replaceTool as ToolDef, cwd) as ToolDef<
-				{ cwd?: string },
-				ReplaceToolOutput
-			>,
+			withCwdDefault(
+				replaceTool as ToolDef,
+				cwd,
+				opts.snapshotCallback,
+			) as ToolDef<{ cwd?: string }, ReplaceToolOutput>,
 			lookupHook,
 			cwd,
 			(result) => hookEnvForReplace(result, cwd),
@@ -183,10 +191,11 @@ export function buildToolSet(opts: {
 			finalizeWriteResult,
 		) as ToolDef,
 		withHooks(
-			withCwdDefault(insertTool as ToolDef, cwd) as ToolDef<
-				{ cwd?: string },
-				InsertToolOutput
-			>,
+			withCwdDefault(
+				insertTool as ToolDef,
+				cwd,
+				opts.snapshotCallback,
+			) as ToolDef<{ cwd?: string }, InsertToolOutput>,
 			lookupHook,
 			cwd,
 			(result) => hookEnvForInsert(result, cwd),

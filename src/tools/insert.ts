@@ -1,8 +1,7 @@
 import { z } from "zod";
 import type { ToolDef } from "../llm-api/types.ts";
-import { generateDiff } from "./diff.ts";
 import { findLineByHash } from "./hashline.ts";
-import { parseAnchor, resolveExistingFile } from "./shared.ts";
+import { applyFileEdit, parseAnchor, resolveExistingFile } from "./shared.ts";
 import type { WriteResultMeta } from "./write-result.ts";
 
 const InsertSchema = z.object({
@@ -16,7 +15,10 @@ const InsertSchema = z.object({
 	content: z.string().describe("Text to insert"),
 });
 
-type InsertInput = z.infer<typeof InsertSchema> & { cwd?: string };
+type InsertInput = z.infer<typeof InsertSchema> & {
+	cwd?: string;
+	snapshotCallback?: (filePath: string) => Promise<void>;
+};
 
 interface InsertOutput {
 	path: string;
@@ -60,14 +62,12 @@ export const insertTool: ToolDef<InsertInput, InsertToolOutput> = {
 		];
 
 		const updated = updatedLines.join("\n");
-		await Bun.write(filePath, updated);
-
-		const diff = generateDiff(relPath, original, updated);
-		return {
-			path: relPath,
-			diff,
-			_filePath: filePath,
-			_before: original,
-		};
+		return applyFileEdit(
+			input.snapshotCallback,
+			filePath,
+			relPath,
+			original,
+			updated,
+		);
 	},
 };

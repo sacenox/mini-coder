@@ -1,5 +1,8 @@
 # TODO
 
+- Newline missing after spinner, new content is appended starting on the same line as the spinner line.
+- ESC doesn't interrupt subagents created by custom commands, example: can't interrupt a review agent
+
 ---
 
 ## LSP Diagnostics (not very important, with tool-hooks and strong linting, this is not as necessary, but we should implement asap)

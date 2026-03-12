@@ -1,8 +1,7 @@
 import { z } from "zod";
 import type { ToolDef } from "../llm-api/types.ts";
-import { generateDiff } from "./diff.ts";
 import { findLineByHash } from "./hashline.ts";
-import { parseAnchor, resolveExistingFile } from "./shared.ts";
+import { applyFileEdit, parseAnchor, resolveExistingFile } from "./shared.ts";
 import type { WriteResultMeta } from "./write-result.ts";
 
 const ReplaceSchema = z.object({
@@ -24,7 +23,10 @@ const ReplaceSchema = z.object({
 		),
 });
 
-type ReplaceInput = z.infer<typeof ReplaceSchema> & { cwd?: string };
+type ReplaceInput = z.infer<typeof ReplaceSchema> & {
+	cwd?: string;
+	snapshotCallback?: (filePath: string) => Promise<void>;
+};
 
 interface ReplaceOutput {
 	path: string;
@@ -90,15 +92,16 @@ export const replaceTool: ToolDef<ReplaceInput, ReplaceToolOutput> = {
 		];
 
 		const updated = updatedLines.join("\n");
-		await Bun.write(filePath, updated);
-
-		const diff = generateDiff(relPath, original, updated);
+		const editResult = await applyFileEdit(
+			input.snapshotCallback,
+			filePath,
+			relPath,
+			original,
+			updated,
+		);
 		return {
-			path: relPath,
-			diff,
+			...editResult,
 			deleted: replacement.length === 0,
-			_filePath: filePath,
-			_before: original,
 		};
 	},
 };

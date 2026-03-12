@@ -11,7 +11,10 @@ const CreateSchema = z.object({
 	content: z.string().describe("Full content to write to the file"),
 });
 
-type CreateInput = z.infer<typeof CreateSchema> & { cwd?: string };
+type CreateInput = z.infer<typeof CreateSchema> & {
+	cwd?: string;
+	snapshotCallback?: (filePath: string) => Promise<void>;
+};
 
 interface CreateOutput {
 	path: string;
@@ -37,6 +40,7 @@ export const createTool: ToolDef<CreateInput, CreateToolOutput> = {
 		const created = !(await file.exists());
 		const before = created ? "" : await file.text();
 
+		await input.snapshotCallback?.(filePath);
 		await Bun.write(filePath, input.content);
 
 		const diff = generateDiff(relPath, before, input.content);

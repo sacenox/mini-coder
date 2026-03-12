@@ -1,6 +1,6 @@
 import { getDb } from "./connection.ts";
 
-export interface SnapshotFile {
+interface SnapshotFile {
 	/** Path relative to the project cwd */
 	path: string;
 	/** Raw file contents, or null if the file did not exist before the turn */

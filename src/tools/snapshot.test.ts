@@ -7,7 +7,7 @@ import {
 	loadSnapshot,
 	saveSnapshot,
 } from "../session/db/index.ts";
-import { restoreSnapshot, takeSnapshot } from "./snapshot.ts";
+import { restoreSnapshot, snapshotBeforeEdit } from "./snapshot.ts";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -82,121 +82,86 @@ describe("saveSnapshot / loadSnapshot / deleteSnapshot", () => {
 	});
 });
 
-// ─── takeSnapshot ─────────────────────────────────────────────────────────────
+// ─── snapshotBeforeEdit ───────────────────────────────────────────────────────
 
-describe("takeSnapshot", () => {
+describe("snapshotBeforeEdit", () => {
 	const state = useTestRepo();
 
-	test("returns false on a clean working tree", async () => {
-		const result = await takeSnapshot(state.repoDir, state.sessionId, 1);
-		expect(result).toBe(false);
-	});
-
-	test("returns false for a non-git directory", async () => {
-		const nonGit = join(tmpdir(), `mc-nongit-${Date.now()}`);
-		mkdirSync(nonGit, { recursive: true });
-		try {
-			const result = await takeSnapshot(nonGit, state.sessionId, 2);
-			expect(result).toBe(false);
-		} finally {
-			rmSync(nonGit, { recursive: true, force: true });
-		}
-	});
-
-	test("snapshots a modified tracked file", async () => {
+	test("snapshots a modified tracked file before edit", async () => {
 		const filePath = join(state.repoDir, "README.md");
-		writeFileSync(filePath, "modified content\n");
+		const snappedPaths = new Set<string>();
 
-		const result = await takeSnapshot(state.repoDir, state.sessionId, 3);
-		expect(result).toBe(true);
+		await snapshotBeforeEdit(
+			state.repoDir,
+			state.sessionId,
+			3,
+			filePath,
+			snappedPaths,
+		);
 
 		const rows = loadSnapshot(state.sessionId, 3);
 		const readme = rows.find((r) => r.path === "README.md");
 		expect(readme).toBeDefined();
 		expect(readme?.existed).toBe(true);
 		expect(new TextDecoder().decode(readme?.content ?? undefined)).toBe(
-			"modified content\n",
+			"hello\n",
 		);
+		expect(snappedPaths.has("README.md")).toBe(true);
 
 		deleteSnapshot(state.sessionId, 3);
 	});
 
 	test("snapshots an untracked new file with existed=false", async () => {
-		writeFileSync(join(state.repoDir, "untracked.txt"), "brand new\n");
+		const filePath = join(state.repoDir, "untracked.txt");
+		const snappedPaths = new Set<string>();
 
-		const result = await takeSnapshot(state.repoDir, state.sessionId, 4);
-		expect(result).toBe(true);
+		await snapshotBeforeEdit(
+			state.repoDir,
+			state.sessionId,
+			4,
+			filePath,
+			snappedPaths,
+		);
 
 		const rows = loadSnapshot(state.sessionId, 4);
 		const f = rows.find((r) => r.path === "untracked.txt");
 		expect(f).toBeDefined();
-		// Untracked files are new — on undo they should be deleted, not written back
+		// File didn't exist before edit
 		expect(f?.existed).toBe(false);
+		expect(f?.content).toBeNull();
 
 		deleteSnapshot(state.sessionId, 4);
 	});
 
-	test("snapshots files inside a new untracked directory", async () => {
-		// Without -u, git collapses new dirs to a single "?? dir/" entry.
-		// With -u, each file inside is listed individually.
-		mkdirSync(join(state.repoDir, "src"), { recursive: true });
-		writeFileSync(join(state.repoDir, "src", "a.ts"), "export const a = 1;\n");
-		writeFileSync(join(state.repoDir, "src", "b.ts"), "export const b = 2;\n");
+	test("does not snapshot the same file twice in one turn", async () => {
+		const filePath = join(state.repoDir, "README.md");
+		const snappedPaths = new Set<string>();
 
-		const result = await takeSnapshot(state.repoDir, state.sessionId, 5);
-		expect(result).toBe(true);
+		await snapshotBeforeEdit(
+			state.repoDir,
+			state.sessionId,
+			5,
+			filePath,
+			snappedPaths,
+		);
+
+		// Change the file
+		writeFileSync(filePath, "changed\n");
+
+		// Second call should be a no-op
+		await snapshotBeforeEdit(
+			state.repoDir,
+			state.sessionId,
+			5,
+			filePath,
+			snappedPaths,
+		);
 
 		const rows = loadSnapshot(state.sessionId, 5);
-		const a = rows.find((r) => r.path === "src/a.ts");
-		const b = rows.find((r) => r.path === "src/b.ts");
-		expect(a).toBeDefined();
-		expect(b).toBeDefined();
-		expect(a?.existed).toBe(false);
-		expect(b?.existed).toBe(false);
-
-		deleteSnapshot(state.sessionId, 5);
-	});
-
-	test("snapshots a renamed file correctly", async () => {
-		// Commit a file so it's tracked, then rename it
-		writeFileSync(join(state.repoDir, "old-name.ts"), "export const x = 1;\n");
-		spawnSync(["git", "add", "old-name.ts"], state.repoDir);
-		spawnSync(["git", "commit", "-m", "add file"], state.repoDir);
-
-		// Rename tracked file
-		spawnSync(["git", "mv", "old-name.ts", "new-name.ts"], state.repoDir);
-
-		const result = await takeSnapshot(state.repoDir, state.sessionId, 6);
-		expect(result).toBe(true);
-
-		const rows = loadSnapshot(state.sessionId, 6);
-		// Old path: was deleted — should have existed=true with content
-		const oldEntry = rows.find((r) => r.path === "old-name.ts");
-		expect(oldEntry).toBeDefined();
-		expect(oldEntry?.existed).toBe(true);
-		expect(oldEntry?.content).not.toBeNull();
-
-		// New path: brand new on disk — should have existed=false
-		const newEntry = rows.find((r) => r.path === "new-name.ts");
-		expect(newEntry).toBeDefined();
-		expect(newEntry?.existed).toBe(false);
-
-		deleteSnapshot(state.sessionId, 6);
-	});
-
-	test("does not affect git status after snapshotting", async () => {
-		writeFileSync(join(state.repoDir, "README.md"), "changed\n");
-
-		await takeSnapshot(state.repoDir, state.sessionId, 5);
-
-		// git status should still show the modification — nothing was stashed
-		const proc = Bun.spawnSync(["git", "status", "--porcelain"], {
-			cwd: state.repoDir,
-			stdout: "pipe",
-			stderr: "pipe",
-		});
-		const statusOut = proc.stdout.toString();
-		expect(statusOut).toContain("README.md");
+		const readme = rows.find((r) => r.path === "README.md");
+		expect(new TextDecoder().decode(readme?.content ?? undefined)).toBe(
+			"hello\n",
+		);
 
 		deleteSnapshot(state.sessionId, 5);
 	});
@@ -216,7 +181,6 @@ describe("restoreSnapshot", () => {
 	test("restores a modified file to its pre-turn content", async () => {
 		const filePath = join(state.repoDir, "README.md");
 		const originalContent = "hello\n";
-		// File was already "hello\n" from makeRepo; now simulate a pre-turn snapshot
 		saveSnapshot(state.sessionId, 10, [
 			{
 				path: "README.md",
@@ -225,17 +189,14 @@ describe("restoreSnapshot", () => {
 			},
 		]);
 
-		// Agent modifies the file
 		writeFileSync(filePath, "agent changed this\n");
 
-		// Undo: restore
 		const result = await restoreSnapshot(state.repoDir, state.sessionId, 10);
 		expect(result.restored).toBe(true);
 
 		const restoredContent = await Bun.file(filePath).text();
 		expect(restoredContent).toBe(originalContent);
 
-		// Snapshot should be cleaned up
 		expect(loadSnapshot(state.sessionId, 10)).toHaveLength(0);
 	});
 
@@ -243,7 +204,6 @@ describe("restoreSnapshot", () => {
 		const newFile = join(state.repoDir, "agent-created.ts");
 		writeFileSync(newFile, "export const x = 1;\n");
 
-		// Snapshot says this file did NOT exist before the turn
 		saveSnapshot(state.sessionId, 11, [
 			{ path: "agent-created.ts", content: null, existed: false },
 		]);
@@ -257,24 +217,20 @@ describe("restoreSnapshot", () => {
 		expect(loadSnapshot(state.sessionId, 11)).toHaveLength(0);
 	});
 
-	test("end-to-end: takeSnapshot then agent creates file, restoreSnapshot deletes it", async () => {
-		// Working tree is clean before the turn — nothing to snapshot
-		const snapped = await takeSnapshot(state.repoDir, state.sessionId, 12);
-		expect(snapped).toBe(false);
-
-		// Agent creates a new file mid-turn
+	test("end-to-end: snapshotBeforeEdit then agent creates file, restoreSnapshot deletes it", async () => {
 		const agentFile = join(state.repoDir, "generated.ts");
+		const snappedPaths = new Set<string>();
+
+		await snapshotBeforeEdit(
+			state.repoDir,
+			state.sessionId,
+			13,
+			agentFile,
+			snappedPaths,
+		);
+
 		writeFileSync(agentFile, "export const y = 2;\n");
 
-		// Now snapshot captures the untracked file with existed=false
-		const snapped2 = await takeSnapshot(state.repoDir, state.sessionId, 13);
-		expect(snapped2).toBe(true);
-
-		const rows = loadSnapshot(state.sessionId, 13);
-		const entry = rows.find((r) => r.path === "generated.ts");
-		expect(entry?.existed).toBe(false);
-
-		// Restore: should delete the agent-created file
 		const result = await restoreSnapshot(state.repoDir, state.sessionId, 13);
 		expect(result.restored).toBe(true);
 		expect(await Bun.file(agentFile).exists()).toBe(false);

@@ -17,7 +17,7 @@ import {
 	resumeSession,
 	touchActiveSession,
 } from "../session/manager.ts";
-import { takeSnapshot } from "../tools/snapshot.ts";
+import { snapshotBeforeEdit } from "../tools/snapshot.ts";
 import { extractAssistantText, makeInterruptMessage } from "./agent-helpers.ts";
 import type { AgentReporter } from "./reporter.ts";
 import { buildSystemPrompt } from "./system-prompt.ts";
@@ -61,6 +61,20 @@ export class SessionRunner {
 	public coreHistory!: CoreMessage[];
 	public turnIndex = 1;
 	public snapshotStack: Array<number | null> = [];
+	public currentSnappedPaths: Set<string> | null = null;
+	public currentTurn: number | null = null;
+
+	public async snapshotCallback(filePath: string) {
+		if (this.currentTurn !== null && this.currentSnappedPaths !== null) {
+			await snapshotBeforeEdit(
+				this.cwd,
+				this.session.id,
+				this.currentTurn,
+				filePath,
+				this.currentSnappedPaths,
+			);
+		}
+	}
 
 	public planMode = false;
 	public ralphMode = false;
@@ -145,8 +159,8 @@ export class SessionRunner {
 		const allImages = [...pastedImages];
 		const thisTurn = this.turnIndex++;
 
-		const snapped = await takeSnapshot(this.cwd, this.session.id, thisTurn);
-
+		this.currentTurn = thisTurn;
+		this.currentSnappedPaths = new Set<string>();
 		const coreContent = this.planMode
 			? `${text}\n\n<system-message>PLAN MODE ACTIVE: Help the user gather context for the plan -- READ ONLY</system-message>`
 			: text;
@@ -181,8 +195,7 @@ export class SessionRunner {
 		let lastAssistantText = "";
 
 		try {
-			this.snapshotStack.push(snapped ? thisTurn : null);
-
+			this.snapshotStack.push(thisTurn);
 			this.reporter.startSpinner("thinking");
 			const events = runTurn({
 				model: llm,
@@ -232,9 +245,10 @@ export class SessionRunner {
 			saveMessages(this.session.id, [stubMsg], thisTurn);
 			throw err;
 		} finally {
+			this.currentTurn = null;
+			this.currentSnappedPaths = null;
 			stopWatcher();
 		}
-
 		return lastAssistantText;
 	}
 }

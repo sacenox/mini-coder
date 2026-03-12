@@ -58,6 +58,7 @@ export async function initAgent(opts: AgentOptions): Promise<{
 	const cwd = opts.cwd;
 	let currentModel = opts.model;
 
+	let currentRunner: SessionRunner | null = null;
 	const { runSubagent, killAll } = createSubagentRunner(
 		cwd,
 		() => currentModel,
@@ -68,8 +69,12 @@ export async function initAgent(opts: AgentOptions): Promise<{
 		runSubagent,
 		onHook: (tool, path, ok) => opts.reporter.renderHook(tool, path, ok),
 		availableAgents: subagentAgents(agents),
+		snapshotCallback: async (filePath) => {
+			if (currentRunner) {
+				await currentRunner.snapshotCallback(filePath);
+			}
+		},
 	});
-
 	const mcpTools: ToolDef[] = [];
 
 	async function connectAndAddMcp(name: string): Promise<void> {
@@ -116,6 +121,7 @@ export async function initAgent(opts: AgentOptions): Promise<{
 		isSubagent: opts.headless,
 		killSubprocesses: killAll,
 	});
+	currentRunner = runner;
 
 	// Active primary agent state — name only; the system prompt is stored on runner.
 	let activeAgentName: string | null = getPreferredActiveAgent();

@@ -1,4 +1,5 @@
 import { join, relative } from "node:path";
+import { generateDiff } from "./diff.ts";
 
 export function resolvePath(cwdInput: string | undefined, pathInput: string) {
 	const cwd = cwdInput ?? process.cwd();
@@ -50,4 +51,22 @@ export function parseAnchor(value: string, name = "anchor"): ParsedAnchor {
 	}
 
 	return { line, hash: hash.toLowerCase() };
+}
+
+export async function applyFileEdit(
+	snapshotCallback: ((filePath: string) => Promise<void>) | undefined,
+	filePath: string,
+	relPath: string,
+	original: string,
+	updated: string,
+) {
+	await snapshotCallback?.(filePath);
+	await Bun.write(filePath, updated);
+
+	return {
+		path: relPath,
+		diff: generateDiff(relPath, original, updated),
+		_filePath: filePath,
+		_before: original,
+	};
 }
