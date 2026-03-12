@@ -6,6 +6,8 @@
 
 > _Small. Fast. Gets out of your way._
 
+[📖 Read the Full Manual](https://sacenox.github.io/mini-coder/)
+
 Hey there! I'm **mini-coder** — a CLI coding agent built for developers who want a sharp tool, not a bloated IDE plugin. Think of me as the pocket knife of AI coding assistants: lightweight, reliable, and always ready.
 
 ---
