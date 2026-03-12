@@ -557,8 +557,7 @@ describe("getMessageDiagnostics", () => {
 });
 
 describe("compactToolResultPayloads", () => {
-	test("compacts oversized tool payloads with truncation metadata", () => {
-		const largePayload = "x".repeat(10_000);
+	function expectCompactedJsonOutput(output: unknown): void {
 		const messages: CoreMessage[] = [
 			{
 				role: "tool",
@@ -567,7 +566,7 @@ describe("compactToolResultPayloads", () => {
 						type: "tool-result",
 						toolCallId: "1",
 						toolName: "read",
-						output: { blob: largePayload },
+						output,
 					},
 				],
 			} as unknown as CoreMessage,
@@ -577,8 +576,26 @@ describe("compactToolResultPayloads", () => {
 		const part = (compacted[0] as { content: Array<Record<string, unknown>> })
 			.content[0];
 		expect(part?.output).toMatchObject({
-			truncated: true,
-			strategy: "head-tail",
+			type: "json",
+			value: {
+				truncated: true,
+				strategy: "head-tail",
+			},
 		});
+	}
+
+	test("compacts oversized tool payloads without breaking output schema", () => {
+		const largePayload = "x".repeat(10_000);
+		expectCompactedJsonOutput({ type: "json", value: { blob: largePayload } });
+	});
+
+	test("wraps compacted legacy raw output into json output schema", () => {
+		const largePayload = "x".repeat(10_000);
+		expectCompactedJsonOutput({ blob: largePayload });
+	});
+
+	test("rewraps compacted typed text output into json schema", () => {
+		const largePayload = "x".repeat(10_000);
+		expectCompactedJsonOutput({ type: "text", value: largePayload });
 	});
 });

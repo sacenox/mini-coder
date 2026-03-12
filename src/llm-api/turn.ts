@@ -175,6 +175,15 @@ function compactHeadTail(
 	};
 }
 
+function wrapCompactedToolResultOutput(
+	compactedPayload: Record<string, unknown>,
+): unknown {
+	return {
+		type: "json",
+		value: compactedPayload,
+	};
+}
+
 export function compactToolResultPayloads(
 	messages: CoreMessage[],
 	capBytes = DEFAULT_TOOL_RESULT_PAYLOAD_CAP_BYTES,
@@ -214,12 +223,18 @@ export function compactToolResultPayloads(
 			contentMutated = true;
 			const partRecord = part as Record<string, unknown>;
 			if ("output" in partRecord) {
-				return { ...partRecord, output: compactedPayload };
+				return {
+					...partRecord,
+					output: wrapCompactedToolResultOutput(compactedPayload),
+				};
 			}
 			if ("result" in partRecord) {
 				return { ...partRecord, result: compactedPayload };
 			}
-			return { ...partRecord, output: compactedPayload };
+			return {
+				...partRecord,
+				output: wrapCompactedToolResultOutput(compactedPayload),
+			};
 		});
 
 		if (!contentMutated) return message;
