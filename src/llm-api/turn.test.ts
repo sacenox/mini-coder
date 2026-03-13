@@ -628,7 +628,7 @@ describe("stripOpenAIItemIdsFromHistory", () => {
 });
 
 describe("applyContextPruning", () => {
-	test("balanced mode prunes stale tool history", () => {
+	test("balanced mode does not prune sessions shorter than 40 messages", () => {
 		const messages: CoreMessage[] = [
 			{ role: "user", content: "u1" },
 			{
@@ -654,6 +654,41 @@ describe("applyContextPruning", () => {
 			{ role: "assistant", content: "a3" },
 			{ role: "user", content: "u4" },
 		];
+
+		const pruned = applyContextPruning(messages, "balanced");
+		// 8 messages < 40 threshold — nothing should be pruned
+		expect(pruned.length).toBe(messages.length);
+	});
+
+	test("balanced mode prunes stale tool history in large sessions", () => {
+		// Build a history of 50 messages (25 user+assistant pairs with tool calls)
+		const messages: CoreMessage[] = [];
+		for (let i = 0; i < 25; i++) {
+			messages.push({ role: "user", content: `u${i}` });
+			messages.push({
+				role: "assistant",
+				content: [
+					{
+						type: "tool-call",
+						toolCallId: `tc${i}`,
+						toolName: "read",
+						input: {},
+					},
+				],
+			} as unknown as CoreMessage);
+			messages.push({
+				role: "tool",
+				content: [
+					{
+						type: "tool-result",
+						toolCallId: `tc${i}`,
+						toolName: "read",
+						output: { text: `result ${i}` },
+					},
+				],
+			} as unknown as CoreMessage);
+		}
+		messages.push({ role: "user", content: "final" });
 
 		const pruned = applyContextPruning(messages, "balanced");
 		expect(pruned.length).toBeLessThan(messages.length);

@@ -150,7 +150,7 @@ export function applyContextPruning(
 		return pruneMessages({
 			messages,
 			reasoning: "before-last-message",
-			toolCalls: "before-last-2-messages",
+			toolCalls: "before-last-20-messages",
 			emptyMessages: "remove",
 		}) as CoreMessage[];
 	}
@@ -158,7 +158,7 @@ export function applyContextPruning(
 	return pruneMessages({
 		messages,
 		reasoning: "before-last-message",
-		toolCalls: "before-last-3-messages",
+		toolCalls: "before-last-40-messages",
 		emptyMessages: "remove",
 	}) as CoreMessage[];
 }
