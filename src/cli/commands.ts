@@ -95,13 +95,12 @@ async function handleModel(ctx: CommandContext, args: string): Promise<void> {
 		return;
 	}
 
-	writeln(`${c.dim("  fetching models…")}`);
+	ctx.startSpinner("fetching models");
 
 	const snapshot = await fetchAvailableModels();
 	const models = snapshot.models;
 
-	// Clear the "fetching" line
-	process.stdout.write("\x1B[1A\r\x1B[2K");
+	ctx.stopSpinner();
 
 	if (models.length === 0) {
 		writeln(
@@ -370,14 +369,16 @@ async function handleMcp(ctx: CommandContext, args: string): Promise<void> {
 			// stdio: /mcp add <name> stdio <cmd> [args...]
 			const [, name, transport, ...rest] = parts;
 			if (!name || !transport || rest.length === 0) {
-				writeln(c.red("  usage: /mcp add <name> http <url>"));
-				writeln(c.red("         /mcp add <name> stdio <cmd> [args...]"));
+				writeln(`${PREFIX.error} usage: /mcp add <name> http <url>`);
+				writeln(`${PREFIX.error}        /mcp add <name> stdio <cmd> [args...]`);
+
 				return;
 			}
 			if (transport === "http") {
 				const url = rest[0];
 				if (!url) {
-					writeln(c.red("  usage: /mcp add <name> http <url>"));
+					writeln(`${PREFIX.error} usage: /mcp add <name> http <url>`);
+
 					return;
 				}
 				upsertMcpServer({
@@ -391,7 +392,10 @@ async function handleMcp(ctx: CommandContext, args: string): Promise<void> {
 			} else if (transport === "stdio") {
 				const [command, ...cmdArgs] = rest;
 				if (!command) {
-					writeln(c.red("  usage: /mcp add <name> stdio <cmd> [args...]"));
+					writeln(
+						`${PREFIX.error} usage: /mcp add <name> stdio <cmd> [args...]`,
+					);
+
 					return;
 				}
 				upsertMcpServer({
@@ -404,8 +408,9 @@ async function handleMcp(ctx: CommandContext, args: string): Promise<void> {
 				});
 			} else {
 				writeln(
-					c.red(`  unknown transport: ${transport}  (use http or stdio)`),
+					`${PREFIX.error} unknown transport: ${transport}  (use http or stdio)`,
 				);
+
 				return;
 			}
 			// Connect immediately so tools are available in this session
@@ -426,7 +431,8 @@ async function handleMcp(ctx: CommandContext, args: string): Promise<void> {
 		case "rm": {
 			const [, name] = parts;
 			if (!name) {
-				writeln(c.red("  usage: /mcp remove <name>"));
+				writeln(`${PREFIX.error} usage: /mcp remove <name>`);
+
 				return;
 			}
 			deleteMcpServer(name);
@@ -435,7 +441,8 @@ async function handleMcp(ctx: CommandContext, args: string): Promise<void> {
 		}
 
 		default:
-			writeln(c.red(`  unknown: /mcp ${sub}`));
+			writeln(`${PREFIX.error} unknown: /mcp ${sub}`);
+
 			writeln(c.dim("  subcommands: list · add · remove"));
 	}
 }
@@ -485,7 +492,6 @@ async function handleCustomCommand(
 			cmd.model,
 			abortController.signal,
 		);
-
 		write(renderMarkdown(output.result));
 		writeln();
 
