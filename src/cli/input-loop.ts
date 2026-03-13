@@ -77,7 +77,11 @@ export async function runInputLoop(opts: InputLoopOptions): Promise<void> {
 				if (result.type === "inject-user-message") {
 					const { text: resolvedText, images: refImages } =
 						await resolveFileRefs(result.text, cwd);
-					await runner.processUserInput(resolvedText, refImages);
+					try {
+						await runner.processUserInput(resolvedText, refImages);
+					} catch {
+						// Error already rendered by stream-render; continue the loop.
+					}
 				}
 				continue;
 			}
@@ -106,7 +110,11 @@ export async function runInputLoop(opts: InputLoopOptions): Promise<void> {
 				const allImages = [...(input.images || []), ...refImages];
 
 				if (!runner.ralphMode) {
-					await runner.processUserInput(resolvedText, allImages);
+					try {
+						await runner.processUserInput(resolvedText, allImages);
+					} catch {
+						// Error already rendered by stream-render; continue the loop.
+					}
 					continue;
 				}
 

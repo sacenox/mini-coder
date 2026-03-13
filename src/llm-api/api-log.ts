@@ -4,6 +4,10 @@ import { join } from "node:path";
 
 let writer: ReturnType<ReturnType<typeof Bun.file>["writer"]> | null = null;
 
+/** Cap individual log entries to prevent unbounded serialization (e.g. RetryError
+ *  objects that embed the full requestBodyValues / conversation history). */
+const MAX_ENTRY_BYTES = 8 * 1024;
+
 export function initApiLog(): void {
 	if (writer) return;
 
@@ -16,6 +20,41 @@ export function initApiLog(): void {
 	writer = Bun.file(logPath).writer();
 }
 
+function isObject(v: unknown): v is Record<string, unknown> {
+	return typeof v === "object" && v !== null;
+}
+
+/**
+ * Strip large/opaque fields from error objects before serialization.
+ * AI SDK errors embed full `requestBodyValues` (the entire conversation) and
+ * `responseBody` (full HTML error pages) — serializing these can produce
+ * tens of megabytes per error and block the event loop on flush.
+ */
+function sanitizeForLog(data: unknown): unknown {
+	if (!isObject(data)) return data;
+
+	const DROP_KEYS = new Set([
+		"requestBodyValues",
+		"responseBody",
+		"responseHeaders",
+		"stack",
+	]);
+
+	const result: Record<string, unknown> = {};
+	for (const key in data) {
+		if (DROP_KEYS.has(key)) continue;
+		const value = data[key];
+		if (key === "errors" && Array.isArray(value)) {
+			result[key] = value.map((e) => sanitizeForLog(e));
+		} else if (key === "lastError" && isObject(value)) {
+			result[key] = sanitizeForLog(value);
+		} else {
+			result[key] = value;
+		}
+	}
+	return result;
+}
+
 export function logApiEvent(event: string, data?: unknown): void {
 	if (!writer) return;
 
@@ -24,7 +63,12 @@ export function logApiEvent(event: string, data?: unknown): void {
 
 	if (data !== undefined) {
 		try {
-			entry += JSON.stringify(data, null, 2)
+			const safe = sanitizeForLog(data);
+			let serialized = JSON.stringify(safe, null, 2);
+			if (Buffer.byteLength(serialized, "utf8") > MAX_ENTRY_BYTES) {
+				serialized = `${serialized.slice(0, MAX_ENTRY_BYTES)}\n  …truncated`;
+			}
+			entry += serialized
 				.split("\n")
 				.map((line) => `  ${line}`)
 				.join("\n");

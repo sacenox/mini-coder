@@ -112,6 +112,26 @@ test("parseAppError - ECONNREFUSED message", () => {
 	});
 });
 
+test("parseAppError - ECONNRESET code", () => {
+	const err = Object.assign(new Error("Connection reset"), {
+		code: "ECONNRESET",
+	});
+	expect(parseAppError(err)).toEqual({
+		headline: "Connection lost",
+		hint: "The server closed the connection — retry or switch model with /model",
+	});
+});
+
+test("parseAppError - socket closed unexpectedly message", () => {
+	const err = new Error(
+		"The socket connection was closed unexpectedly. For more information, pass `verbose: true`",
+	);
+	expect(parseAppError(err)).toEqual({
+		headline: "Connection lost",
+		hint: "The server closed the connection — retry or switch model with /model",
+	});
+});
+
 test("parseAppError - fallback", () => {
 	const err = new Error("Something went wrong\nSome more details");
 	expect(parseAppError(err)).toEqual({

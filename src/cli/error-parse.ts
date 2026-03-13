@@ -73,6 +73,17 @@ export function parseAppError(err: unknown): {
 		};
 	}
 
+	if (
+		code === "ECONNRESET" ||
+		message.includes("ECONNRESET") ||
+		message.includes("socket connection was closed unexpectedly")
+	) {
+		return {
+			headline: "Connection lost",
+			hint: "The server closed the connection — retry or switch model with /model",
+		};
+	}
+
 	const firstLine = message.split("\n")[0]?.trim() || "Unknown error";
 	return { headline: firstLine };
 }
