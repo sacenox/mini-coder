@@ -13,7 +13,6 @@
 
 Drop the suabgent tool completly, prefer using the shell tool to mimic the subagent behaviour. Ensure we still support our subagents features like commands in new processes and subagent types. Update the mini-coder skill to be a guide explaining how to use mc via shell tool. Revise our cli interface to ensure support
 Drop glob and grep tools. the agents can use shell for these.
-Drop the read and write tools, we will need to revise the shell structured output to identify when we need to show diffs.
 Do an extensive pass to cleanup tests, dead code and anything else that might have been related to our removals.
 
 ---
