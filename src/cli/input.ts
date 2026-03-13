@@ -192,7 +192,6 @@ async function readKey(reader: StreamReader): Promise<string> {
 // handler — NOT via the shared ReadableStream reader — so that the watcher and
 // readline() never race for the same bytes. The caller must call the returned
 // stop() in a finally block.
-
 export function getTurnControlAction(
 	chunk: Uint8Array,
 ): "cancel" | "quit" | null {
@@ -205,6 +204,25 @@ export function getTurnControlAction(
 	}
 	return null;
 }
+
+export function getSubagentControlAction(
+	chunk: Uint8Array,
+): "cancel" | "quit" | null {
+	// During custom-command subagent runs there is no interactive line editing,
+	// so any ESC byte should interrupt (terminals may encode ESC as multi-byte
+	// CSI/SS3 or other escape-prefixed sequences).
+	for (const byte of chunk) {
+		if (byte === CTRL_C_BYTE) return "quit";
+	}
+	for (const byte of chunk) {
+		if (byte === ESC_BYTE) return "cancel";
+	}
+	return null;
+}
+
+type WatchForCancelOptions = {
+	allowSubagentEsc?: boolean;
+};
 
 function exitOnCtrlC(opts?: {
 	printNewline?: boolean;
@@ -219,7 +237,10 @@ function exitOnCtrlC(opts?: {
 	process.exit(130);
 }
 
-export function watchForCancel(abortController: AbortController): () => void {
+export function watchForCancel(
+	abortController: AbortController,
+	options?: WatchForCancelOptions,
+): () => void {
 	if (!terminal.isTTY) return () => {};
 
 	const onCancel = () => {
@@ -227,8 +248,12 @@ export function watchForCancel(abortController: AbortController): () => void {
 		abortController.abort();
 	};
 
+	const getAction = options?.allowSubagentEsc
+		? getSubagentControlAction
+		: getTurnControlAction;
+
 	const onData = (chunk: Buffer) => {
-		const action = getTurnControlAction(chunk);
+		const action = getAction(chunk);
 		if (action === "cancel") {
 			onCancel();
 			return;

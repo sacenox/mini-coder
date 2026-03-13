@@ -79,11 +79,19 @@ export function createSubagentRunner(
 		prompt: string,
 		agentName?: string,
 		modelOverride?: string,
+		abortSignal?: AbortSignal,
 	): Promise<SubagentOutput> => {
 		if (subagentDepth >= MAX_SUBAGENT_DEPTH) {
 			throw new Error(
 				`Subagent recursion limit reached (depth ${subagentDepth}). ` +
 					`Cannot spawn another subagent.`,
+			);
+		}
+
+		if (abortSignal?.aborted) {
+			throw new DOMException(
+				"Subagent execution was interrupted",
+				"AbortError",
 			);
 		}
 
@@ -114,6 +122,20 @@ export function createSubagentRunner(
 
 		activeProcs.add(proc);
 
+		let aborted = false;
+		const onAbort = () => {
+			aborted = true;
+			try {
+				proc.kill("SIGTERM");
+			} catch {
+				/* process may have already exited */
+			}
+		};
+
+		if (abortSignal) {
+			abortSignal.addEventListener("abort", onAbort);
+		}
+
 		try {
 			const [text, stdout, stderr] = await Promise.all([
 				Bun.file(proc.stdio[3] as number).text(),
@@ -121,6 +143,14 @@ export function createSubagentRunner(
 				consumeTail(proc.stderr),
 				proc.exited,
 			]);
+
+			if (aborted || abortSignal?.aborted) {
+				throw new DOMException(
+					"Subagent execution was interrupted",
+					"AbortError",
+				);
+			}
+
 			const diagnostics = formatSubagentDiagnostics(stdout, stderr);
 
 			const trimmed = text.trim();
@@ -156,7 +186,18 @@ export function createSubagentRunner(
 			if (agentName) output.agentName = agentName;
 
 			return output;
+		} catch (error) {
+			if (aborted || abortSignal?.aborted) {
+				throw new DOMException(
+					"Subagent execution was interrupted",
+					"AbortError",
+				);
+			}
+			throw error;
 		} finally {
+			if (abortSignal) {
+				abortSignal.removeEventListener("abort", onAbort);
+			}
 			activeProcs.delete(proc);
 		}
 	};

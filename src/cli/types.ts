@@ -31,6 +31,7 @@ export interface CommandContext {
 		prompt: string,
 		agentName?: string,
 		model?: string,
+		abortSignal?: AbortSignal,
 	) => Promise<SubagentOutput>;
 
 	activeAgent: string | null;

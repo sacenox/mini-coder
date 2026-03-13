@@ -209,8 +209,8 @@ export async function initAgent(opts: AgentOptions): Promise<{
 			runner.planMode = v;
 		},
 		cwd,
-		runSubagent: (prompt, agentName?, model?) =>
-			runSubagent(prompt, agentName, model),
+		runSubagent: (prompt, agentName?, model?, abortSignal?) =>
+			runSubagent(prompt, agentName, model, abortSignal),
 
 		get activeAgent() {
 			return activeAgentName;

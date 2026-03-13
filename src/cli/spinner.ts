@@ -19,7 +19,7 @@ export class Spinner {
 		if (!this.timer) return;
 		clearInterval(this.timer);
 		this.timer = null;
-		process.stderr.write("\r\x1B[2K\x1B[?25h");
+		process.stderr.write("\r\x1B[2K\x1B[?25h\n");
 	}
 
 	update(label: string): void {

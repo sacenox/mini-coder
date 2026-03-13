@@ -1,7 +1,7 @@
 # TODO
 
-- Newline missing after spinner, new content is appended starting on the same line as the spinner line.
 - ESC doesn't interrupt subagents created by custom commands, example: can't interrupt a review agent
+- Surface to the user when compacting happens in a structured output
 
 ---
 
