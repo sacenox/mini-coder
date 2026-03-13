@@ -19,8 +19,7 @@ Do an extensive pass to cleanup tests, dead code and anything else that might ha
 
 ## UI Audit
 
-- Inspect reasoning and markdown rendering, it feels very slow and laggy to the user.
-- We need to revise all of our output to ensure consistency, performance and correctness.
+- We need to revise all of our output to ensure consistency, **performance** and correctness.
 - Ensure we have a good styled output that is clear to the user, refactor as needed.
 - Ensure we have propper hierchy in output, and the different types of output are clearly distinguishable for the user, using styles and whitespace.
 - Ensure proper spinner functionality, that follow up messages don't rended inline and that is doesn't break anything.
