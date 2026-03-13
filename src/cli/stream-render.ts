@@ -39,25 +39,33 @@ export async function renderTurn(
 	let contextTokens = 0;
 	let newMessages: CoreMessage[] = [];
 
-	function renderAndWrite(raw: string, endWithNewline: boolean): void {
-		// Defensive stop: some providers stream tiny chunks and spinner ticks can
-		// interleave with stdout writes unless we stop right before each render.
-		spinner.stop();
-
+	/**
+	 * Render a single raw line, updating shared fence/blank-run state.
+	 * Returns the rendered string, or null if the line should be suppressed
+	 * (e.g. a second consecutive blank line inside a reasoning block).
+	 */
+	function renderSingleLine(raw: string): string | null {
 		const source = inReasoning ? raw.replace(/[ \t]+$/g, "") : raw;
 		if (inReasoning && source.trim() === "") {
 			reasoningBlankLineRun += 1;
-			if (reasoningBlankLineRun > 1) return;
+			if (reasoningBlankLineRun > 1) return null;
 		} else if (inReasoning) {
 			reasoningBlankLineRun = 0;
 		}
 
 		const rendered = renderLine(source, inFence);
 		inFence = rendered.inFence;
-		const finalOutput = inReasoning
-			? `${c.dim("│ ")}${rendered.output}`
-			: rendered.output;
-		write(finalOutput);
+		return inReasoning ? `${c.dim("│ ")}${rendered.output}` : rendered.output;
+	}
+
+	function renderAndWrite(raw: string, endWithNewline: boolean): void {
+		// Defensive stop: some providers stream tiny chunks and spinner ticks can
+		// interleave with stdout writes unless we stop right before each render.
+		spinner.stop();
+
+		const out = renderSingleLine(raw);
+		if (out === null) return;
+		write(out);
 		if (endWithNewline) {
 			write("\n");
 		}
@@ -74,12 +82,30 @@ export async function renderTurn(
 	}
 
 	function flushCompleteLines(): void {
-		let boundary = rawBuffer.indexOf("\n");
+		// Use an index cursor instead of repeatedly slicing rawBuffer after each
+		// line — the original `rawBuffer = rawBuffer.slice(boundary + 1)` pattern
+		// is O(n²) for large blocks because it copies all remaining content on
+		// every iteration.  We do a single slice at the end instead.
+		// All rendered lines are also batched into one write() call to avoid the
+		// overhead of thousands of individual stdout syscalls.
+		let start = 0;
+		let boundary = rawBuffer.indexOf("\n", start);
+		if (boundary === -1) return;
+
+		spinner.stop();
+		let batchOutput = "";
+
 		while (boundary !== -1) {
-			renderAndWrite(rawBuffer.slice(0, boundary), true);
-			rawBuffer = rawBuffer.slice(boundary + 1);
-			boundary = rawBuffer.indexOf("\n");
+			const raw = rawBuffer.slice(start, boundary);
+			start = boundary + 1;
+			boundary = rawBuffer.indexOf("\n", start);
+
+			const out = renderSingleLine(raw);
+			if (out !== null) batchOutput += `${out}\n`;
 		}
+
+		rawBuffer = start > 0 ? rawBuffer.slice(start) : rawBuffer;
+		if (batchOutput) write(batchOutput);
 	}
 
 	function flushAll(): void {
