@@ -31,7 +31,7 @@ export const listSkillsTool: ToolDef<ListSkillsInput, ListSkillsOutput> = {
 };
 
 const ReadSkillSchema = z.object({
-	name: z.string().describe("Skill name to load, e.g. conventional-commits"),
+	name: z.string().describe("Skill name to load"),
 });
 type ReadSkillInput = z.infer<typeof ReadSkillSchema> & { cwd?: string };
 

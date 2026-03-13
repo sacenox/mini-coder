@@ -318,6 +318,27 @@ export function renderToolResult(
 		return;
 	}
 
+	if (toolName === "readSkill") {
+		const r = result as {
+			skill?: {
+				name?: string;
+				description?: string;
+				source?: "local" | "global";
+			};
+		};
+		if (!r.skill) {
+			writeln(`    ${G.info} ${c.dim("skill-auto-load miss")}`);
+			return;
+		}
+		const name = r.skill.name ?? "(unknown)";
+		const source = r.skill.source ?? "unknown";
+		const description = r.skill.description?.trim();
+		writeln(
+			`    ${G.info} ${c.dim(`skill-auto-loaded name=${name} source=${source}${description ? ` description=${JSON.stringify(description)}` : ""}`)}`,
+		);
+		return;
+	}
+
 	if (toolName === "webSearch") {
 		const r = result as {
 			results?: Array<{ title?: string; url?: string; score?: number }>;

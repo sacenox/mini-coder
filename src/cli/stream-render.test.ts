@@ -196,4 +196,39 @@ describe("renderTurn", () => {
 			"context-pruned mode=balanced removed_messages=30 removed_bytes=15000 messages_before=120 messages_after=90",
 		);
 	});
+
+	test("renders structured user-visible output when a skill is auto-loaded", async () => {
+		captureStdout();
+
+		await renderTurn(
+			eventsFrom([
+				{
+					type: "tool-call-start",
+					toolName: "readSkill",
+					args: { name: "deploy" },
+					toolCallId: "tool-1",
+				},
+				{
+					type: "tool-result",
+					toolName: "readSkill",
+					toolCallId: "tool-1",
+					isError: false,
+					result: {
+						skill: {
+							name: "deploy",
+							description: "Deploy app",
+							source: "local",
+						},
+					},
+				},
+				done(),
+			]),
+			new Spinner(),
+		);
+
+		const plain = strip(stdout);
+		expect(plain).toContain(
+			'skill-auto-loaded name=deploy source=local description="Deploy app"',
+		);
+	});
 });

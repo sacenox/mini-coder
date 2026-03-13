@@ -9,14 +9,6 @@
 
 ---
 
-## Skills auto discovery and progressive disclosure
-
-We need to make sure we implement skills according to the community expectations, same behaviour as claude code or opencode.
-
-let's do some research and understand what needs to be done.
-
----
-
 ## Lean and mean idea
 
 Drop the suabgent tool completly, prefer using the shell tool to mimic the subagent behaviour. Ensure we still support our subagents features like commands in new processes and subagent types. Update the mini-coder skill to be a guide explaining how to use mc via shell tool. Revise our cli interface to ensure support
