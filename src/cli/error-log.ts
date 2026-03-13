@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -12,7 +12,8 @@ export function initErrorLog(): void {
 
 	mkdirSync(dirPath, { recursive: true });
 
-	// Truncate on open
+	// Truncate on open so it doesn't grow forever between sessions
+	writeFileSync(logPath, "");
 	writer = Bun.file(logPath).writer();
 
 	process.on("uncaughtException", (err) => {

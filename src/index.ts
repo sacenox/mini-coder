@@ -33,6 +33,7 @@ import {
 	getPreferredShowReasoning,
 	getPreferredThinkingEffort,
 	getPreferredToolResultPayloadCapBytes,
+	pruneOldData,
 } from "./session/db/index.ts";
 import { getMostRecentSession, printSessionList } from "./session/manager.ts";
 
@@ -42,6 +43,7 @@ registerTerminalCleanup();
 initErrorLog();
 initApiLog();
 initModelInfoCache();
+pruneOldData();
 void refreshModelInfoInBackground().catch(() => {});
 
 // ─── Main ─────────────────────────────────────────────────────────────────────

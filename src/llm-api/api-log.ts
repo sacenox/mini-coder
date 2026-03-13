@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -17,6 +17,7 @@ export function initApiLog(): void {
 	mkdirSync(dirPath, { recursive: true });
 
 	// Truncate on open so it doesn't grow forever between sessions
+	writeFileSync(logPath, "");
 	writer = Bun.file(logPath).writer();
 }
 
@@ -30,19 +31,19 @@ function isObject(v: unknown): v is Record<string, unknown> {
  * `responseBody` (full HTML error pages) — serializing these can produce
  * tens of megabytes per error and block the event loop on flush.
  */
+const LOG_DROP_KEYS = new Set([
+	"requestBodyValues",
+	"responseBody",
+	"responseHeaders",
+	"stack",
+]);
+
 function sanitizeForLog(data: unknown): unknown {
 	if (!isObject(data)) return data;
 
-	const DROP_KEYS = new Set([
-		"requestBodyValues",
-		"responseBody",
-		"responseHeaders",
-		"stack",
-	]);
-
 	const result: Record<string, unknown> = {};
 	for (const key in data) {
-		if (DROP_KEYS.has(key)) continue;
+		if (LOG_DROP_KEYS.has(key)) continue;
 		const value = data[key];
 		if (key === "errors" && Array.isArray(value)) {
 			result[key] = value.map((e) => sanitizeForLog(e));
@@ -65,7 +66,7 @@ export function logApiEvent(event: string, data?: unknown): void {
 		try {
 			const safe = sanitizeForLog(data);
 			let serialized = JSON.stringify(safe, null, 2);
-			if (Buffer.byteLength(serialized, "utf8") > MAX_ENTRY_BYTES) {
+			if (serialized.length > MAX_ENTRY_BYTES) {
 				serialized = `${serialized.slice(0, MAX_ENTRY_BYTES)}\n  …truncated`;
 			}
 			entry += serialized

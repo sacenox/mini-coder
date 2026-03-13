@@ -141,3 +141,39 @@ export function getDb(): Database {
 	}
 	return _db;
 }
+
+/** Keep only this many most-recent sessions (messages/snapshots cascade). */
+const MAX_SESSIONS = 100;
+/** Keep only this many most-recent prompt_history entries. */
+const MAX_PROMPT_HISTORY = 500;
+
+/**
+ * Prune old sessions and prompt history, then reclaim space.
+ * Call once at startup (after getDb()).
+ */
+export function pruneOldData(): void {
+	const db = getDb();
+
+	const deletedSessions = db.run(
+		`DELETE FROM sessions WHERE id NOT IN (
+       SELECT id FROM sessions ORDER BY updated_at DESC LIMIT ?
+     )`,
+		[MAX_SESSIONS],
+	).changes;
+
+	const deletedHistory = db.run(
+		`DELETE FROM prompt_history WHERE id NOT IN (
+       SELECT id FROM prompt_history ORDER BY id DESC LIMIT ?
+     )`,
+		[MAX_PROMPT_HISTORY],
+	).changes;
+
+	// Reclaim pages freed by deletions.
+	if (deletedSessions > 0 || deletedHistory > 0) {
+		db.exec("VACUUM;");
+	}
+
+	// Checkpoint WAL (including any pages written by VACUUM) so the WAL file
+	// shrinks back to near-zero.
+	db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+}
