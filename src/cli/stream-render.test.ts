@@ -120,7 +120,25 @@ describe("renderTurn", () => {
 		expect(result.reasoningText).toBe("step 1\nstep 2");
 	});
 
-	test("renders reasoning output by default and accumulates it", async () => {
+	test("normalizes reasoning whitespace safely", async () => {
+		captureStdout();
+
+		const result = await renderTurn(
+			eventsFrom([
+				{
+					type: "reasoning-delta",
+					delta: "\r\n\r\n  hello   \r\n\r\n\r\nworld\t\t\r\n\r\n",
+				},
+				done(),
+			]),
+			new Spinner(),
+			{ showReasoning: false },
+		);
+
+		expect(result.reasoningText).toBe("  hello\n\nworld");
+	});
+
+	test("renders reasoning in a structured block and accumulates it", async () => {
 		captureStdout();
 
 		const result = await renderTurn(
@@ -128,7 +146,7 @@ describe("renderTurn", () => {
 			new Spinner(),
 		);
 
-		expect(strip(stdout)).toBe("thinking\n");
+		expect(strip(stdout)).toBe("· reasoning\n│ thinking\n");
 		expect(hasAnsi(stdout, "[2m")).toBe(true);
 		expect(result.reasoningText).toBe("thinking");
 	});

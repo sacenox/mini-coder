@@ -5,6 +5,7 @@
 - Tool hooks output prints inline with spinner
 - When the user uses /new reset the terminal and clear the history, print the banner again
 - Review our markdown renderer. Let's make it render the raw markdown, but syntax highlited
+- add a spinner state showing the user when the undo snapshotting is happening
 
 ---
 

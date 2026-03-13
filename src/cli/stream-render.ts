@@ -6,6 +6,10 @@ import { logError } from "./error-log.ts";
 import { parseAppError } from "./error-parse.ts";
 import { renderLine } from "./markdown.ts";
 import { G, write, writeln } from "./output.ts";
+import {
+	normalizeReasoningDelta,
+	normalizeReasoningText,
+} from "./reasoning.ts";
 import type { Spinner } from "./spinner.ts";
 import { renderToolCall, renderToolResult } from "./tool-render.ts";
 
@@ -28,6 +32,7 @@ export async function renderTurn(
 	let accumulatedReasoning = "";
 
 	let inFence = false;
+	let reasoningBlankLineRun = 0;
 
 	let inputTokens = 0;
 	let outputTokens = 0;
@@ -38,9 +43,20 @@ export async function renderTurn(
 		// Defensive stop: some providers stream tiny chunks and spinner ticks can
 		// interleave with stdout writes unless we stop right before each render.
 		spinner.stop();
-		const rendered = renderLine(raw, inFence);
+
+		const source = inReasoning ? raw.replace(/[ \t]+$/g, "") : raw;
+		if (inReasoning && source.trim() === "") {
+			reasoningBlankLineRun += 1;
+			if (reasoningBlankLineRun > 1) return;
+		} else if (inReasoning) {
+			reasoningBlankLineRun = 0;
+		}
+
+		const rendered = renderLine(source, inFence);
 		inFence = rendered.inFence;
-		const finalOutput = inReasoning ? c.dim(rendered.output) : rendered.output;
+		const finalOutput = inReasoning
+			? `${c.dim("│ ")}${rendered.output}`
+			: rendered.output;
 		write(finalOutput);
 		if (endWithNewline) {
 			write("\n");
@@ -53,6 +69,7 @@ export async function renderTurn(
 			writeln();
 			inText = false;
 			inReasoning = false;
+			reasoningBlankLineRun = 0;
 		}
 	}
 
@@ -91,7 +108,8 @@ export async function renderTurn(
 				break;
 			}
 			case "reasoning-delta": {
-				accumulatedReasoning += event.delta;
+				const delta = normalizeReasoningDelta(event.delta);
+				accumulatedReasoning += delta;
 				if (!showReasoning) {
 					break;
 				}
@@ -100,9 +118,10 @@ export async function renderTurn(
 						flushAnyText();
 					}
 					spinner.stop();
+					writeln(`${G.info} ${c.dim("reasoning")}`);
 					inReasoning = true;
 				}
-				rawBuffer += event.delta;
+				rawBuffer += delta;
 				flushCompleteLines();
 				break;
 			}
@@ -174,6 +193,6 @@ export async function renderTurn(
 		outputTokens,
 		contextTokens,
 		newMessages,
-		reasoningText: accumulatedReasoning,
+		reasoningText: normalizeReasoningText(accumulatedReasoning),
 	};
 }

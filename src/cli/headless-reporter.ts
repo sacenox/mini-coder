@@ -6,6 +6,10 @@ import type {
 } from "../agent/reporter.ts";
 import type { CoreMessage } from "../llm-api/turn.ts";
 import type { TurnEvent } from "../llm-api/types.ts";
+import {
+	normalizeReasoningDelta,
+	normalizeReasoningText,
+} from "./reasoning.ts";
 
 /**
  * A no-op reporter for headless (subprocess) mode.
@@ -36,7 +40,7 @@ export class HeadlessReporter implements AgentReporter {
 					accumulatedText += event.delta;
 					break;
 				case "reasoning-delta":
-					reasoningText += event.delta;
+					reasoningText += normalizeReasoningDelta(event.delta);
 					break;
 				case "context-pruned":
 					break;
@@ -66,7 +70,7 @@ export class HeadlessReporter implements AgentReporter {
 			outputTokens,
 			contextTokens,
 			newMessages,
-			reasoningText,
+			reasoningText: normalizeReasoningText(reasoningText),
 		};
 	}
 
