@@ -1,4 +1,3 @@
-import * as c from "yoctocolors";
 import type {
 	AgentReporter,
 	StatusBarData,
@@ -6,6 +5,7 @@ import type {
 } from "../agent/reporter.ts";
 import type { TurnEvent } from "../llm-api/types.ts";
 import {
+	G,
 	renderError,
 	renderHook,
 	renderInfo,
@@ -20,10 +20,12 @@ export class CliReporter implements AgentReporter {
 	private spinner = new Spinner();
 
 	info(msg: string): void {
+		this.spinner.stop();
 		renderInfo(msg);
 	}
 
 	error(msg: string | Error, hint?: string): void {
+		this.spinner.stop();
 		if (typeof msg === "string") {
 			renderError(msg, hint);
 		} else {
@@ -32,10 +34,12 @@ export class CliReporter implements AgentReporter {
 	}
 
 	warn(msg: string): void {
-		writeln(`! ${c.yellow(msg)}`);
+		this.spinner.stop();
+		writeln(`${G.warn} ${msg}`);
 	}
 
 	writeText(text: string): void {
+		this.spinner.stop();
 		writeln(text);
 	}
 

@@ -17,7 +17,7 @@ describe("SPINNER_FRAMES", () => {
 });
 
 describe("Spinner", () => {
-	test("moves cursor to a new line when stopped", () => {
+	test("clears the spinner line and shows cursor without advancing to a new line", () => {
 		const originalWrite = process.stderr.write;
 		let stderr = "";
 		process.stderr.write = ((text: string) => {
@@ -29,7 +29,9 @@ describe("Spinner", () => {
 			const spinner = new Spinner();
 			spinner.start("thinking");
 			spinner.stop();
-			expect(stderr).toContain("\n");
+			expect(stderr).toContain("\r\x1B[2K");
+			expect(stderr).toContain("\x1B[?25h");
+			expect(stderr).not.toContain("\n");
 		} finally {
 			process.stderr.write = originalWrite;
 		}

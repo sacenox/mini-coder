@@ -19,9 +19,15 @@ Do an extensive pass to cleanup tests, dead code and anything else that might ha
 
 ## UI Audit
 
-Our output is currently not in a good spot, with weird newlines and inconsistent whitespace separation between tool calls, tool responses, and assistant response.
+- Inspect reasoning and markdown rendering, it feels very slow and laggy to the user.
+- We need to revise all of our output to ensure consistency, performance and correctness.
+- Ensure we have a good styled output that is clear to the user, refactor as needed.
+- Ensure we have propper hierchy in output, and the different types of output are clearly distinguishable for the user, using styles and whitespace.
+- Ensure proper spinner functionality, that follow up messages don't rended inline and that is doesn't break anything.
 
-Audit our output to make sure it's refactored to the new tools and working correctly and performant and ensure propper whitespace.
+## CLI vs headless mode
+
+- I need to understand this better tell me all about what is headless mode and what it does in our code.
 
 ---
 

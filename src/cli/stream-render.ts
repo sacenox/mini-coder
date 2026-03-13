@@ -156,8 +156,10 @@ export async function renderTurn(
 			}
 
 			case "turn-complete": {
+				const hadContent = inText || inReasoning;
 				flushAnyText();
 				spinner.stop();
+				if (!hadContent) writeln();
 				inputTokens = event.inputTokens;
 				outputTokens = event.outputTokens;
 				contextTokens = event.contextTokens;

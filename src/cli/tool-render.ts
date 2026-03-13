@@ -313,8 +313,9 @@ export function renderToolResult(
 		};
 		const label = r.agentName ? ` ${c.dim(c.cyan(`[@${r.agentName}]`))}` : "";
 		writeln(
-			`    ${c.cyan("←")}${label} ${c.dim(`subagent done (${r.inputTokens ?? 0}in / ${r.outputTokens ?? 0}out tokens)`)}`,
+			`    ${G.agent}${label} ${c.dim(`subagent done (${r.inputTokens ?? 0}in / ${r.outputTokens ?? 0}out tokens)`)}`,
 		);
+
 		return;
 	}
 
