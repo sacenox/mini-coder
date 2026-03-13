@@ -27,6 +27,17 @@ export interface ToolResultEvent {
 	isError: boolean;
 }
 
+export interface ContextPrunedEvent {
+	type: "context-pruned";
+	mode: "balanced" | "aggressive";
+	beforeMessageCount: number;
+	afterMessageCount: number;
+	removedMessageCount: number;
+	beforeTotalBytes: number;
+	afterTotalBytes: number;
+	removedBytes: number;
+}
+
 export interface TurnCompleteEvent {
 	type: "turn-complete";
 	inputTokens: number;
@@ -54,6 +65,7 @@ export type TurnEvent =
 	| TextDeltaEvent
 	| ToolCallStartEvent
 	| ToolResultEvent
+	| ContextPrunedEvent
 	| TurnCompleteEvent
 	| TurnErrorEvent;
 

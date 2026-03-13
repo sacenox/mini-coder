@@ -801,18 +801,34 @@ export async function* runTurn(options: {
 			logApiEvent("openai item ids stripped from history", { modelString });
 		}
 
-		logApiEvent(
-			"turn context pre-prune",
-			getMessageDiagnostics(openAIItemIdsStrippedMessages),
+		const prePruneDiagnostics = getMessageDiagnostics(
+			openAIItemIdsStrippedMessages,
 		);
+		logApiEvent("turn context pre-prune", prePruneDiagnostics);
 		const prunedMessages = applyContextPruning(
 			openAIItemIdsStrippedMessages,
 			pruningMode,
 		);
-		logApiEvent(
-			"turn context post-prune",
-			getMessageDiagnostics(prunedMessages),
-		);
+		const postPruneDiagnostics = getMessageDiagnostics(prunedMessages);
+		logApiEvent("turn context post-prune", postPruneDiagnostics);
+		if (
+			(pruningMode === "balanced" || pruningMode === "aggressive") &&
+			(postPruneDiagnostics.messageCount < prePruneDiagnostics.messageCount ||
+				postPruneDiagnostics.totalBytes < prePruneDiagnostics.totalBytes)
+		) {
+			yield {
+				type: "context-pruned",
+				mode: pruningMode,
+				beforeMessageCount: prePruneDiagnostics.messageCount,
+				afterMessageCount: postPruneDiagnostics.messageCount,
+				removedMessageCount:
+					prePruneDiagnostics.messageCount - postPruneDiagnostics.messageCount,
+				beforeTotalBytes: prePruneDiagnostics.totalBytes,
+				afterTotalBytes: postPruneDiagnostics.totalBytes,
+				removedBytes:
+					prePruneDiagnostics.totalBytes - postPruneDiagnostics.totalBytes,
+			};
+		}
 
 		const turnMessages = compactToolResultPayloads(
 			prunedMessages,

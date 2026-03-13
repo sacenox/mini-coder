@@ -127,6 +127,15 @@ export async function renderTurn(
 				break;
 			}
 
+			case "context-pruned": {
+				flushAnyText();
+				spinner.stop();
+				writeln(
+					`${G.info} ${c.dim(`context-pruned mode=${event.mode} removed_messages=${event.removedMessageCount} removed_bytes=${event.removedBytes} messages_before=${event.beforeMessageCount} messages_after=${event.afterMessageCount}`)}`,
+				);
+				break;
+			}
+
 			case "turn-complete": {
 				flushAnyText();
 				spinner.stop();

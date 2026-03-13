@@ -153,4 +153,29 @@ describe("renderTurn", () => {
 		expect(strip(stdout)).toBe("◆ line 1\nline 2\n\n");
 		expect(stopCalls).toBeGreaterThanOrEqual(2);
 	});
+
+	test("renders a structured context-pruned line", async () => {
+		captureStdout();
+
+		await renderTurn(
+			eventsFrom([
+				{
+					type: "context-pruned",
+					mode: "balanced",
+					beforeMessageCount: 120,
+					afterMessageCount: 90,
+					removedMessageCount: 30,
+					beforeTotalBytes: 40000,
+					afterTotalBytes: 25000,
+					removedBytes: 15000,
+				},
+				done(),
+			]),
+			new Spinner(),
+		);
+
+		expect(strip(stdout)).toContain(
+			"context-pruned mode=balanced removed_messages=30 removed_bytes=15000 messages_before=120 messages_after=90",
+		);
+	});
 });

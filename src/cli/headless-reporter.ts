@@ -38,6 +38,8 @@ export class HeadlessReporter implements AgentReporter {
 				case "reasoning-delta":
 					reasoningText += event.delta;
 					break;
+				case "context-pruned":
+					break;
 				case "turn-complete":
 					inputTokens = event.inputTokens;
 					outputTokens = event.outputTokens;
