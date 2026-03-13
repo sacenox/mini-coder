@@ -182,4 +182,46 @@ describe("buildSystemPrompt", () => {
 		);
 		expect(prompt).not.toContain("# Project context");
 	});
+
+	it("includes skill metadata guidance when skills are discoverable", () => {
+		const skillDir = join(tmpDir, ".agents", "skills", "deploy");
+		mkdirSync(skillDir, { recursive: true });
+		writeFileSync(
+			join(skillDir, "SKILL.md"),
+			"---\nname: deploy\ndescription: Deploy safely\n---\n\n# Deploy\nDetailed body",
+		);
+
+		const prompt = buildSystemPrompt(
+			"mock",
+			tmpDir,
+			undefined,
+			undefined,
+			fakeHome,
+		);
+		expect(prompt).toContain("# Available skills (metadata only)");
+		expect(prompt).toContain(
+			"Use `listSkills` to browse and `readSkill` to load one SKILL.md on demand.",
+		);
+		expect(prompt).toContain("- deploy: Deploy safely (local)");
+		expect(prompt).not.toContain("Detailed body");
+	});
+
+	it("includes globally discovered skill metadata when homeDir is provided", () => {
+		const skillDir = join(fakeHome, ".agents", "skills", "release");
+		mkdirSync(skillDir, { recursive: true });
+		writeFileSync(
+			join(skillDir, "SKILL.md"),
+			"---\nname: release\ndescription: Ship releases\n---\n\nRelease body",
+		);
+
+		const prompt = buildSystemPrompt(
+			"mock",
+			tmpDir,
+			undefined,
+			undefined,
+			fakeHome,
+		);
+		expect(prompt).toContain("- release: Ship releases (global)");
+		expect(prompt).not.toContain("Release body");
+	});
 });

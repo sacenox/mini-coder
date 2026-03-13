@@ -7,7 +7,7 @@ import {
 	isImageFilename,
 	loadImageFile,
 } from "./image-types.ts";
-import { loadSkills } from "./skills.ts";
+import { loadSkillsIndex } from "./skills.ts";
 import { terminal } from "./terminal-io.ts";
 
 // ─── ANSI escape sequences ────────────────────────────────────────────────────
@@ -66,7 +66,7 @@ async function getAtCompletions(
 	const MAX = 10;
 
 	// Skills: @<skill-name>
-	const skills = loadSkills(cwd);
+	const skills = loadSkillsIndex(cwd);
 	for (const [name] of skills) {
 		if (results.length >= MAX) break;
 		if (name.includes(query)) results.push(`@${name}`);

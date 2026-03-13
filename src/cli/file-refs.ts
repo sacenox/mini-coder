@@ -4,7 +4,7 @@ import {
 	isImageFilename,
 	loadImageFile,
 } from "./image-types.ts";
-import { loadSkills } from "./skills.ts";
+import { loadSkillContentFromMeta, loadSkillsIndex } from "./skills.ts";
 
 export async function resolveFileRefs(
 	text: string,
@@ -15,15 +15,23 @@ export async function resolveFileRefs(
 	const matches = [...text.matchAll(atPattern)];
 	const images: ImageAttachment[] = [];
 
-	const skills = loadSkills(cwd);
+	const skills = loadSkillsIndex(cwd);
+	const loadedSkills = new Map<string, string>();
 
 	for (const match of [...matches].reverse()) {
 		const ref = match[1];
 		if (!ref) continue;
 
-		const skill = skills.get(ref);
-		if (skill) {
-			const replacement = `<skill name="${skill.name}">\n${skill.content}\n</skill>`;
+		const skillMeta = skills.get(ref);
+		if (skillMeta) {
+			let content = loadedSkills.get(skillMeta.name);
+			if (!content) {
+				const loaded = loadSkillContentFromMeta(skillMeta);
+				if (!loaded) continue;
+				content = loaded.content;
+				loadedSkills.set(skillMeta.name, content);
+			}
+			const replacement = `<skill name="${skillMeta.name}">\n${content}\n</skill>`;
 			result =
 				result.slice(0, match.index) +
 				replacement +

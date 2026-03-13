@@ -17,7 +17,7 @@ import { watchForCancel } from "./input.ts";
 import { renderMarkdown } from "./markdown.ts";
 import { PREFIX, write, writeln } from "./output.ts";
 
-import { loadSkills } from "./skills.ts";
+import { loadSkillsIndex } from "./skills.ts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -619,10 +619,14 @@ function handleHelp(
 	}
 
 	// Show skills
-	const skills = loadSkills(ctx.cwd);
+	const skills = loadSkillsIndex(ctx.cwd);
 	if (skills.size > 0) {
 		writeln();
-		writeln(c.dim("  skills  (~/.agents/skills/ or .agents/skills/):"));
+		writeln(
+			c.dim(
+				"  skills  (walk-up local .agents/.claude/skills + global ~/.agents/skills ~/.claude/skills):",
+			),
+		);
 		for (const skill of skills.values()) {
 			const tag =
 				skill.source === "local" ? c.dim(" (local)") : c.dim(" (global)");
@@ -637,7 +641,7 @@ function handleHelp(
 		`  ${c.green("@agent".padEnd(26))} ${c.dim("run prompt through a custom agent (Tab to complete)")}`,
 	);
 	writeln(
-		`  ${c.green("@skill".padEnd(26))} ${c.dim("inject skill instructions into prompt (Tab to complete)")}`,
+		`  ${c.green("@skill".padEnd(26))} ${c.dim("load a skill body on demand into the prompt (Tab to complete)")}`,
 	);
 	writeln(
 		`  ${c.green("@file".padEnd(26))} ${c.dim("inject file contents into prompt (Tab to complete)")}`,

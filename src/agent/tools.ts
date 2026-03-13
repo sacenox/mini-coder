@@ -25,6 +25,7 @@ import type { ReplaceToolOutput } from "../tools/replace.ts";
 import { replaceTool } from "../tools/replace.ts";
 import type { ShellOutput } from "../tools/shell.ts";
 import { shellTool } from "../tools/shell.ts";
+import { listSkillsTool, readSkillTool } from "../tools/skills.ts";
 import { createSubagentTool, type SubagentOutput } from "../tools/subagent.ts";
 import {
 	finalizeWriteResult,
@@ -165,6 +166,8 @@ export function buildToolSet(opts: {
 			(_, input) => hookEnvForRead(input, cwd),
 			onHook,
 		) as ToolDef,
+		withCwdDefault(listSkillsTool as ToolDef, cwd),
+		withCwdDefault(readSkillTool as ToolDef, cwd),
 		// Write: create/overwrite, replace/delete, insert
 		withHooks(
 			withCwdDefault(
@@ -233,6 +236,8 @@ export function buildReadOnlyToolSet(opts: { cwd: string }): ToolDef[] {
 		withCwdDefault(globTool as ToolDef, cwd),
 		withCwdDefault(grepTool as ToolDef, cwd),
 		withCwdDefault(readTool as ToolDef, cwd),
+		withCwdDefault(listSkillsTool as ToolDef, cwd),
+		withCwdDefault(readSkillTool as ToolDef, cwd),
 	];
 
 	if (process.env.EXA_API_KEY) {

@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { hashLine } from "../tools/hashline.ts";
-import { buildToolSet } from "./tools.ts";
+import { buildReadOnlyToolSet, buildToolSet } from "./tools.ts";
 
 let cwd = "";
 
@@ -99,5 +99,29 @@ describe("buildToolSet write hooks", () => {
 		expect(await Bun.file(join(cwd, "plain.txt")).text()).toBe("plain\n");
 		expect((result as { diff: string }).diff).toContain("+plain");
 		expect(result).not.toHaveProperty("_before");
+	});
+});
+
+describe("skills tools registration", () => {
+	test("includes listSkills and readSkill in full tool set", () => {
+		const names = buildToolSet({
+			cwd,
+			runSubagent: async () => ({
+				result: "ok",
+				inputTokens: 0,
+				outputTokens: 0,
+			}),
+			onHook: () => {},
+			availableAgents: new Map(),
+		}).map((tool) => tool.name);
+
+		expect(names).toContain("listSkills");
+		expect(names).toContain("readSkill");
+	});
+
+	test("includes listSkills and readSkill in read-only tool set", () => {
+		const names = buildReadOnlyToolSet({ cwd }).map((tool) => tool.name);
+		expect(names).toContain("listSkills");
+		expect(names).toContain("readSkill");
 	});
 });

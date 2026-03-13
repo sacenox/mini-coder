@@ -1,31 +1,300 @@
-// ─── Types ────────────────────────────────────────────────────────────────────
+import {
+	closeSync,
+	existsSync,
+	openSync,
+	readdirSync,
+	readFileSync,
+	readSync,
+	statSync,
+} from "node:fs";
+import { homedir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { warnConventionConflicts } from "./config-conflicts.ts";
+import { G, writeln } from "./output.ts";
 
-import { loadMarkdownConfigs } from "./load-markdown-configs.ts";
-
-interface Skill {
+export interface SkillMeta {
 	name: string;
 	description: string;
-	/** Full content of the SKILL.md (frontmatter + body) */
+	source: "global" | "local";
+	rootPath: string;
+	filePath: string;
+}
+
+interface SkillRecord extends SkillMeta {
 	content: string;
-	/** "global" (~/.agents/) or "local" (./.agents/) — local wins on conflict */
+}
+
+export interface LoadedSkillContent {
+	name: string;
+	content: string;
 	source: "global" | "local";
 }
 
-// ─── Load all skills (global + local, local wins) ────────────────────────────
+const MAX_FRONTMATTER_BYTES = 64 * 1024;
+const SKILL_NAME_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const MIN_SKILL_NAME_LENGTH = 1;
+const MAX_SKILL_NAME_LENGTH = 64;
+const warnedInvalidSkills = new Set<string>();
 
-export function loadSkills(cwd: string, homeDir?: string): Map<string, Skill> {
-	return loadMarkdownConfigs<Skill>({
-		type: "skills",
-		strategy: "nested",
-		nestedFileName: "SKILL.md",
-		cwd,
-		homeDir,
-		includeClaudeDirs: true,
-		mapConfig: ({ name, meta, raw, source }) => ({
-			name,
-			description: meta.description ?? name,
-			content: raw,
+type SkillCandidate = {
+	folderName: string;
+	filePath: string;
+	rootPath: string;
+	source: "global" | "local";
+	frontmatter?: SkillFrontmatter;
+};
+
+type SkillFrontmatter = {
+	name?: string;
+	description?: string;
+};
+
+function parseSkillFrontmatter(filePath: string): SkillFrontmatter {
+	let fd: number | null = null;
+	try {
+		fd = openSync(filePath, "r");
+		const chunk = Buffer.allocUnsafe(MAX_FRONTMATTER_BYTES);
+		const bytesRead = readSync(fd, chunk, 0, MAX_FRONTMATTER_BYTES, 0);
+		const text = chunk.toString("utf8", 0, bytesRead);
+		const lines = text.split("\n");
+		if ((lines[0] ?? "").trim() !== "---") return {};
+
+		const meta: SkillFrontmatter = {};
+		for (let i = 1; i < lines.length; i++) {
+			const line = (lines[i] ?? "").replace(/\r$/, "");
+			if (line.trim() === "---") break;
+			const colon = line.indexOf(":");
+			if (colon === -1) continue;
+			const key = line.slice(0, colon).trim();
+			const value = line
+				.slice(colon + 1)
+				.trim()
+				.replace(/^["']|["']$/g, "");
+			if (key === "name") meta.name = value;
+			if (key === "description") meta.description = value;
+		}
+		return meta;
+	} catch {
+		return {};
+	} finally {
+		if (fd !== null) closeSync(fd);
+	}
+}
+
+function getCandidateFrontmatter(candidate: SkillCandidate): SkillFrontmatter {
+	if (!candidate.frontmatter) {
+		candidate.frontmatter = parseSkillFrontmatter(candidate.filePath);
+	}
+	return candidate.frontmatter;
+}
+
+function candidateConflictName(candidate: SkillCandidate): string {
+	return (
+		getCandidateFrontmatter(candidate).name?.trim() || candidate.folderName
+	);
+}
+
+function findGitBoundary(cwd: string): string | null {
+	let current = resolve(cwd);
+	while (true) {
+		if (existsSync(join(current, ".git"))) return current;
+		const parent = dirname(current);
+		if (parent === current) return null;
+		current = parent;
+	}
+}
+
+function localSearchRoots(cwd: string): string[] {
+	const start = resolve(cwd);
+	const stop = findGitBoundary(start);
+	if (!stop) return [start];
+	const roots: string[] = [];
+	let current = start;
+	while (true) {
+		roots.push(current);
+		if (current === stop) break;
+		const parent = dirname(current);
+		if (parent === current) break;
+		current = parent;
+	}
+	return roots;
+}
+
+function listSkillCandidates(
+	skillsDir: string,
+	source: "global" | "local",
+	rootPath: string,
+): SkillCandidate[] {
+	if (!existsSync(skillsDir)) return [];
+	let entries: string[];
+	try {
+		entries = readdirSync(skillsDir).sort((a, b) => a.localeCompare(b));
+	} catch {
+		return [];
+	}
+	const candidates: SkillCandidate[] = [];
+	for (const entry of entries) {
+		const skillDir = join(skillsDir, entry);
+		try {
+			if (!statSync(skillDir).isDirectory()) continue;
+		} catch {
+			continue;
+		}
+		const filePath = join(skillDir, "SKILL.md");
+		if (!existsSync(filePath)) continue;
+		candidates.push({
+			folderName: entry,
+			filePath,
+			rootPath,
 			source,
-		}),
-	});
+		});
+	}
+	return candidates;
+}
+
+function warnInvalidSkill(filePath: string, reason: string): void {
+	const key = `${filePath}:${reason}`;
+	if (warnedInvalidSkills.has(key)) return;
+	warnedInvalidSkills.add(key);
+	writeln(`${G.warn} skipping invalid skill ${filePath}: ${reason}`);
+}
+
+function validateSkill(candidate: SkillCandidate): SkillMeta | null {
+	const meta = getCandidateFrontmatter(candidate);
+	const name = meta.name?.trim();
+	const description = meta.description?.trim();
+
+	if (!name) {
+		warnInvalidSkill(
+			candidate.filePath,
+			"frontmatter field `name` is required",
+		);
+		return null;
+	}
+	if (!description) {
+		warnInvalidSkill(
+			candidate.filePath,
+			"frontmatter field `description` is required",
+		);
+		return null;
+	}
+	if (
+		name.length < MIN_SKILL_NAME_LENGTH ||
+		name.length > MAX_SKILL_NAME_LENGTH
+	) {
+		warnInvalidSkill(
+			candidate.filePath,
+			`name must be ${MIN_SKILL_NAME_LENGTH}-${MAX_SKILL_NAME_LENGTH} characters`,
+		);
+		return null;
+	}
+	if (!SKILL_NAME_RE.test(name)) {
+		warnInvalidSkill(
+			candidate.filePath,
+			"name must match lowercase alnum + hyphen format",
+		);
+		return null;
+	}
+
+	return {
+		name,
+		description,
+		source: candidate.source,
+		rootPath: candidate.rootPath,
+		filePath: candidate.filePath,
+	};
+}
+
+function allSkillCandidates(cwd: string, homeDir?: string): SkillCandidate[] {
+	const home = homeDir ?? homedir();
+	const localRootsNearToFar = localSearchRoots(cwd);
+	const ordered: SkillCandidate[] = [];
+
+	const globalClaude = listSkillCandidates(
+		join(home, ".claude", "skills"),
+		"global",
+		home,
+	);
+	const globalAgents = listSkillCandidates(
+		join(home, ".agents", "skills"),
+		"global",
+		home,
+	);
+	warnConventionConflicts(
+		"skills",
+		"global",
+		globalAgents.map((skill) => candidateConflictName(skill)),
+		globalClaude.map((skill) => candidateConflictName(skill)),
+	);
+	ordered.push(...globalClaude, ...globalAgents);
+
+	for (const root of [...localRootsNearToFar].reverse()) {
+		const localClaude = listSkillCandidates(
+			join(root, ".claude", "skills"),
+			"local",
+			root,
+		);
+		const localAgents = listSkillCandidates(
+			join(root, ".agents", "skills"),
+			"local",
+			root,
+		);
+		warnConventionConflicts(
+			"skills",
+			"local",
+			localAgents.map((skill) => candidateConflictName(skill)),
+			localClaude.map((skill) => candidateConflictName(skill)),
+		);
+		ordered.push(...localClaude, ...localAgents);
+	}
+
+	return ordered;
+}
+
+export function loadSkillsIndex(
+	cwd: string,
+	homeDir?: string,
+): Map<string, SkillMeta> {
+	const index = new Map<string, SkillMeta>();
+	for (const candidate of allSkillCandidates(cwd, homeDir)) {
+		const skill = validateSkill(candidate);
+		if (!skill) continue;
+		index.set(skill.name, skill);
+	}
+	return index;
+}
+
+export function loadSkillContentFromMeta(
+	skill: SkillMeta,
+): LoadedSkillContent | null {
+	try {
+		const content = readFileSync(skill.filePath, "utf-8");
+		return { name: skill.name, content, source: skill.source };
+	} catch {
+		return null;
+	}
+}
+
+export function loadSkillContent(
+	name: string,
+	cwd: string,
+	homeDir?: string,
+): LoadedSkillContent | null {
+	const skill = loadSkillsIndex(cwd, homeDir).get(name);
+	if (!skill) return null;
+	return loadSkillContentFromMeta(skill);
+}
+
+// Compatibility shim while callsites migrate to metadata-first loading.
+export function loadSkills(
+	cwd: string,
+	homeDir?: string,
+): Map<string, SkillRecord> {
+	const skills = new Map<string, SkillRecord>();
+	for (const [name, meta] of loadSkillsIndex(cwd, homeDir)) {
+		const loaded = loadSkillContentFromMeta(meta);
+		if (!loaded) continue;
+		skills.set(name, { ...meta, content: loaded.content });
+	}
+	return skills;
 }

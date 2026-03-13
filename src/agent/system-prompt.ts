@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { tildePath } from "../cli/output.ts";
+import { loadSkillsIndex } from "../cli/skills.ts";
 
 function tryReadFile(p: string): string | null {
 	if (!existsSync(p)) return null;
@@ -112,6 +113,16 @@ Guidelines:
 		}
 		if (localContext) {
 			prompt += `\n\n${localContext}`;
+		}
+	}
+
+	const skills = Array.from(loadSkillsIndex(cwd, homeDir).values());
+	if (skills.length > 0) {
+		prompt += "\n\n# Available skills (metadata only)";
+		prompt +=
+			"\nUse `listSkills` to browse and `readSkill` to load one SKILL.md on demand.\n";
+		for (const skill of skills) {
+			prompt += `\n- ${skill.name}: ${skill.description} (${skill.source})`;
 		}
 	}
 

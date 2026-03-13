@@ -1,28 +1,48 @@
 # Skills
 
-A skill is a reusable instruction file injected inline into your prompt.
-Use `@skill-name` to load it — the content is inserted into the message
-before it's sent to the LLM.
+Skills are reusable instruction files discovered automatically from local and global directories.
 
-> **Skills are never auto-loaded.** They must be explicitly referenced
-> with `@skill-name` in your prompt. Nothing is injected automatically.
+- The model sees **skill metadata only** by default (name, description, source).
+- Full `SKILL.md` content is loaded **on demand**:
+	- when explicitly requested with the runtime skill tools (`listSkills` / `readSkill`), or
+	- when you reference `@skill-name` in your prompt.
 
-## Where to put them
+## Discovery locations
 
-Each skill is a folder containing a `SKILL.md`:
+Skills live in folders containing `SKILL.md`:
 
 | Location | Scope |
 |---|---|
-| `.agents/skills/<name>/SKILL.md` | Current repo only |
-| `~/.agents/skills/<name>/SKILL.md` | All projects (global) |
-| `.claude/skills/<name>/SKILL.md` | Current repo only (Claude-compatible) |
-| `~/.claude/skills/<name>/SKILL.md` | All projects (global, Claude-compatible) |
+| `.agents/skills/<name>/SKILL.md` | Local |
+| `.claude/skills/<name>/SKILL.md` | Local (Claude-compatible) |
+| `~/.agents/skills/<name>/SKILL.md` | Global |
+| `~/.claude/skills/<name>/SKILL.md` | Global (Claude-compatible) |
 
-Local skills override global ones with the same name. At the same scope, `.agents` wins over `.claude`.
+Local discovery walks up from the current working directory to the git worktree root.
+
+## Precedence rules
+
+If multiple skills share the same `name`, precedence is deterministic:
+
+1. Nearest local directory wins over farther ancestor directories.
+2. Any local skill wins over global.
+3. At the same scope/path level, `.agents` wins over `.claude`.
+
+## Frontmatter validation
+
+`SKILL.md` frontmatter must include:
+
+- `name` (required)
+- `description` (required)
+
+`name` constraints:
+
+- lowercase alphanumeric and hyphen format (`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
+- 1–64 characters
+
+Invalid skills are skipped with warnings. Unknown frontmatter fields are allowed.
 
 ## Create a skill
-
-The folder name becomes the skill name (unless overridden by `name:` in frontmatter).
 
 `.agents/skills/conventional-commits/SKILL.md`:
 
@@ -34,40 +54,25 @@ description: Conventional commit message format rules
 
 # Conventional Commits
 
-All commit messages must follow this format:
-
-  <type>(<scope>): <short summary>
-
-Types: feat, fix, docs, refactor, test, chore
-- Summary is lowercase, no period at the end
-- Breaking changes: add `!` after type, e.g. `feat!:`
-- Body is optional, wrapped at 72 chars
+Use:
+<type>(<scope>): <short summary>
 ```
 
-Then in the REPL:
+## Use a skill explicitly
 
-```
+```text
 @conventional-commits write a commit message for my staged changes
 ```
 
-The skill content is wrapped in `<skill name="…">…</skill>` tags and
-included in the message sent to the LLM.
+`@skill-name` injects the raw skill body wrapped as:
 
-## Frontmatter fields
-
-| Field | Required | Description |
-|---|---|---|
-| `name` | No | Skill name for `@` reference. Defaults to folder name. |
-| `description` | No | Shown in `/help`. Defaults to name. |
-
-## Tab completion
-
-Type `@` and press `Tab` to autocomplete skill names alongside agents and files.
-
-## Listing skills
-
-```
-/help
+```xml
+<skill name="conventional-commits">
+...
+</skill>
 ```
 
-Skills are listed in yellow, tagged `(local)` or `(global)`.
+## Tab completion and help
+
+- Type `@` then `Tab` to complete skill names.
+- Run `/help` to list discovered skills with `(local)` / `(global)` tags.

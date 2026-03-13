@@ -1,23 +1,36 @@
 # TODO
 
-- Normalize the different models reasoning output. Trim excessive whitespace safely, ensure it renders uniquely. Should have a more structured output so it's noticeable that is reasoning and not a normal response. Enable the markdown rendering for it.
 - Improve our autocomplete via TAB. it should work on all commands and parameters. When the user uses tab assume it's a file path autocompletion.
 - Tool hooks output prints inline with spinner
 - When the user uses /new reset the terminal and clear the history, print the banner again
 - Review our markdown renderer. Let's make it render the raw markdown, but syntax highlited
 - add a spinner state showing the user when the undo snapshotting is happening
+- Structuted output when a skill is auto loaded for the agent
 
 ---
 
-# Lean and mean idea
+## Skills auto discovery and progressive disclosure
 
-CLI vs MCP is the hot debate. I've testing a lot with different coding editors and I want to make feature branch that removes the subagent tool. Then simplify our read/write tools, streamline their usage based on usage history. Then update the mini-coder skill to teach how to use "subagents" by calling another mc via shell, and general tool guidelines (don't bloat context with large outputs, dont read more than needed, etc...). Also review our exa tools for improvements. Overall this allows the agent to rely more on the shell tool and use the read/write tools for safe edits, and removing the complexity of the subagent tool.
+We need to make sure we implement skills according to the community expectations, same behaviour as claude code or opencode.
 
-Why this is good in my opinion:
+let's do some research and understand what needs to be done.
 
-- Way less code, much less bug surface, faster.
-- Less tool implementation, simpler structured output logic
-- Raw, simple and makes mini-coder closer to it's intented coding prompt vision (as oposed to an interactive coding agent with TUI)
+---
+
+## Lean and mean idea
+
+Drop the suabgent tool completly, prefer using the shell tool to mimic the subagent behaviour. Ensure we still support our subagents features like commands in new processes and subagent types. Update the mini-coder skill to be a guide explaining how to use mc via shell tool. Revise our cli interface to ensure support
+Drop glob and grep tools. the agents can use shell for these.
+Drop the read and write tools, we will need to revise the shell structured output to identify when we need to show diffs.
+Do an extensive pass to cleanup tests, dead code and anything else that might have been related to our removals.
+
+---
+
+## UI Audit
+
+Our output is currently not in a good spot, with weird newlines and inconsistent whitespace separation between tool calls, tool responses, and assistant response.
+
+Audit our output to make sure it's refactored to the new tools and working correctly and performant and ensure propper whitespace.
 
 ---
 
