@@ -1,7 +1,9 @@
 # TODO
 
-- ESC doesn't interrupt subagents created by custom commands, example: can't interrupt a review agent
-- Surface to the user when compacting happens in a structured output
+- Surface to the user when context prunning happens in a structured output
+- Normalize the different models reasoning output. Trim excessive whitespace safely, ensure it renders uniquely. Should have a more structured output so it's noticeable that is reasoning and not a normal response. Enable the markdown rendering for it.
+- Improve our autocomplete via TAB. it should work on all commands and parameters. When the user uses tab assume it's a file path autocompletion.
+- Tool hooks output prints inline with spinner
 
 ---
 
