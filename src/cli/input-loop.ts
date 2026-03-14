@@ -8,6 +8,7 @@ import { handleCommand } from "./commands.ts";
 import { resolveFileRefs } from "./file-refs.ts";
 import { type InputResult, readline } from "./input.ts";
 import { tildePath } from "./output.ts";
+import { buildStatusBarSignature } from "./status-bar.ts";
 
 import type { CommandContext } from "./types.ts";
 
@@ -21,14 +22,16 @@ interface InputLoopOptions {
 export async function runInputLoop(opts: InputLoopOptions): Promise<void> {
 	const { cwd, reporter, cmdCtx, runner } = opts;
 
+	let lastStatusSignature: string | null = null;
+
 	while (true) {
 		const branch = await getGitBranch(cwd);
 		const status = runner.getStatusInfo();
 		const provider = status.model.split("/")[0] ?? "";
 		const modelShort = status.model.split("/").slice(1).join("/");
 		const cwdDisplay = tildePath(cwd);
-
-		reporter.renderStatusBar({
+		const contextWindow = getContextWindow(status.model);
+		const statusData = {
 			model: modelShort,
 			provider,
 			cwd: cwdDisplay,
@@ -37,11 +40,16 @@ export async function runInputLoop(opts: InputLoopOptions): Promise<void> {
 			inputTokens: status.totalIn,
 			outputTokens: status.totalOut,
 			contextTokens: status.lastContextTokens,
-			contextWindow: getContextWindow(status.model) ?? 0,
+			contextWindow,
 			thinkingEffort: status.thinkingEffort,
 			activeAgent: cmdCtx.activeAgent,
 			showReasoning: status.showReasoning,
-		});
+		};
+		const statusSignature = buildStatusBarSignature(statusData);
+		if (statusSignature !== lastStatusSignature) {
+			reporter.renderStatusBar(statusData);
+			lastStatusSignature = statusSignature;
+		}
 
 		let input: InputResult;
 		try {

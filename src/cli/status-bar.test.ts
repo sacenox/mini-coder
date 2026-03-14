@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { renderStatusBar } from "./status-bar.ts";
+import { buildStatusBarSignature, renderStatusBar } from "./status-bar.ts";
 import { terminal } from "./terminal-io.ts";
 
 let stdout = "";
@@ -70,6 +70,7 @@ describe("renderStatusBar", () => {
 		expect(line).toContain("@general");
 		expect(line).toContain("tok 1.2k/3.4k");
 		expect(line).toContain("ctx 8.0k/128.0k");
+		expect(line).not.toContain("reasoning");
 	});
 
 	test("drops low-priority segments on narrow terminals", async () => {
@@ -126,5 +127,30 @@ describe("renderStatusBar", () => {
 		const line = stripAnsi(stdout).trim();
 		expect(line).toContain("ctx 2.0k");
 		expect(line).not.toContain("ctx 2.0k/");
+	});
+
+	test("buildStatusBarSignature is stable and reflects changed fields", () => {
+		const base = {
+			model: "gpt-5.3-codex",
+			provider: "zen",
+			cwd: "~/src/mini-coder",
+			gitBranch: "main",
+			sessionId: "1234567890",
+			inputTokens: 1,
+			outputTokens: 2,
+			contextTokens: 3,
+			contextWindow: 100,
+			thinkingEffort: "medium",
+			activeAgent: null,
+			showReasoning: false,
+		} as const;
+
+		expect(buildStatusBarSignature(base)).toBe(buildStatusBarSignature(base));
+		expect(
+			buildStatusBarSignature({
+				...base,
+				outputTokens: 9,
+			}),
+		).not.toBe(buildStatusBarSignature(base));
 	});
 });
