@@ -29,14 +29,7 @@ export function mapStreamChunkToTurnEvent(c: StreamChunk): TurnEvent | null {
 				delta,
 			};
 		}
-		case "tool-input-start": {
-			return {
-				type: "tool-input-start",
-				toolCallId: String(c.toolCallId ?? ""),
-				toolName: String(c.toolName ?? ""),
-				args: c.input ?? c.args,
-			};
-		}
+		case "tool-input-start":
 		case "tool-call": {
 			const toolName = String(c.toolName ?? "");
 			const toolCallId = String(c.toolCallId ?? "");

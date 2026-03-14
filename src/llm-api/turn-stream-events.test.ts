@@ -37,6 +37,19 @@ describe("mapStreamChunkToTurnEvent", () => {
 			toolName: "read",
 			args: { path: "a.ts" },
 		});
+		expect(
+			mapStreamChunkToTurnEvent({
+				type: "tool-input-start",
+				toolCallId: "id-2",
+				toolName: "read",
+				args: { path: "b.ts" },
+			}),
+		).toEqual({
+			type: "tool-call-start",
+			toolCallId: "id-2",
+			toolName: "read",
+			args: { path: "b.ts" },
+		});
 	});
 
 	test("maps tool-result events from output/result and preserves isError", () => {
