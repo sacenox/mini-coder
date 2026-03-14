@@ -3,28 +3,41 @@ import { generateDiff } from "./diff.ts";
 export interface WriteResultMeta {
 	_filePath: string;
 	_before: string;
+	/** Content that was written — used to compute diff on the no-hook path. */
+	_updated: string;
 }
 
 interface FinalizableWriteResult extends WriteResultMeta {
 	path: string;
-	diff: string;
 }
 
-export function stripWriteResultMeta<T extends WriteResultMeta>(
-	result: T,
-): Omit<T, keyof WriteResultMeta> {
-	const { _filePath, _before, ...publicResult } = result;
-	return publicResult;
+/**
+ * No-hook path: strip internal metadata and compute the diff from the already-
+ * written content (avoids a file re-read since no hook rewrote the file).
+ */
+export function stripWriteResultMeta<
+	T extends WriteResultMeta & { path: string },
+>(result: T): Omit<T, keyof WriteResultMeta> & { diff: string } {
+	const { _filePath: _, _before, _updated, ...publicResult } = result;
+	return {
+		...(publicResult as Omit<T, keyof WriteResultMeta>),
+		diff: generateDiff(result.path, _before, _updated),
+	};
 }
 
+/**
+ * Hook path: re-read the file after the hook ran and compute the diff against
+ * the original content. This replaces any diff that would have been computed
+ * before the hook (P3: intermediate diff removed from applyFileEdit).
+ */
 export async function finalizeWriteResult<T extends FinalizableWriteResult>(
 	result: T,
-): Promise<Omit<T, keyof WriteResultMeta>> {
+): Promise<Omit<T, keyof WriteResultMeta> & { diff: string }> {
 	const file = Bun.file(result._filePath);
 	const after = (await file.exists()) ? await file.text() : "";
-
+	const { _filePath: _, _before, _updated: __, ...publicResult } = result;
 	return {
-		...stripWriteResultMeta(result),
-		diff: generateDiff(result.path, result._before, after),
+		...(publicResult as Omit<T, keyof WriteResultMeta>),
+		diff: generateDiff(result.path, _before, after),
 	};
 }

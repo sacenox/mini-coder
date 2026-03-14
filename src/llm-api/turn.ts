@@ -6,7 +6,7 @@ import {
 	stepCountIs,
 	streamText,
 } from "ai";
-import { logApiEvent } from "./api-log.ts";
+import { isApiLogEnabled, logApiEvent } from "./api-log.ts";
 import {
 	getCacheFamily,
 	getCachingProviderOptions,
@@ -59,6 +59,20 @@ function safeStringify(value: unknown): string {
 	} catch {
 		return JSON.stringify(String(value));
 	}
+}
+
+/**
+ * P4: Lightweight alternative to getMessageDiagnostics that computes only the
+ * fields needed for the context-pruned yield event (no roleBreakdown / tool
+ * contributor maps). Used when the API log is disabled.
+ */
+function getMessageStats(messages: CoreMessage[]): {
+	messageCount: number;
+	totalBytes: number;
+} {
+	let totalBytes = 0;
+	for (const m of messages) totalBytes += getByteLength(safeStringify(m));
+	return { messageCount: messages.length, totalBytes };
 }
 
 export function getMessageDiagnostics(
@@ -616,6 +630,83 @@ export function stripGPTCommentaryFromHistory(
 // ─── Main turn function ───────────────────────────────────────────────────────
 
 /**
+ * P9: Merged single-pass replacement for the sequential
+ * `stripGPTCommentaryFromHistory` + `stripOpenAIItemIdsFromHistory` calls in
+ * `runTurn`. Both transforms are OpenAI-only; combining them into one loop
+ * halves the number of full-array allocations on OpenAI sessions.
+ *
+ * The individual exported functions are kept for direct use / tests.
+ */
+function stripOpenAIHistoryTransforms(
+	messages: CoreMessage[],
+	modelString: string,
+): CoreMessage[] {
+	if (!isOpenAIGPT(modelString)) return messages;
+
+	let mutated = false;
+	const result: CoreMessage[] = [];
+	let skipToolResults = false;
+
+	for (const message of messages) {
+		// Commentary: skip orphaned tool-result messages following a fully-dropped
+		// assistant message.
+		if (skipToolResults) {
+			if (message.role === "tool") {
+				mutated = true;
+				continue;
+			}
+			skipToolResults = false;
+		}
+
+		// Item-ID strip: filter providerOptions.openai.itemId from all content parts.
+		let contentMutated = false;
+		const strippedContent = Array.isArray(message.content)
+			? message.content.map((part) => {
+					const cleaned = stripOpenAIItemIdFromPart(part);
+					if (cleaned.changed) contentMutated = true;
+					return cleaned.part;
+				})
+			: message.content;
+
+		const msgAfterIdStrip: CoreMessage = contentMutated
+			? ({
+					...message,
+					content: strippedContent as CoreMessage["content"],
+				} as CoreMessage)
+			: message;
+
+		if (contentMutated) mutated = true;
+
+		// Commentary strip: filter phase:"commentary" text parts from assistant messages.
+		if (
+			message.role === "assistant" &&
+			Array.isArray(msgAfterIdStrip.content)
+		) {
+			const filtered = msgAfterIdStrip.content.filter(
+				(part) => !isCommentaryTextPart(part),
+			);
+			if (filtered.length === msgAfterIdStrip.content.length) {
+				result.push(msgAfterIdStrip);
+			} else if (filtered.length === 0) {
+				// Entire message was commentary: drop it and any following tool results.
+				mutated = true;
+				skipToolResults = true;
+			} else {
+				mutated = true;
+				result.push({
+					...msgAfterIdStrip,
+					content: filtered,
+				} as CoreMessage);
+			}
+		} else {
+			result.push(msgAfterIdStrip);
+		}
+	}
+
+	return mutated ? result : messages;
+}
+
+/**
  * Returns true when the model string refers to an OpenAI GPT model routed
  * through the OpenAI SDK stack (direct OpenAI or Zen OpenAI).
  */
@@ -751,7 +842,6 @@ export async function* runTurn(options: {
 		// OpenAI GPT models use the Responses API (@ai-sdk/openai v3 / ai v6 default),
 		// but we keep prompts only in `system` messages for consistency across
 		// providers and to avoid prompting shape drift on GPT reasoning models.
-		const useInstructions = false; // TODO: This is dead code, we should remove it and its usage. Keep the comment above.
 
 		const toolCount = Object.keys(toolSet).length;
 		const thinkingOpts = thinkingEffort
@@ -785,32 +875,34 @@ export async function* runTurn(options: {
 			});
 		}
 
-		const gptSanitizedMessages = stripGPTCommentaryFromHistory(
+		// P9: Single-pass merged transform (commentary + item-ID strip) instead of
+		// two sequential full-array passes; individual functions kept for tests.
+		const openAIStrippedMessages = stripOpenAIHistoryTransforms(
 			geminiSanitizedMessages,
 			modelString,
 		);
-		if (gptSanitizedMessages !== geminiSanitizedMessages) {
-			logApiEvent("gpt commentary stripped from history", { modelString });
+		if (
+			openAIStrippedMessages !== geminiSanitizedMessages &&
+			isApiLogEnabled()
+		) {
+			logApiEvent("openai history transforms applied", { modelString });
 		}
 
-		const openAIItemIdsStrippedMessages = stripOpenAIItemIdsFromHistory(
-			gptSanitizedMessages,
-			modelString,
-		);
-		if (openAIItemIdsStrippedMessages !== gptSanitizedMessages) {
-			logApiEvent("openai item ids stripped from history", { modelString });
-		}
-
-		const prePruneDiagnostics = getMessageDiagnostics(
-			openAIItemIdsStrippedMessages,
-		);
-		logApiEvent("turn context pre-prune", prePruneDiagnostics);
+		// P4: Only compute full diagnostics when the API log is active; otherwise
+		// use a lightweight count+bytes helper that skips roleBreakdown/topContributors.
+		const apiLogOn = isApiLogEnabled();
+		const prePruneDiagnostics = apiLogOn
+			? getMessageDiagnostics(openAIStrippedMessages)
+			: getMessageStats(openAIStrippedMessages);
+		if (apiLogOn) logApiEvent("turn context pre-prune", prePruneDiagnostics);
 		const prunedMessages = applyContextPruning(
-			openAIItemIdsStrippedMessages,
+			openAIStrippedMessages,
 			pruningMode,
 		);
-		const postPruneDiagnostics = getMessageDiagnostics(prunedMessages);
-		logApiEvent("turn context post-prune", postPruneDiagnostics);
+		const postPruneDiagnostics = apiLogOn
+			? getMessageDiagnostics(prunedMessages)
+			: getMessageStats(prunedMessages);
+		if (apiLogOn) logApiEvent("turn context post-prune", postPruneDiagnostics);
 		if (
 			(pruningMode === "balanced" || pruningMode === "aggressive") &&
 			(postPruneDiagnostics.messageCount < prePruneDiagnostics.messageCount ||
@@ -834,7 +926,7 @@ export async function* runTurn(options: {
 			prunedMessages,
 			toolResultPayloadCapBytes,
 		);
-		if (turnMessages !== prunedMessages) {
+		if (turnMessages !== prunedMessages && apiLogOn) {
 			logApiEvent("turn context post-compaction", {
 				capBytes: toolResultPayloadCapBytes,
 				diagnostics: getMessageDiagnostics(turnMessages),
@@ -863,17 +955,6 @@ export async function* runTurn(options: {
 							...(isRecord(thinkingOpts?.openai)
 								? (thinkingOpts.openai as object)
 								: {}),
-						},
-					}
-				: {}),
-			...(useInstructions && systemPrompt
-				? {
-						openai: {
-							...(isRecord(thinkingOpts?.openai)
-								? (thinkingOpts.openai as object)
-								: {}),
-							store: false,
-							instructions: systemPrompt,
 						},
 					}
 				: {}),
@@ -932,21 +1013,11 @@ export async function* runTurn(options: {
 				return undefined;
 			},
 
-			...(finalSystemPrompt && !useInstructions
-				? { system: finalSystemPrompt }
-				: {}),
+			...(finalSystemPrompt ? { system: finalSystemPrompt } : {}),
 			...(Object.keys(mergedProviderOptions).length > 0
 				? { providerOptions: mergedProviderOptions }
 				: {}),
 			...(signal ? { abortSignal: signal } : {}),
-			// TODO: I don't think this is ever used. we should probably remove it
-			experimental_repairToolCall: async ({ toolCall }) => {
-				// To avoid 400 Bad Request from the API when it receives malformed JSON
-				// in the assistant's tool_calls history, we repair it to a minimal valid JSON.
-				// This allows the framework to parse it, fail schema validation gracefully,
-				// and send a proper validation error back to the model without crashing the step loop.
-				return { ...toolCall, args: "{}" };
-			},
 		};
 
 		const result = streamText(streamOpts) as StreamTextResultFull;
@@ -978,14 +1049,8 @@ export async function* runTurn(options: {
 
 			switch (c.type) {
 				case "text-delta": {
-					// AI SDK v6: property is `text`, not `textDelta`
-					// TODO: Why do we still check for textDelta then?
-					const delta =
-						typeof c.text === "string"
-							? c.text
-							: typeof c.textDelta === "string"
-								? c.textDelta
-								: "";
+					// AI SDK v6: property is `text`.
+					const delta = typeof c.text === "string" ? c.text : "";
 					yield {
 						type: "text-delta",
 						delta,

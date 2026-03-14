@@ -2,25 +2,39 @@ import { renderError } from "../../cli/output.ts";
 import type { CoreMessage } from "../../llm-api/turn.ts";
 import { getDb } from "./connection.ts";
 
+// P5: Hoist prepared statement to module-level lazy singleton to avoid re-compiling SQL each call.
+type Stmt = ReturnType<ReturnType<typeof getDb>["prepare"]>;
+let _insertMsgStmt: Stmt | null = null;
+function getInsertMsgStmt(): Stmt {
+	if (!_insertMsgStmt) {
+		_insertMsgStmt = getDb().prepare(
+			`INSERT INTO messages (session_id, payload, turn_index, created_at)
+     VALUES (?, ?, ?, ?)`,
+		);
+	}
+	return _insertMsgStmt;
+}
+
 export function saveMessages(
 	sessionId: string,
 	msgs: CoreMessage[],
 	turnIndex = 0,
 ): void {
 	const db = getDb();
-	const stmt = db.prepare(
-		`INSERT INTO messages (session_id, payload, turn_index, created_at)
-     VALUES (?, ?, ?, ?)`,
-	);
+	const stmt = getInsertMsgStmt();
 	const now = Date.now();
 	// Persistence invariant: write CoreMessage as lossless JSON (no reshaping) so
 	// model-authored payloads round-trip exactly, including providerOptions /
 	// providerMetadata thought signatures and part ordering required for Gemini
 	// tool-call replay correctness.
 
-	for (const msg of msgs) {
-		stmt.run(sessionId, JSON.stringify(msg), turnIndex, now);
-	}
+	// P1: Single transaction so all rows in a saveMessages call are flushed together
+	// instead of triggering one implicit WAL flush per row.
+	db.transaction(() => {
+		for (const msg of msgs) {
+			stmt.run(sessionId, JSON.stringify(msg), turnIndex, now);
+		}
+	})();
 }
 
 /**

@@ -35,22 +35,20 @@ async function consumeTail(
 ): Promise<string> {
 	if (!stream) return "";
 	const reader = stream.getReader();
-	const decoder = new TextDecoder();
-	let tail = "";
+	// P7: Accumulate Uint8Array chunks instead of string-concatenating (O(n²));
+	// decode and slice once at the end.
+	const chunks: Uint8Array[] = [];
 	try {
 		while (true) {
 			const { done, value } = await reader.read();
 			if (done) break;
-			tail += decoder.decode(value, { stream: true });
-			if (tail.length > maxBytes * 2) {
-				tail = tail.slice(-maxBytes);
-			}
+			if (value) chunks.push(value as Uint8Array);
 		}
-		tail += decoder.decode();
 	} finally {
 		reader.releaseLock();
 	}
-	return tail.length > maxBytes ? tail.slice(-maxBytes) : tail;
+	const text = new TextDecoder().decode(Buffer.concat(chunks));
+	return text.length > maxBytes ? text.slice(-maxBytes) : text;
 }
 
 function formatSubagentDiagnostics(stdout: string, stderr: string): string {

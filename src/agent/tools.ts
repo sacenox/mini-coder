@@ -24,6 +24,7 @@ import { createSubagentTool, type SubagentOutput } from "../tools/subagent.ts";
 import {
 	finalizeWriteResult,
 	stripWriteResultMeta,
+	type WriteResultMeta,
 } from "../tools/write-result.ts";
 
 // ─── Tool wrappers ────────────────────────────────────────────────────────────
@@ -40,12 +41,15 @@ function withCwdDefault(
 	return {
 		...tool,
 		execute: async (input: unknown) => {
-			const withDefault = {
-				cwd,
-				...(snapshotCallback ? { snapshotCallback } : {}),
-				...(typeof input === "object" && input ? input : {}),
-			};
-			return originalExecute(withDefault);
+			// P6: Mutate defaults onto the existing input object instead of
+			// allocating a new spread object on every tool invocation.
+			const patched = (
+				typeof input === "object" && input !== null ? input : {}
+			) as Record<string, unknown>;
+			if (patched.cwd === undefined) patched.cwd = cwd;
+			if (snapshotCallback && patched.snapshotCallback === undefined)
+				patched.snapshotCallback = snapshotCallback;
+			return originalExecute(patched);
 		},
 	};
 }
@@ -92,7 +96,7 @@ function withHooks<
 			}
 			if (finalizeResult) {
 				return stripWriteResultMeta(
-					result as TOutput & { _filePath: string; _before: string },
+					result as TOutput & WriteResultMeta & { path: string },
 				) as TFinalOutput;
 			}
 			return result as TFinalOutput;

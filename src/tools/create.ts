@@ -2,7 +2,6 @@ import { existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { z } from "zod";
 import type { ToolDef } from "../llm-api/types.ts";
-import { generateDiff } from "./diff.ts";
 import { resolvePath } from "./shared.ts";
 import type { WriteResultMeta } from "./write-result.ts";
 
@@ -18,7 +17,6 @@ type CreateInput = z.infer<typeof CreateSchema> & {
 
 interface CreateOutput {
 	path: string;
-	diff: string;
 	created: boolean;
 }
 
@@ -43,13 +41,13 @@ export const createTool: ToolDef<CreateInput, CreateToolOutput> = {
 		await input.snapshotCallback?.(filePath);
 		await Bun.write(filePath, input.content);
 
-		const diff = generateDiff(relPath, before, input.content);
+		// P3: diff deferred to finalizeWriteResult / stripWriteResultMeta.
 		return {
 			path: relPath,
-			diff,
 			created,
 			_filePath: filePath,
 			_before: before,
+			_updated: input.content,
 		};
 	},
 };

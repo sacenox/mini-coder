@@ -20,7 +20,6 @@ type InsertInput = z.infer<typeof InsertSchema> & {
 
 interface InsertOutput {
 	path: string;
-	diff: string;
 }
 
 export interface InsertToolOutput extends InsertOutput, WriteResultMeta {}

@@ -1,5 +1,4 @@
 import { join, relative } from "node:path";
-import { generateDiff } from "./diff.ts";
 
 export function resolvePath(cwdInput: string | undefined, pathInput: string) {
 	const cwd = cwdInput ?? process.cwd();
@@ -63,10 +62,12 @@ export async function applyFileEdit(
 	await snapshotCallback?.(filePath);
 	await Bun.write(filePath, updated);
 
+	// P3: diff deferred to finalizeWriteResult (hook path) or stripWriteResultMeta
+	// (no-hook path) to avoid computing it twice on every write in repos with hooks.
 	return {
 		path: relPath,
-		diff: generateDiff(relPath, original, updated),
 		_filePath: filePath,
 		_before: original,
+		_updated: updated,
 	};
 }

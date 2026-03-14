@@ -1,9 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { replaceTool } from "./replace.ts";
-
 import { createTestHelpers } from "./test-helpers.ts";
+import { stripWriteResultMeta } from "./write-result.ts";
 
 const { setup, teardown, write, read, anchor, getDir } = createTestHelpers();
+// P3: diff is deferred; strip meta before asserting on public fields.
+const execute = async (...args: Parameters<typeof replaceTool.execute>) =>
+	stripWriteResultMeta(await replaceTool.execute(...args));
 
 // ---------------------------------------------------------------------------
 // Setup / teardown
@@ -24,7 +27,7 @@ afterEach(async () => {
 describe("replaceTool", () => {
 	test("replaces a single line", async () => {
 		const name = await write("f.txt", "a\nb\nc\n");
-		const result = await replaceTool.execute({
+		const result = await execute({
 			path: name,
 			cwd: getDir(),
 			startAnchor: anchor(2, "b"),
@@ -38,7 +41,7 @@ describe("replaceTool", () => {
 
 	test("replaces a range of lines", async () => {
 		const name = await write("f.txt", "a\nb\nc\nd\ne\n");
-		const result = await replaceTool.execute({
+		const result = await execute({
 			path: name,
 			cwd: getDir(),
 			startAnchor: anchor(2, "b"),
@@ -56,7 +59,7 @@ describe("replaceTool", () => {
 
 	test("deletes a single line when newContent is omitted", async () => {
 		const name = await write("f.txt", "a\nb\nc\n");
-		const result = await replaceTool.execute({
+		const result = await execute({
 			path: name,
 			cwd: getDir(),
 			startAnchor: anchor(2, "b"),
@@ -69,7 +72,7 @@ describe("replaceTool", () => {
 
 	test("deletes a range when newContent is empty string", async () => {
 		const name = await write("f.txt", "a\nb\nc\nd\n");
-		await replaceTool.execute({
+		await execute({
 			path: name,
 			cwd: getDir(),
 			startAnchor: anchor(2, "b"),
@@ -82,7 +85,7 @@ describe("replaceTool", () => {
 
 	test("returns (no changes) diff when replacement is identical to original", async () => {
 		const name = await write("f.txt", "a\nb\nc\n");
-		const result = await replaceTool.execute({
+		const result = await execute({
 			path: name,
 			cwd: getDir(),
 			startAnchor: anchor(2, "b"),
@@ -94,7 +97,7 @@ describe("replaceTool", () => {
 
 	test("returns path relative to cwd", async () => {
 		const name = await write("f.txt", "a\nb\n");
-		const result = await replaceTool.execute({
+		const result = await execute({
 			path: name,
 			cwd: getDir(),
 			startAnchor: anchor(1, "a"),
@@ -106,7 +109,7 @@ describe("replaceTool", () => {
 
 	test("throws when file does not exist", async () => {
 		await expect(
-			replaceTool.execute({
+			execute({
 				path: "missing.txt",
 				cwd: getDir(),
 				startAnchor: "1:00",
@@ -117,7 +120,7 @@ describe("replaceTool", () => {
 	test("throws when anchor hash does not match", async () => {
 		const name = await write("f.txt", "a\nb\nc\n");
 		await expect(
-			replaceTool.execute({
+			execute({
 				path: name,
 				cwd: getDir(),
 				startAnchor: "2:ff", // wrong hash for "b"
@@ -128,7 +131,7 @@ describe("replaceTool", () => {
 	test("throws when endAnchor is before startAnchor", async () => {
 		const name = await write("f.txt", "a\nb\nc\n");
 		await expect(
-			replaceTool.execute({
+			execute({
 				path: name,
 				cwd: getDir(),
 				startAnchor: anchor(3, "c"),
@@ -140,7 +143,7 @@ describe("replaceTool", () => {
 	test("throws on malformed anchor format", async () => {
 		const name = await write("f.txt", "a\n");
 		await expect(
-			replaceTool.execute({
+			execute({
 				path: name,
 				cwd: getDir(),
 				startAnchor: "not-an-anchor",
@@ -149,7 +152,7 @@ describe("replaceTool", () => {
 	});
 	test("accepts anchors with trailing pipe separator", async () => {
 		const name = await write("f.txt", "a\nb\nc\n");
-		await replaceTool.execute({
+		await execute({
 			path: name,
 			cwd: getDir(),
 			startAnchor: `${anchor(2, "b")}|`,

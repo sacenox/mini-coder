@@ -56,6 +56,11 @@ function sanitizeForLog(data: unknown): unknown {
 	return result;
 }
 
+/** Returns true when the API log file writer is active. */
+export function isApiLogEnabled(): boolean {
+	return writer !== null;
+}
+
 export function logApiEvent(event: string, data?: unknown): void {
 	if (!writer) return;
 

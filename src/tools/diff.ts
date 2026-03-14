@@ -14,69 +14,93 @@ export function generateDiff(
 }
 
 // ---------------------------------------------------------------------------
-// LCS-based unified diff
+// Myers diff algorithm (Eugene Myers, 1986)
+// O(n * d) time and space where n = max(m, n_after), d = edit distance.
+// For typical small-edit cases this is far more memory-efficient than the
+// previous LCS approach which always allocated O(m * n) space.
 // ---------------------------------------------------------------------------
-
-/**
- * Compute the longest common subsequence lengths table for two string arrays.
- * Returns a flat (m+1)*(n+1) array where index i*(n+1)+j holds the LCS length
- * of before[0..i-1] and after[0..j-1].
- */
-function lcsTable(before: string[], after: string[]): number[] {
-	const m = before.length;
-	const n = after.length;
-	const w = n + 1;
-	const dp: number[] = new Array<number>((m + 1) * w).fill(0);
-	for (let i = 1; i <= m; i++) {
-		for (let j = 1; j <= n; j++) {
-			if (before[i - 1] === after[j - 1]) {
-				dp[i * w + j] = (dp[(i - 1) * w + (j - 1)] ?? 0) + 1;
-			} else {
-				dp[i * w + j] = Math.max(
-					dp[(i - 1) * w + j] ?? 0,
-					dp[i * w + (j - 1)] ?? 0,
-				);
-			}
-		}
-	}
-	return dp;
-}
 
 type EditKind = "eq" | "del" | "ins";
 type EditOp = { kind: EditKind; line: string };
 
 /**
- * Backtrack through the LCS table to produce a sequence of edit operations:
- * - "eq"  : line present in both (context)
- * - "del" : line only in before (removed)
- * - "ins" : line only in after  (added)
+ * Produce a minimal edit script (sequence of eq/del/ins operations) using the
+ * Myers diff algorithm with trace-based backtracking.
  */
 function editScript(before: string[], after: string[]): EditOp[] {
+	const m = before.length;
 	const n = after.length;
-	const w = n + 1;
-	const dp = lcsTable(before, after);
 
-	const ops: EditOp[] = [];
-	let i = before.length;
-	let j = after.length;
-	while (i > 0 || j > 0) {
-		const bLine = before[i - 1] ?? "";
-		const aLine = after[j - 1] ?? "";
-		if (i > 0 && j > 0 && bLine === aLine) {
-			ops.push({ kind: "eq", line: bLine });
-			i--;
-			j--;
-		} else if (
-			j > 0 &&
-			(i === 0 || (dp[i * w + (j - 1)] ?? 0) >= (dp[(i - 1) * w + j] ?? 0))
-		) {
-			ops.push({ kind: "ins", line: aLine });
-			j--;
-		} else {
-			ops.push({ kind: "del", line: bLine });
-			i--;
+	if (m === 0) return after.map((line) => ({ kind: "ins" as const, line }));
+	if (n === 0) return before.map((line) => ({ kind: "del" as const, line }));
+
+	const max = m + n;
+	const offset = max; // shift so negative diagonal indices are valid array indices
+	// V[k + offset] = furthest x reached on diagonal k
+	const V = new Int32Array(2 * max + 2);
+	// Snapshot of V at the start of each edit-distance iteration d, used for
+	// backtracking.  trace[d] is the state when d edits have already been applied.
+	const trace: Int32Array[] = [];
+
+	outer: for (let d = 0; d <= max; d++) {
+		trace.push(V.slice());
+		for (let k = -d; k <= d; k += 2) {
+			// Decide whether to move down (insert from after) or right (delete from before).
+			const fromInsert =
+				k === -d ||
+				(k !== d &&
+					(V[k - 1 + offset] as number) < (V[k + 1 + offset] as number));
+			let x = fromInsert
+				? (V[k + 1 + offset] as number)
+				: (V[k - 1 + offset] as number) + 1;
+			let y = x - k;
+			// Follow the snake: advance while lines are equal.
+			while (x < m && y < n && before[x] === after[y]) {
+				x++;
+				y++;
+			}
+			V[k + offset] = x;
+			if (x >= m && y >= n) break outer;
 		}
 	}
+
+	// Backtrack through the trace snapshots to reconstruct the edit script in
+	// reverse, then flip at the end.
+	const ops: EditOp[] = [];
+	let x = m;
+	let y = n;
+
+	for (let d = trace.length - 1; d >= 1; d--) {
+		const Vd = trace[d] as Int32Array;
+		const k = x - y;
+		const fromInsert =
+			k === -d ||
+			(k !== d &&
+				(Vd[k - 1 + offset] as number) < (Vd[k + 1 + offset] as number));
+		const prevX = fromInsert
+			? (Vd[k + 1 + offset] as number)
+			: (Vd[k - 1 + offset] as number);
+		const prevY = prevX - (fromInsert ? k + 1 : k - 1);
+
+		// Snake: equal lines between the end of this edit and the current position.
+		// Recorded in reverse because we are walking backwards.
+		for (let i = x - 1; i >= prevX + (fromInsert ? 0 : 1); i--) {
+			ops.push({ kind: "eq", line: before[i] as string });
+		}
+		if (fromInsert) {
+			ops.push({ kind: "ins", line: after[prevY] as string });
+		} else {
+			ops.push({ kind: "del", line: before[prevX] as string });
+		}
+		x = prevX;
+		y = prevY;
+	}
+
+	// Remaining equal prefix (before the first edit).
+	for (let i = x - 1; i >= 0; i--) {
+		ops.push({ kind: "eq", line: before[i] as string });
+	}
+
 	ops.reverse();
 	return ops;
 }

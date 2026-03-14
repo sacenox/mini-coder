@@ -1,9 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { insertTool } from "./insert.ts";
-
 import { createTestHelpers } from "./test-helpers.ts";
+import { stripWriteResultMeta } from "./write-result.ts";
 
 const { setup, teardown, write, read, anchor, getDir } = createTestHelpers();
+// P3: diff is deferred; strip meta before asserting on public fields.
+const execute = async (...args: Parameters<typeof insertTool.execute>) =>
+	stripWriteResultMeta(await insertTool.execute(...args));
 
 // ---------------------------------------------------------------------------
 // Setup / teardown
@@ -24,7 +27,7 @@ afterEach(async () => {
 describe("insertTool", () => {
 	test("inserts a single line after the anchor", async () => {
 		const name = await write("f.txt", "a\nb\nc\n");
-		const result = await insertTool.execute({
+		const result = await execute({
 			path: name,
 			cwd: getDir(),
 			anchor: anchor(1, "a"),
@@ -40,7 +43,7 @@ describe("insertTool", () => {
 
 	test("inserts a single line before the anchor", async () => {
 		const name = await write("f.txt", "a\nb\nc\n");
-		const result = await insertTool.execute({
+		const result = await execute({
 			path: name,
 			cwd: getDir(),
 			anchor: anchor(2, "b"),
@@ -55,7 +58,7 @@ describe("insertTool", () => {
 
 	test("inserts multiple lines", async () => {
 		const name = await write("f.txt", "a\nb\n");
-		await insertTool.execute({
+		await execute({
 			path: name,
 			cwd: getDir(),
 			anchor: anchor(1, "a"),
@@ -68,7 +71,7 @@ describe("insertTool", () => {
 
 	test("inserts before the first line", async () => {
 		const name = await write("f.txt", "a\nb\n");
-		await insertTool.execute({
+		await execute({
 			path: name,
 			cwd: getDir(),
 			anchor: anchor(1, "a"),
@@ -81,7 +84,7 @@ describe("insertTool", () => {
 
 	test("inserts after the last line", async () => {
 		const name = await write("f.txt", "a\nb\n");
-		await insertTool.execute({
+		await execute({
 			path: name,
 			cwd: getDir(),
 			anchor: anchor(2, "b"),
@@ -94,7 +97,7 @@ describe("insertTool", () => {
 
 	test("returns path relative to cwd", async () => {
 		const name = await write("f.txt", "a\nb\n");
-		const result = await insertTool.execute({
+		const result = await execute({
 			path: name,
 			cwd: getDir(),
 			anchor: anchor(1, "a"),
@@ -107,7 +110,7 @@ describe("insertTool", () => {
 
 	test("diff contains only added lines, no removals", async () => {
 		const name = await write("f.txt", "a\nb\nc\n");
-		const result = await insertTool.execute({
+		const result = await execute({
 			path: name,
 			cwd: getDir(),
 			anchor: anchor(2, "b"),
@@ -121,7 +124,7 @@ describe("insertTool", () => {
 
 	test("throws when file does not exist", async () => {
 		await expect(
-			insertTool.execute({
+			execute({
 				path: "missing.txt",
 				cwd: getDir(),
 				anchor: "1:00",
@@ -134,7 +137,7 @@ describe("insertTool", () => {
 	test("throws when anchor hash does not match", async () => {
 		const name = await write("f.txt", "a\nb\nc\n");
 		await expect(
-			insertTool.execute({
+			execute({
 				path: name,
 				cwd: getDir(),
 				anchor: "2:ff", // wrong hash for "b"
@@ -147,7 +150,7 @@ describe("insertTool", () => {
 	test("throws on malformed anchor format", async () => {
 		const name = await write("f.txt", "a\n");
 		await expect(
-			insertTool.execute({
+			execute({
 				path: name,
 				cwd: getDir(),
 				anchor: "not-an-anchor",
@@ -158,7 +161,7 @@ describe("insertTool", () => {
 	});
 	test("accepts anchor with trailing pipe separator", async () => {
 		const name = await write("f.txt", "a\nb\nc\n");
-		await insertTool.execute({
+		await execute({
 			path: name,
 			cwd: getDir(),
 			anchor: `${anchor(2, "b")}|`,

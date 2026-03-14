@@ -30,7 +30,6 @@ type ReplaceInput = z.infer<typeof ReplaceSchema> & {
 
 interface ReplaceOutput {
 	path: string;
-	diff: string;
 	deleted: boolean;
 }
 
