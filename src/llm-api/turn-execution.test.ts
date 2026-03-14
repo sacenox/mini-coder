@@ -90,14 +90,14 @@ describe("mapFullStreamToTurnEvents", () => {
 		});
 	});
 
-	test("suppresses commentary text deltas for openai phased text parts", async () => {
+	test("routes openai commentary text deltas into reasoning events", async () => {
 		const events = await collectEvents([
 			{
 				type: "text-start",
 				id: "msg-1",
 				providerMetadata: { openai: { itemId: "msg-1", phase: "commentary" } },
 			},
-			{ type: "text-delta", id: "msg-1", text: "to=functions.shell json{}" },
+			{ type: "text-delta", id: "msg-1", text: "thinking aloud" },
 			{
 				type: "text-end",
 				id: "msg-1",
@@ -133,6 +133,7 @@ describe("mapFullStreamToTurnEvents", () => {
 		]);
 
 		expect(events).toEqual([
+			{ type: "reasoning-delta", delta: "thinking aloud" },
 			{
 				type: "tool-call-start",
 				toolCallId: "call-3",
@@ -156,5 +157,23 @@ describe("mapFullStreamToTurnEvents", () => {
 		]);
 
 		expect(events).toEqual([{ type: "text-delta", delta: "visible" }]);
+	});
+
+	test("keeps commentary text after the phased block as normal output", async () => {
+		const events = await collectEvents([
+			{
+				type: "text-start",
+				id: "msg-3",
+				providerMetadata: { openai: { itemId: "msg-3", phase: "commentary" } },
+			},
+			{ type: "text-delta", id: "msg-3", text: "first thought" },
+			{ type: "text-end", id: "msg-3" },
+			{ type: "text-delta", id: "msg-3", text: " visible" },
+		]);
+
+		expect(events).toEqual([
+			{ type: "reasoning-delta", delta: "first thought" },
+			{ type: "text-delta", delta: " visible" },
+		]);
 	});
 });

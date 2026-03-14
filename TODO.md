@@ -1,5 +1,21 @@
 # TODO
+
 - Strange output mid session:
+
+A fix was made to suppress commentary from gpt to avoid this, but now there is no reasoning output from gpt mdels.
+
+The issue is not fixed, it's just suppressed.
+This seems like an issue on how we are parsing stream events, and not recognzing tool calls from other events.
+
+Relevant reasoning output:
+
+```
+I keep running into issues with tool syntax, and it feels like it's because of the interface. I really need to use the correct commentary to call functions.shell. It's important to stick to the standard format to get it right. I wonder if I should double-check the documentation or examples to be sure I’m following things correctly. Just trying to make sure I figure this out! There's probably something simple I'm overlooking.It seems my interface isn’t accepting the call because I’m in analysis mode. I need to ensure I’m using the assistant message with the tool call instead. I should remember to use the correct wrapper like I did previously. It feels a bit tricky, but I’ll get it right this time! Let’s make sure everything is in place so it works smoothly moving forward.Hmm, it feels like I'm having issues emitting a tool call. It's puzzling! I remember previous successful calls used that specific syntax with JSON in the content, and I wonder if an accidental unicode might be causing the issue. I think it’s worth trying to stick to that normal syntax I used earlier. Let’s see if that works! My goal is to get this resolved so I can assist effectively.**Trying to resolve issues**
+
+  I’m thinking maybe my last few attempts didn’t work because I didn’t include the recipient name. But I believe the functions should work with the shell style I used earlier. I’ll make sure to try using the multi_tool method again with the exact syntax I had. I'm curious if that’ll make a difference in the process. Let’s see how it goes!
+```
+
+Corruption example, there are several sessions in our database where this happened with gpt models
 
 ```
 ◆ Progress update: I’ve implemented a first UX-focused refactor around tool-stream visibility and am now validating stream/event tests plus a manual `bun run dev` run for one-shot tool calls.{"command":"bun test src/llm-api/turn-stream-events.test.ts src/llm-api/turn-execution.test.ts src/cli/tool-render-call.test.ts","timeout":120000}{"command":"bun test src/llm-api/turn-stream-events.test.ts src/llm-api/turn-execution.test.ts src/cli/tool-render-call.test.ts","timeout":120000} to=functions.shell code{"command":"bun test src/llm-api/turn-stream-events.test.ts src/llm-api/turn-execution.test.ts src/cli/tool-render-call.test.ts","timeout":120000} to=functions.shell เงินไทยฟรีto=functions.shell  重庆时时彩杀 ￣亚洲json

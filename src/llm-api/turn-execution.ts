@@ -155,29 +155,50 @@ function getOpenAITextPhase(
 		: null;
 }
 
+type StreamTextRoute = "skip" | "text" | "reasoning";
+
+function extractTextDelta(chunk: StreamTextChunk): string {
+	if (typeof chunk.text === "string") return chunk.text;
+	if (typeof chunk.textDelta === "string") return chunk.textDelta;
+	if (typeof chunk.delta === "string") return chunk.delta;
+	return "";
+}
+
 class StreamTextPhaseTracker {
 	private phaseByTextPartId = new Map<string, "commentary" | "final_answer">();
 
-	shouldEmit(chunk: StreamTextChunk): boolean {
+	route(chunk: StreamTextChunk): StreamTextRoute {
 		const textPartId = normalizeTextPartId(chunk.id);
 		switch (chunk.type) {
 			case "text-start": {
 				const phase = getOpenAITextPhase(chunk);
 				if (textPartId && phase) this.phaseByTextPartId.set(textPartId, phase);
-				return false;
+				return "skip";
 			}
 			case "text-end": {
 				if (textPartId) this.phaseByTextPartId.delete(textPartId);
-				return false;
+				return "skip";
 			}
 			case "text-delta": {
-				if (!textPartId) return true;
-				return this.phaseByTextPartId.get(textPartId) !== "commentary";
+				if (!textPartId) return "text";
+				return this.phaseByTextPartId.get(textPartId) === "commentary"
+					? "reasoning"
+					: "text";
 			}
 			default:
-				return true;
+				return "text";
 		}
 	}
+}
+
+function mapCommentaryChunkToTurnEvent(
+	chunk: StreamTextChunk,
+): TurnEvent | null {
+	if (chunk.type !== "text-delta") return null;
+	return {
+		type: "reasoning-delta",
+		delta: extractTextDelta(chunk),
+	};
 }
 
 class StreamToolCallTracker {
@@ -251,12 +272,15 @@ export async function* mapFullStreamToTurnEvents(
 	const textPhaseTracker = new StreamTextPhaseTracker();
 	for await (const originalChunk of stream) {
 		const chunk = toolCallTracker.assign(originalChunk);
-		const shouldEmitChunk = textPhaseTracker.shouldEmit(chunk);
-		if (shouldEmitChunk && shouldLogStreamChunk(chunk)) {
+		const route = textPhaseTracker.route(chunk);
+		if (route !== "skip" && shouldLogStreamChunk(chunk)) {
 			opts.onChunk?.(chunk);
 		}
-		if (!shouldEmitChunk) continue;
-		const event = mapStreamChunkToTurnEvent(chunk);
+		if (route === "skip") continue;
+		const event =
+			route === "reasoning"
+				? mapCommentaryChunkToTurnEvent(chunk)
+				: mapStreamChunkToTurnEvent(chunk);
 		if (event) yield event;
 	}
 }
