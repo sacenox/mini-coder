@@ -2,6 +2,8 @@
 description: Run one-shot mc sessions across all SDK paths, capture output, and write a UI/UX analysis report to UI-REPORT.md.
 ---
 
+The goal is to capture a realistic perspective of what the users see when using mini-coder.
+
 Run `mc` one-shots using one cheap model per Zen SDK path, capture their raw terminal output, then analyse it yourself and write `UI-REPORT.md` in the repo root. Do NOT delegate the report to the models under test.
 
 ## Models to use (one per SDK path)
@@ -10,8 +12,8 @@ Pick cheap/free options. Verify available models at https://opencode.ai/docs/zen
 
 - `@ai-sdk/anthropic` path → a `zen/claude-*` haiku-class model
 - `@ai-sdk/google` path → a `zen/gemini-*` flash-class model
-- `@ai-sdk/openai` path (responses endpoint) → a `zen/gpt-*` nano/mini-class model
-- `@ai-sdk/openai-compatible` path → `zen/big-pickle` (free) or similar free model
+- `@ai-sdk/openai` path (responses endpoint) → a `zen/gpt-*` small low cost model
+- `@ai-sdk/openai-compatible` path → `zen/*` or similar small low cost model
 
 ## Prompt to give each model
 
@@ -34,7 +36,7 @@ This prompt is intentionally simple: it covers file reads, a write, and exposes 
    sed 's/\x1b\[[0-9;?]*[mKlh]//g; s/\r//g' logs/<model>.log > logs/<model>-clean.log
    ```
 4. Read all clean logs yourself and analyse what a user would actually see.
-5. Clean up any `mc-summary.md` files left behind by the test models.
+5. Clean up any `mc-summary.md` files left behind by the test models. And the log files
 
 ## Report structure for UI-REPORT.md
 
