@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { buildStatusBarSignature, renderStatusBar } from "./status-bar.ts";
 import { terminal } from "./terminal-io.ts";
+import { withTerminalColumns } from "./test-helpers.ts";
 
 let stdout = "";
 const originalStdoutWrite = terminal.stdoutWrite.bind(terminal);
@@ -8,32 +9,6 @@ const originalStdoutWrite = terminal.stdoutWrite.bind(terminal);
 function stripAnsi(s: string): string {
 	const esc = String.fromCharCode(0x1b);
 	return s.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "");
-}
-
-async function withTerminalColumns(
-	cols: number,
-	fn: () => Promise<void> | void,
-): Promise<void> {
-	const out = process.stdout as NodeJS.WriteStream & { columns?: number };
-	const previous = Object.getOwnPropertyDescriptor(out, "columns");
-	Object.defineProperty(out, "columns", {
-		value: cols,
-		configurable: true,
-		writable: true,
-	});
-	try {
-		await fn();
-	} finally {
-		if (previous) {
-			Object.defineProperty(out, "columns", previous);
-		} else {
-			Object.defineProperty(out, "columns", {
-				value: undefined,
-				configurable: true,
-				writable: true,
-			});
-		}
-	}
 }
 
 afterEach(() => {

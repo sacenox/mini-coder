@@ -4,6 +4,7 @@ import type { TurnEvent } from "../llm-api/types.ts";
 import { Spinner } from "./spinner.ts";
 import { renderTurn } from "./stream-render.ts";
 import { terminal } from "./terminal-io.ts";
+import { withTerminalColumns } from "./test-helpers.ts";
 
 let stdout = "";
 const originalStdoutWrite = terminal.stdoutWrite.bind(terminal);
@@ -104,32 +105,6 @@ function simulateTerminal(raw: string): string {
 
 function hasAnsi(s: string, code: string): boolean {
 	return s.includes(`${String.fromCharCode(0x1b)}${code}`);
-}
-
-async function withTerminalColumns(
-	cols: number,
-	fn: () => Promise<void>,
-): Promise<void> {
-	const out = process.stdout as NodeJS.WriteStream & { columns?: number };
-	const previous = Object.getOwnPropertyDescriptor(out, "columns");
-	Object.defineProperty(out, "columns", {
-		value: cols,
-		configurable: true,
-		writable: true,
-	});
-	try {
-		await fn();
-	} finally {
-		if (previous) {
-			Object.defineProperty(out, "columns", previous);
-		} else {
-			Object.defineProperty(out, "columns", {
-				value: undefined,
-				configurable: true,
-				writable: true,
-			});
-		}
-	}
 }
 
 function countOccurrences(haystack: string, needle: string): number {
