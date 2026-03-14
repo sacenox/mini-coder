@@ -97,6 +97,26 @@ function getGeminiThinkingOptions(
 	};
 }
 
+interface ThinkingStrategy {
+	supports: (modelString: string) => boolean;
+	build: (modelId: string, effort: ThinkingEffort) => Record<string, unknown>;
+}
+
+const THINKING_STRATEGIES: readonly ThinkingStrategy[] = [
+	{
+		supports: isAnthropicModelFamily,
+		build: getAnthropicThinkingOptions,
+	},
+	{
+		supports: isOpenAIReasoningModelFamily,
+		build: getOpenAIThinkingOptions,
+	},
+	{
+		supports: isGeminiModelFamily,
+		build: getGeminiThinkingOptions,
+	},
+];
+
 export function getThinkingProviderOptions(
 	modelString: string,
 	effort: ThinkingEffort,
@@ -104,25 +124,25 @@ export function getThinkingProviderOptions(
 	if (!supportsThinking(modelString)) return null;
 
 	const { modelId } = parseModelString(modelString);
-
-	if (isAnthropicModelFamily(modelString)) {
-		return getAnthropicThinkingOptions(modelId, effort);
-	}
-
-	if (isOpenAIReasoningModelFamily(modelString)) {
-		return getOpenAIThinkingOptions(modelId, effort);
-	}
-
-	if (isGeminiModelFamily(modelString)) {
-		return getGeminiThinkingOptions(modelId, effort);
+	for (const strategy of THINKING_STRATEGIES) {
+		if (!strategy.supports(modelString)) continue;
+		return strategy.build(modelId, effort);
 	}
 
 	return null;
 }
 
+const CACHE_FAMILY_RULES: ReadonlyArray<
+	readonly [match: (modelString: string) => boolean, family: CacheFamily]
+> = [
+	[isAnthropicModelFamily, "anthropic"],
+	[isGeminiModelFamily, "google"],
+];
+
 export function getCacheFamily(modelString: string): CacheFamily {
-	if (isAnthropicModelFamily(modelString)) return "anthropic";
-	if (isGeminiModelFamily(modelString)) return "google";
+	for (const [match, family] of CACHE_FAMILY_RULES) {
+		if (match(modelString)) return family;
+	}
 	return "none";
 }
 
