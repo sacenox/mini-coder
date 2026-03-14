@@ -233,4 +233,37 @@ describe("resolveModelInfoFromRows", () => {
 		expect(openaiInfo?.contextWindow).toBe(400_000);
 		expect(openaiInfo?.reasoning).toBe(true);
 	});
+
+	test("falls back to provider context when canonical context is unknown", () => {
+		const info = resolveModelInfoFromRows(
+			"openai/gpt-5.2",
+			[
+				{
+					canonical_model_id: "gpt-5.2",
+					context_window: null,
+					reasoning: 1,
+					source_provider: "openai",
+					raw_json: null,
+					updated_at: 1,
+				},
+			],
+			[
+				{
+					provider: "openai",
+					provider_model_id: "gpt-5.2",
+					display_name: "GPT-5.2",
+					canonical_model_id: "gpt-5.2",
+					context_window: 200_000,
+					free: 0,
+					updated_at: 1,
+				},
+			],
+		);
+
+		expect(info).toEqual({
+			canonicalModelId: "gpt-5.2",
+			contextWindow: 200_000,
+			reasoning: true,
+		});
+	});
 });

@@ -699,7 +699,7 @@ function resolveFromProviderRow(
 		if (capability) {
 			return {
 				canonicalModelId: capability.canonicalModelId,
-				contextWindow: capability.contextWindow,
+				contextWindow: capability.contextWindow ?? row.contextWindow,
 				reasoning: capability.reasoning,
 			};
 		}
