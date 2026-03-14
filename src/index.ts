@@ -12,6 +12,7 @@ import { HeadlessReporter } from "./cli/headless-reporter.ts";
 import { runInputLoop } from "./cli/input-loop.ts";
 import {
 	CliReporter,
+	G,
 	RenderedError,
 	registerTerminalCleanup,
 	renderBanner,
@@ -175,7 +176,7 @@ async function main(): Promise<void> {
 			await runner.processUserInput(resolvedText, refImages);
 			const { totalIn, totalOut } = runner.getStatusInfo();
 			writeln(
-				`  ${c.dim(`${totalIn.toLocaleString()} in / ${totalOut.toLocaleString()} out tokens`)}`,
+				`${G.info} ${c.dim(`${totalIn.toLocaleString()} in / ${totalOut.toLocaleString()} out tokens`)}`,
 			);
 			return;
 		}
