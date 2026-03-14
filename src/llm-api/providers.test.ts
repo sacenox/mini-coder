@@ -46,11 +46,13 @@ describe("getCacheFamily", () => {
 		expect(getCacheFamily("anthropic/claude-3-opus")).toBe("anthropic");
 		expect(getCacheFamily("zen/claude-sonnet-4-6")).toBe("anthropic");
 	});
-	test("identifies openai family", () => {
-		expect(getCacheFamily("openai/gpt-4")).toBe("openai");
-		expect(getCacheFamily("zen/gpt-4o")).toBe("openai");
-		expect(getCacheFamily("zen/o1")).toBe("openai");
+	test("openai and zen/gpt-* return none (caching is automatic, no client hint needed)", () => {
+		expect(getCacheFamily("openai/gpt-4")).toBe("none");
+		expect(getCacheFamily("zen/gpt-4o")).toBe("none");
+		expect(getCacheFamily("zen/o1")).toBe("none");
+		expect(getCacheFamily("zen/gpt-5-nano")).toBe("none");
 	});
+
 	test("identifies google family", () => {
 		expect(getCacheFamily("google/gemini-2.0-flash")).toBe("google");
 		expect(getCacheFamily("zen/gemini-2.5-pro")).toBe("google");
@@ -67,15 +69,13 @@ describe("getCachingProviderOptions", () => {
 		).toBeNull();
 	});
 
-	test("returns openai prompt cache retention", () => {
+	test("returns null for openai (caching is automatic, no hint sent)", () => {
 		expect(
 			getCachingProviderOptions("openai/gpt-4", {
 				enabled: true,
 				openaiRetention: "24h",
 			}),
-		).toEqual({
-			openai: { promptCacheRetention: "24h" },
-		});
+		).toBeNull();
 	});
 
 	test("returns google cached content when explicit caching is compatible", () => {

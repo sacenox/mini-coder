@@ -165,3 +165,13 @@ test("parseAppError - fallback", () => {
 		headline: "Something went wrong",
 	});
 });
+
+test("parseAppError - nested error object (SSE stream error payload)", () => {
+	const err = { type: "error", error: { message: "model_not_found" } };
+	expect(parseAppError(err)).toEqual({ headline: "model_not_found" });
+});
+
+test("parseAppError - nested error object with empty message falls back", () => {
+	const err = { type: "error", error: { message: "" } };
+	expect(parseAppError(err)).toEqual({ headline: "[object Object]" });
+});

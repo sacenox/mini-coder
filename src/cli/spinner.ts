@@ -8,6 +8,7 @@ export class Spinner {
 	private label = "";
 
 	start(label = ""): void {
+		if (!process.stderr.isTTY) return;
 		this.label = label;
 		if (this.timer) return;
 		process.stderr.write("\x1B[?25l");

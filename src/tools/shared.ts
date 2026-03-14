@@ -1,8 +1,15 @@
+import { homedir } from "node:os";
 import { join, relative } from "node:path";
 
 export function resolvePath(cwdInput: string | undefined, pathInput: string) {
 	const cwd = cwdInput ?? process.cwd();
-	const filePath = pathInput.startsWith("/") ? pathInput : join(cwd, pathInput);
+	const expanded = pathInput.startsWith("~/")
+		? join(homedir(), pathInput.slice(2))
+		: pathInput === "~"
+			? homedir()
+			: pathInput;
+	const filePath = expanded.startsWith("/") ? expanded : join(cwd, expanded);
+
 	const relPath = relative(cwd, filePath);
 	return { cwd, filePath, relPath };
 }

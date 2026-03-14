@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { hashLine } from "../tools/hashline.ts";
+import { resolvePath } from "../tools/shared.ts";
 import { buildToolSet } from "./tools.ts";
 
 let cwd = "";
@@ -117,5 +118,22 @@ describe("skills tools registration", () => {
 
 		expect(names).toContain("listSkills");
 		expect(names).toContain("readSkill");
+	});
+});
+
+describe("resolvePath", () => {
+	test("expands ~ to home directory", () => {
+		const { filePath } = resolvePath("/any/cwd", "~/foo/bar");
+		expect(filePath).toBe(join(homedir(), "foo/bar"));
+	});
+
+	test("resolves absolute path as-is", () => {
+		const { filePath } = resolvePath("/any/cwd", "/tmp/foo");
+		expect(filePath).toBe("/tmp/foo");
+	});
+
+	test("resolves relative path against cwd", () => {
+		const { filePath } = resolvePath("/my/cwd", "foo/bar");
+		expect(filePath).toBe("/my/cwd/foo/bar");
 	});
 });

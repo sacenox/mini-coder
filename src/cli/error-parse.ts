@@ -76,6 +76,21 @@ export function parseAppError(err: unknown): {
 
 	const isObj = typeof err === "object" && err !== null;
 	const code = isObj && "code" in err ? String(err.code) : undefined;
+
+	// Handle streaming API error events, e.g. { type: "error", error: { message: "..." } }
+	// from the OpenAI responses API or similar SSE error payloads.
+	if (
+		isObj &&
+		"error" in err &&
+		typeof (err as { error: unknown }).error === "object" &&
+		(err as { error: unknown }).error !== null
+	) {
+		const inner = (err as { error: { message?: unknown } }).error;
+		if (typeof inner.message === "string" && inner.message) {
+			return { headline: inner.message };
+		}
+	}
+
 	const message = isObj && "message" in err ? String(err.message) : String(err);
 
 	if (code === "ECONNREFUSED" || message.includes("ECONNREFUSED")) {

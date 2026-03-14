@@ -307,14 +307,6 @@ export function getCacheFamily(modelString: string): CacheFamily {
 	}
 
 	if (
-		provider === "openai" ||
-		(provider === "zen" &&
-			(modelId.startsWith("gpt-") || modelId.startsWith("o")))
-	) {
-		return "openai";
-	}
-
-	if (
 		provider === "google" ||
 		(provider === "zen" && modelId.startsWith("gemini-"))
 	) {

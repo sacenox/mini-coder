@@ -7,6 +7,7 @@ import { loadAgents } from "./cli/agents.ts";
 import { parseArgs, printHelp } from "./cli/args.ts";
 import { bootstrapGlobalDefaults } from "./cli/bootstrap.ts";
 import { initErrorLog } from "./cli/error-log.ts";
+import { RenderedError } from "./cli/error-render.ts";
 import { resolveFileRefs } from "./cli/file-refs.ts";
 import { HeadlessReporter } from "./cli/headless-reporter.ts";
 import { runInputLoop } from "./cli/input-loop.ts";
@@ -16,6 +17,7 @@ import {
 	renderError,
 	writeln,
 } from "./cli/output.ts";
+
 import { CliReporter } from "./cli/output-reporter.ts";
 import { initApiLog } from "./llm-api/api-log.ts";
 import {
@@ -171,6 +173,9 @@ async function main(): Promise<void> {
 				args.cwd,
 			);
 			await runner.processUserInput(resolvedText, refImages);
+			writeln(
+				`  ${c.dim(`${runner.totalIn.toLocaleString()} in / ${runner.totalOut.toLocaleString()} out tokens`)}`,
+			);
 			return;
 		}
 
@@ -181,12 +186,16 @@ async function main(): Promise<void> {
 			runner,
 		});
 	} catch (err) {
-		renderError(err, "agent");
+		if (!(err instanceof RenderedError)) {
+			renderError(err, "agent");
+		}
 		process.exit(1);
 	}
 }
 
 main().catch((err) => {
-	renderError(err, "main");
+	if (!(err instanceof RenderedError)) {
+		renderError(err, "main");
+	}
 	process.exit(1);
 });

@@ -19,11 +19,14 @@ describe("SPINNER_FRAMES", () => {
 describe("Spinner", () => {
 	test("clears the spinner line and shows cursor without advancing to a new line", () => {
 		const originalWrite = process.stderr.write;
+		const originalIsTTY = process.stderr.isTTY;
 		let stderr = "";
 		process.stderr.write = ((text: string) => {
 			stderr += text;
 			return true;
 		}) as typeof process.stderr.write;
+		// @ts-expect-error override read-only for test
+		process.stderr.isTTY = true;
 
 		try {
 			const spinner = new Spinner();
@@ -34,6 +37,8 @@ describe("Spinner", () => {
 			expect(stderr).not.toContain("\n");
 		} finally {
 			process.stderr.write = originalWrite;
+			// @ts-expect-error override read-only for test
+			process.stderr.isTTY = originalIsTTY;
 		}
 	});
 });

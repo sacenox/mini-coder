@@ -1,5 +1,6 @@
 # TODO
 
+- Remove markdown rendering from reasoning blocks. render raw in dimmed color. Remove the leading | character but keep the ident. Could we make it italic easily?
 - Investigate db lock issues with spawning parallel subagents:
 
 ```
