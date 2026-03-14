@@ -12,6 +12,13 @@ export interface TextDeltaEvent {
 	delta: string;
 }
 
+export interface ToolInputStartEvent {
+	type: "tool-input-start";
+	toolCallId: string;
+	toolName: string;
+	args: unknown;
+}
+
 export interface ToolCallStartEvent {
 	type: "tool-call-start";
 	toolCallId: string;
@@ -63,6 +70,7 @@ export interface TurnErrorEvent {
 export type TurnEvent =
 	| ReasoningDeltaEvent
 	| TextDeltaEvent
+	| ToolInputStartEvent
 	| ToolCallStartEvent
 	| ToolResultEvent
 	| ContextPrunedEvent
