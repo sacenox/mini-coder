@@ -31,6 +31,7 @@ type AnthropicProvider = ReturnType<typeof createAnthropic>;
 type OpenAIProvider = ReturnType<typeof createOpenAI>;
 type GoogleProvider = ReturnType<typeof createGoogleGenerativeAI>;
 type OpenAICompatProvider = ReturnType<typeof createOpenAICompatible>;
+type ModelResolver = (modelId: string) => LanguageModel;
 
 function createFetchWithLogging(): ProviderFetch {
 	const customFetch = async (
@@ -149,17 +150,17 @@ const directProviders = {
 	}),
 };
 
+const ZEN_BACKEND_RESOLVERS: Readonly<
+	Record<ReturnType<typeof getZenBackend>, ModelResolver>
+> = {
+	anthropic: (modelId) => zenProviders.anthropic()(modelId),
+	openai: (modelId) => zenProviders.openai().responses(modelId),
+	google: (modelId) => zenProviders.google()(modelId),
+	compat: (modelId) => zenProviders.compat()(modelId),
+};
+
 function resolveZenModel(modelId: string): LanguageModel {
-	switch (getZenBackend(modelId)) {
-		case "anthropic":
-			return zenProviders.anthropic()(modelId);
-		case "openai":
-			return zenProviders.openai().responses(modelId);
-		case "google":
-			return zenProviders.google()(modelId);
-		case "compat":
-			return zenProviders.compat()(modelId);
-	}
+	return ZEN_BACKEND_RESOLVERS[getZenBackend(modelId)](modelId);
 }
 
 function resolveOpenAIModel(modelId: string): LanguageModel {
@@ -168,15 +169,14 @@ function resolveOpenAIModel(modelId: string): LanguageModel {
 		: directProviders.openai()(modelId);
 }
 
-const PROVIDER_MODEL_RESOLVERS: Readonly<
-	Record<ProviderName, (modelId: string) => LanguageModel>
-> = {
-	zen: resolveZenModel,
-	anthropic: (modelId) => directProviders.anthropic()(modelId),
-	openai: resolveOpenAIModel,
-	google: (modelId) => directProviders.google()(modelId),
-	ollama: (modelId) => directProviders.ollama().chatModel(modelId),
-};
+const PROVIDER_MODEL_RESOLVERS: Readonly<Record<ProviderName, ModelResolver>> =
+	{
+		zen: resolveZenModel,
+		anthropic: (modelId) => directProviders.anthropic()(modelId),
+		openai: resolveOpenAIModel,
+		google: (modelId) => directProviders.google()(modelId),
+		ollama: (modelId) => directProviders.ollama().chatModel(modelId),
+	};
 
 function isProviderName(provider: string): provider is ProviderName {
 	return SUPPORTED_PROVIDERS.includes(provider as ProviderName);
