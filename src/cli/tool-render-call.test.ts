@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildToolCallLine } from "./tool-render-call.ts";
+import { buildToolCallLine } from "./tool-render.ts";
 
 describe("buildToolCallLine", () => {
 	test("formats shell calls with truncated command previews", () => {
