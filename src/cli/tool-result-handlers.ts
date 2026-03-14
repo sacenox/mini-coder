@@ -70,18 +70,43 @@ function renderShellResult(result: unknown): boolean {
 	writeln(
 		`    ${badge} ${c.dim(`exit ${r.exitCode} · stdout ${stdoutLines}L · stderr ${stderrLines}L`)}`,
 	);
-	writePreviewLines({
-		label: "stdout",
-		value: r.stdout,
-		lineColor: c.dim,
-		maxLines: 6,
-	});
-	writePreviewLines({
-		label: "stderr",
-		value: r.stderr,
-		lineColor: c.red,
-		maxLines: 4,
-	});
+
+	if (!r.success || r.timedOut) {
+		writePreviewLines({
+			label: "stderr",
+			value: r.stderr,
+			lineColor: c.red,
+			maxLines: 6,
+		});
+		writePreviewLines({
+			label: "stdout",
+			value: r.stdout,
+			lineColor: c.dim,
+			maxLines: 4,
+		});
+		return true;
+	}
+
+	if (stderrLines > 0) {
+		writePreviewLines({
+			label: "stderr",
+			value: r.stderr,
+			lineColor: c.red,
+			maxLines: 4,
+		});
+	}
+
+	if (stdoutLines > 0 && stdoutLines <= 3) {
+		writePreviewLines({
+			label: "stdout",
+			value: r.stdout,
+			lineColor: c.dim,
+			maxLines: 3,
+		});
+	} else if (stdoutLines > 3) {
+		writeln(`    ${c.dim(`stdout omitted (${stdoutLines} lines)`)}`);
+	}
+
 	return true;
 }
 

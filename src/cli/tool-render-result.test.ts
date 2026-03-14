@@ -39,6 +39,29 @@ describe("renderToolResult", () => {
 		expect(plain).toContain("stderr (1 lines)");
 	});
 
+	test("omits long stdout previews for successful shell calls", () => {
+		terminal.stdoutWrite = (chunk: string) => {
+			stdout += chunk;
+		};
+
+		renderToolResult(
+			"shell",
+			{
+				stdout: "a\nb\nc\nd\ne",
+				stderr: "",
+				exitCode: 0,
+				success: true,
+				timedOut: false,
+			},
+			false,
+		);
+
+		const plain = stripAnsi(stdout);
+		expect(plain).toContain("exit 0 · stdout 5L · stderr 0L");
+		expect(plain).toContain("stdout omitted (5 lines)");
+		expect(plain).not.toContain("stdout (5 lines)");
+	});
+
 	test("renders file edit diff for create", () => {
 		terminal.stdoutWrite = (chunk: string) => {
 			stdout += chunk;
