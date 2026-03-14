@@ -26,7 +26,7 @@
     · src/cli/stream-render.ts  296 lines
 ```
 
-- add a spinner state showing the user when the undo snapshotting is happening
+- Console output/UI updates: add a spinner state showing the user when the undo snapshotting is happening and more granular output of tools lifecycle: start, running, hooks, and done states.
 - Structuted output when a skill is auto loaded for the agent and improve context pruning output to match out style
 
 - `src/cli/stream-render.ts` is 448 lines; could be split for maintainability
