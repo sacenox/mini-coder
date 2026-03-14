@@ -38,7 +38,7 @@ export function createSubagentTool(
 ): ToolDef<SubagentInput, SubagentOutput> {
 	const agentSection =
 		availableAgents.size > 0
-			? `\n\nWhen the user's message contains @<agent-name>, delegate to that agent by setting agentName to the exact agent name. Available custom agents: ${[...availableAgents.entries()].map(([name, cfg]) => `"${name}" (${cfg.description})`).join(", ")}.`
+			? `\n\nIf a specific custom agent should be used, set agentName to the exact agent name. Available custom agents: ${[...availableAgents.entries()].map(([name, cfg]) => `"${name}" (${cfg.description})`).join(", ")}.`
 			: "";
 	return {
 		name: "subagent",

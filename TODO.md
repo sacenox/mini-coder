@@ -1,11 +1,12 @@
 # TODO
 
-- Tool hooks output prints inline with spinner
-- Review our markdown renderer. Let's make it render the raw markdown, but syntax highlited
+- Most models hang for long periods during turns. Sometines needing the user to interrupt to continue
+- Our output is not responsive. The user experience is poor right now, with long period of waiting for output. I've compared the same priovider and model with pi and opencode and their output is responsive and fast. This is critical to fix, it's part of our core idea and philosophy
+
+- Tool hooks output prints inline with spinner when they should output in a new line and indented like the tool calls output.
+- Review our markdown renderer. Let's make it render the raw markdown, but syntax highlited.
 - add a spinner state showing the user when the undo snapshotting is happening
 - Structuted output when a skill is auto loaded for the agent
-
-- Kimi-k2.5 and other models that use the same sdk hang for long periods during turns.
 - Kimi-k2.5, GLM-5 and other models that use the same sdk produce these errors:
 
 Error 1:

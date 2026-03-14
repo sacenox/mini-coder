@@ -29,7 +29,7 @@
 :   Display help information.
 
 **[prompt]**
-:   Optional one-shot prompt text before entering interactive mode.
+:   Optional one-shot prompt text. Runs once, then exits.
 
 ## INTERACTIVE COMMANDS
 Inside the interactive session, the following slash commands are available:
@@ -96,8 +96,8 @@ Inside the interactive session, the following slash commands are available:
 **Shell Integration**
 :   Prefix user prompts with `!` to run shell commands inline directly into the context.
 
-**File & Agent Referencing**
-:   Prefix words with `@` to reference files, custom agents, or skills within prompts (supports tab completion).
+**File & Skill Referencing**
+:   Prefix words with `@` to reference files or skills within prompts (supports tab completion).
 
 ## BUILT-IN TOOLS
 The agent has access to the following tools:

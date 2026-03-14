@@ -590,7 +590,7 @@ function handleHelp(
 			const tag =
 				agent.source === "local" ? c.dim(" (local)") : c.dim(" (global)");
 			writeln(
-				`  ${c.magenta(`@${agent.name}`.padEnd(26))} ${c.dim(agent.description)}${modeTag}${tag}`,
+				`  ${c.magenta(agent.name.padEnd(26))} ${c.dim(agent.description)}${modeTag}${tag}`,
 			);
 		}
 	}
@@ -615,7 +615,7 @@ function handleHelp(
 
 	writeln();
 	writeln(
-		`  ${c.green("@agent".padEnd(26))} ${c.dim("run prompt through a custom agent (Tab to complete)")}`,
+		`  ${c.green("/agent <name>".padEnd(26))} ${c.dim("activate a custom agent by name")}`,
 	);
 	writeln(
 		`  ${c.green("@skill".padEnd(26))} ${c.dim("load a skill body on demand into the prompt (Tab to complete)")}`,

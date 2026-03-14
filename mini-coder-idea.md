@@ -43,7 +43,7 @@ conventions and not introduce more specs. (`.agents` / `AGENTS.md`, while also s
   - `/reasoning` toggles display of model reasoning output.
   - `/context` configures context pruning and tool-result caps.
   - `/cache` toggles prompt caching globally; sub-commands configure provider-specific caching (`/cache openai <in_memory|24h>`, `/cache gemini <off|cachedContents/...>`).
-  - `/review` reviews recent changes via a global command installed at app start (`~/.agents/commands/review.md`), and can be customized or shadowed locally.
+  - `/review` reviews recent changes via a global custom command installed at app start (`~/.agents/commands/review.md`), and can be customized or shadowed locally.
   - `/agent` sets or clears the active primary agent.
   - `/mcp` list/add/remove mcp servers. servers are stored in sqlite
   - `/new` starts a new session with clean context. Clean UI and fresh session display

@@ -50,7 +50,7 @@ Need more firepower? I connect to **MCP servers** over HTTP or stdio — bolt on
 - **Slash commands** — `/model` or `/models` to list/switch models, `/model effort <low|medium|high|xhigh|off>` for reasoning effort, `/reasoning [on|off]` to toggle reasoning display, `/context` to inspect or tune pruning/tool-result caps, `/cache` to configure prompt caching, `/review` for a code review (global custom command, auto-created at `~/.agents/commands/review.md`), `/agent [name]` to set or clear an active primary agent, `/undo` to roll back a turn, `/new` for a clean session, `/mcp list|add|remove` to manage MCP servers, and `/exit` (`/quit`, `/q`) to leave. See all with `/help`.
 
 - **Custom commands** — drop a `.md` file in `.agents/commands/` and it becomes a `/command`. Claude-compatible `.claude/commands/` works too. Supports argument placeholders (`$ARGUMENTS`, `$1`…`$9`) and shell interpolation (`` !`cmd` ``). Global commands live in `~/.agents/commands/` and `~/.claude/commands/`. Custom commands take precedence over built-ins. → [docs/custom-commands.md](docs/custom-commands.md)
-- **Custom agents** — drop a `.md` file in `.agents/agents/` or `.claude/agents/` (or `~/.agents/agents/` / `~/.claude/agents/` globally) and activate it with `/agent [name]`. Agent definitions are also exposed to subagent delegation unless `mode: primary`. `@agent-name` is supported for completion and is a useful prompt convention. → [docs/custom-agents.md](docs/custom-agents.md)
+- **Custom agents** — drop a `.md` file in `.agents/agents/` or `.claude/agents/` (or `~/.agents/agents/` / `~/.claude/agents/` globally) and activate it with `/agent [name]`. Agent definitions are also exposed to subagent delegation unless `mode: primary`. → [docs/custom-agents.md](docs/custom-agents.md)
 - **Skills** — place a `SKILL.md` in `.agents/skills/<name>/` and inject it into any prompt with `@skill-name`. Claude-compatible `.claude/skills/<name>/SKILL.md` works too. Skills are _never_ auto-loaded — always explicit. → [docs/skills.md](docs/skills.md)
 - **Post-tool hooks** — drop an executable at `.agents/hooks/post-<tool>` (or `~/.agents/hooks/post-<tool>` globally) and I'll run it after matching built-in tool calls. → [docs/tool-hooks.md](docs/tool-hooks.md)
 - **Beautiful, minimal output** — diffs for edits, formatted trees for file searches, a live status bar with model, git branch, and token counts.
@@ -117,7 +117,7 @@ export EXA_API_KEY=your-exa-key         # enables webSearch/webContent
 mc
 ```
 
-Or drop me a prompt straight away and stay in the session:
+Or drop me a prompt straight away for one-shot mode (runs once, then exits):
 
 ```bash
 mc "Refactor the auth module to use async/await"
