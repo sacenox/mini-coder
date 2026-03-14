@@ -1,4 +1,4 @@
-import { stepCountIs, streamText } from "ai";
+import { streamText } from "ai";
 import { isApiLogEnabled, logApiEvent } from "./api-log.ts";
 import type { ThinkingEffort } from "./provider-options.ts";
 import {
@@ -11,8 +11,10 @@ import {
 	mapFullStreamToTurnEvents,
 	type StreamTextResultFull,
 } from "./turn-execution.ts";
-import { prepareTurnMessages } from "./turn-prepare-messages.ts";
-import { buildTurnProviderOptions } from "./turn-provider-options.ts";
+import {
+	buildStreamTextRequest,
+	buildTurnPreparation,
+} from "./turn-request.ts";
 
 export type { ContextPruningMode } from "./turn-context.ts";
 
@@ -74,14 +76,17 @@ export async function* runTurn(options: {
 
 	try {
 		const toolCount = Object.keys(toolSet).length;
-		const providerOptionsResult = buildTurnProviderOptions({
+		const { providerOptionsResult, prepared } = buildTurnPreparation({
 			modelString,
+			messages,
 			thinkingEffort,
 			promptCachingEnabled,
 			openaiPromptCacheRetention,
 			googleCachedContent,
 			toolCount,
-			hasSystemPrompt: Boolean(systemPrompt),
+			systemPrompt,
+			pruningMode,
+			toolResultPayloadCapBytes,
 		});
 
 		logApiEvent("turn start", {
@@ -91,17 +96,6 @@ export async function* runTurn(options: {
 				providerOptionsResult.reasoningSummaryRequested,
 			pruningMode,
 			toolResultPayloadCapBytes,
-		});
-
-		// Prepare messages: sanitize, prune, compact, annotate cache breakpoints
-		const prepared = prepareTurnMessages({
-			messages,
-			modelString,
-			toolCount,
-			systemPrompt,
-			pruningMode,
-			toolResultPayloadCapBytes,
-			promptCachingEnabled,
 		});
 
 		if (prepared.pruned) {
@@ -127,26 +121,17 @@ export async function* runTurn(options: {
 			});
 		}
 
-		const result = streamText({
-			model,
-			messages: prepared.messages,
-			tools: toolSet,
-			stopWhen: stepCountIs(MAX_STEPS),
-			onStepFinish: stepTracker.onStepFinish,
-			prepareStep: ({ stepNumber }: { stepNumber: number }) => {
-				// On the last allowed step, disable tools so the model gives a final answer
-				if (stepNumber >= MAX_STEPS - 1) {
-					return { activeTools: [] as Array<keyof typeof toolSet> };
-				}
-				return undefined;
-			},
-			...(prepared.systemPrompt ? { system: prepared.systemPrompt } : {}),
-			...(Object.keys(providerOptionsResult.providerOptions).length > 0
-				? { providerOptions: providerOptionsResult.providerOptions }
-				: {}),
-			...(signal ? { abortSignal: signal } : {}),
-			timeout: { chunkMs: 120_000 },
-		} as StreamTextOptions) as StreamTextResultFull;
+		const result = streamText(
+			buildStreamTextRequest({
+				model,
+				prepared,
+				toolSet,
+				onStepFinish: stepTracker.onStepFinish,
+				signal,
+				providerOptions: providerOptionsResult.providerOptions,
+				maxSteps: MAX_STEPS,
+			}),
+		) as StreamTextResultFull;
 		result.response.catch(() => {});
 
 		for await (const event of mapFullStreamToTurnEvents(result.fullStream, {
