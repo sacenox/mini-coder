@@ -1,7 +1,8 @@
 # TODO
 
-- Models in general struggle with our read/write tools, use the db to investigate their behaviour with out tools and let's refactor them with the goal of reducintg errors.
 - Strange output mid session:
+
+There are several sessions in the db where this issue happened.
 
 A fix was made to suppress commentary from gpt to avoid this, but now there is no reasoning output from gpt mdels.
 Update: reasoning is now all dumped at turn end.
@@ -112,64 +113,7 @@ with assistant metadata to=functions.shell from UI (not visible in message maybe
   ▶
 ```
 
-- Error during turn:
-
-```
-claude-opus-4-5  ·  ~/src/mini-coder  ·  ✦ medium  ·  ⎇ main  ·  #mmqwc6tq
-▶ [pasted: "As we implemnented the idea we made heav…" +18 more lines]
-⢿ thinking2525 |   const responseBody = await response.text();
-2526 |   const responseHeaders = extractResponseHeaders(response);
-2527 |   if (responseBody.trim() === "") {
-2528 |     return {
-2529 |       responseHeaders,
-2530 |       value: new APICallError4({
-                        ^
-AI_APICallError: Bad Request
-      cause: undefined,
-        url: "https://opencode.ai/zen/v1/messages",
- requestBodyValues: {
-  model: "claude-opus-4-5",
-  max_tokens: 64000,
-  temperature: undefined,
-  top_k: undefined,
-  top_p: undefined,
-  stop_sequences: undefined,
-  thinking: [Object ...],
-  output_config: [Object ...],
-  system: [
-    [Object ...]
-  ],
-  messages: [
-    [Object ...]
-  ],
-  tools: [
-    [Object ...], [Object ...], [Object ...], [Object ...], [Object ...], [Object ...], [Object ...], [Object ...], [Object ...], [Object ...]
-  ],
-  tool_choice: [Object ...],
-  stream: true,
-},
- statusCode: 400,
- responseHeaders: {
-  "cf-ray": "9dc6b5b3db7c6c66-DFW",
-  connection: "keep-alive",
-  "content-type": "application/json",
-  date: "Sat, 14 Mar 2026 22:28:09 GMT",
-  server: "cloudflare",
-  "transfer-encoding": "chunked",
-},
- responseBody: "",
- isRetryable: false,
-       data: undefined,
- vercel.ai.error: true,
- vercel.ai.error.AI_APICallError: true,
-
-      at /home/xonecas/src/mini-coder/node_modules/@ai-sdk/provider-utils/dist/index.mjs:2530:18
-      at /home/xonecas/src/mini-coder/node_modules/@ai-sdk/provider-utils/dist/index.mjs:2391:34
-      at processTicksAndRejections (native:7:39)
-
-✖ API error 400
-  https://opencode.ai/zen/v1/messages
-```
+- Models in general struggle with our read/write tools, use the db to investigate their behaviour with out tools and let's refactor them with the goal of reducintg errors.
 
 ---
 
