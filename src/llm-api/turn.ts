@@ -751,7 +751,7 @@ export async function* runTurn(options: {
 		// OpenAI GPT models use the Responses API (@ai-sdk/openai v3 / ai v6 default),
 		// but we keep prompts only in `system` messages for consistency across
 		// providers and to avoid prompting shape drift on GPT reasoning models.
-		const useInstructions = false;
+		const useInstructions = false; // TODO: This is dead code, we should remove it and its usage. Keep the comment above.
 
 		const toolCount = Object.keys(toolSet).length;
 		const thinkingOpts = thinkingEffort
@@ -939,6 +939,7 @@ export async function* runTurn(options: {
 				? { providerOptions: mergedProviderOptions }
 				: {}),
 			...(signal ? { abortSignal: signal } : {}),
+			// TODO: I don't think this is ever used. we should probably remove it
 			experimental_repairToolCall: async ({ toolCall }) => {
 				// To avoid 400 Bad Request from the API when it receives malformed JSON
 				// in the assistant's tool_calls history, we repair it to a minimal valid JSON.
@@ -978,6 +979,7 @@ export async function* runTurn(options: {
 			switch (c.type) {
 				case "text-delta": {
 					// AI SDK v6: property is `text`, not `textDelta`
+					// TODO: Why do we still check for textDelta then?
 					const delta =
 						typeof c.text === "string"
 							? c.text
