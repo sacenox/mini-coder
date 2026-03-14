@@ -2,14 +2,10 @@ import type { FlexibleSchema, StepResult } from "ai";
 import { dynamicTool, jsonSchema, stepCountIs, streamText } from "ai";
 import { isApiLogEnabled, logApiEvent } from "./api-log.ts";
 import {
-	getReasoningDeltaFromStreamChunk,
 	isOpenAIGPT,
 	normalizeOpenAICompatibleToolCallInputs,
-	sanitizeGeminiToolMessages,
 	sanitizeGeminiToolMessagesWithMetadata,
-	stripGPTCommentaryFromHistory,
 	stripOpenAIHistoryTransforms,
-	stripOpenAIItemIdsFromHistory,
 } from "./history-transforms.ts";
 import {
 	getCacheFamily,
@@ -28,6 +24,7 @@ import {
 } from "./turn-context.ts";
 
 export type { ContextPruningMode } from "./turn-context.ts";
+
 import {
 	mapStreamChunkToTurnEvent,
 	shouldLogStreamChunk,
@@ -40,16 +37,31 @@ type CoreModel = StreamTextOptions["model"];
 type ToolSet = NonNullable<StreamTextOptions["tools"]>;
 type ToolEntry = ToolSet extends Record<string, infer T> ? T : never;
 
-type StreamTextResult = ReturnType<typeof streamText>;
-type StreamTextResultFull = StreamTextResult & {
+type StreamTextResultFull = ReturnType<typeof streamText> & {
 	fullStream: AsyncIterable<{ type?: string; [key: string]: unknown }>;
 	response: Promise<{ messages?: CoreMessage[] }>;
 };
 
 const MAX_STEPS = 50;
 
+// ─── Local helpers ────────────────────────────────────────────────────────────
+
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return value !== null && typeof value === "object";
+}
+
+function mergeDeep(
+	target: Record<string, unknown>,
+	source: Record<string, unknown>,
+): Record<string, unknown> {
+	const output: Record<string, unknown> = { ...target };
+	for (const key in source) {
+		const sVal = source[key];
+		const tVal = target[key];
+		output[key] =
+			isRecord(sVal) && isRecord(tVal) ? { ...tVal, ...sVal } : sVal;
+	}
+	return output;
 }
 
 function isZodSchema(s: unknown): boolean {
@@ -73,24 +85,124 @@ function toCoreTool(def: ToolDef): ReturnType<typeof dynamicTool> {
 	});
 }
 
-const mergeDeep = (
-	target: Record<string, unknown>,
-	source: Record<string, unknown>,
-) => {
-	const output: Record<string, unknown> = { ...target };
-	for (const key in source) {
-		const sVal = source[key];
-		const tVal = target[key];
-		if (isRecord(sVal) && isRecord(tVal)) {
-			output[key] = { ...tVal, ...sVal };
-		} else {
-			output[key] = sVal;
-		}
+// ─── Message preparation pipeline ────────────────────────────────────────────
+
+interface PreparedMessages {
+	messages: CoreMessage[];
+	systemPrompt: string | undefined;
+	/** True if context pruning removed any messages. */
+	pruned: boolean;
+	prePruneMessageCount: number;
+	prePruneTotalBytes: number;
+	postPruneMessageCount: number;
+	postPruneTotalBytes: number;
+}
+
+/**
+ * Apply provider-specific history sanitisation, context pruning, and
+ * payload compaction. Returns the messages ready to send to the model.
+ */
+function prepareMessages(
+	messages: CoreMessage[],
+	modelString: string,
+	toolCount: number,
+	systemPrompt: string | undefined,
+	pruningMode: ContextPruningMode,
+	toolResultPayloadCapBytes: number,
+	promptCachingEnabled: boolean,
+): PreparedMessages {
+	const apiLogOn = isApiLogEnabled();
+
+	// 1. Provider-specific sanitisation
+	const geminiResult = sanitizeGeminiToolMessagesWithMetadata(
+		messages,
+		modelString,
+		toolCount > 0,
+	);
+	if (geminiResult.repaired && apiLogOn) {
+		logApiEvent("gemini tool history repaired", {
+			modelString,
+			reason: geminiResult.reason,
+			repairedFromIndex: geminiResult.repairedFromIndex,
+			droppedMessageCount: geminiResult.droppedMessageCount,
+			tailOnlyAffected: geminiResult.tailOnlyAffected,
+		});
 	}
-	return output;
-};
 
+	const openaiStripped = stripOpenAIHistoryTransforms(
+		geminiResult.messages,
+		modelString,
+	);
+	if (openaiStripped !== geminiResult.messages && apiLogOn) {
+		logApiEvent("openai history transforms applied", { modelString });
+	}
 
+	const normalised = normalizeOpenAICompatibleToolCallInputs(
+		openaiStripped,
+		modelString,
+	);
+	if (normalised !== openaiStripped && apiLogOn) {
+		logApiEvent("openai-compatible tool input normalized", { modelString });
+	}
+
+	// 2. Context pruning
+	const preStats = apiLogOn
+		? getMessageDiagnostics(normalised)
+		: getMessageStats(normalised);
+	if (apiLogOn) logApiEvent("turn context pre-prune", preStats);
+
+	const pruned = applyContextPruning(normalised, pruningMode);
+
+	const postStats = apiLogOn
+		? getMessageDiagnostics(pruned)
+		: getMessageStats(pruned);
+	if (apiLogOn) logApiEvent("turn context post-prune", postStats);
+
+	// 3. Payload compaction
+	const compacted = compactToolResultPayloads(
+		pruned,
+		toolResultPayloadCapBytes,
+	);
+	if (compacted !== pruned && apiLogOn) {
+		logApiEvent("turn context post-compaction", {
+			capBytes: toolResultPayloadCapBytes,
+			diagnostics: getMessageDiagnostics(compacted),
+		});
+	}
+
+	// 4. Anthropic prompt caching breakpoints
+	let finalMessages = compacted;
+	let finalSystemPrompt = systemPrompt;
+
+	const cacheFamily = getCacheFamily(modelString);
+	if (cacheFamily === "anthropic" && promptCachingEnabled) {
+		const annotated = annotateAnthropicCacheBreakpoints(
+			compacted,
+			systemPrompt,
+		);
+		finalMessages = annotated.messages;
+		finalSystemPrompt = annotated.systemPrompt;
+		if (apiLogOn)
+			logApiEvent("Anthropic prompt caching", annotated.diagnostics);
+	}
+
+	const wasPruned =
+		(pruningMode === "balanced" || pruningMode === "aggressive") &&
+		(postStats.messageCount < preStats.messageCount ||
+			postStats.totalBytes < preStats.totalBytes);
+
+	return {
+		messages: finalMessages,
+		systemPrompt: finalSystemPrompt,
+		pruned: wasPruned,
+		prePruneMessageCount: preStats.messageCount,
+		prePruneTotalBytes: preStats.totalBytes,
+		postPruneMessageCount: postStats.messageCount,
+		postPruneTotalBytes: postStats.totalBytes,
+	};
+}
+
+// ─── runTurn ──────────────────────────────────────────────────────────────────
 
 /**
  * Run a single agent turn against the model.
@@ -143,118 +255,63 @@ export async function* runTurn(options: {
 		const thinkingOpts = thinkingEffort
 			? getThinkingProviderOptions(modelString, thinkingEffort)
 			: null;
-		const reasoningSummaryRequested =
-			isRecord(thinkingOpts) &&
-			isRecord(thinkingOpts.openai) &&
-			typeof thinkingOpts.openai.reasoningSummary === "string";
+
 		logApiEvent("turn start", {
 			modelString,
 			messageCount: messages.length,
-			reasoningSummaryRequested,
+			reasoningSummaryRequested:
+				isRecord(thinkingOpts) &&
+				isRecord(thinkingOpts.openai) &&
+				typeof thinkingOpts.openai.reasoningSummary === "string",
 			pruningMode,
 			toolResultPayloadCapBytes,
 		});
 
-		const geminiSanitizationResult = sanitizeGeminiToolMessagesWithMetadata(
+		// Prepare messages: sanitize, prune, compact, annotate cache breakpoints
+		const prepared = prepareMessages(
 			messages,
 			modelString,
-			toolCount > 0,
-		);
-		const geminiSanitizedMessages = geminiSanitizationResult.messages;
-		if (geminiSanitizationResult.repaired) {
-			logApiEvent("gemini tool history repaired", {
-				modelString,
-				reason: geminiSanitizationResult.reason,
-				repairedFromIndex: geminiSanitizationResult.repairedFromIndex,
-				droppedMessageCount: geminiSanitizationResult.droppedMessageCount,
-				tailOnlyAffected: geminiSanitizationResult.tailOnlyAffected,
-			});
-		}
-
-		const openAIStrippedMessages = stripOpenAIHistoryTransforms(
-			geminiSanitizedMessages,
-			modelString,
-		);
-		if (
-			openAIStrippedMessages !== geminiSanitizedMessages &&
-			isApiLogEnabled()
-		) {
-			logApiEvent("openai history transforms applied", { modelString });
-		}
-
-		const compatNormalizedMessages = normalizeOpenAICompatibleToolCallInputs(
-			openAIStrippedMessages,
-			modelString,
-		);
-		if (
-			compatNormalizedMessages !== openAIStrippedMessages &&
-			isApiLogEnabled()
-		) {
-			logApiEvent("openai-compatible tool input normalized", { modelString });
-		}
-
-		const apiLogOn = isApiLogEnabled();
-		const prePruneDiagnostics = apiLogOn
-			? getMessageDiagnostics(compatNormalizedMessages)
-			: getMessageStats(compatNormalizedMessages);
-		if (apiLogOn) logApiEvent("turn context pre-prune", prePruneDiagnostics);
-
-		const prunedMessages = applyContextPruning(
-			compatNormalizedMessages,
+			toolCount,
+			systemPrompt,
 			pruningMode,
+			toolResultPayloadCapBytes,
+			promptCachingEnabled,
 		);
-		const postPruneDiagnostics = apiLogOn
-			? getMessageDiagnostics(prunedMessages)
-			: getMessageStats(prunedMessages);
-		if (apiLogOn) logApiEvent("turn context post-prune", postPruneDiagnostics);
 
-		if (
-			(pruningMode === "balanced" || pruningMode === "aggressive") &&
-			(postPruneDiagnostics.messageCount < prePruneDiagnostics.messageCount ||
-				postPruneDiagnostics.totalBytes < prePruneDiagnostics.totalBytes)
-		) {
+		if (prepared.pruned) {
 			yield {
 				type: "context-pruned",
-				mode: pruningMode,
-				beforeMessageCount: prePruneDiagnostics.messageCount,
-				afterMessageCount: postPruneDiagnostics.messageCount,
+				mode: pruningMode as "balanced" | "aggressive",
+				beforeMessageCount: prepared.prePruneMessageCount,
+				afterMessageCount: prepared.postPruneMessageCount,
 				removedMessageCount:
-					prePruneDiagnostics.messageCount - postPruneDiagnostics.messageCount,
-				beforeTotalBytes: prePruneDiagnostics.totalBytes,
-				afterTotalBytes: postPruneDiagnostics.totalBytes,
+					prepared.prePruneMessageCount - prepared.postPruneMessageCount,
+				beforeTotalBytes: prepared.prePruneTotalBytes,
+				afterTotalBytes: prepared.postPruneTotalBytes,
 				removedBytes:
-					prePruneDiagnostics.totalBytes - postPruneDiagnostics.totalBytes,
+					prepared.prePruneTotalBytes - prepared.postPruneTotalBytes,
 			};
 		}
 
-		const turnMessages = compactToolResultPayloads(
-			prunedMessages,
-			toolResultPayloadCapBytes,
-		);
-		if (turnMessages !== prunedMessages && apiLogOn) {
-			logApiEvent("turn context post-compaction", {
-				capBytes: toolResultPayloadCapBytes,
-				diagnostics: getMessageDiagnostics(turnMessages),
-			});
-		}
-
+		// Build provider options (thinking + cache)
 		const cacheFamily = getCacheFamily(modelString);
-		const googleExplicitCachingCompatible = toolCount === 0 && !systemPrompt;
 		const cacheOpts = getCachingProviderOptions(modelString, {
 			enabled: promptCachingEnabled,
 			openaiRetention: openaiPromptCacheRetention,
 			googleCachedContent,
-			googleExplicitCachingCompatible,
+			googleExplicitCachingCompatible: toolCount === 0 && !systemPrompt,
 		});
-		logApiEvent("prompt caching configured", {
-			enabled: promptCachingEnabled,
-			cacheFamily,
-			cacheOpts,
-			googleExplicitCachingCompatible,
-		});
+		if (isApiLogEnabled()) {
+			logApiEvent("prompt caching configured", {
+				enabled: promptCachingEnabled,
+				cacheFamily,
+				cacheOpts,
+			});
+		}
 
-		let mergedProviderOptions = {
+		const baseProviderOpts = {
 			...(thinkingOpts ?? {}),
+			// GPT models via responses API: opt out of storage, merge thinking opts
 			...(isOpenAIGPT(modelString)
 				? {
 						openai: {
@@ -266,27 +323,13 @@ export async function* runTurn(options: {
 					}
 				: {}),
 		};
+		const mergedProviderOpts = cacheOpts
+			? mergeDeep(baseProviderOpts, cacheOpts)
+			: baseProviderOpts;
 
-		if (cacheOpts) {
-			mergedProviderOptions = mergeDeep(mergedProviderOptions, cacheOpts);
-		}
-
-		let finalMessages = turnMessages;
-		let finalSystemPrompt = systemPrompt;
-
-		if (cacheFamily === "anthropic" && promptCachingEnabled) {
-			const annotated = annotateAnthropicCacheBreakpoints(
-				turnMessages,
-				systemPrompt,
-			);
-			finalMessages = annotated.messages;
-			finalSystemPrompt = annotated.systemPrompt;
-			logApiEvent("Anthropic prompt caching", annotated.diagnostics);
-		}
-
-		const streamOpts: StreamTextOptions = {
+		const result = streamText({
 			model,
-			messages: finalMessages,
+			messages: prepared.messages,
 			tools: toolSet,
 			stopWhen: stepCountIs(MAX_STEPS),
 			onStepFinish: (step: StepResult<ToolSet>) => {
@@ -299,7 +342,6 @@ export async function* runTurn(options: {
 				outputTokens += step.usage?.outputTokens ?? 0;
 				contextTokens = step.usage?.inputTokens ?? contextTokens;
 				stepCount++;
-
 				const s = step as unknown as {
 					response?: { messages?: CoreMessage[] };
 					messages?: CoreMessage[];
@@ -308,20 +350,19 @@ export async function* runTurn(options: {
 					s.response?.messages ?? s.messages ?? partialState.messages;
 			},
 			prepareStep: ({ stepNumber }: { stepNumber: number }) => {
+				// On the last allowed step, disable tools so the model gives a final answer
 				if (stepNumber >= MAX_STEPS - 1) {
 					return { activeTools: [] as Array<keyof typeof toolSet> };
 				}
 				return undefined;
 			},
-			...(finalSystemPrompt ? { system: finalSystemPrompt } : {}),
-			...(Object.keys(mergedProviderOptions).length > 0
-				? { providerOptions: mergedProviderOptions }
+			...(prepared.systemPrompt ? { system: prepared.systemPrompt } : {}),
+			...(Object.keys(mergedProviderOpts).length > 0
+				? { providerOptions: mergedProviderOpts }
 				: {}),
 			...(signal ? { abortSignal: signal } : {}),
 			timeout: { chunkMs: 120_000 },
-		};
-
-		const result = streamText(streamOpts) as StreamTextResultFull;
+		} as StreamTextOptions) as StreamTextResultFull;
 		result.response.catch(() => {});
 
 		for await (const chunk of result.fullStream) {
@@ -340,9 +381,8 @@ export async function* runTurn(options: {
 			if (event) yield event;
 		}
 
-		const newMessages = partialState.messages;
 		logApiEvent("turn complete", {
-			newMessagesCount: newMessages.length,
+			newMessagesCount: partialState.messages.length,
 			inputTokens,
 			outputTokens,
 		});
@@ -352,7 +392,7 @@ export async function* runTurn(options: {
 			inputTokens,
 			outputTokens,
 			contextTokens,
-			messages: newMessages,
+			messages: partialState.messages,
 		};
 	} catch (err) {
 		logApiEvent("turn error", err);

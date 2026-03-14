@@ -12,7 +12,7 @@ import {
 import { getZenBackend } from "./model-routing.ts";
 
 export { getContextWindow } from "./model-info.ts";
-export { type ThinkingEffort } from "./provider-options.ts";
+export type { ThinkingEffort } from "./provider-options.ts";
 
 // ─── Zen endpoint constants ────────────────────────────────────────────────────
 
@@ -162,8 +162,6 @@ function directGoogle() {
 	}
 	return _directGoogle;
 }
-
-
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 

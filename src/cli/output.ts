@@ -12,10 +12,10 @@ import { loadAgents } from "./agents.ts";
 import { loadCustomCommands } from "./custom-commands.ts";
 import { logError } from "./error-log.ts";
 import { parseAppError } from "./error-parse.ts";
+import { loadSkillsIndex } from "./skills.ts";
 import { Spinner } from "./spinner.ts";
 import { renderStatusBar } from "./status-bar.ts";
 import { renderTurn } from "./stream-render.ts";
-import { loadSkillsIndex } from "./skills.ts";
 import { terminal } from "./terminal-io.ts";
 import { renderHook } from "./tool-render.ts";
 
