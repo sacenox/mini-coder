@@ -1,6 +1,5 @@
 # TODO
 
-- read/write tool call output only visible when tool call response is already visible too.
 - Investigate db lock issues with spawning parallel subagents:
 
 ```
@@ -28,6 +27,9 @@
 
 - add a spinner state showing the user when the undo snapshotting is happening
 - Structuted output when a skill is auto loaded for the agent and improve context pruning output to match out style
+
+- `src/cli/stream-render.ts` is 448 lines; could be split for maintainability
+- `src/llm-api/turn.ts` is 1273 lines; handles many concerns (pruning, compacting, normalization)
 
 ---
 
