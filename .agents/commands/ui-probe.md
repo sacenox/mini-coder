@@ -15,6 +15,8 @@ Pick cheap/free options. Verify available models at https://opencode.ai/docs/zen
 - `@ai-sdk/openai` path (responses endpoint) → a `zen/gpt-*` small low cost model
 - `@ai-sdk/openai-compatible` path → `zen/*` or similar small low cost model
 
+Avoid free models due to rate limit issues.
+
 ## Prompt to give each model
 
 ```
@@ -45,6 +47,7 @@ Write `UI-REPORT.md` in the repo root with these sections:
 - **Methodology** — models tested, prompt used, how output was captured
 - **Per-model results** — for each model: did it complete the task? what did the user see step by step? any errors or recovery detours?
 - **Shared UI observations** — patterns across all models: spinner behaviour, tool call chrome (symbols, indentation), reasoning block display, diff output, final response format, banner/status bar presence
+- **UI/UX** how can it be improved, is the output elegant, clear and hierchial?
 - **Bugs found** — table: severity, description, likely source file
 - **Alignment with mini-coder-idea.md** — table comparing each idea goal against what was observed (✅ / ⚠️ / ❌)
 - **Recommendations** — split into immediate bugs and polish items

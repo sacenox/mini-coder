@@ -1,6 +1,5 @@
 # TODO
 
-- ~~Remove markdown rendering from reasoning blocks. render raw in dimmed color. Remove the leading | character but keep the ident. Could we make it italic easily?~~ ✓ Done — reasoning renders raw, dim+italic, 2-space indent; `inFence` reset at block boundaries.
 - Investigate db lock issues with spawning parallel subagents:
 
 ```
@@ -28,15 +27,6 @@
 
 - `src/cli/stream-render.ts` is 448 lines; could be split for maintainability
 - `src/llm-api/turn.ts` is 1273 lines; handles many concerns (pruning, compacting, normalization)
-
----
-
-# Console output/UI updates:
-
-- add a spinner state showing the user when the undo snapshotting is happening and more granular output of tools lifecycle: start, running, hooks, and done states.
-- Structuted output when a skill is auto loaded for the agent and improve context pruning output to match out style
-
-Implement these improvements.
 
 ---
 
