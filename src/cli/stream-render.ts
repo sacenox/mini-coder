@@ -4,7 +4,7 @@ import type { CoreMessage } from "../llm-api/turn.ts";
 import type { TurnEvent } from "../llm-api/types.ts";
 import { logError } from "./error-log.ts";
 import { parseAppError } from "./error-parse.ts";
-import { RenderedError } from "./error-render.ts";
+import { RenderedError } from "./output.ts";
 
 import { renderLine } from "./markdown.ts";
 import { G, write, writeln } from "./output.ts";

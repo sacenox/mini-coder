@@ -7,7 +7,7 @@ import { loadAgents } from "./cli/agents.ts";
 import { parseArgs, printHelp } from "./cli/args.ts";
 import { bootstrapGlobalDefaults } from "./cli/bootstrap.ts";
 import { initErrorLog } from "./cli/error-log.ts";
-import { RenderedError } from "./cli/error-render.ts";
+import { RenderedError } from "./cli/output.ts";
 import { resolveFileRefs } from "./cli/file-refs.ts";
 import { HeadlessReporter } from "./cli/headless-reporter.ts";
 import { runInputLoop } from "./cli/input-loop.ts";
