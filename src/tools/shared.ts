@@ -1,13 +1,28 @@
 import { homedir } from "node:os";
 import { join, relative } from "node:path";
 
+function stripMatchingQuotes(value: string): string {
+	if (value.length < 2) return value;
+	const first = value[0];
+	const last = value[value.length - 1];
+	if ((first === '"' || first === "'") && first === last) {
+		return value.slice(1, -1);
+	}
+	return value;
+}
+
+function normalizePathInput(pathInput: string): string {
+	return stripMatchingQuotes(pathInput.trim());
+}
+
 export function resolvePath(cwdInput: string | undefined, pathInput: string) {
 	const cwd = cwdInput ?? process.cwd();
-	const expanded = pathInput.startsWith("~/")
-		? join(homedir(), pathInput.slice(2))
-		: pathInput === "~"
+	const normalizedInput = normalizePathInput(pathInput);
+	const expanded = normalizedInput.startsWith("~/")
+		? join(homedir(), normalizedInput.slice(2))
+		: normalizedInput === "~"
 			? homedir()
-			: pathInput;
+			: normalizedInput;
 	const filePath = expanded.startsWith("/") ? expanded : join(cwd, expanded);
 
 	const relPath = relative(cwd, filePath);

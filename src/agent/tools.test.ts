@@ -136,4 +136,9 @@ describe("resolvePath", () => {
 		const { filePath } = resolvePath("/my/cwd", "foo/bar");
 		expect(filePath).toBe("/my/cwd/foo/bar");
 	});
+
+	test("normalizes quoted and padded path input", () => {
+		const { filePath } = resolvePath("/my/cwd", '  "~/foo/bar"  ');
+		expect(filePath).toBe(join(homedir(), "foo/bar"));
+	});
 });
