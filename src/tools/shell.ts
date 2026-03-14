@@ -121,12 +121,23 @@ export const shellTool: ToolDef<ShellInput, ShellOutput> = {
 		let stdout = "";
 		let stderr = "";
 		let exitCode = 1;
+		let streamedAnyOutput = false;
+		let streamedEndsWithNewline = true;
+		const emitOutput = (chunk: string): void => {
+			if (!chunk) return;
+			streamedAnyOutput = true;
+			streamedEndsWithNewline = /[\r\n]$/.test(chunk);
+			input.onOutput?.(chunk);
+		};
 
 		try {
 			[stdout, stderr] = await Promise.all([
-				collectStream(proc.stdout, input.onOutput),
-				collectStream(proc.stderr, input.onOutput),
+				collectStream(proc.stdout, emitOutput),
+				collectStream(proc.stderr, emitOutput),
 			]);
+			if (streamedAnyOutput && !streamedEndsWithNewline) {
+				emitOutput("\n");
+			}
 
 			exitCode = await proc.exited;
 		} finally {
