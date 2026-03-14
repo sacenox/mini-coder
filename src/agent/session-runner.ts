@@ -82,7 +82,7 @@ export class SessionRunner {
 	public totalIn = 0;
 	public totalOut = 0;
 	public lastContextTokens = 0;
-	// P2: Cache the system prompt so the file-system reads in buildSystemPrompt
+	// Cache the system prompt so the file-system reads in buildSystemPrompt
 	// (context files, skills index) are not repeated on every processUserInput call.
 	// Re-built only when extraSystemPrompt changes.
 	private _extraSystemPrompt: string | undefined;
@@ -199,7 +199,7 @@ export class SessionRunner {
 		this.coreHistory.push(userMsg);
 
 		const llm = resolveModel(this.currentModel);
-		// P2: Use cached system prompt; rebuild only on first use or after
+		// Use cached system prompt; rebuild only on first use or after
 		// extraSystemPrompt / sessionTimeAnchor change.
 		if (!this._systemPrompt) {
 			this._systemPrompt = buildSystemPrompt(

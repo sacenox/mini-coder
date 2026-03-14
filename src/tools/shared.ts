@@ -62,7 +62,7 @@ export async function applyFileEdit(
 	await snapshotCallback?.(filePath);
 	await Bun.write(filePath, updated);
 
-	// P3: diff deferred to finalizeWriteResult (hook path) or stripWriteResultMeta
+	// diff deferred to finalizeWriteResult (hook path) or stripWriteResultMeta
 	// (no-hook path) to avoid computing it twice on every write in repos with hooks.
 	return {
 		path: relPath,

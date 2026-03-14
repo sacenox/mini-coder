@@ -4,7 +4,7 @@ import { createTestHelpers } from "./test-helpers.ts";
 import { stripWriteResultMeta } from "./write-result.ts";
 
 const { setup, teardown, write, read, anchor, getDir } = createTestHelpers();
-// P3: diff is deferred; strip meta before asserting on public fields.
+// diff is deferred; strip meta before asserting on public fields.
 const execute = async (...args: Parameters<typeof insertTool.execute>) =>
 	stripWriteResultMeta(await insertTool.execute(...args));
 

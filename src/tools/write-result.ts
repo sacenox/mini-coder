@@ -27,8 +27,8 @@ export function stripWriteResultMeta<
 
 /**
  * Hook path: re-read the file after the hook ran and compute the diff against
- * the original content. This replaces any diff that would have been computed
- * before the hook (P3: intermediate diff removed from applyFileEdit).
+ * the original content. This generates the final diff against the post-hook file,
+ * replacing the intermediate diff that was removed from applyFileEdit.
  */
 export async function finalizeWriteResult<T extends FinalizableWriteResult>(
 	result: T,

@@ -41,7 +41,7 @@ export const createTool: ToolDef<CreateInput, CreateToolOutput> = {
 		await input.snapshotCallback?.(filePath);
 		await Bun.write(filePath, input.content);
 
-		// P3: diff deferred to finalizeWriteResult / stripWriteResultMeta.
+		// diff deferred to finalizeWriteResult / stripWriteResultMeta.
 		return {
 			path: relPath,
 			created,

@@ -2,7 +2,7 @@ import { renderError } from "../../cli/output.ts";
 import type { CoreMessage } from "../../llm-api/turn.ts";
 import { getDb } from "./connection.ts";
 
-// P5: Hoist prepared statement to module-level lazy singleton to avoid re-compiling SQL each call.
+// Hoist prepared statement to module-level lazy singleton to avoid re-compiling SQL each call.
 type Stmt = ReturnType<ReturnType<typeof getDb>["prepare"]>;
 let _insertMsgStmt: Stmt | null = null;
 function getInsertMsgStmt(): Stmt {
@@ -28,7 +28,7 @@ export function saveMessages(
 	// providerMetadata thought signatures and part ordering required for Gemini
 	// tool-call replay correctness.
 
-	// P1: Single transaction so all rows in a saveMessages call are flushed together
+	// Single transaction so all rows in a saveMessages call are flushed together
 	// instead of triggering one implicit WAL flush per row.
 	db.transaction(() => {
 		for (const msg of msgs) {

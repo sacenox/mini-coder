@@ -71,7 +71,7 @@ export async function runHook(
 
 // ─── Env builders (one per tool) ─────────────────────────────────────────────
 
-// P3: Accept WriteResultMeta so diff is computed here (only when a hook fires)
+// Accept WriteResultMeta so diff is computed here (only when a hook fires)
 // instead of being pre-computed and then discarded in applyFileEdit.
 type WriteResult = WriteResultMeta & { path: string };
 

@@ -41,7 +41,7 @@ function withCwdDefault(
 	return {
 		...tool,
 		execute: async (input: unknown) => {
-			// P6: Mutate defaults onto the existing input object instead of
+			// Mutate defaults onto the existing input object instead of
 			// allocating a new spread object on every tool invocation.
 			const patched = (
 				typeof input === "object" && input !== null ? input : {}

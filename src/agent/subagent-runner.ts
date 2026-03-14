@@ -35,8 +35,7 @@ async function consumeTail(
 ): Promise<string> {
 	if (!stream) return "";
 	const reader = stream.getReader();
-	// P7: Accumulate Uint8Array chunks instead of string-concatenating (O(n²));
-	// decode and slice once at the end.
+	// Accumulate Uint8Array chunks and decode once at the end to avoid O(n²) string concatenation.
 	const chunks: Uint8Array[] = [];
 	try {
 		while (true) {

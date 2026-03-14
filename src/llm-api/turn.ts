@@ -62,7 +62,7 @@ function safeStringify(value: unknown): string {
 }
 
 /**
- * P4: Lightweight alternative to getMessageDiagnostics that computes only the
+ * Lightweight alternative to getMessageDiagnostics that computes only the
  * fields needed for the context-pruned yield event (no roleBreakdown / tool
  * contributor maps). Used when the API log is disabled.
  */
@@ -630,7 +630,7 @@ export function stripGPTCommentaryFromHistory(
 // ─── Main turn function ───────────────────────────────────────────────────────
 
 /**
- * P9: Merged single-pass replacement for the sequential
+ * Merged single-pass replacement for the sequential
  * `stripGPTCommentaryFromHistory` + `stripOpenAIItemIdsFromHistory` calls in
  * `runTurn`. Both transforms are OpenAI-only; combining them into one loop
  * halves the number of full-array allocations on OpenAI sessions.
@@ -875,7 +875,7 @@ export async function* runTurn(options: {
 			});
 		}
 
-		// P9: Single-pass merged transform (commentary + item-ID strip) instead of
+		// Single-pass merged transform (commentary + item-ID strip) instead of
 		// two sequential full-array passes; individual functions kept for tests.
 		const openAIStrippedMessages = stripOpenAIHistoryTransforms(
 			geminiSanitizedMessages,
@@ -888,7 +888,7 @@ export async function* runTurn(options: {
 			logApiEvent("openai history transforms applied", { modelString });
 		}
 
-		// P4: Only compute full diagnostics when the API log is active; otherwise
+		// Only compute full diagnostics when the API log is active; otherwise
 		// use a lightweight count+bytes helper that skips roleBreakdown/topContributors.
 		const apiLogOn = isApiLogEnabled();
 		const prePruneDiagnostics = apiLogOn

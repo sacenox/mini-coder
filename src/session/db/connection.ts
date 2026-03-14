@@ -170,7 +170,7 @@ export function pruneOldData(): void {
 
 	// Reclaim pages freed by deletions.
 	if (deletedSessions > 0 || deletedHistory > 0) {
-		// P10: Defer VACUUM off the synchronous startup path so the CLI prompt
+		// Defer VACUUM off the synchronous startup path so the CLI prompt
 		// renders before the (potentially slow) page-reclaim scan runs.
 		setImmediate(() => {
 			db.exec("VACUUM;");
