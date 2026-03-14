@@ -106,6 +106,14 @@ interface StreamToolChunk {
 	[key: string]: unknown;
 }
 
+interface StreamTextChunk {
+	type?: string;
+	id?: unknown;
+	providerMetadata?: unknown;
+	providerOptions?: unknown;
+	[key: string]: unknown;
+}
+
 const TOOL_START_CHUNK_TYPES = new Set(["tool-input-start", "tool-call"]);
 const TOOL_RESULT_CHUNK_TYPES = new Set(["tool-result", "tool-error"]);
 
@@ -119,6 +127,57 @@ function normalizeToolName(raw: unknown): string {
 	if (typeof raw !== "string") return "tool";
 	const trimmed = raw.trim();
 	return trimmed || "tool";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return value !== null && typeof value === "object";
+}
+
+function normalizeTextPartId(raw: unknown): string | null {
+	if (typeof raw !== "string") return null;
+	const trimmed = raw.trim();
+	return trimmed ? trimmed : null;
+}
+
+function getOpenAITextPhase(
+	chunk: StreamTextChunk,
+): "commentary" | "final_answer" | null {
+	const providerData = isRecord(chunk.providerMetadata)
+		? chunk.providerMetadata
+		: isRecord(chunk.providerOptions)
+			? chunk.providerOptions
+			: null;
+	if (!providerData) return null;
+	const openai = providerData.openai;
+	if (!isRecord(openai)) return null;
+	return openai.phase === "commentary" || openai.phase === "final_answer"
+		? openai.phase
+		: null;
+}
+
+class StreamTextPhaseTracker {
+	private phaseByTextPartId = new Map<string, "commentary" | "final_answer">();
+
+	shouldEmit(chunk: StreamTextChunk): boolean {
+		const textPartId = normalizeTextPartId(chunk.id);
+		switch (chunk.type) {
+			case "text-start": {
+				const phase = getOpenAITextPhase(chunk);
+				if (textPartId && phase) this.phaseByTextPartId.set(textPartId, phase);
+				return false;
+			}
+			case "text-end": {
+				if (textPartId) this.phaseByTextPartId.delete(textPartId);
+				return false;
+			}
+			case "text-delta": {
+				if (!textPartId) return true;
+				return this.phaseByTextPartId.get(textPartId) !== "commentary";
+			}
+			default:
+				return true;
+		}
+	}
 }
 
 class StreamToolCallTracker {
@@ -189,11 +248,14 @@ export async function* mapFullStreamToTurnEvents(
 	},
 ): AsyncGenerator<TurnEvent> {
 	const toolCallTracker = new StreamToolCallTracker();
+	const textPhaseTracker = new StreamTextPhaseTracker();
 	for await (const originalChunk of stream) {
 		const chunk = toolCallTracker.assign(originalChunk);
-		if (shouldLogStreamChunk(chunk)) {
+		const shouldEmitChunk = textPhaseTracker.shouldEmit(chunk);
+		if (shouldEmitChunk && shouldLogStreamChunk(chunk)) {
 			opts.onChunk?.(chunk);
 		}
+		if (!shouldEmitChunk) continue;
 		const event = mapStreamChunkToTurnEvent(chunk);
 		if (event) yield event;
 	}

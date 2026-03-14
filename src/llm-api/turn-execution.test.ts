@@ -89,4 +89,72 @@ describe("mapFullStreamToTurnEvents", () => {
 			toolName: "shell",
 		});
 	});
+
+	test("suppresses commentary text deltas for openai phased text parts", async () => {
+		const events = await collectEvents([
+			{
+				type: "text-start",
+				id: "msg-1",
+				providerMetadata: { openai: { itemId: "msg-1", phase: "commentary" } },
+			},
+			{ type: "text-delta", id: "msg-1", text: "to=functions.shell json{}" },
+			{
+				type: "text-end",
+				id: "msg-1",
+				providerMetadata: { openai: { itemId: "msg-1", phase: "commentary" } },
+			},
+			{
+				type: "tool-call",
+				toolCallId: "call-3",
+				toolName: "shell",
+				input: { command: "echo hi" },
+			},
+			{
+				type: "tool-result",
+				toolCallId: "call-3",
+				toolName: "shell",
+				output: "hi",
+			},
+			{
+				type: "text-start",
+				id: "msg-2",
+				providerMetadata: {
+					openai: { itemId: "msg-2", phase: "final_answer" },
+				},
+			},
+			{ type: "text-delta", id: "msg-2", text: "Done" },
+			{
+				type: "text-end",
+				id: "msg-2",
+				providerMetadata: {
+					openai: { itemId: "msg-2", phase: "final_answer" },
+				},
+			},
+		]);
+
+		expect(events).toEqual([
+			{
+				type: "tool-call-start",
+				toolCallId: "call-3",
+				toolName: "shell",
+				args: { command: "echo hi" },
+			},
+			{
+				type: "tool-result",
+				toolCallId: "call-3",
+				toolName: "shell",
+				result: "hi",
+				isError: false,
+			},
+			{ type: "text-delta", delta: "Done" },
+		]);
+	});
+
+	test("keeps unphased text deltas visible", async () => {
+		const events = await collectEvents([
+			{ type: "text-delta", id: "msg-plain", text: "visible" },
+		]);
+
+		expect(events).toEqual([{ type: "text-delta", delta: "visible" }]);
+	});
 });
