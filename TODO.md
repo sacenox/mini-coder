@@ -1,6 +1,6 @@
 # TODO
 
-- Remove markdown rendering from reasoning blocks. render raw in dimmed color. Remove the leading | character but keep the ident. Could we make it italic easily?
+- ~~Remove markdown rendering from reasoning blocks. render raw in dimmed color. Remove the leading | character but keep the ident. Could we make it italic easily?~~ ✓ Done — reasoning renders raw, dim+italic, 2-space indent; `inFence` reset at block boundaries.
 - Investigate db lock issues with spawning parallel subagents:
 
 ```

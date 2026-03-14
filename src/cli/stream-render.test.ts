@@ -331,7 +331,7 @@ describe("renderTurn", () => {
 
 		// The partial reasoning text is streamed raw and then overwritten on
 		// turn-end with the properly styled (dimmed) version.
-		expect(simulateTerminal(stdout)).toBe("· reasoning\n│ thinking\n");
+		expect(simulateTerminal(stdout)).toBe("· reasoning\n  thinking\n");
 		expect(hasAnsi(stdout, "[2m")).toBe(true);
 		expect(result.reasoningText).toBe("thinking");
 	});

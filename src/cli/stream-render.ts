@@ -75,9 +75,12 @@ export async function renderTurn(
 			reasoningBlankLineRun = 0;
 		}
 
+		if (inReasoning) {
+			return `  ${c.dim(c.italic(source))}`;
+		}
 		const rendered = renderLine(source, inFence);
 		inFence = rendered.inFence;
-		return inReasoning ? `${c.dim("│ ")}${rendered.output}` : rendered.output;
+		return rendered.output;
 	}
 
 	const emojiLikeRegex = /\p{Extended_Pictographic}/u;
@@ -253,6 +256,7 @@ export async function renderTurn(
 		writeln();
 		inText = false;
 		inReasoning = false;
+		inFence = false; // reasoning is never markdown; reset fence state at boundary
 		reasoningBlankLineRun = 0;
 		styledPrefix = "";
 		resetLineState();
@@ -363,11 +367,10 @@ export async function renderTurn(
 					spinner.stop();
 					writeln(`${G.info} ${c.dim("reasoning")}`);
 					inReasoning = true;
-					// streamPrefix is written by streamPartialLine before the first
-					// chars of each line to show the "│ " gutter in the raw preview.
-					// styledPrefix is empty because renderSingleLine already includes
-					// "│ " in its output for reasoning lines.
-					streamPrefix = c.dim("│ ");
+					inFence = false; // reasoning is never markdown; reset fence state at boundary
+					// streamPrefix provides the 2-space indent for the raw partial
+					// preview; renderSingleLine applies the same indent for completed lines.
+					streamPrefix = "  ";
 					styledPrefix = "";
 					streamPrefixWritten = false;
 				}
