@@ -49,6 +49,7 @@ export async function renderTurn(
 	let outputTokens = 0;
 	let contextTokens = 0;
 	let newMessages: CoreMessage[] = [];
+	const startedToolCalls = new Set<string>();
 
 	/**
 	 * Render a single raw line, updating shared fence/blank-run state.
@@ -224,6 +225,10 @@ export async function renderTurn(
 			}
 
 			case "tool-call-start": {
+				if (startedToolCalls.has(event.toolCallId)) {
+					break;
+				}
+				startedToolCalls.add(event.toolCallId);
 				flushAnyText();
 				spinner.stop();
 				renderToolCall(event.toolName, event.args);
@@ -233,6 +238,7 @@ export async function renderTurn(
 			}
 
 			case "tool-result": {
+				startedToolCalls.delete(event.toolCallId);
 				spinner.stop();
 				renderToolResult(event.toolName, event.result, event.isError);
 

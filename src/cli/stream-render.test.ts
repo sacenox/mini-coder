@@ -414,4 +414,37 @@ describe("renderTurn", () => {
 		const plain = strip(stdout);
 		expect(plain).toContain("· skill  deploy  ·  local  ·  Deploy app");
 	});
+
+	test("deduplicates repeated tool-call-start events for the same toolCallId", async () => {
+		captureStdout();
+
+		await renderTurn(
+			eventsFrom([
+				{
+					type: "tool-call-start",
+					toolName: "read",
+					args: { path: "a.ts" },
+					toolCallId: "tool-dup",
+				},
+				{
+					type: "tool-call-start",
+					toolName: "read",
+					args: { path: "a.ts" },
+					toolCallId: "tool-dup",
+				},
+				{
+					type: "tool-result",
+					toolName: "read",
+					toolCallId: "tool-dup",
+					isError: false,
+					result: "ok",
+				},
+				done(),
+			]),
+			new Spinner(),
+		);
+
+		const plain = strip(stdout);
+		expect(countOccurrences(plain, "← read")).toBe(1);
+	});
 });
