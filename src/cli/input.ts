@@ -15,6 +15,12 @@ import {
 	getSubagentControlAction,
 	getTurnControlAction,
 } from "./input-control.ts";
+import {
+	deleteWordBackward as deleteWordBackwardInBuffer,
+	insertAtCursor,
+	moveCursorWordLeft,
+	moveCursorWordRight,
+} from "./input-editing.ts";
 import { tryExtractImageFromPaste } from "./input-images.ts";
 import { terminal } from "./terminal-io.ts";
 
@@ -207,15 +213,15 @@ export async function readline(opts: { cwd?: string }): Promise<InputResult> {
 	}
 
 	function insertText(text: string): void {
-		buf = buf.slice(0, cursor) + text + buf.slice(cursor);
-		cursor += text.length;
+		const updated = insertAtCursor(buf, cursor, text);
+		buf = updated.buf;
+		cursor = updated.cursor;
 	}
 
 	function deleteWordBackward(): void {
-		const end = cursor;
-		while (cursor > 0 && buf[cursor - 1] === " ") cursor--;
-		while (cursor > 0 && buf[cursor - 1] !== " ") cursor--;
-		buf = buf.slice(0, cursor) + buf.slice(end);
+		const updated = deleteWordBackwardInBuffer(buf, cursor);
+		buf = updated.buf;
+		cursor = updated.cursor;
 		prunePasteTokens();
 		renderPrompt();
 	}
@@ -370,15 +376,13 @@ export async function readline(opts: { cwd?: string }): Promise<InputResult> {
 				}
 				// Alt+Left (word left): ESC b or ESC [1;3D
 				if (raw === `${ESC}b` || raw === `${ESC}[1;3D`) {
-					while (cursor > 0 && buf[cursor - 1] === " ") cursor--;
-					while (cursor > 0 && buf[cursor - 1] !== " ") cursor--;
+					cursor = moveCursorWordLeft(buf, cursor);
 					renderPrompt();
 					continue;
 				}
 				// Alt+Right (word right): ESC f or ESC [1;3C
 				if (raw === `${ESC}f` || raw === `${ESC}[1;3C`) {
-					while (cursor < buf.length && buf[cursor] === " ") cursor++;
-					while (cursor < buf.length && buf[cursor] !== " ") cursor++;
+					cursor = moveCursorWordRight(buf, cursor);
 					renderPrompt();
 					continue;
 				}
