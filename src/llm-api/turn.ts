@@ -2,17 +2,11 @@ import type { FlexibleSchema, StepResult } from "ai";
 import { dynamicTool, jsonSchema, stepCountIs, streamText } from "ai";
 import { isApiLogEnabled, logApiEvent } from "./api-log.ts";
 import {
-	isOpenAIGPT,
 	normalizeOpenAICompatibleToolCallInputs,
 	sanitizeGeminiToolMessagesWithMetadata,
 	stripOpenAIHistoryTransforms,
 } from "./history-transforms.ts";
-import {
-	getCacheFamily,
-	getCachingProviderOptions,
-	getThinkingProviderOptions,
-	type ThinkingEffort,
-} from "./provider-options.ts";
+import { getCacheFamily, type ThinkingEffort } from "./provider-options.ts";
 import {
 	annotateAnthropicCacheBreakpoints,
 	applyContextPruning,
@@ -22,6 +16,7 @@ import {
 	getMessageDiagnostics,
 	getMessageStats,
 } from "./turn-context.ts";
+import { buildTurnProviderOptions } from "./turn-provider-options.ts";
 
 export type { ContextPruningMode } from "./turn-context.ts";
 
@@ -45,24 +40,6 @@ type StreamTextResultFull = ReturnType<typeof streamText> & {
 const MAX_STEPS = 50;
 
 // ─── Local helpers ────────────────────────────────────────────────────────────
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return value !== null && typeof value === "object";
-}
-
-function mergeDeep(
-	target: Record<string, unknown>,
-	source: Record<string, unknown>,
-): Record<string, unknown> {
-	const output: Record<string, unknown> = { ...target };
-	for (const key in source) {
-		const sVal = source[key];
-		const tVal = target[key];
-		output[key] =
-			isRecord(sVal) && isRecord(tVal) ? { ...tVal, ...sVal } : sVal;
-	}
-	return output;
-}
 
 function isZodSchema(s: unknown): boolean {
 	return s !== null && typeof s === "object" && "_def" in (s as object);
@@ -252,17 +229,21 @@ export async function* runTurn(options: {
 
 	try {
 		const toolCount = Object.keys(toolSet).length;
-		const thinkingOpts = thinkingEffort
-			? getThinkingProviderOptions(modelString, thinkingEffort)
-			: null;
+		const providerOptionsResult = buildTurnProviderOptions({
+			modelString,
+			thinkingEffort,
+			promptCachingEnabled,
+			openaiPromptCacheRetention,
+			googleCachedContent,
+			toolCount,
+			hasSystemPrompt: Boolean(systemPrompt),
+		});
 
 		logApiEvent("turn start", {
 			modelString,
 			messageCount: messages.length,
 			reasoningSummaryRequested:
-				isRecord(thinkingOpts) &&
-				isRecord(thinkingOpts.openai) &&
-				typeof thinkingOpts.openai.reasoningSummary === "string",
+				providerOptionsResult.reasoningSummaryRequested,
 			pruningMode,
 			toolResultPayloadCapBytes,
 		});
@@ -293,39 +274,13 @@ export async function* runTurn(options: {
 			};
 		}
 
-		// Build provider options (thinking + cache)
-		const cacheFamily = getCacheFamily(modelString);
-		const cacheOpts = getCachingProviderOptions(modelString, {
-			enabled: promptCachingEnabled,
-			openaiRetention: openaiPromptCacheRetention,
-			googleCachedContent,
-			googleExplicitCachingCompatible: toolCount === 0 && !systemPrompt,
-		});
 		if (isApiLogEnabled()) {
 			logApiEvent("prompt caching configured", {
 				enabled: promptCachingEnabled,
-				cacheFamily,
-				cacheOpts,
+				cacheFamily: providerOptionsResult.cacheFamily,
+				cacheOpts: providerOptionsResult.cacheOpts,
 			});
 		}
-
-		const baseProviderOpts = {
-			...(thinkingOpts ?? {}),
-			// GPT models via responses API: opt out of storage, merge thinking opts
-			...(isOpenAIGPT(modelString)
-				? {
-						openai: {
-							store: false,
-							...(isRecord(thinkingOpts?.openai)
-								? (thinkingOpts.openai as object)
-								: {}),
-						},
-					}
-				: {}),
-		};
-		const mergedProviderOpts = cacheOpts
-			? mergeDeep(baseProviderOpts, cacheOpts)
-			: baseProviderOpts;
 
 		const result = streamText({
 			model,
@@ -357,8 +312,8 @@ export async function* runTurn(options: {
 				return undefined;
 			},
 			...(prepared.systemPrompt ? { system: prepared.systemPrompt } : {}),
-			...(Object.keys(mergedProviderOpts).length > 0
-				? { providerOptions: mergedProviderOpts }
+			...(Object.keys(providerOptionsResult.providerOptions).length > 0
+				? { providerOptions: providerOptionsResult.providerOptions }
 				: {}),
 			...(signal ? { abortSignal: signal } : {}),
 			timeout: { chunkMs: 120_000 },
