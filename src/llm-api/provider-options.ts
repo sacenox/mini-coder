@@ -1,0 +1,145 @@
+import { supportsThinking } from "./model-info.ts";
+import {
+	isAnthropicModelFamily,
+	isGeminiModelFamily,
+	isOpenAIReasoningModelFamily,
+	parseModelString,
+} from "./model-routing.ts";
+
+export type ThinkingEffort = "low" | "medium" | "high" | "xhigh";
+
+interface CachingOptions {
+	enabled: boolean;
+	openaiRetention?: "in_memory" | "24h";
+	googleCachedContent?: string | null;
+	googleExplicitCachingCompatible?: boolean;
+}
+
+type CacheFamily = "google" | "anthropic" | "none";
+
+const ANTHROPIC_BUDGET: Record<ThinkingEffort, number> = {
+	low: 4_096,
+	medium: 8_192,
+	high: 16_384,
+	xhigh: 32_768,
+};
+
+const GEMINI_BUDGET: Record<ThinkingEffort, number> = {
+	low: 4_096,
+	medium: 8_192,
+	high: 16_384,
+	xhigh: 24_575,
+};
+
+function clampEffort(
+	effort: ThinkingEffort,
+	max: ThinkingEffort,
+): ThinkingEffort {
+	const ORDER: ThinkingEffort[] = ["low", "medium", "high", "xhigh"];
+	const effortIdx = ORDER.indexOf(effort);
+	const maxIdx = ORDER.indexOf(max);
+	return ORDER[Math.min(effortIdx, maxIdx)] as ThinkingEffort;
+}
+
+function getAnthropicThinkingOptions(
+	modelId: string,
+	effort: ThinkingEffort,
+): Record<string, unknown> {
+	const isAdaptive =
+		/^claude-3-7/.test(modelId) ||
+		/^claude-sonnet-4/.test(modelId) ||
+		/^claude-opus-4/.test(modelId);
+	if (isAdaptive) {
+		const isOpus = /^claude-opus-4/.test(modelId);
+		const mapped = effort === "xhigh" ? (isOpus ? "max" : "high") : effort;
+		return { anthropic: { thinking: { type: "adaptive" }, effort: mapped } };
+	}
+
+	return {
+		anthropic: {
+			thinking: { type: "enabled", budgetTokens: ANTHROPIC_BUDGET[effort] },
+			betas: ["interleaved-thinking-2025-05-14"],
+		},
+	};
+}
+
+function getOpenAIThinkingOptions(
+	modelId: string,
+	effort: ThinkingEffort,
+): Record<string, unknown> {
+	const supportsXhigh = /^gpt-5\.[2-9]/.test(modelId) || /^o4/.test(modelId);
+	const clamped = supportsXhigh ? effort : clampEffort(effort, "high");
+	return { openai: { reasoningEffort: clamped, reasoningSummary: "auto" } };
+}
+
+function getGeminiThinkingOptions(
+	modelId: string,
+	effort: ThinkingEffort,
+): Record<string, unknown> {
+	if (/^gemini-3/.test(modelId)) {
+		return {
+			google: {
+				thinkingConfig: {
+					includeThoughts: true,
+					thinkingLevel: clampEffort(effort, "high"),
+				},
+			},
+		};
+	}
+
+	return {
+		google: {
+			thinkingConfig: {
+				includeThoughts: true,
+				thinkingBudget: GEMINI_BUDGET[effort],
+			},
+		},
+	};
+}
+
+export function getThinkingProviderOptions(
+	modelString: string,
+	effort: ThinkingEffort,
+): Record<string, unknown> | null {
+	if (!supportsThinking(modelString)) return null;
+
+	const { modelId } = parseModelString(modelString);
+
+	if (isAnthropicModelFamily(modelString)) {
+		return getAnthropicThinkingOptions(modelId, effort);
+	}
+
+	if (isOpenAIReasoningModelFamily(modelString)) {
+		return getOpenAIThinkingOptions(modelId, effort);
+	}
+
+	if (isGeminiModelFamily(modelString)) {
+		return getGeminiThinkingOptions(modelId, effort);
+	}
+
+	return null;
+}
+
+export function getCacheFamily(modelString: string): CacheFamily {
+	if (isAnthropicModelFamily(modelString)) return "anthropic";
+	if (isGeminiModelFamily(modelString)) return "google";
+	return "none";
+}
+
+export function getCachingProviderOptions(
+	modelString: string,
+	opts: CachingOptions,
+): Record<string, unknown> | null {
+	if (!opts.enabled) return null;
+
+	const family = getCacheFamily(modelString);
+	if (
+		family === "google" &&
+		opts.googleCachedContent &&
+		opts.googleExplicitCachingCompatible !== false
+	) {
+		return { google: { cachedContent: opts.googleCachedContent } };
+	}
+
+	return null;
+}

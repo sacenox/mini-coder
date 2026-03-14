@@ -16,7 +16,7 @@ import {
 	getCachingProviderOptions,
 	getThinkingProviderOptions,
 	type ThinkingEffort,
-} from "./providers.ts";
+} from "./provider-options.ts";
 import {
 	annotateAnthropicCacheBreakpoints,
 	applyContextPruning,

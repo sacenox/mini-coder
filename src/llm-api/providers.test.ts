@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import { getThinkingProviderOptions } from "./providers.ts";
+import {
+	getCacheFamily,
+	getCachingProviderOptions,
+	getThinkingProviderOptions,
+} from "./provider-options.ts";
 
 describe("getThinkingProviderOptions", () => {
 	test("requests OpenAI reasoning summary for GPT reasoning models", () => {
@@ -38,8 +42,6 @@ describe("getThinkingProviderOptions", () => {
 		});
 	});
 });
-
-import { getCacheFamily, getCachingProviderOptions } from "./providers.ts";
 
 describe("getCacheFamily", () => {
 	test("identifies anthropic family", () => {

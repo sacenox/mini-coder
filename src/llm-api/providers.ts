@@ -8,16 +8,11 @@ import { logApiEvent } from "./api-log.ts";
 import {
 	type AvailableModelsSnapshot,
 	fetchAvailableModelsSnapshot,
-	getContextWindow as getContextWindowFromCache,
-	supportsThinking as supportsThinkingFromCache,
 } from "./model-info.ts";
-import {
-	getZenBackend,
-	isAnthropicModelFamily,
-	isGeminiModelFamily,
-	isOpenAIReasoningModelFamily,
-	parseModelString,
-} from "./model-routing.ts";
+import { getZenBackend } from "./model-routing.ts";
+
+export { getContextWindow } from "./model-info.ts";
+export { type ThinkingEffort } from "./provider-options.ts";
 
 // ─── Zen endpoint constants ────────────────────────────────────────────────────
 
@@ -168,154 +163,7 @@ function directGoogle() {
 	return _directGoogle;
 }
 
-// ─── Model string parsing ─────────────────────────────────────────────────────
 
-export type ThinkingEffort = "low" | "medium" | "high" | "xhigh";
-
-function supportsThinking(modelString: string): boolean {
-	return supportsThinkingFromCache(modelString);
-}
-
-// Token budgets for Anthropic extended thinking (budget_tokens mode).
-// Adaptive-mode models (claude-sonnet-4-6+, claude-opus-4+) use effort
-// strings instead; detected by model ID below.
-const ANTHROPIC_BUDGET: Record<ThinkingEffort, number> = {
-	low: 4_096,
-	medium: 8_192,
-	high: 16_384,
-	xhigh: 32_768,
-};
-
-// Clamp xhigh → high for providers that don't support it.
-function clampEffort(
-	effort: ThinkingEffort,
-	max: ThinkingEffort,
-): ThinkingEffort {
-	const ORDER: ThinkingEffort[] = ["low", "medium", "high", "xhigh"];
-	const i = ORDER.indexOf(effort);
-	const m = ORDER.indexOf(max);
-	return ORDER[Math.min(i, m)] as ThinkingEffort;
-}
-
-export function getThinkingProviderOptions(
-	modelString: string,
-	effort: ThinkingEffort,
-): Record<string, unknown> | null {
-	if (!supportsThinking(modelString)) return null;
-
-	const { modelId } = parseModelString(modelString);
-
-	// Anthropic (direct or via Zen routing through @ai-sdk/anthropic)
-	if (isAnthropicModelFamily(modelString)) {
-		// Claude 3.7+, Sonnet 4.x, Opus 4.x support adaptive effort strings.
-		const isAdaptive =
-			/^claude-3-7/.test(modelId) ||
-			/^claude-sonnet-4/.test(modelId) ||
-			/^claude-opus-4/.test(modelId);
-		if (isAdaptive) {
-			// Adaptive: effort string ("low"|"medium"|"high"|"max")
-			// xhigh maps to "max" for Opus; clamp to "high" for others.
-			const isOpus = /^claude-opus-4/.test(modelId);
-			const mapped = effort === "xhigh" ? (isOpus ? "max" : "high") : effort;
-			return { anthropic: { thinking: { type: "adaptive" }, effort: mapped } };
-		}
-
-		// Extended thinking: budget_tokens integer
-		const budget = ANTHROPIC_BUDGET[effort];
-		return {
-			anthropic: {
-				thinking: { type: "enabled", budgetTokens: budget },
-				betas: ["interleaved-thinking-2025-05-14"],
-			},
-		};
-	}
-
-	// OpenAI o-series and GPT-5 (direct or via Zen routing through @ai-sdk/openai)
-	if (isOpenAIReasoningModelFamily(modelString)) {
-		// xhigh only valid on gpt-5.2+, o4+; clamp for others.
-		const supportsXhigh = /^gpt-5\.[2-9]/.test(modelId) || /^o4/.test(modelId);
-		const clamped = supportsXhigh ? effort : clampEffort(effort, "high");
-		return { openai: { reasoningEffort: clamped, reasoningSummary: "auto" } };
-	}
-
-	// Google Gemini (direct or via Zen routing through @ai-sdk/google)
-	if (isGeminiModelFamily(modelString)) {
-		// Gemini 3.x: thinkingLevel enum. 2.5.x: budgetTokens.
-		if (/^gemini-3/.test(modelId)) {
-			// No xhigh for Gemini 3.
-			const level = clampEffort(effort, "high");
-			return {
-				google: {
-					thinkingConfig: {
-						includeThoughts: true,
-						thinkingLevel: level,
-					},
-				},
-			};
-		}
-		// Gemini 2.5: budget tokens. Capped at 24575 per API limit.
-		const GEMINI_BUDGET: Record<ThinkingEffort, number> = {
-			low: 4_096,
-			medium: 8_192,
-			high: 16_384,
-			xhigh: 24_575,
-		};
-		return {
-			google: {
-				thinkingConfig: {
-					includeThoughts: true,
-					thinkingBudget: GEMINI_BUDGET[effort],
-				},
-			},
-		};
-	}
-
-	// Unrecognised provider with a reasoning model (e.g. future providers) —
-	// return null and let the call proceed without thinking options.
-	return null;
-}
-interface CachingOptions {
-	enabled: boolean;
-	openaiRetention?: "in_memory" | "24h";
-	googleCachedContent?: string | null;
-	googleExplicitCachingCompatible?: boolean;
-}
-
-type CacheFamily = "google" | "anthropic" | "none";
-
-export function getCacheFamily(modelString: string): CacheFamily {
-	if (isAnthropicModelFamily(modelString)) return "anthropic";
-	if (isGeminiModelFamily(modelString)) return "google";
-	return "none";
-}
-
-export function getCachingProviderOptions(
-	modelString: string,
-	opts: CachingOptions,
-): Record<string, unknown> | null {
-	if (!opts.enabled) return null;
-
-	const family = getCacheFamily(modelString);
-
-	if (
-		family === "google" &&
-		opts.googleCachedContent &&
-		opts.googleExplicitCachingCompatible !== false
-	) {
-		return { google: { cachedContent: opts.googleCachedContent } };
-	}
-
-	return null;
-}
-
-/**
- * Return the known context window size (in tokens) for a model string.
- * Accepts either a bare model ID or a "provider/model-id" string.
- * Returns null when the model is unknown.
- */
-export function getContextWindow(modelString: string): number | null {
-	return getContextWindowFromCache(modelString);
-}
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
