@@ -1085,6 +1085,11 @@ export async function* runTurn(options: {
 				? { providerOptions: mergedProviderOptions }
 				: {}),
 			...(signal ? { abortSignal: signal } : {}),
+			// Guard against proxy idle-timeout killing long-running streams (e.g. when
+			// a model spends >60 s generating a large tool-call argument before the
+			// first chunk arrives). 120 s gives plenty of headroom for slow models
+			// while still surfacing a clean error instead of a silent ECONNRESET.
+			timeout: { chunkMs: 120_000 },
 		};
 
 		const result = streamText(streamOpts) as StreamTextResultFull;
