@@ -82,7 +82,7 @@ export class StreamRenderContent {
 		}
 
 		if (this.inReasoning) {
-			return `  ${c.dim(c.italic(source))}`;
+			return `  ${c.dim(source)}`;
 		}
 		const rendered = renderLine(source, this.inFence);
 		this.inFence = rendered.inFence;
@@ -126,7 +126,7 @@ export class StreamRenderContent {
 		if (!text) return;
 		if (this.inReasoning) {
 			const prefix = this.streamedChars === 0 ? "  " : "";
-			write(`${prefix}${c.dim(c.italic(text))}`);
+			write(`${prefix}${c.dim(text)}`);
 			return;
 		}
 		write(text);

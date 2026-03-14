@@ -45,7 +45,7 @@ export function setPreferredThinkingEffort(
 
 export function getPreferredShowReasoning(): boolean {
 	const v = getSetting("preferred_show_reasoning");
-	if (v === null) return true;
+	if (v === null) return false;
 	return v !== "false";
 }
 
