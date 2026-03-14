@@ -1,6 +1,6 @@
-import { describe, expect, mock, test } from "bun:test";
-import { buildStreamTextRequest } from "./turn-request.ts";
+import { describe, expect, test } from "bun:test";
 import type { CoreMessage } from "./turn.ts";
+import { buildStreamTextRequest } from "./turn-request.ts";
 
 describe("buildStreamTextRequest", () => {
 	test("overrides the AI SDK default onError logger", () => {
@@ -22,15 +22,6 @@ describe("buildStreamTextRequest", () => {
 			maxSteps: 50,
 		});
 
-		const originalConsoleError = console.error;
-		const consoleError = mock(() => {});
-		console.error = consoleError;
-		try {
-			request.onError?.({ error: new Error("boom") });
-		} finally {
-			console.error = originalConsoleError;
-		}
-
-		expect(consoleError).not.toHaveBeenCalled();
+		expect(request.onError?.({ error: new Error("boom") })).toBeUndefined();
 	});
 });

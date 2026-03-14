@@ -1,31 +1,29 @@
 import { describe, expect, it, mock } from "bun:test";
 import { shellTool } from "./shell.ts";
 
+function collectOutput(mockFn: ReturnType<typeof mock>): string {
+	return mockFn.mock.calls.map((call) => String(call[0] ?? "")).join("");
+}
+
+async function expectStreamedOutput(command: string, expectedOutput: string) {
+	const onOutput = mock(() => {});
+	const result = await shellTool.execute({
+		command,
+		timeout: 30_000,
+		onOutput,
+	});
+
+	expect(result.stdout).toBe(expectedOutput.trimEnd());
+	expect(collectOutput(onOutput)).toBe(expectedOutput);
+}
+
 describe("shellTool", () => {
 	it("appends a newline to streamed output when the command does not print one", async () => {
-		const onOutput = mock(() => {});
-
-		const result = await shellTool.execute({
-			command: "printf ok",
-			timeout: 30_000,
-			onOutput,
-		});
-
-		expect(result.stdout).toBe("ok");
-		expect(onOutput.mock.calls.map(([chunk]) => chunk).join("")).toBe("ok\n");
+		await expectStreamedOutput("printf ok", "ok\n");
 	});
 
 	it("does not duplicate a trailing newline in streamed output", async () => {
-		const onOutput = mock(() => {});
-
-		const result = await shellTool.execute({
-			command: "printf 'ok\\n'",
-			timeout: 30_000,
-			onOutput,
-		});
-
-		expect(result.stdout).toBe("ok");
-		expect(onOutput.mock.calls.map(([chunk]) => chunk).join("")).toBe("ok\n");
+		await expectStreamedOutput("printf 'ok\\n'", "ok\n");
 	});
 });
 
