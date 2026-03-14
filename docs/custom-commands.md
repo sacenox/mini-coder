@@ -125,8 +125,7 @@ Large models for deep analysis, small models for search and lookup.
 
 ## Precedence
 
-Custom commands shadow built-ins. If you create `.agents/commands/plan.md`
-it will replace the built-in `/plan` for that project. The global `/review`
+Custom commands shadow built-ins. The global `/review`
 command (auto-created at `~/.agents/commands/review.md` on first run) works
 the same way — a local `.agents/commands/review.md` will override it.
 

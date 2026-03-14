@@ -39,8 +39,6 @@ Then in the REPL:
 review the auth module for race conditions
 ```
 
-You can also mention `@reviewer` in a prompt as a naming convention, and agent names participate in `@` tab completion alongside skills and files.
-
 ## Frontmatter fields
 
 | Field | Required | Description |
@@ -59,10 +57,6 @@ File references are resolved before the prompt is sent:
 /agent reviewer
 @src/auth/session.ts check this file for issues
 ```
-
-## Tab completion
-
-Type `@` and press `Tab` to autocomplete agent names alongside skills and files.
 
 ## Listing agents
 

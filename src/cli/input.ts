@@ -1,7 +1,6 @@
 import { join, relative } from "node:path";
 import * as c from "yoctocolors";
 import { addPromptHistory, getPromptHistory } from "../session/db/index.ts";
-import { loadAgents } from "./agents.ts";
 import {
 	type ImageAttachment,
 	isImageFilename,
@@ -68,13 +67,6 @@ async function getAtCompletions(
 	// Skills: @<skill-name>
 	const skills = loadSkillsIndex(cwd);
 	for (const [name] of skills) {
-		if (results.length >= MAX) break;
-		if (name.includes(query)) results.push(`@${name}`);
-	}
-
-	// Agents: @<agent-name>
-	const agents = loadAgents(cwd);
-	for (const [name] of agents) {
 		if (results.length >= MAX) break;
 		if (name.includes(query)) results.push(`@${name}`);
 	}

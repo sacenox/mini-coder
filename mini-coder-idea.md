@@ -25,7 +25,7 @@ conventions and not introduce more specs. (`.agents` / `AGENTS.md`, while also s
 
 - Auto discovery of providers via ENV (Example: OPENCODE_API_KEY), or local servers (Example: ollama)
 - Session management and command to create new/resume/list with local sqlite file.
-- Multi-line prompt, shift enter adds a newline. Enter sends. Rich line editing/history/image paste
+- Rich line editing/history/image paste
 - Seamless shell integration with `!` in prompt input.
 - Reference files and skills from the working directory and global configs with `@` in prompt input, plus autocomplete for files, skills, to include in the prompt.
 - Press `ESC` at any point during an assistant response to interrupt it: the partial response is preserved in history with an interrupt stub appended (so the LLM retains context), and the user is returned to the prompt silently. `ctrl+c` exits forcefully. `ctrl+d` (EOF) gracefully exits.
@@ -38,15 +38,15 @@ conventions and not introduce more specs. (`.agents` / `AGENTS.md`, while also s
 - `subagent` tool spawns a fresh `mc` subprocess in one shot mode.
 - tool hooks support for supported built-in tools
 - Commands in CLI prompt:
-  - `/model` command allows the user to pick a model from connected providers. As well as thinking effort for the model if supported. Selection persists accross sessions.
+  - `/model` (alias `/models`) command allows the user to pick a model from connected providers. As well as thinking effort for the model if supported. Selection persists accross sessions.
   - `/undo` removes the last turn from conversation history.
   - `/reasoning` toggles display of model reasoning output.
   - `/context` configures context pruning and tool-result caps.
+  - `/cache` toggles prompt caching globally; sub-commands configure provider-specific caching (`/cache openai <in_memory|24h>`, `/cache gemini <off|cachedContents/...>`).
   - `/review` reviews recent changes via a global command installed at app start (`~/.agents/commands/review.md`), and can be customized or shadowed locally.
   - `/agent` sets or clears the active primary agent.
   - `/mcp` list/add/remove mcp servers. servers are stored in sqlite
   - `/new` starts a new session with clean context. Clean UI and fresh session display
-  - `/_debug` hidden command that snapshots recent logs/db and creates a report in the cwd. For dev mostly but available to all. Do not list it anywhere, only documented here and in the code itself.
 - Connect to MCP servers over Streamable HTTP / SSE fallback or stdio.
 - Image support in prompt input, including pasted image data URLs and pasted image file paths.
 - Excellent auto complete for all commands, subtituitions. The user should also be able to reference files with autocomplete wihtout including them into the prompt like `@` does with TAB
@@ -68,7 +68,7 @@ conventions and not introduce more specs. (`.agents` / `AGENTS.md`, while also s
 - All things Bun.js, runtime, package manager. https://bun.com/docs
 - Multiprovider support via https://ai-sdk.dev/docs/introduction
 - Colored output with https://github.com/sindresorhus/yoctocolors limitted but fast!
-- Markdow rendering support **without sacrificing speed and performance**
+- Markdown syntax rendering support **without sacrificing speed and performance**
 
 ## Repo structure
 
@@ -78,7 +78,7 @@ No mocked/offline-servers type of tests. Focused tests on _our_ logic. Do not te
 Core modules:
 
 - `llm-api`: Provides the api to intereact with the provider and process the full conversation turn + tool calling.
-- `cli`: Output/UI
+- `cli`: Output/UI, with logical separated subfolder: user input/output and ui/etc..
 - `agent`: Main agent implementation
 - `tools`: local filesystem, shell, subagent, and web/search helpers
 - `session`: sqlite-backed sessions, settings, model info, and MCP server storage
