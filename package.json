@@ -12,7 +12,7 @@
 		"dev": "bun run src/index.ts",
 		"typecheck": "tsc --noEmit",
 		"lint": "biome check src",
-		"format": "biome format --write src",
+		"format": "biome check --write src",
 		"knip": "knip",
 		"test": "bun test --only-failures",
 		"test:verbose": "bun test",
