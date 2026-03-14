@@ -1,6 +1,4 @@
 # TODO
-
-- CTRL+d hangs instead of exiting cleanly.
 - Strange output mid session:
 
 ```
