@@ -14,6 +14,7 @@ async function expectStreamedOutput(command: string, expectedOutput: string) {
 	});
 
 	expect(result.stdout).toBe(expectedOutput.trimEnd());
+	expect(result.streamedOutput).toBe(true);
 	expect(collectOutput(onOutput)).toBe(expectedOutput);
 }
 
@@ -24,6 +25,16 @@ describe("shellTool", () => {
 
 	it("does not duplicate a trailing newline in streamed output", async () => {
 		await expectStreamedOutput("printf 'ok\\n'", "ok\n");
+	});
+
+	it("marks output as not streamed when no onOutput handler is provided", async () => {
+		const result = await shellTool.execute({
+			command: "printf ok",
+			timeout: 30_000,
+		});
+
+		expect(result.stdout).toBe("ok");
+		expect(result.streamedOutput).toBe(false);
 	});
 });
 

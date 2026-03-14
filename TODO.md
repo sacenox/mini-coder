@@ -1,8 +1,10 @@
 # TODO
 
+- Models in general struggle with our read/write tools, use the db to investigate their behaviour with out tools and let's refactor them with the goal of reducintg errors.
 - Strange output mid session:
 
 A fix was made to suppress commentary from gpt to avoid this, but now there is no reasoning output from gpt mdels.
+Update: reasoning is now all dumped at turn end.
 
 The issue is not fixed, it's just suppressed.
 This seems like an issue on how we are parsing stream events, and not recognzing tool calls from other events.
@@ -13,6 +15,14 @@ Relevant reasoning output:
 I keep running into issues with tool syntax, and it feels like it's because of the interface. I really need to use the correct commentary to call functions.shell. It's important to stick to the standard format to get it right. I wonder if I should double-check the documentation or examples to be sure I’m following things correctly. Just trying to make sure I figure this out! There's probably something simple I'm overlooking.It seems my interface isn’t accepting the call because I’m in analysis mode. I need to ensure I’m using the assistant message with the tool call instead. I should remember to use the correct wrapper like I did previously. It feels a bit tricky, but I’ll get it right this time! Let’s make sure everything is in place so it works smoothly moving forward.Hmm, it feels like I'm having issues emitting a tool call. It's puzzling! I remember previous successful calls used that specific syntax with JSON in the content, and I wonder if an accidental unicode might be causing the issue. I think it’s worth trying to stick to that normal syntax I used earlier. Let’s see if that works! My goal is to get this resolved so I can assist effectively.**Trying to resolve issues**
 
   I’m thinking maybe my last few attempts didn’t work because I didn’t include the recipient name. But I believe the functions should work with the shell style I used earlier. I’ll make sure to try using the multi_tool method again with the exact syntax I had. I'm curious if that’ll make a difference in the process. Let’s see how it goes!
+```
+
+```
+  I'm considering whether to replace lines 90-94 with a single blank. I think using `newContent=""` might be supported here, so let’s try it out with just `""` and see if it works. It's a simple enough change, but I want to make sure this approach will actually accomplish what I need without causing unintended issues. Let’s see how this plays out!to=functions.replace  玩彩神争霸ությունը  ฝ่ายขายละครើ្យិបង្គ{"path":"src/cli/tool-render.test.ts","startAnchor":"90:c5","endAnchor":"94:03","newContent":"","cwd":"/home/xonecas/src/mini-coder"}Hmm, it looks like my tool call was malformed due to some weird characters. That's kind of frustrating! I need to retry that call but make sure I format it correctly this time. It's probably just a matter of checking my inputs and ensuring everything’s in order. I’ll give it another go and see if I can sort this out! Fingers crossed for a smoother process!to=functions.replace  全民彩票天天ിയացում 开号链接նայած{"path":"src/cli/tool-render.test.ts","startAnchor":"90:c5","endAnchor":"94:03","newContent":"","cwd":"/home/xonecas/src/mini-coder"}to=functions.replace าคาร่json  天天中彩票中েছে{"path":"src/cli/tool-render.test.ts","startAnchor":"90:c5","endAnchor":"94:03","newContent":"","cwd":"/home/xonecas/src/mini-coder"}to=functions.replace  天天中彩票篮球json  ฝ่ายขายละคร  大发快三彩票{"path":"src/cli/tool-render.test.ts","startAnchor":"90:c5","endAnchor":"94:03","newContent":"","cwd":"/home/xonecas/src/mini-coder"}**Considering tool usage**
+
+  I’m noticing that something seems off with the current approach. It could be related to how data is being handled. I wonder if I should consider using a multi-tool approach, but I think maybe it’s unnecessary. Instead, it seems best to just carefully type out the exact information needed to avoid any weird issues that could arise. I want to get this right for the user!to=functions.replace  体育彩票天天json  彩神争霸大发快三{"path":"src/cli/tool-render.test.ts","startAnchor":"90:c5","endAnchor":"94:03","newContent":"","cwd":"/home/xonecas/src/mini-coder"}**Considering file editing methods**
+
+  I'm wondering if I've hit a weird issue with the system from copying. I might switch to using the shell to write the file, even though the guidelines prefer a dedicated method. Using the shell with `cat` could work since the file is now small. I remember that I should always read a file before editing it. Maybe I’ll use `cat <<'EOF' > src/cli/tool-render.test.ts` for a clean overwrite. I'll need to be careful with this approach!A dedicated edit tool is being finicky on this one tail cleanup, so I’m overwriting just this already-read test file cleanly via shell and then validating.to=functions.shell  天天中彩票软件inspector  qq天天中彩票 เติมเงินไทยฟรี  大发快三开奖 彩娱乐彩票  彩神争霸下载 玩彩神争霸 ดลองใช้ฟรีjson
 ```
 
 Corruption example, there are several sessions in our database where this happened with gpt models

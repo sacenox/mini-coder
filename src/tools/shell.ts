@@ -29,6 +29,7 @@ export interface ShellOutput {
 	exitCode: number;
 	success: boolean;
 	timedOut: boolean;
+	streamedOutput: boolean;
 }
 
 const MAX_OUTPUT_BYTES = 10_000; // 10KB per stream
@@ -121,19 +122,21 @@ export const shellTool: ToolDef<ShellInput, ShellOutput> = {
 		let stdout = "";
 		let stderr = "";
 		let exitCode = 1;
+		const onOutput = input.onOutput;
+		const hasOutputHandler = typeof onOutput === "function";
 		let streamedAnyOutput = false;
 		let streamedEndsWithNewline = true;
 		const emitOutput = (chunk: string): void => {
-			if (!chunk) return;
+			if (!chunk || !hasOutputHandler) return;
 			streamedAnyOutput = true;
 			streamedEndsWithNewline = /[\r\n]$/.test(chunk);
-			input.onOutput?.(chunk);
+			onOutput(chunk);
 		};
 
 		try {
 			[stdout, stderr] = await Promise.all([
-				collectStream(proc.stdout, emitOutput),
-				collectStream(proc.stderr, emitOutput),
+				collectStream(proc.stdout, hasOutputHandler ? emitOutput : undefined),
+				collectStream(proc.stderr, hasOutputHandler ? emitOutput : undefined),
 			]);
 			if (streamedAnyOutput && !streamedEndsWithNewline) {
 				emitOutput("\n");
@@ -160,6 +163,7 @@ export const shellTool: ToolDef<ShellInput, ShellOutput> = {
 			exitCode,
 			success: exitCode === 0,
 			timedOut,
+			streamedOutput: streamedAnyOutput,
 		};
 	},
 };

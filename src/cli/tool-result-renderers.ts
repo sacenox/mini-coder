@@ -109,6 +109,7 @@ function renderShellResult(result: unknown): boolean {
 		exitCode: number;
 		success: boolean;
 		timedOut: boolean;
+		streamedOutput?: boolean;
 	};
 	if (!r || typeof r.stdout !== "string" || typeof r.stderr !== "string") {
 		return false;
@@ -146,10 +147,16 @@ function renderShellResult(result: unknown): boolean {
 	) {
 		parts.push(`out: ${truncateOneLine(stdoutSingleLine)}`);
 	}
+	if (r.streamedOutput) {
+		parts.push("streamed");
+	}
 
 	writeln(`    ${badge} ${c.dim(parts.join(" · "))}`);
 
 	if (r.success && !r.timedOut) {
+		return true;
+	}
+	if (r.streamedOutput) {
 		return true;
 	}
 

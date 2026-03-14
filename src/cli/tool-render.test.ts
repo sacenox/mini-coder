@@ -1,5 +1,25 @@
-import { describe, expect, test } from "bun:test";
-import { buildToolCallLine } from "./tool-render.ts";
+import { afterEach, describe, expect, test } from "bun:test";
+import { terminal } from "./terminal-io.ts";
+import { buildToolCallLine, renderToolResult } from "./tool-render.ts";
+
+let stdout = "";
+const originalStdoutWrite = terminal.stdoutWrite.bind(terminal);
+
+afterEach(() => {
+	stdout = "";
+	terminal.stdoutWrite = originalStdoutWrite;
+});
+
+function captureStdout(): void {
+	terminal.stdoutWrite = (text: string) => {
+		stdout += text;
+	};
+}
+
+function stripAnsi(text: string): string {
+	const esc = String.fromCharCode(0x1b);
+	return text.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "");
+}
 
 describe("buildToolCallLine", () => {
 	test("formats shell calls with truncated command previews", () => {
@@ -41,5 +61,29 @@ describe("buildToolCallLine", () => {
 		const line = buildToolCallLine("read", {});
 		expect(line).toContain("read");
 		expect(line).not.toContain("undefined");
+	});
+});
+
+describe("renderToolResult", () => {
+	test("does not duplicate streamed shell output previews", () => {
+		captureStdout();
+
+		renderToolResult(
+			"shell",
+			{
+				stdout: "",
+				stderr: "boom",
+				exitCode: 1,
+				success: false,
+				timedOut: false,
+				streamedOutput: true,
+			},
+			false,
+		);
+
+		const plain = stripAnsi(stdout);
+		expect(plain).toContain("error exit 1 · stdout 0L · stderr 1L · streamed");
+		expect(plain).not.toContain("stderr (1 lines)");
+		expect(plain).not.toContain("│ boom");
 	});
 });
