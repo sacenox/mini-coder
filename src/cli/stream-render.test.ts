@@ -159,6 +159,18 @@ describe("renderTurn", () => {
 		});
 	});
 
+	test("keeps plain streamed partial without clear/rewrite on turn end", async () => {
+		captureStdout();
+
+		await renderTurn(
+			eventsFrom([{ type: "text-delta", delta: "plain text" }, done()]),
+			new Spinner(),
+		);
+
+		expect(stdout.includes("\r\x1b[2K")).toBe(false);
+		expect(simulateTerminal(stdout)).toBe("◆ plain text\n");
+	});
+
 	test("preserves reply glyph on partial-line overwrite after a complete line in same delta", async () => {
 		captureStdout();
 
@@ -173,7 +185,7 @@ describe("renderTurn", () => {
 		expect(simulateTerminal(stdout)).toBe("◆ hello\nworld\n");
 	});
 
-	test("clears wrapped streamed partials before rendering final line", async () => {
+	test("clears wrapped streamed partials when trailing content arrives in a later chunk", async () => {
 		captureStdout();
 		await withTerminalColumns(20, async () => {
 			await renderTurn(
@@ -198,7 +210,7 @@ describe("renderTurn", () => {
 		).toBe(1);
 	});
 
-	test("counts initial reply prefix when clearing near wrap boundary", async () => {
+	test("keeps wrapped partial prefix accounting without extra clear operations", async () => {
 		captureStdout();
 		await withTerminalColumns(20, async () => {
 			await renderTurn(
@@ -211,8 +223,8 @@ describe("renderTurn", () => {
 			);
 		});
 
-		expect(stdout.includes("\r\x1b[2K\x1b[1A\r\x1b[2K")).toBe(true);
-		expect(countOccurrences(stdout, "\x1b[1A\r\x1b[2K")).toBe(1);
+		expect(stdout.includes("\r\x1b[2K\x1b[1A\r\x1b[2K")).toBe(false);
+		expect(countOccurrences(stdout, "\x1b[1A\r\x1b[2K")).toBe(0);
 		expect(simulateTerminal(stdout)).toContain("◆ 1234567890123456789\n");
 	});
 
@@ -233,7 +245,7 @@ describe("renderTurn", () => {
 		expect(simulateTerminal(stdout)).toContain("◆ 👩🏽‍💻abc\n");
 	});
 
-	test("clears extra wrapped row for wide CJK characters", async () => {
+	test("does not clear wrapped rows for wide CJK characters when styling is unchanged", async () => {
 		captureStdout();
 		await withTerminalColumns(10, async () => {
 			await renderTurn(
@@ -246,7 +258,7 @@ describe("renderTurn", () => {
 			);
 		});
 
-		expect(countOccurrences(stdout, "\x1b[1A\r\x1b[2K")).toBe(1);
+		expect(countOccurrences(stdout, "\x1b[1A\r\x1b[2K")).toBe(0);
 		expect(simulateTerminal(stdout)).toContain("◆ 你好你好a\n");
 	});
 

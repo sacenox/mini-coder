@@ -79,15 +79,18 @@ export class StreamRenderContent {
 
 		if (this.rawBuffer) {
 			this.spinner.stop();
-			const out = this.renderSingleLine(this.rawBuffer);
+			const raw = this.rawBuffer;
+			const out = this.renderSingleLine(raw);
 			this.rawBuffer = "";
 			if (this.partialPreview.partialWritten > 0) {
-				const clearSeq = buildClearPartialPreview(
-					this.partialPreview,
-					terminal.stdoutColumns,
-				);
-				if (out !== null) write(`${clearSeq}${this.styledPrefix}${out}`);
-				else write(clearSeq);
+				if (!this.canKeepStreamedPartial(raw, out)) {
+					const clearSeq = buildClearPartialPreview(
+						this.partialPreview,
+						terminal.stdoutColumns,
+					);
+					if (out !== null) write(`${clearSeq}${this.styledPrefix}${out}`);
+					else write(clearSeq);
+				}
 			} else if (out !== null) {
 				write(out);
 			}
@@ -99,6 +102,14 @@ export class StreamRenderContent {
 		this.reasoningBlankLineRun = 0;
 		this.styledPrefix = "";
 		this.resetLineState();
+	}
+
+	private canKeepStreamedPartial(raw: string, out: string | null): boolean {
+		return (
+			this.inText &&
+			out === raw &&
+			this.partialPreview.partialWritten === raw.length
+		);
 	}
 
 	private renderSingleLine(raw: string): string | null {
@@ -138,13 +149,19 @@ export class StreamRenderContent {
 
 			const out = this.renderSingleLine(raw);
 			if (firstLine && this.partialPreview.partialWritten > 0) {
-				const clearSeq = buildClearPartialPreview(
-					this.partialPreview,
-					terminal.stdoutColumns,
-				);
-				if (out !== null)
-					batchOutput += `${clearSeq}${this.styledPrefix}${out}\n`;
-				else batchOutput += `${clearSeq}\n`;
+				if (this.canKeepStreamedPartial(raw, out)) {
+					batchOutput += "\n";
+				} else {
+					const clearSeq = buildClearPartialPreview(
+						this.partialPreview,
+						terminal.stdoutColumns,
+					);
+					if (out !== null) {
+						batchOutput += `${clearSeq}${this.styledPrefix}${out}\n`;
+					} else {
+						batchOutput += `${clearSeq}\n`;
+					}
+				}
 			} else if (out !== null) {
 				batchOutput += `${out}\n`;
 			}
