@@ -2,6 +2,7 @@ import * as c from "yoctocolors";
 import { buildAbortMessages, isAbortError } from "../agent/agent-helpers.ts";
 import type { CoreMessage } from "../llm-api/turn.ts";
 import type { TurnEvent } from "../llm-api/types.ts";
+import { LiveReasoningBlock } from "./live-reasoning.ts";
 import { G, RenderedError, renderError, writeln } from "./output.ts";
 import {
 	normalizeReasoningDelta,
@@ -24,12 +25,14 @@ export async function renderTurn(
 }> {
 	const showReasoning = opts?.showReasoning ?? true;
 	const content = new StreamRenderContent(spinner);
+	const liveReasoning = new LiveReasoningBlock();
 
 	let inputTokens = 0;
 	let outputTokens = 0;
 	let contextTokens = 0;
 	let newMessages: CoreMessage[] = [];
 	const startedToolCalls = new Set<string>();
+	let renderedVisibleOutput = false;
 
 	let reasoningComputed = false;
 	let reasoningText = "";
@@ -41,27 +44,25 @@ export async function renderTurn(
 		return reasoningText;
 	};
 
-	const renderReasoningBlock = (): boolean => {
-		if (!showReasoning) return false;
-		const text = getReasoningText();
-		if (!text) return false;
-		writeln(`${G.info} ${c.dim("reasoning")}`);
-		for (const line of text.split("\n")) {
-			writeln(`  ${c.dim(line)}`);
-		}
-		return true;
-	};
-
 	for await (const event of events) {
 		switch (event.type) {
 			case "text-delta": {
+				liveReasoning.finish();
 				content.appendTextDelta(event.delta);
+				if (event.delta) renderedVisibleOutput = true;
 				break;
 			}
 			case "reasoning-delta": {
-				const delta = normalizeReasoningDelta(event.delta);
-				content.appendReasoningDelta(delta);
+				content.flushOpenContent();
+				const delta = content.appendReasoningDelta(
+					normalizeReasoningDelta(event.delta),
+				);
 				reasoningComputed = false;
+				if (showReasoning && delta) {
+					spinner.stop();
+					liveReasoning.append(delta);
+					renderedVisibleOutput = true;
+				}
 				break;
 			}
 
@@ -70,9 +71,11 @@ export async function renderTurn(
 					break;
 				}
 				startedToolCalls.add(event.toolCallId);
+				liveReasoning.finish();
 				content.flushOpenContent();
 				spinner.stop();
 				renderToolCall(event.toolName, event.args);
+				renderedVisibleOutput = true;
 
 				spinner.start(event.toolName);
 				break;
@@ -80,29 +83,32 @@ export async function renderTurn(
 
 			case "tool-result": {
 				startedToolCalls.delete(event.toolCallId);
+				liveReasoning.finish();
 				spinner.stop();
 				renderToolResult(event.toolName, event.result, event.isError);
+				renderedVisibleOutput = true;
 
 				spinner.start("thinking");
 				break;
 			}
 
 			case "context-pruned": {
+				liveReasoning.finish();
 				content.flushOpenContent();
 				spinner.stop();
 				const removedKb = (event.removedBytes / 1024).toFixed(1);
 				writeln(
 					`${G.info} ${c.dim("context pruned")}  ${c.dim(event.mode)}  ${c.dim(`–${event.removedMessageCount} messages`)}  ${c.dim(`–${removedKb} KB`)}`,
 				);
+				renderedVisibleOutput = true;
 				break;
 			}
 
 			case "turn-complete": {
-				const hadContent = content.hasOpenContent();
+				liveReasoning.finish();
 				content.flushOpenContent();
 				spinner.stop();
-				const renderedReasoning = renderReasoningBlock();
-				if (!hadContent && !renderedReasoning) writeln();
+				if (!renderedVisibleOutput) writeln();
 				inputTokens = event.inputTokens;
 				outputTokens = event.outputTokens;
 				contextTokens = event.contextTokens;
@@ -111,6 +117,7 @@ export async function renderTurn(
 			}
 
 			case "turn-error": {
+				liveReasoning.finish();
 				content.flushOpenContent();
 				spinner.stop();
 				if (isAbortError(event.error)) {

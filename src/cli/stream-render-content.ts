@@ -36,16 +36,18 @@ export class StreamRenderContent {
 		this.streamPartialRemainder();
 	}
 
-	appendReasoningDelta(delta: string): void {
-		if (!delta) return;
+	appendReasoningDelta(delta: string): string {
+		if (!delta) return "";
+		let appended = delta;
 		if (
 			this.accumulatedReasoning.endsWith("**") &&
 			delta.startsWith("**") &&
 			!this.accumulatedReasoning.endsWith("\n")
 		) {
-			this.accumulatedReasoning += "\n";
+			appended = `\n${delta}`;
 		}
-		this.accumulatedReasoning += delta;
+		this.accumulatedReasoning += appended;
+		return appended;
 	}
 
 	flushOpenContent(): void {

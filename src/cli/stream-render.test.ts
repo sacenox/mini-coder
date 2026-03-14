@@ -308,7 +308,7 @@ describe("renderTurn", () => {
 		expect(result.reasoningText).toBe("  hello\n\nworld");
 	});
 
-	test("renders reasoning in a structured block and accumulates it", async () => {
+	test("streams reasoning in a structured block and accumulates it", async () => {
 		captureStdout();
 
 		const result = await renderTurn(
@@ -316,8 +316,6 @@ describe("renderTurn", () => {
 			new Spinner(),
 		);
 
-		// The partial reasoning text is streamed raw and then overwritten on
-		// turn-end with the properly styled (dimmed) version.
 		expect(simulateTerminal(stdout)).toBe("· reasoning\n  thinking\n");
 		expect(hasAnsi(stdout, "[2m")).toBe(true);
 		expect(result.reasoningText).toBe("thinking");
@@ -341,7 +339,7 @@ describe("renderTurn", () => {
 		expect(result.reasoningText).toBe("**Planning**\n**Confirming**");
 	});
 
-	test("renders reasoning after assistant text for a stable final layout", async () => {
+	test("renders reasoning before assistant text to preserve chronology", async () => {
 		captureStdout();
 
 		await renderTurn(
@@ -353,7 +351,46 @@ describe("renderTurn", () => {
 			new Spinner(),
 		);
 
-		expect(simulateTerminal(stdout)).toBe("◆ answer\n· reasoning\n  step\n");
+		expect(simulateTerminal(stdout)).toBe("· reasoning\n  step\n◆ answer\n");
+	});
+
+	test("starts a new reasoning block after tool activity", async () => {
+		captureStdout();
+
+		await renderTurn(
+			eventsFrom([
+				{ type: "reasoning-delta", delta: "plan" },
+				{
+					type: "tool-call-start",
+					toolName: "shell",
+					toolCallId: "tool-1",
+					args: { command: "echo hi" },
+				},
+				{
+					type: "tool-result",
+					toolName: "shell",
+					toolCallId: "tool-1",
+					isError: false,
+					result: {
+						stdout: "hi",
+						stderr: "",
+						exitCode: 0,
+						success: true,
+						timedOut: false,
+						streamedOutput: false,
+					},
+				},
+				{ type: "reasoning-delta", delta: "done" },
+				done(),
+			]),
+			new Spinner(),
+		);
+
+		const plain = strip(stdout);
+		expect(countOccurrences(plain, "· reasoning")).toBe(2);
+		expect(plain).toContain("plan");
+		expect(plain).toContain("$ echo hi");
+		expect(plain).toContain("done");
 	});
 
 	test("stops spinner defensively before each rendered line", async () => {
