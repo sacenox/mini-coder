@@ -9,7 +9,13 @@ import {
 	normalizeReasoningText,
 } from "./reasoning.ts";
 import type { Spinner } from "./spinner.ts";
-import { visibleLength } from "./terminal-width.ts";
+import {
+	buildClearPartialPreview,
+	createPartialPreviewTracker,
+	resetPartialPreviewTracker,
+	setStreamPreviewPrefix,
+	streamPartialPreviewDelta,
+} from "./stream-preview.ts";
 import { renderToolCall, renderToolResult } from "./tool-render.ts";
 
 export async function renderTurn(
@@ -28,25 +34,11 @@ export async function renderTurn(
 	let inReasoning = false;
 	// rawBuffer holds the current incomplete (no trailing \n) line being built.
 	let rawBuffer = "";
-	// How many characters of rawBuffer have already been written to the terminal
-	// as a raw partial line (before markdown rendering). When a newline arrives
-	// the partial is overwritten with the properly styled complete line.
-	let partialWritten = 0;
-	// Approximate visible character count shown for the streamed partial preview
-	// (including any streamed prefix). Used to clear wrapped terminal rows.
-	let partialVisibleChars = 0;
-	// Prefix shown before raw partial content during streaming previews.
-	// For text replies: "◆ " (already written before streaming starts, so
-	// streamPartialLine skips it). For reasoning: "│ " (written by
-	// streamPartialLine since renderSingleLine doesn't emit a separate write).
-	let streamPrefix = "";
-	// Whether streamPrefix has already been written to the terminal.
-	// True for text replies; false for reasoning (streamPartialLine emits it).
-	let streamPrefixWritten = false;
 	// Prefix prepended when overwriting the raw partial with the styled complete
 	// line. For text replies: "◆ " (renderSingleLine output doesn't include it).
 	// For reasoning: "" (renderSingleLine already includes "│ " in its output).
 	let styledPrefix = "";
+	const partialPreview = createPartialPreviewTracker();
 	let accumulatedText = "";
 	let accumulatedReasoning = "";
 
@@ -80,31 +72,11 @@ export async function renderTurn(
 		return rendered.output;
 	}
 
-	function estimateWrappedRows(visibleChars: number): number {
-		if (visibleChars <= 0) return 1;
-		const cols = process.stdout.columns ?? 0;
-		if (cols <= 0) return 1;
-		return Math.max(1, Math.ceil(visibleChars / cols));
-	}
-
-	function clearPartialPreview(): string {
-		if (partialWritten <= 0) return "";
-		const rows = estimateWrappedRows(partialVisibleChars);
-		let seq = "\r\x1b[2K";
-		for (let i = 1; i < rows; i++) {
-			seq += "\x1b[1A\r\x1b[2K";
-		}
-		return seq;
-	}
-
 	// Reset per-line partial-preview tracking. styledPrefix is intentionally
 	// excluded — it is turn-level state (◆ for text, "" for reasoning) and must
 	// persist across lines within the same turn.
 	function resetLineState(): void {
-		partialWritten = 0;
-		partialVisibleChars = 0;
-		streamPrefix = "";
-		streamPrefixWritten = false;
+		resetPartialPreviewTracker(partialPreview);
 	}
 
 	/**
@@ -119,10 +91,13 @@ export async function renderTurn(
 			spinner.stop();
 			const out = renderSingleLine(rawBuffer);
 			rawBuffer = "";
-			if (partialWritten > 0) {
+			if (partialPreview.partialWritten > 0) {
 				// Raw partial content is on the terminal — clear wrapped rows and
 				// replace it with the properly styled version.
-				const clearSeq = clearPartialPreview();
+				const clearSeq = buildClearPartialPreview(
+					partialPreview,
+					process.stdout.columns ?? 0,
+				);
 				if (out !== null) write(`${clearSeq}${styledPrefix}${out}`);
 				else write(clearSeq);
 			} else {
@@ -163,8 +138,11 @@ export async function renderTurn(
 			const out = renderSingleLine(raw);
 			// If raw partial content was already streamed to the terminal, clear it
 			// and replace with the properly styled complete-line render.
-			if (firstLine && partialWritten > 0) {
-				const clearSeq = clearPartialPreview();
+			if (firstLine && partialPreview.partialWritten > 0) {
+				const clearSeq = buildClearPartialPreview(
+					partialPreview,
+					process.stdout.columns ?? 0,
+				);
 				if (out !== null) batchOutput += `${clearSeq}${styledPrefix}${out}\n`;
 				else batchOutput += `${clearSeq}\n`;
 			} else if (out !== null) {
@@ -189,18 +167,9 @@ export async function renderTurn(
 	 * it hasn't been written yet (e.g. "│ " gutter for reasoning).
 	 */
 	function streamPartialLine(): void {
-		if (rawBuffer.length <= partialWritten) return;
+		const out = streamPartialPreviewDelta(partialPreview, rawBuffer);
+		if (!out) return;
 		spinner.stop();
-		let out = "";
-		if (!streamPrefixWritten && streamPrefix) {
-			out += streamPrefix;
-			streamPrefixWritten = true;
-			partialVisibleChars += visibleLength(streamPrefix);
-		}
-		const delta = rawBuffer.slice(partialWritten);
-		out += delta;
-		partialVisibleChars += visibleLength(delta);
-		partialWritten = rawBuffer.length;
 		write(out);
 	}
 
@@ -215,10 +184,8 @@ export async function renderTurn(
 					write(`${G.reply} `);
 					// "◆ " is already on the terminal. Record it for overwrite
 					// restoration and count it toward wrapped-row clearing.
-					streamPrefix = `${G.reply} `;
+					setStreamPreviewPrefix(partialPreview, `${G.reply} `, true);
 					styledPrefix = `${G.reply} `;
-					streamPrefixWritten = true;
-					partialVisibleChars += visibleLength(streamPrefix);
 					inText = true;
 				}
 				rawBuffer += event.delta;
@@ -246,9 +213,8 @@ export async function renderTurn(
 					inFence = false; // reasoning is never markdown; reset fence state at boundary
 					// streamPrefix provides the 2-space indent for the raw partial
 					// preview; renderSingleLine applies the same indent for completed lines.
-					streamPrefix = "  ";
+					setStreamPreviewPrefix(partialPreview, "  ", false);
 					styledPrefix = "";
-					streamPrefixWritten = false;
 				}
 				rawBuffer += delta;
 				flushCompleteLines();
