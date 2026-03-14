@@ -19,6 +19,8 @@ import {
 	renderError,
 	writeln,
 } from "./cli/output.ts";
+import { resolvePromptInput } from "./cli/stdin-prompt.ts";
+import { terminal } from "./cli/terminal-io.ts";
 import { initApiLog } from "./llm-api/api-log.ts";
 import {
 	initModelInfoCache,
@@ -62,6 +64,17 @@ async function main(): Promise<void> {
 	if (args.listSessions) {
 		printSessionList();
 		process.exit(0);
+	}
+
+	const prompt = await resolvePromptInput(args.prompt);
+	if (!prompt && !terminal.isTTY) {
+		renderError(
+			new Error(
+				"No prompt provided. Pass a prompt argument or pipe text on stdin.",
+			),
+			"input",
+		);
+		process.exit(1);
 	}
 
 	// Determine session
@@ -120,7 +133,7 @@ async function main(): Promise<void> {
 			});
 
 			const { text: resolvedText, images: refImages } = await resolveFileRefs(
-				args.prompt ?? "",
+				prompt ?? "",
 				parentCwd,
 			);
 			const result = await runner.processUserInput(resolvedText, refImages);
@@ -145,7 +158,7 @@ async function main(): Promise<void> {
 		return;
 	}
 
-	if (!args.prompt) {
+	if (!prompt) {
 		// Only show banner for interactive sessions, not piped/one-shot
 		renderBanner(model, args.cwd);
 	}
@@ -168,9 +181,9 @@ async function main(): Promise<void> {
 
 		const { runner, cmdCtx } = await initAgent(agentOpts);
 
-		if (args.prompt) {
+		if (prompt) {
 			const { text: resolvedText, images: refImages } = await resolveFileRefs(
-				args.prompt,
+				prompt,
 				args.cwd,
 			);
 			await runner.processUserInput(resolvedText, refImages);
