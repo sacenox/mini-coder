@@ -1,5 +1,5 @@
-import type { StepResult } from "ai";
-import { stepCountIs, streamText } from "ai";
+import type { FlexibleSchema, StepResult } from "ai";
+import { dynamicTool, jsonSchema, stepCountIs, streamText } from "ai";
 import { isApiLogEnabled, logApiEvent } from "./api-log.ts";
 import {
 	getReasoningDeltaFromStreamChunk,
@@ -32,7 +32,6 @@ import {
 	mapStreamChunkToTurnEvent,
 	shouldLogStreamChunk,
 } from "./turn-stream-events.ts";
-import { toCoreTool } from "./turn-tools.ts";
 import type { ToolDef, TurnEvent } from "./types.ts";
 
 type StreamTextOptions = Parameters<typeof streamText>[0];
@@ -51,6 +50,27 @@ const MAX_STEPS = 50;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return value !== null && typeof value === "object";
+}
+
+function isZodSchema(s: unknown): boolean {
+	return s !== null && typeof s === "object" && "_def" in (s as object);
+}
+
+function toCoreTool(def: ToolDef): ReturnType<typeof dynamicTool> {
+	const schema = isZodSchema(def.schema)
+		? (def.schema as FlexibleSchema<unknown>)
+		: jsonSchema(def.schema);
+	return dynamicTool({
+		description: def.description,
+		inputSchema: schema,
+		execute: async (input: unknown) => {
+			try {
+				return await def.execute(input);
+			} catch (err) {
+				throw err instanceof Error ? err : new Error(String(err));
+			}
+		},
+	});
 }
 
 const mergeDeep = (
