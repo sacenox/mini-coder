@@ -185,7 +185,7 @@ describe("renderTurn", () => {
 		expect(simulateTerminal(stdout)).toBe("◆ hello\nworld\n");
 	});
 
-	test("clears wrapped streamed partials when trailing content arrives in a later chunk", async () => {
+	test("keeps wrapped partials stable without cursor rewrites", async () => {
 		captureStdout();
 		await withTerminalColumns(20, async () => {
 			await renderTurn(
@@ -198,7 +198,7 @@ describe("renderTurn", () => {
 			);
 		});
 
-		expect(stdout.includes("\x1b[1A\r\x1b[2K")).toBe(true);
+		expect(stdout.includes("\x1b[1A\r\x1b[2K")).toBe(false);
 		expect(simulateTerminal(stdout)).toContain(
 			"◆ this is a long streamed partial line\n",
 		);
@@ -274,10 +274,10 @@ describe("renderTurn", () => {
 			new Spinner(),
 		);
 
-		// The partial raw text is streamed immediately and then overwritten on
-		// turn-end with the fully styled line (bold ANSI codes applied).
-		expect(simulateTerminal(stdout)).toBe("◆ bold 👩🏽‍💻\n");
-		expect(hasAnsi(stdout, "[1m")).toBe(true);
+		// Streaming now prioritizes immediate output stability over end-of-line markdown
+		// rewrite, so raw markdown markers are preserved in partial lines.
+		expect(simulateTerminal(stdout)).toBe("◆ **bold** 👩🏽‍💻\n");
+		expect(hasAnsi(stdout, "[1m")).toBe(false);
 	});
 
 	test("preserves fenced-code state across streamed lines", async () => {
