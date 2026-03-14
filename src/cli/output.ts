@@ -2,10 +2,23 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import * as c from "yoctocolors";
+import type {
+	AgentReporter,
+	StatusBarData,
+	TurnResult,
+} from "../agent/reporter.ts";
+import type { TurnEvent } from "../llm-api/types.ts";
 import { loadAgents } from "./agents.ts";
 import { loadCustomCommands } from "./custom-commands.ts";
+import { renderError } from "./error-render.ts";
+import { Spinner } from "./spinner.ts";
+import { renderStatusBar } from "./status-bar.ts";
+import { renderTurn } from "./stream-render.ts";
 import { loadSkillsIndex } from "./skills.ts";
 import { terminal } from "./terminal-io.ts";
+import { renderHook } from "./tool-render.ts";
+
+export { renderError } from "./error-render.ts";
 
 const HOME = homedir();
 declare const __PACKAGE_VERSION__: string;
@@ -122,13 +135,72 @@ export function renderBanner(model: string, cwd: string): void {
 	writeln();
 }
 
-export function renderInfo(msg: string): void {
-	writeln(`${G.info} ${c.dim(msg)}`);
-}
+// ─── CliReporter ──────────────────────────────────────────────────────────────
+// Interactive terminal reporter — wraps all output primitives for agent use.
 
-export { renderError } from "./error-render.ts";
-// Re-exports
-export { Spinner } from "./spinner.ts";
-export { renderStatusBar } from "./status-bar.ts";
-export { renderTurn } from "./stream-render.ts";
-export { renderHook } from "./tool-render.ts";
+export class CliReporter implements AgentReporter {
+	private spinner = new Spinner();
+
+	info(msg: string): void {
+		this.spinner.stop();
+		writeln(`${G.info} ${c.dim(msg)}`);
+	}
+
+	error(msg: string | Error, hint?: string): void {
+		this.spinner.stop();
+		if (typeof msg === "string") {
+			renderError(msg, hint);
+		} else {
+			renderError(msg.message, hint);
+		}
+	}
+
+	warn(msg: string): void {
+		this.spinner.stop();
+		writeln(`${G.warn} ${msg}`);
+	}
+
+	writeText(text: string): void {
+		this.spinner.stop();
+		writeln(text);
+	}
+
+	streamChunk(text: string): void {
+		this.spinner.stop();
+		write(text);
+	}
+
+	startSpinner(label?: string): void {
+		this.spinner.start(label);
+	}
+
+	stopSpinner(): void {
+		this.spinner.stop();
+	}
+
+	renderSubState(label: string): void {
+		this.spinner.stop();
+		writeln(`    ${G.info} ${c.dim(label)}`);
+		this.spinner.start();
+	}
+
+	async renderTurn(
+		events: AsyncIterable<TurnEvent>,
+		opts?: { showReasoning?: boolean },
+	): Promise<TurnResult> {
+		return renderTurn(events, this.spinner, opts);
+	}
+
+	renderStatusBar(data: StatusBarData): void {
+		renderStatusBar(data);
+	}
+
+	renderHook(toolName: string, scriptPath: string, success: boolean): void {
+		this.spinner.stop();
+		renderHook(toolName, scriptPath, success);
+	}
+
+	restoreTerminal(): void {
+		restoreTerminal();
+	}
+}

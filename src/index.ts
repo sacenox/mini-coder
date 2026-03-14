@@ -18,7 +18,7 @@ import {
 	writeln,
 } from "./cli/output.ts";
 
-import { CliReporter } from "./cli/output-reporter.ts";
+import { CliReporter } from "./cli/output.ts";
 import { initApiLog } from "./llm-api/api-log.ts";
 import {
 	initModelInfoCache,
