@@ -348,6 +348,24 @@ describe("renderTurn", () => {
 		expect(result.reasoningText).toBe("thinking");
 	});
 
+	test("splits adjacent reasoning markdown blocks across chunk boundaries", async () => {
+		captureStdout();
+
+		const result = await renderTurn(
+			eventsFrom([
+				{ type: "reasoning-delta", delta: "**Planning**" },
+				{ type: "reasoning-delta", delta: "**Confirming**" },
+				done(),
+			]),
+			new Spinner(),
+		);
+
+		expect(simulateTerminal(stdout)).toBe(
+			"· reasoning\n  **Planning**\n  **Confirming**\n",
+		);
+		expect(result.reasoningText).toBe("**Planning**\n**Confirming**");
+	});
+
 	test("renders reasoning after assistant text for a stable final layout", async () => {
 		captureStdout();
 

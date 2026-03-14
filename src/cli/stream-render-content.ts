@@ -37,6 +37,14 @@ export class StreamRenderContent {
 	}
 
 	appendReasoningDelta(delta: string): void {
+		if (!delta) return;
+		if (
+			this.accumulatedReasoning.endsWith("**") &&
+			delta.startsWith("**") &&
+			!this.accumulatedReasoning.endsWith("\n")
+		) {
+			this.accumulatedReasoning += "\n";
+		}
 		this.accumulatedReasoning += delta;
 	}
 
