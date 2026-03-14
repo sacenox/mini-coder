@@ -110,7 +110,7 @@ export function printHelp(): void {
 	writeln(`\n${c.bold("Examples:")}`);
 	writeln(`  mc                           ${c.dim("# interactive session")}`);
 	writeln(
-		`  mc "explain this codebase"   ${c.dim("# one-shot prompt then interactive")}`,
+		`  mc "explain this codebase"   ${c.dim("# one-shot prompt then exit")}`,
 	);
 	writeln(`  mc -c                        ${c.dim("# continue last session")}`);
 	writeln(

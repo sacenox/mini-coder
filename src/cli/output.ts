@@ -39,7 +39,7 @@ export const G = {
 	reply: c.cyan("◆"), // assistant reply start
 
 	// tool action glyphs (compact, one per line)
-	search: c.yellow("?"), // glob / grep
+	search: c.yellow("?"), // search (shell grep/glob)
 	read: c.dim("←"), // read file
 	write: c.green("✎"), // edit / create file
 	run: c.dim("$"), // shell

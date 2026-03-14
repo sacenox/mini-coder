@@ -8,7 +8,7 @@ const ReplaceSchema = z.object({
 	path: z.string().describe("File path to edit (absolute or relative to cwd)"),
 	startAnchor: z
 		.string()
-		.describe('Start anchor from a prior read/grep, e.g. "11:a3"'),
+		.describe('Start anchor from a prior read, e.g. "11:a3"'),
 	endAnchor: z
 		.string()
 		.optional()
@@ -43,7 +43,7 @@ export const replaceTool: ToolDef<ReplaceInput, ReplaceToolOutput> = {
 	name: "replace",
 	description:
 		"Replace or delete a range of lines in an existing file using hashline anchors. " +
-		'Anchors come from the `read` or `grep` tools (format: "line:hash", e.g. "11:a3"). ' +
+		'Anchors come from the `read` tool (format: "line:hash", e.g. "11:a3"). ' +
 		"Provide startAnchor alone to target a single line, or add endAnchor for a range. " +
 		"Set newContent to the replacement text, or omit it to delete the range. " +
 		"To create a file use `create`. To insert without replacing any lines use `insert`.",

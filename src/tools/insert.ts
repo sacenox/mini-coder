@@ -6,9 +6,7 @@ import type { WriteResultMeta } from "./write-result.ts";
 
 const InsertSchema = z.object({
 	path: z.string().describe("File path to edit (absolute or relative to cwd)"),
-	anchor: z
-		.string()
-		.describe('Anchor line from a prior read/grep, e.g. "11:a3"'),
+	anchor: z.string().describe('Anchor line from a prior read, e.g. "11:a3"'),
 	position: z
 		.enum(["before", "after"])
 		.describe('Insert the content "before" or "after" the anchor line'),
@@ -35,7 +33,7 @@ export const insertTool: ToolDef<InsertInput, InsertToolOutput> = {
 	description:
 		"Insert new lines before or after an anchor line in an existing file. " +
 		"The anchor line itself is not modified. " +
-		'Anchors come from the `read` or `grep` tools (format: "line:hash", e.g. "11:a3"). ' +
+		'Anchors come from the `read` tool (format: "line:hash", e.g. "11:a3"). ' +
 		"To replace or delete lines use `replace`. To create a file use `create`.",
 	schema: InsertSchema,
 	execute: async (input) => {

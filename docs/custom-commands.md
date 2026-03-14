@@ -59,7 +59,7 @@ model: zen/claude-haiku-4-5
 
 Search the codebase for: $ARGUMENTS
 
-Use glob, grep, and read tools to explore thoroughly. Report all
+Use shell, read, and other tools to explore thoroughly. Report all
 relevant files, key code snippets with line numbers, and a short summary.
 Be exhaustive but concise. No edits — read only.
 ```
@@ -113,11 +113,11 @@ lightweight tasks regardless of what the session is currently set to.
 
 ```md
 ---
-description: Quick grep for a symbol
+description: Quick symbol search
 model: zen/claude-haiku-4-5
 ---
 
-Find all usages of $ARGUMENTS across the codebase using grep and glob.
+Find all usages of $ARGUMENTS across the codebase using shell.
 List each occurrence with file path and line number. No explanations needed.
 ```
 

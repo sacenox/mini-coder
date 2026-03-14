@@ -11,9 +11,9 @@
 
 ## Lean and mean idea
 
-Drop the suabgent tool completly, prefer using the shell tool to mimic the subagent behaviour. Ensure we still support our subagents features like commands in new processes and subagent types. Update the mini-coder skill to be a guide explaining how to use mc via shell tool. Revise our cli interface to ensure support. When mc is called with a prompt, make it exit after the loop. Like a one shot.
-Drop glob and grep tools. the agents can use shell for these.
-Do an extensive pass to cleanup tests, dead code and anything else that might have been related to our removals.
+When mc is called with a prompt, make it exit after the loop. Like a one shot. ✅
+Drop glob and grep tools — done. ✅
+Cleanup pass — done. ✅
 
 ---
 

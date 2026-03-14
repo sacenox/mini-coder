@@ -19,8 +19,6 @@ Local hooks take precedence over global ones. The filename must match `post-<too
 
 | Tool | Hook filename |
 |---|---|
-| `glob` | `post-glob` |
-| `grep` | `post-grep` |
 | `read` | `post-read` |
 | `create` | `post-create` |
 | `replace` | `post-replace` |
@@ -76,18 +74,6 @@ Plus tool-specific variables:
 | `TIMED_OUT` | `true` if the command timed out |
 | `STDOUT` | Captured standard output |
 | `STDERR` | Captured standard error |
-
-### `post-glob`
-
-| Variable | Description |
-|---|---|
-| `PATTERN` | The glob pattern that was searched |
-
-### `post-grep`
-
-| Variable | Description |
-|---|---|
-| `PATTERN` | The regex pattern that was searched |
 
 ### `post-read`
 

@@ -4,26 +4,7 @@ import { G, writeln } from "./output.ts";
 
 const HOME = homedir();
 
-/** Strip the `linenum:hash| ` prefix that hashline-formatted tool outputs include. */
-function stripHashlinePrefix(text: string): string {
-	return text.replace(/^\d+:[0-9a-f]{2}\| /, "");
-}
-
-function commonPrefix(paths: string[]): string {
-	const first = paths[0];
-	if (!first) return "";
-	const parts = first.split("/");
-	let prefix = "";
-	for (let i = 0; i < parts.length - 1; i++) {
-		const candidate = `${parts.slice(0, i + 1).join("/")}/`;
-		if (paths.every((p) => p.startsWith(candidate))) prefix = candidate;
-		else break;
-	}
-	return prefix;
-}
-
 function toolGlyph(name: string): string {
-	if (name === "glob" || name === "grep") return G.search;
 	if (name === "read") return G.read;
 	if (name === "create" || name === "replace" || name === "insert")
 		return G.write;
@@ -48,21 +29,6 @@ function toolCallLine(
 			typeof a.agentName === "string" && a.agentName ? a.agentName : "";
 		const label = agentName ? ` ${c.dim(c.cyan(`[@${agentName}]`))}` : "";
 		return `${G.agent}${label} ${c.dim("—")} ${short}`;
-	}
-	if (name === "glob") {
-		const pattern = String(a.pattern ?? "");
-		const cwd = a.cwd ? String(a.cwd) : "";
-		return `${G.search} ${c.dim("glob")} ${c.bold(pattern)}${cwd ? c.dim(` in ${cwd}`) : ""}`;
-	}
-	if (name === "grep") {
-		const flags = [
-			a.include ? String(a.include) : null,
-			a.caseSensitive === false ? "i" : null,
-		]
-			.filter(Boolean)
-			.join(" ");
-		const pattern = String(a.pattern ?? "");
-		return `${G.search} ${c.dim("grep")} ${c.bold(pattern)}${flags ? c.dim(`  ${flags}`) : ""}`;
 	}
 	if (name === "read") {
 		const line = Number.isFinite(a.line as number) ? Number(a.line) : null;
@@ -168,72 +134,6 @@ export function renderToolResult(
 	if (isError) {
 		writeln(`    ${formatErrorBadge(result)}`);
 		return;
-	}
-
-	if (toolName === "glob") {
-		const r = result as { files?: string[]; truncated?: boolean };
-		if (Array.isArray(r?.files)) {
-			const files = r.files;
-			if (files.length === 0) {
-				writeln(`    ${G.info} ${c.dim("no matches")}`);
-				return;
-			}
-
-			// Show up to 12 files, grouped by top-level directory for readability
-			const show = files.slice(0, 12);
-			const rest = files.length - show.length;
-
-			// Find common prefix to strip for cleaner display
-			const prefix = commonPrefix(show);
-			for (const f of show) {
-				const rel =
-					prefix && f.startsWith(prefix)
-						? c.dim(prefix) + f.slice(prefix.length)
-						: f;
-				writeln(`    ${c.dim("·")} ${rel}`);
-			}
-			if (rest > 0) writeln(`    ${c.dim(`  +${rest} more`)}`);
-			if (r.truncated) writeln(`    ${c.dim("  (results capped)")}`);
-			return;
-		}
-	}
-
-	if (toolName === "grep") {
-		const r = result as {
-			matches?: Array<{
-				file: string;
-				line: number;
-				text: string;
-				context?: Array<{ line: number; text: string; isMatch: boolean }>;
-			}>;
-			truncated?: boolean;
-		};
-		if (Array.isArray(r?.matches)) {
-			if (r.matches.length === 0) {
-				writeln(`    ${G.info} ${c.dim("no matches")}`);
-				return;
-			}
-
-			// Deduplicate by file, show file:line and match text
-			const seen = new Set<string>();
-			let shown = 0;
-			for (const m of r.matches) {
-				if (shown >= 10) break;
-				const key = m.file;
-				const fileLabel = seen.has(key)
-					? c.dim(" ".repeat(m.file.length + 1))
-					: c.dim(`${m.file}:`);
-				seen.add(key);
-				writeln(
-					`    ${fileLabel}${c.dim(String(m.line))}  ${stripHashlinePrefix(m.text).trim()}`,
-				);
-				shown++;
-			}
-			const rest = r.matches.length - shown;
-			if (rest > 0) writeln(`    ${c.dim(`  +${rest} more`)}`);
-			if (r.truncated) writeln(`    ${c.dim("  (results capped)")}`);
-			return;
-		}
 	}
 
 	if (toolName === "read") {

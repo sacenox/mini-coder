@@ -14,7 +14,7 @@ mini-coder is a small, fast CLI coding agent built with Bun and TypeScript.
 | `src/agent/` | Core agent loop, session runner, subagent runner, system prompt builder |
 | `src/cli/` | CLI commands, custom commands, agents/skills loaders, input/output rendering |
 | `src/llm-api/` | Provider abstraction, turn streaming, model metadata |
-| `src/tools/` | All tools (read, replace, insert, create, glob, grep, shell, subagent, exa, …) |
+| `src/tools/` | All tools (read, replace, insert, create, shell, subagent, exa, …) |
 | `src/session/` | Session manager and SQLite DB repositories |
 | `src/mcp/` | MCP client integration |
 | `.agents/` | Local config: agents, commands, skills, hooks |
@@ -47,9 +47,9 @@ All config lives under `.agents/` (or `~/.agents/` globally). Local wins over gl
 
 ## Tools
 
-Every tool is declared in `src/agent/tools.ts`. Core tools: `read`, `glob`, `grep`, `replace`, `insert`, `create`, `shell`, `subagent`, `webSearch`, `webContent`.
+Every tool is declared in `src/agent/tools.ts`. Core tools: `read`, `replace`, `insert`, `create`, `shell`, `subagent`, `webSearch`, `webContent`.
 
-Hooks in `.agents/hooks/` fire after any of the 7 hookable tools: `glob`, `grep`, `read`, `create`, `replace`, `insert`, `shell`. The repo currently uses `post-create`, `post-insert`, and `post-replace` to auto-format changed files.
+Hooks in `.agents/hooks/` fire after any of the 5 hookable tools: `read`, `create`, `replace`, `insert`, `shell`. The repo currently uses `post-create`, `post-insert`, and `post-replace` to auto-format changed files.
 
 
 ## Testing

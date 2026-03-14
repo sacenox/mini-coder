@@ -2,15 +2,9 @@ import type { ToolDef } from "../llm-api/types.ts";
 import type { CreateToolOutput } from "../tools/create.ts";
 import { createTool } from "../tools/create.ts";
 import { webContentTool, webSearchTool } from "../tools/exa.ts";
-import type { GlobOutput } from "../tools/glob.ts";
-import { globTool } from "../tools/glob.ts";
-import type { GrepOutput } from "../tools/grep.ts";
-import { grepTool } from "../tools/grep.ts";
 import {
 	createHookCache,
 	hookEnvForCreate,
-	hookEnvForGlob,
-	hookEnvForGrep,
 	hookEnvForInsert,
 	hookEnvForRead,
 	hookEnvForReplace,
@@ -109,15 +103,7 @@ function withHooks<
 // ─── Tool registry ────────────────────────────────────────────────────────────
 
 // Names of all local tools that support hooks (MCP tools are excluded).
-const HOOKABLE_TOOLS = [
-	"glob",
-	"grep",
-	"read",
-	"create",
-	"replace",
-	"insert",
-	"shell",
-];
+const HOOKABLE_TOOLS = ["read", "create", "replace", "insert", "shell"];
 
 export function buildToolSet(opts: {
 	cwd: string;
@@ -136,26 +122,6 @@ export function buildToolSet(opts: {
 
 	const tools: ToolDef[] = [
 		// Read-only: discover and inspect files
-		withHooks(
-			withCwdDefault(globTool as ToolDef, cwd) as ToolDef<
-				{ cwd?: string; pattern: string },
-				GlobOutput
-			>,
-			lookupHook,
-			cwd,
-			(_, input) => hookEnvForGlob(input, cwd),
-			onHook,
-		) as ToolDef,
-		withHooks(
-			withCwdDefault(grepTool as ToolDef, cwd) as ToolDef<
-				{ cwd?: string; pattern: string },
-				GrepOutput
-			>,
-			lookupHook,
-			cwd,
-			(_, input) => hookEnvForGrep(input, cwd),
-			onHook,
-		) as ToolDef,
 		withHooks(
 			withCwdDefault(readTool as ToolDef, cwd) as ToolDef<
 				{ cwd?: string; path: string },
@@ -233,8 +199,6 @@ export function buildToolSet(opts: {
 export function buildReadOnlyToolSet(opts: { cwd: string }): ToolDef[] {
 	const { cwd } = opts;
 	const tools: ToolDef[] = [
-		withCwdDefault(globTool as ToolDef, cwd),
-		withCwdDefault(grepTool as ToolDef, cwd),
 		withCwdDefault(readTool as ToolDef, cwd),
 		withCwdDefault(listSkillsTool as ToolDef, cwd),
 		withCwdDefault(readSkillTool as ToolDef, cwd),

@@ -128,28 +128,6 @@ export function hookEnvForShell(
 	};
 }
 
-export function hookEnvForGlob(
-	input: { pattern: string },
-	cwd: string,
-): Record<string, string> {
-	return {
-		TOOL: "glob",
-		PATTERN: input.pattern,
-		CWD: cwd,
-	};
-}
-
-export function hookEnvForGrep(
-	input: { pattern: string },
-	cwd: string,
-): Record<string, string> {
-	return {
-		TOOL: "grep",
-		PATTERN: input.pattern,
-		CWD: cwd,
-	};
-}
-
 export function hookEnvForRead(
 	input: { path: string },
 	cwd: string,

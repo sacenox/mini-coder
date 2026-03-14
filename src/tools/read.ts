@@ -53,7 +53,7 @@ export const readTool: ToolDef<ReadInput, ReadOutput> = {
 		const size = file.size;
 		if (size > MAX_BYTES * 5) {
 			throw new Error(
-				`File too large (${Math.round(size / 1024)}KB). Use grep to search within it.`,
+				`File too large (${Math.round(size / 1024)}KB). Use shell to search within it.`,
 			);
 		}
 

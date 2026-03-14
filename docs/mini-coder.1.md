@@ -103,8 +103,6 @@ Inside the interactive session, the following slash commands are available:
 
 ## BUILT-IN TOOLS
 The agent has access to the following tools:
-*   **glob**: Discover files by glob pattern across the project.
-*   **grep**: Search file contents using regular expressions.
 *   **read**: Read file contents with line-range pagination support.
 *   **create**: Write a new file or completely overwrite an existing one.
 *   **replace**: Replace or delete targeted lines using hashline anchors.

@@ -93,12 +93,12 @@ Current date/time: ${sessionTimeAnchor}
 Guidelines:
 - Be concise and precise. Avoid unnecessary preamble.
 - Prefer small, targeted edits over large rewrites.
-- Always read a file before editing it. Prefer dedicated tools (read, glob, grep, replace, insert) over shell for file operations.
+- Always read a file before editing it. Prefer dedicated tools (read, replace, insert) over shell for file operations.
 - Make parallel tool calls when reads/searches are independent — don't wait for one to start the next.
 - Keep your context clean and focused on the user request.
 
 # Tool output format
-\`read\` and \`grep\` prefix every line with \`line:hash|\` (e.g. \`11:a3| code here\`). This prefix is metadata — never include it in file content you write. Use the \`line:hash\` values as anchors for \`replace\` and \`insert\`.`;
+\`read\` prefixes every line with \`line:hash|\` (e.g. \`11:a3| code here\`). This prefix is metadata — never include it in file content you write. Use the \`line:hash\` values as anchors for \`replace\` and \`insert\`.`;
 
 	prompt += AUTONOMY;
 	prompt += SAFETY;

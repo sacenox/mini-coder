@@ -171,6 +171,7 @@ async function main(): Promise<void> {
 				args.cwd,
 			);
 			await runner.processUserInput(resolvedText, refImages);
+			return;
 		}
 
 		await runInputLoop({

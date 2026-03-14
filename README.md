@@ -28,8 +28,6 @@ My toolkit is lean on purpose — every tool earns its spot, no passengers:
 
 | Tool            | What it does                                                |
 | --------------- | ----------------------------------------------------------- |
-| 🔍 `glob`       | Find files by pattern across your project                   |
-| 🧲 `grep`       | Search file contents with regex                             |
 | 📖 `read`       | Read files (with line-range support)                        |
 | 📝 `create`     | Create a new file or fully overwrite an existing file       |
 | ✏️ `replace`    | Replace or delete lines using hashline anchors              |
@@ -166,7 +164,7 @@ src/
   agent/            # Main REPL loop + tool registry
   cli/              # Input, output, slash commands, markdown rendering
   llm-api/          # Provider factory + streaming turn logic
-  tools/            # glob, grep, read, create, replace, insert, shell, subagent
+  tools/            # read, create, replace, insert, shell, subagent
                     #   + webSearch, webContent, hashline anchors, diffs, hooks, snapshots
   mcp/              # MCP server connections
   session/          # SQLite-backed session & history management
