@@ -14,7 +14,15 @@ import { getZenBackend } from "./model-routing.ts";
 export { getContextWindow } from "./model-info.ts";
 export type { ThinkingEffort } from "./provider-options.ts";
 
-type ProviderName = "zen" | "anthropic" | "openai" | "google" | "ollama";
+const SUPPORTED_PROVIDERS = [
+	"zen",
+	"anthropic",
+	"openai",
+	"google",
+	"ollama",
+] as const;
+
+type ProviderName = (typeof SUPPORTED_PROVIDERS)[number];
 
 const ZEN_BASE = "https://opencode.ai/zen/v1";
 
@@ -180,22 +188,18 @@ function resolveOpenAIModel(modelId: string): LanguageModel {
 		: directOpenAI()(modelId);
 }
 
-function resolveProviderModel(
-	provider: ProviderName,
-	modelId: string,
-): LanguageModel {
-	switch (provider) {
-		case "zen":
-			return resolveZenModel(modelId);
-		case "anthropic":
-			return directAnthropic()(modelId);
-		case "openai":
-			return resolveOpenAIModel(modelId);
-		case "google":
-			return directGoogle()(modelId);
-		case "ollama":
-			return ollamaProvider().chatModel(modelId);
-	}
+const PROVIDER_MODEL_RESOLVERS: Readonly<
+	Record<ProviderName, (modelId: string) => LanguageModel>
+> = {
+	zen: resolveZenModel,
+	anthropic: (modelId) => directAnthropic()(modelId),
+	openai: resolveOpenAIModel,
+	google: (modelId) => directGoogle()(modelId),
+	ollama: (modelId) => ollamaProvider().chatModel(modelId),
+};
+
+function isProviderName(provider: string): provider is ProviderName {
+	return SUPPORTED_PROVIDERS.includes(provider as ProviderName);
 }
 
 export function resolveModel(modelString: string): LanguageModel {
@@ -209,19 +213,13 @@ export function resolveModel(modelString: string): LanguageModel {
 	const provider = modelString.slice(0, slashIdx);
 	const modelId = modelString.slice(slashIdx + 1);
 
-	if (
-		provider !== "zen" &&
-		provider !== "anthropic" &&
-		provider !== "openai" &&
-		provider !== "google" &&
-		provider !== "ollama"
-	) {
+	if (!isProviderName(provider)) {
 		throw new Error(
-			`Unknown provider "${provider}". Supported: zen, anthropic, openai, google, ollama`,
+			`Unknown provider "${provider}". Supported: ${SUPPORTED_PROVIDERS.join(", ")}`,
 		);
 	}
 
-	return resolveProviderModel(provider, modelId);
+	return PROVIDER_MODEL_RESOLVERS[provider](modelId);
 }
 
 export function autoDiscoverModel(): string {
