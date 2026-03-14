@@ -99,13 +99,98 @@ export function createTurnStepTracker(opts: {
 	};
 }
 
+interface StreamToolChunk {
+	type?: string;
+	toolName?: unknown;
+	toolCallId?: unknown;
+	[key: string]: unknown;
+}
+
+const TOOL_START_CHUNK_TYPES = new Set(["tool-input-start", "tool-call"]);
+const TOOL_RESULT_CHUNK_TYPES = new Set(["tool-result", "tool-error"]);
+
+function normalizeToolCallId(raw: unknown): string | null {
+	if (typeof raw !== "string") return null;
+	const trimmed = raw.trim();
+	return trimmed ? trimmed : null;
+}
+
+function normalizeToolName(raw: unknown): string {
+	if (typeof raw !== "string") return "tool";
+	const trimmed = raw.trim();
+	return trimmed || "tool";
+}
+
+class StreamToolCallTracker {
+	private syntheticCount = 0;
+	private pendingByTool = new Map<string, string[]>();
+
+	assign(chunk: StreamToolChunk): StreamToolChunk {
+		const type = chunk.type;
+		if (!type) return chunk;
+
+		if (TOOL_START_CHUNK_TYPES.has(type)) {
+			const toolName = normalizeToolName(chunk.toolName);
+			const toolCallId =
+				normalizeToolCallId(chunk.toolCallId) ?? this.nextSyntheticToolCallId();
+			this.trackStart(toolName, toolCallId);
+			if (toolCallId === chunk.toolCallId) return chunk;
+			return { ...chunk, toolCallId };
+		}
+
+		if (TOOL_RESULT_CHUNK_TYPES.has(type)) {
+			const toolName = normalizeToolName(chunk.toolName);
+			const existingToolCallId = normalizeToolCallId(chunk.toolCallId);
+			if (existingToolCallId) {
+				this.consumeTracked(toolName, existingToolCallId);
+				return chunk;
+			}
+			const toolCallId =
+				this.consumeNextTracked(toolName) ?? this.nextSyntheticToolCallId();
+			return { ...chunk, toolCallId };
+		}
+
+		return chunk;
+	}
+
+	private nextSyntheticToolCallId(): string {
+		this.syntheticCount += 1;
+		return `synthetic-tool-call-${this.syntheticCount}`;
+	}
+
+	private trackStart(toolName: string, toolCallId: string): void {
+		const pending = this.pendingByTool.get(toolName) ?? [];
+		pending.push(toolCallId);
+		this.pendingByTool.set(toolName, pending);
+	}
+
+	private consumeTracked(toolName: string, toolCallId: string): void {
+		const pending = this.pendingByTool.get(toolName);
+		if (!pending || pending.length === 0) return;
+		const idx = pending.indexOf(toolCallId);
+		if (idx === -1) return;
+		pending.splice(idx, 1);
+		if (pending.length === 0) this.pendingByTool.delete(toolName);
+	}
+
+	private consumeNextTracked(toolName: string): string | null {
+		const pending = this.pendingByTool.get(toolName);
+		if (!pending || pending.length === 0) return null;
+		const toolCallId = pending.shift() ?? null;
+		if (pending.length === 0) this.pendingByTool.delete(toolName);
+		return toolCallId;
+	}
+}
+
 export async function* mapFullStreamToTurnEvents(
 	stream: AsyncIterable<{ type?: string; [key: string]: unknown }>,
 	opts: {
 		onChunk?: (chunk: { type?: string; [key: string]: unknown }) => void;
 	},
 ): AsyncGenerator<TurnEvent> {
-	for await (const chunk of stream) {
+	const toolCallTracker = new StreamToolCallTracker();
+	for await (const originalChunk of stream) {
+		const chunk = toolCallTracker.assign(originalChunk);
 		if (shouldLogStreamChunk(chunk)) {
 			opts.onChunk?.(chunk);
 		}
