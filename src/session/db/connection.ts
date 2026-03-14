@@ -110,12 +110,33 @@ const SCHEMA = `
 
 let _db: Database | null = null;
 
+export function isSqliteBusyError(err: unknown): boolean {
+	if (!(err instanceof Error)) return false;
+	const message = err.message.toLowerCase();
+	return (
+		message.includes("database is locked") || message.includes("sqlite_busy")
+	);
+}
+
+function runBestEffortMaintenance(task: () => void): void {
+	try {
+		task();
+	} catch (err) {
+		if (!isSqliteBusyError(err)) throw err;
+	}
+}
+
+function configureDb(db: Database): void {
+	db.exec("PRAGMA journal_mode=WAL;");
+	db.exec("PRAGMA foreign_keys=ON;");
+	db.exec("PRAGMA busy_timeout=1000;");
+}
+
 export function getDb(): Database {
 	if (!_db) {
 		const dbPath = getDbPath();
 		let db = new Database(dbPath, { create: true });
-		db.exec("PRAGMA journal_mode=WAL;");
-		db.exec("PRAGMA foreign_keys=ON;");
+		configureDb(db);
 
 		const version =
 			db.query<{ user_version: number }, []>("PRAGMA user_version").get()
@@ -130,8 +151,7 @@ export function getDb(): Database {
 				if (existsSync(path)) unlinkSync(path);
 			}
 			db = new Database(dbPath, { create: true });
-			db.exec("PRAGMA journal_mode=WAL;");
-			db.exec("PRAGMA foreign_keys=ON;");
+			configureDb(db);
 			db.exec(SCHEMA);
 			db.exec(`PRAGMA user_version = ${DB_VERSION};`);
 		} else {
@@ -153,31 +173,39 @@ const MAX_PROMPT_HISTORY = 500;
  */
 export function pruneOldData(): void {
 	const db = getDb();
+	let deletedSessions = 0;
+	let deletedHistory = 0;
 
-	const deletedSessions = db.run(
-		`DELETE FROM sessions WHERE id NOT IN (
+	runBestEffortMaintenance(() => {
+		deletedSessions = db.run(
+			`DELETE FROM sessions WHERE id NOT IN (
        SELECT id FROM sessions ORDER BY updated_at DESC LIMIT ?
      )`,
-		[MAX_SESSIONS],
-	).changes;
+			[MAX_SESSIONS],
+		).changes;
 
-	const deletedHistory = db.run(
-		`DELETE FROM prompt_history WHERE id NOT IN (
+		deletedHistory = db.run(
+			`DELETE FROM prompt_history WHERE id NOT IN (
        SELECT id FROM prompt_history ORDER BY id DESC LIMIT ?
      )`,
-		[MAX_PROMPT_HISTORY],
-	).changes;
+			[MAX_PROMPT_HISTORY],
+		).changes;
+	});
 
 	// Reclaim pages freed by deletions.
 	if (deletedSessions > 0 || deletedHistory > 0) {
 		// Defer VACUUM off the synchronous startup path so the CLI prompt
 		// renders before the (potentially slow) page-reclaim scan runs.
 		setImmediate(() => {
-			db.exec("VACUUM;");
+			runBestEffortMaintenance(() => {
+				db.exec("VACUUM;");
+			});
 		});
 	}
 
-	// Checkpoint WAL (including any pages written by VACUUM) so the WAL file
-	// shrinks back to near-zero.
-	db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+	// Passive checkpoint keeps startup opportunistic: if another process is using
+	// the database, we skip shrinking the WAL instead of failing the whole CLI.
+	runBestEffortMaintenance(() => {
+		db.exec("PRAGMA wal_checkpoint(PASSIVE);");
+	});
 }
