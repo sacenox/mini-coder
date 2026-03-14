@@ -1,6 +1,7 @@
 import * as c from "yoctocolors";
 import type { ImageAttachment } from "../cli/image-types.ts";
 import { watchForCancel } from "../cli/input.ts";
+import { stripGPTCommentaryFromHistory } from "../llm-api/history-transforms.ts";
 import type { ThinkingEffort } from "../llm-api/providers.ts";
 import { resolveModel } from "../llm-api/providers.ts";
 import type { ContextPruningMode, CoreMessage } from "../llm-api/turn.ts";
@@ -290,18 +291,22 @@ export class SessionRunner {
 				await this.reporter.renderTurn(events, {
 					showReasoning: this.showReasoning,
 				});
+			const sanitizedNewMessages = stripGPTCommentaryFromHistory(
+				newMessages,
+				this.currentModel,
+			);
 
-			if (newMessages.length > 0) {
-				this.coreHistory.push(...newMessages);
-				this.session.messages.push(...newMessages);
-				// Persistence invariant: save model-authored messages with lossless JSON
-				// serialization and preserve exact shape/ordering (including
-				// providerOptions/providerMetadata thought-signature fields). Never
-				// reconstruct tool-call history during save/load.
-				saveMessages(this.session.id, newMessages, thisTurn);
+			if (sanitizedNewMessages.length > 0) {
+				this.coreHistory.push(...sanitizedNewMessages);
+				this.session.messages.push(...sanitizedNewMessages);
+				// Persistence invariant: save model-authored messages with stable,
+				// replay-safe JSON. Provider commentary/tool-call scratchpad text is
+				// intentionally stripped because persisting it pollutes future turns
+				// and can reintroduce malformed raw tool-call text into history.
+				saveMessages(this.session.id, sanitizedNewMessages, thisTurn);
 			}
 
-			lastAssistantText = extractAssistantText(newMessages);
+			lastAssistantText = extractAssistantText(sanitizedNewMessages);
 			this.totalIn += inputTokens;
 			this.totalOut += outputTokens;
 			this.lastContextTokens = contextTokens;
