@@ -431,6 +431,62 @@ function isGeminiModelFamily(modelString: string): boolean {
 	);
 }
 
+function isZenOpenAICompatibleChatModel(modelString: string): boolean {
+	const { provider, modelId } = parseModelString(modelString);
+	if (provider !== "zen") return false;
+	return (
+		!modelId.startsWith("gpt-") &&
+		!modelId.startsWith("gemini-") &&
+		!modelId.startsWith("claude-")
+	);
+}
+
+export function normalizeOpenAICompatibleToolCallInputs(
+	messages: CoreMessage[],
+	modelString: string,
+): CoreMessage[] {
+	if (!isZenOpenAICompatibleChatModel(modelString)) return messages;
+
+	let mutated = false;
+	const result = messages.map((message) => {
+		if (message.role !== "assistant" || !Array.isArray(message.content)) {
+			return message;
+		}
+
+		let contentMutated = false;
+		const nextContent = message.content.map((part) => {
+			if (
+				!isToolCallPart(part) ||
+				!("input" in part) ||
+				typeof part.input !== "string"
+			) {
+				return part;
+			}
+
+			try {
+				const parsed = JSON.parse(part.input);
+				if (!isRecord(parsed) || Array.isArray(parsed)) return part;
+				contentMutated = true;
+				return {
+					...part,
+					input: parsed,
+				};
+			} catch {
+				return part;
+			}
+		});
+
+		if (!contentMutated) return message;
+		mutated = true;
+		return {
+			...message,
+			content: nextContent as CoreMessage["content"],
+		} as CoreMessage;
+	});
+
+	return mutated ? result : messages;
+}
+
 type GeminiToolHistoryRepairReason = "missing-signature-anchor";
 
 function validateGeminiAssistantToolCallMessage(message: CoreMessage): {
@@ -888,15 +944,26 @@ export async function* runTurn(options: {
 			logApiEvent("openai history transforms applied", { modelString });
 		}
 
+		const compatNormalizedMessages = normalizeOpenAICompatibleToolCallInputs(
+			openAIStrippedMessages,
+			modelString,
+		);
+		if (
+			compatNormalizedMessages !== openAIStrippedMessages &&
+			isApiLogEnabled()
+		) {
+			logApiEvent("openai-compatible tool input normalized", { modelString });
+		}
+
 		// Only compute full diagnostics when the API log is active; otherwise
 		// use a lightweight count+bytes helper that skips roleBreakdown/topContributors.
 		const apiLogOn = isApiLogEnabled();
 		const prePruneDiagnostics = apiLogOn
-			? getMessageDiagnostics(openAIStrippedMessages)
-			: getMessageStats(openAIStrippedMessages);
+			? getMessageDiagnostics(compatNormalizedMessages)
+			: getMessageStats(compatNormalizedMessages);
 		if (apiLogOn) logApiEvent("turn context pre-prune", prePruneDiagnostics);
 		const prunedMessages = applyContextPruning(
-			openAIStrippedMessages,
+			compatNormalizedMessages,
 			pruningMode,
 		);
 		const postPruneDiagnostics = apiLogOn

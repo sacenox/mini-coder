@@ -7,6 +7,7 @@ import {
 	getMessageDiagnostics,
 	getReasoningDeltaFromStreamChunk,
 	isOpenAIGPT,
+	normalizeOpenAICompatibleToolCallInputs,
 	sanitizeGeminiToolMessages,
 	stripGPTCommentaryFromHistory,
 	stripOpenAIItemIdsFromHistory,
@@ -33,6 +34,55 @@ describe("isOpenAIGPT", () => {
 		expect(isOpenAIGPT("anthropic/claude-sonnet-4-5")).toBe(false);
 		expect(isOpenAIGPT("google/gemini-2.0-flash")).toBe(false);
 		expect(isOpenAIGPT("zen/claude-sonnet-4-6")).toBe(false);
+	});
+});
+
+describe("normalizeOpenAICompatibleToolCallInputs", () => {
+	const makeAssistantToolCallMessages = (input: string): CoreMessage[] => [
+		{
+			role: "assistant",
+			content: [
+				{
+					type: "tool-call",
+					toolCallId: "call_1",
+					toolName: "read",
+					input,
+				},
+			],
+		} as unknown as CoreMessage,
+	];
+
+	test("parses stringified object tool-call input for zen openai-compatible chat models", () => {
+		const messages = makeAssistantToolCallMessages('{"path":"TODO.md"}');
+
+		const normalized = normalizeOpenAICompatibleToolCallInputs(
+			messages,
+			"zen/glm-5",
+		);
+		const part = (normalized[0] as { content: Array<Record<string, unknown>> })
+			.content[0];
+		expect(part?.input).toEqual({ path: "TODO.md" });
+	});
+
+	test("leaves non-object parsed inputs unchanged", () => {
+		const messages = makeAssistantToolCallMessages('"raw-string"');
+
+		const normalized = normalizeOpenAICompatibleToolCallInputs(
+			messages,
+			"zen/glm-5",
+		);
+		expect(normalized).toBe(messages);
+	});
+
+	test("does not run for non zen-openai-compatible models", () => {
+		const messages = makeAssistantToolCallMessages('{"path":"TODO.md"}');
+
+		expect(
+			normalizeOpenAICompatibleToolCallInputs(messages, "zen/gpt-5.3-codex"),
+		).toBe(messages);
+		expect(
+			normalizeOpenAICompatibleToolCallInputs(messages, "openai/gpt-4o"),
+		).toBe(messages);
 	});
 });
 
