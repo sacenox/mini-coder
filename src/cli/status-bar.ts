@@ -1,4 +1,5 @@
 import * as c from "yoctocolors";
+import { terminal } from "./terminal-io.ts";
 
 const ANSI_ESCAPE = "\u001b";
 
@@ -45,7 +46,7 @@ export function renderStatusBar(opts: {
 	activeAgent?: string | null;
 	showReasoning?: boolean;
 }): void {
-	const cols = (process.stdout as NodeJS.WriteStream).columns ?? 80;
+	const cols = terminal.stdoutColumns || 80;
 
 	// Build segments from right priority (rightmost items drop first)
 	const left: string[] = [c.cyan(opts.model)];
@@ -93,5 +94,5 @@ export function renderStatusBar(opts: {
 
 	const out = visible.length > cols ? truncateAnsi(full, cols - 1) : full;
 
-	process.stdout.write(`${out}\n`);
+	terminal.stdoutWrite(`${out}\n`);
 }

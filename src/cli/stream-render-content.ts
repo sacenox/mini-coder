@@ -9,6 +9,7 @@ import {
 	setStreamPreviewPrefix,
 	streamPartialPreviewDelta,
 } from "./stream-preview.ts";
+import { terminal } from "./terminal-io.ts";
 
 export class StreamRenderContent {
 	private inText = false;
@@ -83,7 +84,7 @@ export class StreamRenderContent {
 			if (this.partialPreview.partialWritten > 0) {
 				const clearSeq = buildClearPartialPreview(
 					this.partialPreview,
-					process.stdout.columns ?? 0,
+					terminal.stdoutColumns,
 				);
 				if (out !== null) write(`${clearSeq}${this.styledPrefix}${out}`);
 				else write(clearSeq);
@@ -139,7 +140,7 @@ export class StreamRenderContent {
 			if (firstLine && this.partialPreview.partialWritten > 0) {
 				const clearSeq = buildClearPartialPreview(
 					this.partialPreview,
-					process.stdout.columns ?? 0,
+					terminal.stdoutColumns,
 				);
 				if (out !== null)
 					batchOutput += `${clearSeq}${this.styledPrefix}${out}\n`;

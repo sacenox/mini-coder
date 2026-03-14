@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { SPINNER_FRAMES, Spinner } from "./spinner.ts";
+import { terminal } from "./terminal-io.ts";
 
 const BRAILLE_BASE = 0x2800;
 const BRAILLE_DOT_7 = 1 << 6;
@@ -18,13 +19,12 @@ describe("SPINNER_FRAMES", () => {
 
 describe("Spinner", () => {
 	test("clears the spinner line and shows cursor without advancing to a new line", () => {
-		const originalWrite = process.stderr.write;
+		const originalWrite = terminal.stderrWrite.bind(terminal);
 		const originalIsTTY = process.stderr.isTTY;
 		let stderr = "";
-		process.stderr.write = ((text: string) => {
+		terminal.stderrWrite = (text: string) => {
 			stderr += text;
-			return true;
-		}) as typeof process.stderr.write;
+		};
 		process.stderr.isTTY = true;
 
 		try {
@@ -35,7 +35,7 @@ describe("Spinner", () => {
 			expect(stderr).toContain("\x1B[?25h");
 			expect(stderr).not.toContain("\n");
 		} finally {
-			process.stderr.write = originalWrite;
+			terminal.stderrWrite = originalWrite;
 			process.stderr.isTTY = originalIsTTY;
 		}
 	});

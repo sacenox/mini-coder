@@ -18,6 +18,18 @@ class TerminalIO {
 		return process.stdin.isTTY;
 	}
 
+	get isStdoutTTY(): boolean {
+		return process.stdout.isTTY;
+	}
+
+	get isStderrTTY(): boolean {
+		return process.stderr.isTTY;
+	}
+
+	get stdoutColumns(): number {
+		return process.stdout.columns ?? 0;
+	}
+
 	setRawMode(enable: boolean): void {
 		if (this.isTTY) {
 			process.stdin.setRawMode(enable);

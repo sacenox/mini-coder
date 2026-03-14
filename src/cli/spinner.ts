@@ -1,4 +1,5 @@
 import * as c from "yoctocolors";
+import { terminal } from "./terminal-io.ts";
 
 export const SPINNER_FRAMES = ["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"];
 
@@ -8,10 +9,10 @@ export class Spinner {
 	private label = "";
 
 	start(label = ""): void {
-		if (!process.stderr.isTTY) return;
+		if (!terminal.isStderrTTY) return;
 		this.label = label;
 		if (this.timer) return;
-		process.stderr.write("\x1B[?25l");
+		terminal.stderrWrite("\x1B[?25l");
 		this._tick();
 		this.timer = setInterval(() => this._tick(), 80);
 	}
@@ -20,7 +21,7 @@ export class Spinner {
 		if (!this.timer) return;
 		clearInterval(this.timer);
 		this.timer = null;
-		process.stderr.write("\r\x1B[2K\x1B[?25h");
+		terminal.stderrWrite("\r\x1B[2K\x1B[?25h");
 	}
 
 	update(label: string): void {
@@ -30,6 +31,6 @@ export class Spinner {
 	private _tick(): void {
 		const f = SPINNER_FRAMES[this.frame++ % SPINNER_FRAMES.length] ?? "⣾";
 		const label = this.label ? c.dim(` ${this.label}`) : "";
-		process.stderr.write(`\r${c.dim(f)}${label}`);
+		terminal.stderrWrite(`\r${c.dim(f)}${label}`);
 	}
 }
