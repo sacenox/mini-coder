@@ -24,7 +24,8 @@ conventions and not introduce more specs. (`.agents` / `AGENTS.md`, while also s
 - Session management and command to create new/resume/list with local sqlite file.
 - Seamless shell integration with `!` in prompt input.
 - Reference files and skills from the working directory and global configs with `@` in prompt input, plus autocomplete for files, skills, and agents.
-- Press `ESC` at any point during an assistant response to interrupt it: the partial response is preserved in history with an interrupt stub appended (so the LLM retains context), and the user is returned to the prompt silently. `ctrl+c` exits the app. `ctrl+d` (EOF) also exits.
+- Press `ESC` at any point during an assistant response to interrupt it: the partial response is preserved in history with an interrupt stub appended (so the LLM retains context), and the user is returned to the prompt silently. `ctrl+c` exits forcefully. `ctrl+d` (EOF) gracefully exits.
+- Elegantly handles hitting max context size for the model. Also handles max tool calls, gracefully finishing the turn with an update from the agent
 - Feature parity with community configs like custom agents, skill and commands.
 - `read`, `replace`,`insert`, `create`, `shell`, and `subagent` tools for LLMs
 - Optional `webSearch` and `webContent` tools when `EXA_API_KEY` is set.
@@ -36,7 +37,6 @@ conventions and not introduce more specs. (`.agents` / `AGENTS.md`, while also s
   - `/reasoning` toggles display of model reasoning output.
   - `/context` configures context pruning and tool-result caps.
   - `/review` reviews recent changes via a global command installed at app start (`~/.agents/commands/review.md`), and can be customized or shadowed locally.
-  - `/plan` for a read-only mode (`/plan` again to turn off)
   - `/ralph` for a ralph loop mode (by Geoffrey Huntley, who described it simply: “Ralph is a Bash loop.”)
   - `/agent` sets or clears the active primary agent.
   - `/mcp` list/add/remove mcp servers. servers are stored in sqlite
@@ -53,8 +53,8 @@ conventions and not introduce more specs. (`.agents` / `AGENTS.md`, while also s
   - Read tool show the tool call with args fomatted for output
   - Edit tools show the diff applied
   - Shell tools show the command called and their output
-- status bar under prompt, with current model/provider/session/git branch/active agent/thinking effort/context usage/token input/token output
-- some prompt colored animation when a turn is processing.
+- status bar like prompt, with current model/provider/session/git branch/active agent/thinking effort/context usage/token input/token output
+- some prompt colored animation when a turn is processing. Needs to be carefully done, so it shows correctly in wait times and with clear labels
 
 ## Tech stack
 
