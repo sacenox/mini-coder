@@ -39,8 +39,10 @@ class TerminalIO {
 
 	restoreTerminal(): void {
 		try {
-			this.stderrWrite("\x1B[?25h");
-			this.stderrWrite("\r\x1B[2K");
+			if (this.isStderrTTY) {
+				this.stderrWrite("\x1B[?25h");
+				this.stderrWrite("\r\x1B[2K");
+			}
 		} catch {
 			/* ignore */
 		}
