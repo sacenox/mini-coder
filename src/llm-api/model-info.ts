@@ -21,6 +21,16 @@ const CACHE_VERSION_KEY = "model_info_cache_version";
 const CACHE_VERSION = 2;
 export const MODEL_INFO_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+const REMOTE_PROVIDER_ENV_KEYS: ReadonlyArray<{
+	provider: string;
+	envKeys: readonly string[];
+}> = [
+	{ provider: "zen", envKeys: ["OPENCODE_API_KEY"] },
+	{ provider: "openai", envKeys: ["OPENAI_API_KEY"] },
+	{ provider: "anthropic", envKeys: ["ANTHROPIC_API_KEY"] },
+	{ provider: "google", envKeys: ["GOOGLE_API_KEY", "GEMINI_API_KEY"] },
+];
+
 interface ModelInfo {
 	canonicalModelId: string | null;
 	contextWindow: number | null;
@@ -339,15 +349,22 @@ function parseStateInt(key: string): number | null {
 	return value;
 }
 
+function hasAnyEnvKey(
+	env: Record<string, string | undefined>,
+	keys: readonly string[],
+): boolean {
+	for (const key of keys) {
+		if (env[key]) return true;
+	}
+	return false;
+}
+
 export function getRemoteProvidersFromEnv(
 	env: Record<string, string | undefined>,
 ): string[] {
-	const providers: string[] = [];
-	if (env.OPENCODE_API_KEY) providers.push("zen");
-	if (env.OPENAI_API_KEY) providers.push("openai");
-	if (env.ANTHROPIC_API_KEY) providers.push("anthropic");
-	if (env.GOOGLE_API_KEY ?? env.GEMINI_API_KEY) providers.push("google");
-	return providers;
+	return REMOTE_PROVIDER_ENV_KEYS.filter((entry) =>
+		hasAnyEnvKey(env, entry.envKeys),
+	).map((entry) => entry.provider);
 }
 
 export function getProvidersToRefreshFromEnv(
@@ -601,23 +618,22 @@ async function fetchOllamaModels(): Promise<ProviderModelCandidate[] | null> {
 	});
 }
 
+const PROVIDER_CANDIDATE_FETCHERS: Readonly<
+	Record<string, () => Promise<ProviderModelCandidate[] | null>>
+> = {
+	zen: fetchZenModels,
+	openai: fetchOpenAIModels,
+	anthropic: fetchAnthropicModels,
+	google: fetchGoogleModels,
+	ollama: fetchOllamaModels,
+};
+
 async function fetchProviderCandidates(
 	provider: string,
 ): Promise<ProviderModelCandidate[] | null> {
-	switch (provider) {
-		case "zen":
-			return fetchZenModels();
-		case "openai":
-			return fetchOpenAIModels();
-		case "anthropic":
-			return fetchAnthropicModels();
-		case "google":
-			return fetchGoogleModels();
-		case "ollama":
-			return fetchOllamaModels();
-		default:
-			return null;
-	}
+	const fetcher = PROVIDER_CANDIDATE_FETCHERS[provider];
+	if (!fetcher) return null;
+	return fetcher();
 }
 
 function providerRowsFromCandidates(
