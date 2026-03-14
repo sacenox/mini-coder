@@ -106,6 +106,33 @@ describe("renderToolResult", () => {
 		expect(plain).toContain("+console.log('ok')");
 	});
 
+	test("truncates large file edit diffs to keep output compact", () => {
+		terminal.stdoutWrite = (chunk: string) => {
+			stdout += chunk;
+		};
+
+		const diffLines = [
+			"@@ -0,0 +30 @@",
+			...Array.from({ length: 30 }, (_, i) => `+line ${i + 1}`),
+		];
+		renderToolResult(
+			"create",
+			{
+				path: "src/huge.ts",
+				created: true,
+				diff: diffLines.join("\n"),
+			},
+			false,
+		);
+
+		const plain = stripAnsi(stdout);
+		expect(plain).toContain("created src/huge.ts");
+		expect(plain).toContain("+line 1");
+		expect(plain).toContain("+line 23");
+		expect(plain).toContain("… +7 more diff lines");
+		expect(plain).not.toContain("+line 30");
+	});
+
 	test("renders one-line error when tool result fails", () => {
 		terminal.stdoutWrite = (chunk: string) => {
 			stdout += chunk;

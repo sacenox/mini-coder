@@ -1,20 +1,31 @@
 import * as c from "yoctocolors";
 import { writeln } from "./output.ts";
 
+const MAX_DIFF_PREVIEW_LINES = 24;
+
+function colorizeDiffLine(line: string): string {
+	if (line.startsWith("+++") || line.startsWith("---")) return c.dim(line);
+	if (line.startsWith("+")) return c.green(line);
+	if (line.startsWith("-")) return c.red(line);
+	if (line.startsWith("@@")) return c.cyan(line);
+	return c.dim(line);
+}
+
 export function renderDiff(diff: string): void {
 	if (!diff || diff === "(no changes)") return;
-	for (const line of diff.split("\n")) {
-		if (line.startsWith("+++") || line.startsWith("---")) {
-			writeln(`    ${c.dim(line)}`);
-		} else if (line.startsWith("+")) {
-			writeln(`    ${c.green(line)}`);
-		} else if (line.startsWith("-")) {
-			writeln(`    ${c.red(line)}`);
-		} else if (line.startsWith("@@")) {
-			writeln(`    ${c.cyan(line)}`);
-		} else {
-			writeln(`    ${c.dim(line)}`);
-		}
+
+	const normalized = diff.replace(/[\r\n]+$/, "");
+	if (!normalized) return;
+
+	const lines = normalized.split("\n");
+	const shown = lines.slice(0, MAX_DIFF_PREVIEW_LINES);
+	for (const line of shown) {
+		writeln(`    ${colorizeDiffLine(line)}`);
+	}
+	if (lines.length > shown.length) {
+		writeln(
+			`    ${c.dim(`… +${lines.length - shown.length} more diff lines`)}`,
+		);
 	}
 }
 
