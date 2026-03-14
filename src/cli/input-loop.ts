@@ -3,8 +3,6 @@ import type { AgentReporter } from "../agent/reporter.ts";
 import type { SessionRunner } from "../agent/session-runner.ts";
 
 import { getContextWindow } from "../llm-api/providers.ts";
-import type { CoreMessage } from "../llm-api/turn.ts";
-import { saveMessages } from "../session/db/index.ts";
 import { getGitBranch, runShellPassthrough } from "./cli-helpers.ts";
 import { handleCommand } from "./commands.ts";
 import { resolveFileRefs } from "./file-refs.ts";
@@ -25,8 +23,9 @@ export async function runInputLoop(opts: InputLoopOptions): Promise<void> {
 
 	while (true) {
 		const branch = await getGitBranch(cwd);
-		const provider = runner.currentModel.split("/")[0] ?? "";
-		const modelShort = runner.currentModel.split("/").slice(1).join("/");
+		const status = runner.getStatusInfo();
+		const provider = status.model.split("/")[0] ?? "";
+		const modelShort = status.model.split("/").slice(1).join("/");
 		const cwdDisplay = tildePath(cwd);
 
 		reporter.renderStatusBar({
@@ -34,21 +33,19 @@ export async function runInputLoop(opts: InputLoopOptions): Promise<void> {
 			provider,
 			cwd: cwdDisplay,
 			gitBranch: branch,
-			sessionId: runner.session.id,
-			inputTokens: runner.totalIn,
-			outputTokens: runner.totalOut,
-			contextTokens: runner.lastContextTokens,
-			contextWindow: getContextWindow(runner.currentModel) ?? 0,
-			thinkingEffort: runner.currentThinkingEffort,
+			sessionId: status.sessionId,
+			inputTokens: status.totalIn,
+			outputTokens: status.totalOut,
+			contextTokens: status.lastContextTokens,
+			contextWindow: getContextWindow(status.model) ?? 0,
+			thinkingEffort: status.thinkingEffort,
 			activeAgent: cmdCtx.activeAgent,
-			showReasoning: runner.showReasoning,
+			showReasoning: status.showReasoning,
 		});
 
 		let input: InputResult;
 		try {
-			input = await readline({
-				cwd,
-			});
+			input = await readline({ cwd });
 		} catch {
 			break;
 		}
@@ -82,15 +79,7 @@ export async function runInputLoop(opts: InputLoopOptions): Promise<void> {
 			case "shell": {
 				const out = await runShellPassthrough(input.command, cwd, reporter);
 				if (out) {
-					const thisTurn = runner.turnIndex++;
-					const msg: CoreMessage = {
-						role: "user",
-						content: `Shell output of \`${input.command}\`:\n\`\`\`\n${out}\n\`\`\``,
-					};
-					runner.session.messages.push(msg);
-					saveMessages(runner.session.id, [msg], thisTurn);
-					runner.coreHistory.push(msg);
-					runner.snapshotStack.push(null);
+					runner.addShellContext(input.command, out);
 				}
 				continue;
 			}

@@ -22,7 +22,6 @@ import type { AgentReporter } from "./reporter.ts";
 import { SessionRunner } from "./session-runner.ts";
 import { createSubagentRunner } from "./subagent-runner.ts";
 import { buildToolSet } from "./tools.ts";
-import { undoLastTurn } from "./undo-snapshot.ts";
 
 interface AgentOptions {
 	model: string;
@@ -213,18 +212,7 @@ export async function initAgent(opts: AgentOptions): Promise<{
 			setPreferredActiveAgent(name);
 		},
 
-		undoLastTurn: () =>
-			undoLastTurn({
-				session: runner.session,
-				coreHistory: runner.coreHistory,
-				snapshotStack: runner.snapshotStack,
-				getTurnIndex: () => runner.turnIndex,
-				setTurnIndex: (idx) => {
-					runner.turnIndex = idx;
-				},
-				cwd,
-				reporter: opts.reporter,
-			}),
+		undoLastTurn: () => runner.undoLastTurn(),
 		connectMcpServer: connectAndAddMcp,
 		startSpinner: (label?: string) => opts.reporter.startSpinner(label),
 		stopSpinner: () => opts.reporter.stopSpinner(),

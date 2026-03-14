@@ -21,6 +21,7 @@ import { snapshotBeforeEdit } from "../tools/snapshot.ts";
 import { extractAssistantText, makeInterruptMessage } from "./agent-helpers.ts";
 import type { AgentReporter } from "./reporter.ts";
 import { buildSystemPrompt } from "./system-prompt.ts";
+import { undoLastTurn } from "./undo-snapshot.ts";
 
 interface SessionRunnerOptions {
 	cwd: string;
@@ -41,11 +42,23 @@ interface SessionRunnerOptions {
 	killSubprocesses?: (() => void) | undefined;
 }
 
+interface RunnerStatusInfo {
+	model: string;
+	sessionId: string;
+	thinkingEffort: ThinkingEffort | null;
+	showReasoning: boolean;
+	totalIn: number;
+	totalOut: number;
+	lastContextTokens: number;
+}
+
 export class SessionRunner {
-	public cwd: string;
-	public reporter: AgentReporter;
-	public tools: ToolDef[];
-	public mcpTools: ToolDef[];
+	public readonly cwd: string;
+	public readonly reporter: AgentReporter;
+	public readonly tools: ToolDef[];
+	public readonly mcpTools: ToolDef[];
+
+	// ─── Mutable settings (updated via cmdCtx) ────────────────────────────────
 	public currentModel: string;
 	public currentThinkingEffort: ThinkingEffort | null;
 	public showReasoning: boolean;
@@ -55,58 +68,21 @@ export class SessionRunner {
 	public openaiPromptCacheRetention: "in_memory" | "24h";
 	public googleCachedContent: string | null;
 
+	// ─── Session state ─────────────────────────────────────────────────────────
 	public session!: ActiveSession;
-	public sessionTimeAnchor!: string;
-	public coreHistory!: CoreMessage[];
-	public turnIndex = 1;
-	public snapshotStack: Array<number | null> = [];
-	public currentSnappedPaths: Set<string> | null = null;
-	public currentTurn: number | null = null;
 
-	public async snapshotCallback(filePath: string) {
-		if (this.currentTurn !== null && this.currentSnappedPaths !== null) {
-			this.reporter.renderSubState("snapshot");
-
-			await snapshotBeforeEdit(
-				this.cwd,
-				this.session.id,
-				this.currentTurn,
-				filePath,
-				this.currentSnappedPaths,
-			);
-		}
-	}
-
-	public totalIn = 0;
-	public totalOut = 0;
-	public lastContextTokens = 0;
-	// Cache the system prompt so the file-system reads in buildSystemPrompt
-	// (context files, skills index) are not repeated on every processUserInput call.
+	// ─── Internal state ────────────────────────────────────────────────────────
+	private sessionTimeAnchor!: string;
+	private coreHistory!: CoreMessage[];
+	private turnIndex = 1;
+	private snapshotStack: Array<number | null> = [];
+	private currentSnappedPaths: Set<string> | null = null;
+	private currentTurn: number | null = null;
+	private totalIn = 0;
+	private totalOut = 0;
+	private lastContextTokens = 0;
 	private _extraSystemPrompt: string | undefined;
 	private _systemPrompt: string | undefined;
-
-	public get extraSystemPrompt(): string | undefined {
-		return this._extraSystemPrompt;
-	}
-
-	public set extraSystemPrompt(value: string | undefined) {
-		this._extraSystemPrompt = value;
-		this.rebuildSystemPrompt();
-	}
-
-	private rebuildSystemPrompt(): void {
-		if (!this.sessionTimeAnchor) {
-			this._systemPrompt = undefined;
-			return;
-		}
-		this._systemPrompt = buildSystemPrompt(
-			this.sessionTimeAnchor,
-			this.cwd,
-			this._extraSystemPrompt,
-			this.isSubagent,
-		);
-	}
-
 	private isSubagent: boolean | undefined;
 	private killSubprocesses: (() => void) | undefined;
 
@@ -129,6 +105,47 @@ export class SessionRunner {
 		this.initSession(opts.sessionId);
 	}
 
+	// ─── Public accessors ──────────────────────────────────────────────────────
+
+	public get extraSystemPrompt(): string | undefined {
+		return this._extraSystemPrompt;
+	}
+
+	public set extraSystemPrompt(value: string | undefined) {
+		this._extraSystemPrompt = value;
+		this.rebuildSystemPrompt();
+	}
+
+	/** Returns the data needed to render the status bar. */
+	public getStatusInfo(): RunnerStatusInfo {
+		return {
+			model: this.currentModel,
+			sessionId: this.session.id,
+			thinkingEffort: this.currentThinkingEffort,
+			showReasoning: this.showReasoning,
+			totalIn: this.totalIn,
+			totalOut: this.totalOut,
+			lastContextTokens: this.lastContextTokens,
+		};
+	}
+
+	// ─── Snapshot callback (used by tools) ────────────────────────────────────
+
+	public async snapshotCallback(filePath: string) {
+		if (this.currentTurn !== null && this.currentSnappedPaths !== null) {
+			this.reporter.renderSubState("snapshot");
+			await snapshotBeforeEdit(
+				this.cwd,
+				this.session.id,
+				this.currentTurn,
+				filePath,
+				this.currentSnappedPaths,
+			);
+		}
+	}
+
+	// ─── Session lifecycle ─────────────────────────────────────────────────────
+
 	public initSession(sessionId?: string) {
 		if (sessionId) {
 			const resumed = resumeSession(sessionId);
@@ -150,7 +167,6 @@ export class SessionRunner {
 		// Model-authored messages must remain byte-for-byte equivalent in structure
 		// (including providerOptions/providerMetadata thought-signature fields and
 		// part ordering); do not reconstruct tool-call history on resume.
-
 		this.sessionTimeAnchor = new Date(this.session.createdAt).toISOString();
 		this.coreHistory = [...this.session.messages];
 		this.rebuildSystemPrompt();
@@ -169,6 +185,42 @@ export class SessionRunner {
 		this.snapshotStack.length = 0;
 	}
 
+	// ─── Shell passthrough ─────────────────────────────────────────────────────
+
+	/**
+	 * Persist a shell command's output as a user message so the LLM has context.
+	 * Called by input-loop.ts after a `!cmd` passthrough.
+	 */
+	public addShellContext(command: string, output: string): void {
+		const thisTurn = this.turnIndex++;
+		const msg: CoreMessage = {
+			role: "user",
+			content: `Shell output of \`${command}\`:\n\`\`\`\n${output}\n\`\`\``,
+		};
+		this.session.messages.push(msg);
+		saveMessages(this.session.id, [msg], thisTurn);
+		this.coreHistory.push(msg);
+		this.snapshotStack.push(null);
+	}
+
+	// ─── Undo ──────────────────────────────────────────────────────────────────
+
+	public async undoLastTurn(): Promise<boolean> {
+		return undoLastTurn({
+			session: this.session,
+			coreHistory: this.coreHistory,
+			snapshotStack: this.snapshotStack,
+			getTurnIndex: () => this.turnIndex,
+			setTurnIndex: (idx) => {
+				this.turnIndex = idx;
+			},
+			cwd: this.cwd,
+			reporter: this.reporter,
+		});
+	}
+
+	// ─── Main turn processing ──────────────────────────────────────────────────
+
 	public async processUserInput(
 		text: string,
 		pastedImages: ImageAttachment[] = [],
@@ -182,27 +234,25 @@ export class SessionRunner {
 				killSubs();
 			});
 		}
-		const allImages = [...pastedImages];
-		const thisTurn = this.turnIndex++;
 
+		const thisTurn = this.turnIndex++;
 		this.currentTurn = thisTurn;
 		this.currentSnappedPaths = new Set<string>();
-		const coreContent = text;
 
 		const userMsg: CoreMessage =
-			allImages.length > 0
+			pastedImages.length > 0
 				? {
 						role: "user",
 						content: [
-							{ type: "text", text: coreContent },
-							...allImages.map((img) => ({
+							{ type: "text", text },
+							...pastedImages.map((img) => ({
 								type: "image" as const,
 								image: img.data,
 								mediaType: img.mediaType,
 							})),
 						],
 					}
-				: { role: "user", content: coreContent };
+				: { role: "user", content: text };
 
 		this.session.messages.push(userMsg);
 		saveMessages(this.session.id, [userMsg], thisTurn);
@@ -248,12 +298,10 @@ export class SessionRunner {
 				// serialization and preserve exact shape/ordering (including
 				// providerOptions/providerMetadata thought-signature fields). Never
 				// reconstruct tool-call history during save/load.
-
 				saveMessages(this.session.id, newMessages, thisTurn);
 			}
 
 			lastAssistantText = extractAssistantText(newMessages);
-
 			this.totalIn += inputTokens;
 			this.totalOut += outputTokens;
 			this.lastContextTokens = contextTokens;
@@ -270,5 +318,20 @@ export class SessionRunner {
 			stopWatcher();
 		}
 		return lastAssistantText;
+	}
+
+	// ─── Private helpers ───────────────────────────────────────────────────────
+
+	private rebuildSystemPrompt(): void {
+		if (!this.sessionTimeAnchor) {
+			this._systemPrompt = undefined;
+			return;
+		}
+		this._systemPrompt = buildSystemPrompt(
+			this.sessionTimeAnchor,
+			this.cwd,
+			this._extraSystemPrompt,
+			this.isSubagent,
+		);
 	}
 }

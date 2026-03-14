@@ -124,10 +124,11 @@ async function main(): Promise<void> {
 				parentCwd,
 			);
 			const result = await runner.processUserInput(resolvedText, refImages);
+			const status = runner.getStatusInfo();
 			const summary = {
 				result,
-				inputTokens: runner.totalIn,
-				outputTokens: runner.totalOut,
+				inputTokens: status.totalIn,
+				outputTokens: status.totalOut,
 			};
 
 			if (args.outputFd !== null && summary) {
@@ -173,8 +174,9 @@ async function main(): Promise<void> {
 				args.cwd,
 			);
 			await runner.processUserInput(resolvedText, refImages);
+			const { totalIn, totalOut } = runner.getStatusInfo();
 			writeln(
-				`  ${c.dim(`${runner.totalIn.toLocaleString()} in / ${runner.totalOut.toLocaleString()} out tokens`)}`,
+				`  ${c.dim(`${totalIn.toLocaleString()} in / ${totalOut.toLocaleString()} out tokens`)}`,
 			);
 			return;
 		}
