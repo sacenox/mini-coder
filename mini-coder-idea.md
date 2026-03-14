@@ -12,7 +12,7 @@ A coding agent via a augmented shell prompt, small and fast that doesn't get in 
 ## Philosophy:
 
 Very focused on dev flow, simple setup steps and fast to coding.
-Elegant output that focus on the conversation with the agent and their actions. Ensure an accurate cronological conversation log that is very readable for the user.
+Elegant output that focus on the conversation with the agent and their actions. Ensure an accurate cronological conversation log that is very readable for the user. Keep a visible hierchy of actions -> results and assistant reasoning and responses.
 Accurate and reliable core set of features.
 Fast and performant, instant feedback shell like output. Performance first style second.
 Community oriented, all of the inspirations have their own dotfile format, try to follow the existing
@@ -22,12 +22,14 @@ conventions and not introduce more specs. (`.agents` / `AGENTS.md`, while also s
 
 - Auto discovery of providers via ENV (Example: OPENCODE_API_KEY), or local servers (Example: ollama)
 - Session management and command to create new/resume/list with local sqlite file.
+- Multi-line prompt, shift enter adds a newline. Enter sends.
 - Seamless shell integration with `!` in prompt input.
 - Reference files and skills from the working directory and global configs with `@` in prompt input, plus autocomplete for files, skills, and agents.
 - Press `ESC` at any point during an assistant response to interrupt it: the partial response is preserved in history with an interrupt stub appended (so the LLM retains context), and the user is returned to the prompt silently. `ctrl+c` exits forcefully. `ctrl+d` (EOF) gracefully exits.
 - Elegantly handles hitting max context size for the model. Also handles max tool calls, gracefully finishing the turn with an update from the agent
 - Feature parity with community configs like custom agents, skill and commands.
 - `read`, `replace`,`insert`, `create`, `shell`, and `subagent` tools for LLMs
+- read/write tools are streamlined, easy to use and rely on hashline editting pattern.
 - Optional `webSearch` and `webContent` tools when `EXA_API_KEY` is set.
 - `subagent` tool spawns a fresh `mc` subprocess — full capability parity with the main agent, support for recursive subagents (up to 10 levels). Custom agents and custom commands from `.agents` and `.claude` are supported in subagents.
 - tool hooks support for supported built-in tools

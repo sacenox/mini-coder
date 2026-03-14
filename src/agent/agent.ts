@@ -196,17 +196,11 @@ export async function initAgent(opts: AgentOptions): Promise<{
 			runner.googleCachedContent = contentId;
 			setPreferredGoogleCachedContent(contentId);
 		},
-		get planMode() {
-			return runner.planMode;
-		},
 		get ralphMode() {
 			return runner.ralphMode;
 		},
 		setRalphMode: (v) => {
 			runner.ralphMode = v;
-		},
-		setPlanMode: (v) => {
-			runner.planMode = v;
 		},
 		cwd,
 		runSubagent: (prompt, agentName?, model?, abortSignal?) =>

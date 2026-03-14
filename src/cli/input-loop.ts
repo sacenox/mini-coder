@@ -53,7 +53,6 @@ export async function runInputLoop(opts: InputLoopOptions): Promise<void> {
 		try {
 			input = await readline({
 				cwd,
-				planMode: runner.planMode,
 				ralphMode: runner.ralphMode,
 			});
 		} catch {

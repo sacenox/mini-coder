@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { replaceTool } from "./replace.ts";
-import { createTestHelpers } from "./test-helpers.ts";
+import { createTestHelpers, registerAnchorErrorTests } from "./test-helpers.ts";
 import { stripWriteResultMeta } from "./write-result.ts";
 
 const { setup, teardown, write, read, anchor, getDir } = createTestHelpers();
@@ -107,25 +107,12 @@ describe("replaceTool", () => {
 		expect(result.path).toBe(name);
 	});
 
-	test("throws when file does not exist", async () => {
-		await expect(
-			execute({
-				path: "missing.txt",
-				cwd: getDir(),
-				startAnchor: "1:00",
-			}),
-		).rejects.toThrow("File not found");
-	});
-
-	test("throws when anchor hash does not match", async () => {
-		const name = await write("f.txt", "a\nb\nc\n");
-		await expect(
-			execute({
-				path: name,
-				cwd: getDir(),
-				startAnchor: "2:ff", // wrong hash for "b"
-			}),
-		).rejects.toThrow("Hash not found");
+	registerAnchorErrorTests({
+		missingFileCall: (a) =>
+			execute({ path: "missing.txt", cwd: getDir(), startAnchor: a }),
+		badAnchorCall: (name, a) =>
+			execute({ path: name, cwd: getDir(), startAnchor: a }), // wrong hash for "b"
+		write,
 	});
 
 	test("throws when endAnchor is before startAnchor", async () => {

@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { hashLine } from "../tools/hashline.ts";
-import { buildReadOnlyToolSet, buildToolSet } from "./tools.ts";
+import { buildToolSet } from "./tools.ts";
 
 let cwd = "";
 
@@ -115,12 +115,6 @@ describe("skills tools registration", () => {
 			availableAgents: new Map(),
 		}).map((tool) => tool.name);
 
-		expect(names).toContain("listSkills");
-		expect(names).toContain("readSkill");
-	});
-
-	test("includes listSkills and readSkill in read-only tool set", () => {
-		const names = buildReadOnlyToolSet({ cwd }).map((tool) => tool.name);
 		expect(names).toContain("listSkills");
 		expect(names).toContain("readSkill");
 	});

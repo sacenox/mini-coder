@@ -21,7 +21,6 @@ import { snapshotBeforeEdit } from "../tools/snapshot.ts";
 import { extractAssistantText, makeInterruptMessage } from "./agent-helpers.ts";
 import type { AgentReporter } from "./reporter.ts";
 import { buildSystemPrompt } from "./system-prompt.ts";
-import { buildReadOnlyToolSet } from "./tools.ts";
 
 interface SessionRunnerOptions {
 	cwd: string;
@@ -76,7 +75,6 @@ export class SessionRunner {
 		}
 	}
 
-	public planMode = false;
 	public ralphMode = false;
 
 	public totalIn = 0;
@@ -189,9 +187,7 @@ export class SessionRunner {
 
 		this.currentTurn = thisTurn;
 		this.currentSnappedPaths = new Set<string>();
-		const coreContent = this.planMode
-			? `${text}\n\n<system-message>PLAN MODE ACTIVE: Help the user gather context for the plan -- READ ONLY</system-message>`
-			: text;
+		const coreContent = text;
 
 		const userMsg: CoreMessage =
 			allImages.length > 0
@@ -227,9 +223,7 @@ export class SessionRunner {
 				model: llm,
 				modelString: this.currentModel,
 				messages: this.coreHistory,
-				tools: this.planMode
-					? [...buildReadOnlyToolSet({ cwd: this.cwd }), ...this.mcpTools]
-					: this.tools,
+				tools: this.tools,
 				...(systemPrompt ? { systemPrompt } : {}),
 				signal: abortController.signal,
 				pruningMode: this.pruningMode,

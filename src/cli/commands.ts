@@ -299,22 +299,9 @@ function handleCache(ctx: CommandContext, args: string): void {
 	writeln(`${PREFIX.error} usage: /cache <on|off|openai|gemini> ...`);
 }
 
-function handlePlan(ctx: CommandContext): void {
-	ctx.setPlanMode(!ctx.planMode);
-	if (ctx.planMode) {
-		if (ctx.ralphMode) ctx.setRalphMode(false);
-		writeln(
-			`${PREFIX.info} ${c.yellow("plan mode")} ${c.dim("— read-only tools + MCP, no writes or shell")}`,
-		);
-	} else {
-		writeln(`${PREFIX.info} ${c.dim("plan mode off")}`);
-	}
-}
-
 function handleRalph(ctx: CommandContext): void {
 	ctx.setRalphMode(!ctx.ralphMode);
 	if (ctx.ralphMode) {
-		if (ctx.planMode) ctx.setPlanMode(false);
 		writeln(
 			`${PREFIX.info} ${c.magenta("ralph mode")} ${c.dim("— loops until done, fresh context each iteration")}`,
 		);
@@ -579,7 +566,6 @@ function handleHelp(
 		["/undo", "remove the last turn from conversation history"],
 		["/reasoning [on|off]", "toggle display of model reasoning output"],
 		["/context [prune|cap]", "configure context pruning and tool-result caps"],
-		["/plan", "toggle plan mode (read-only tools + MCP)"],
 		[
 			"/ralph",
 			"toggle ralph mode (autonomous loop, fresh context each iteration)",
@@ -669,8 +655,7 @@ export async function handleCommand(
 	args: string,
 	ctx: CommandContext,
 ): Promise<CommandResult> {
-	// Custom commands take precedence over built-ins — a local /review or
-	// /plan in .agents/commands/ will shadow the built-in with that name.
+	// Custom commands take precedence over built-ins.
 	const custom = loadCustomCommands(ctx.cwd);
 	const customCmd = custom.get(command.toLowerCase());
 	if (customCmd) {
@@ -696,10 +681,6 @@ export async function handleCommand(
 			return { type: "handled" };
 		case "cache":
 			handleCache(ctx, args);
-			return { type: "handled" };
-
-		case "plan":
-			handlePlan(ctx);
 			return { type: "handled" };
 
 		case "ralph":

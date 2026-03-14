@@ -198,19 +198,3 @@ export function buildToolSet(opts: {
 
 	return tools;
 }
-
-// Plan mode: read-only tools only, no hooks (hooks are a write-tool concern).
-export function buildReadOnlyToolSet(opts: { cwd: string }): ToolDef[] {
-	const { cwd } = opts;
-	const tools: ToolDef[] = [
-		withCwdDefault(readTool as ToolDef, cwd),
-		withCwdDefault(listSkillsTool as ToolDef, cwd),
-		withCwdDefault(readSkillTool as ToolDef, cwd),
-	];
-
-	if (process.env.EXA_API_KEY) {
-		tools.push(webSearchTool as ToolDef, webContentTool as ToolDef);
-	}
-
-	return tools;
-}
