@@ -1,4 +1,8 @@
-import { parseModelString } from "./providers.ts";
+import {
+	isGeminiModelFamily,
+	isOpenAIGPTModelFamily,
+	isZenOpenAICompatibleChatModel,
+} from "./model-routing.ts";
 import type { CoreMessage } from "./turn.ts";
 
 type StreamChunk = { type?: string; [key: string]: unknown };
@@ -87,24 +91,6 @@ function isToolCallPart(part: unknown): part is Record<string, unknown> {
 	return isRecord(part) && part.type === "tool-call";
 }
 
-function isGeminiModelFamily(modelString: string): boolean {
-	const { provider, modelId } = parseModelString(modelString);
-	return (
-		(provider === "google" || provider === "zen") &&
-		modelId.startsWith("gemini-")
-	);
-}
-
-function isZenOpenAICompatibleChatModel(modelString: string): boolean {
-	const { provider, modelId } = parseModelString(modelString);
-	if (provider !== "zen") return false;
-	return (
-		!modelId.startsWith("gpt-") &&
-		!modelId.startsWith("gemini-") &&
-		!modelId.startsWith("claude-")
-	);
-}
-
 function validateGeminiAssistantToolCallMessage(message: CoreMessage): {
 	valid: boolean;
 	reason: GeminiToolHistoryRepairReason | null;
@@ -152,10 +138,7 @@ export function getReasoningDeltaFromStreamChunk(
 }
 
 export function isOpenAIGPT(modelString: string): boolean {
-	const { provider, modelId } = parseModelString(modelString);
-	return (
-		(provider === "openai" || provider === "zen") && modelId.startsWith("gpt-")
-	);
+	return isOpenAIGPTModelFamily(modelString);
 }
 
 export function stripOpenAIItemIdsFromHistory(
@@ -325,9 +308,10 @@ export function sanitizeGeminiToolMessages(
 		.messages;
 }
 
-export function stripGPTCommentaryFromHistory(
+function stripOpenAIHistory(
 	messages: CoreMessage[],
 	modelString: string,
+	options: { stripItemIds: boolean },
 ): CoreMessage[] {
 	if (!isOpenAIGPT(modelString)) return messages;
 
@@ -344,85 +328,61 @@ export function stripGPTCommentaryFromHistory(
 			skipToolResults = false;
 		}
 
-		if (message.role !== "assistant" || !Array.isArray(message.content)) {
-			result.push(message);
+		let messageForCommentary = message;
+		if (options.stripItemIds && Array.isArray(message.content)) {
+			let contentMutated = false;
+			const strippedContent = message.content.map((part) => {
+				const cleaned = stripOpenAIItemIdFromPart(part);
+				if (cleaned.changed) contentMutated = true;
+				return cleaned.part;
+			});
+			if (contentMutated) {
+				mutated = true;
+				messageForCommentary = {
+					...message,
+					content: strippedContent as CoreMessage["content"],
+				} as CoreMessage;
+			}
+		}
+
+		if (
+			messageForCommentary.role !== "assistant" ||
+			!Array.isArray(messageForCommentary.content)
+		) {
+			result.push(messageForCommentary);
 			continue;
 		}
 
-		const filtered = message.content.filter(
+		const filtered = messageForCommentary.content.filter(
 			(part) => !isCommentaryTextPart(part),
 		);
-		if (filtered.length === message.content.length) {
-			result.push(message);
+		if (filtered.length === messageForCommentary.content.length) {
+			result.push(messageForCommentary);
 		} else if (filtered.length === 0) {
 			mutated = true;
 			skipToolResults = true;
 		} else {
 			mutated = true;
-			result.push({ ...message, content: filtered } as CoreMessage);
+			result.push({
+				...messageForCommentary,
+				content: filtered,
+			} as CoreMessage);
 		}
 	}
 
 	return mutated ? result : messages;
 }
 
+export function stripGPTCommentaryFromHistory(
+	messages: CoreMessage[],
+	modelString: string,
+): CoreMessage[] {
+	return stripOpenAIHistory(messages, modelString, { stripItemIds: false });
+}
+
 export function stripOpenAIHistoryTransforms(
 	messages: CoreMessage[],
 	modelString: string,
 ): CoreMessage[] {
-	if (!isOpenAIGPT(modelString)) return messages;
-
-	let mutated = false;
-	const result: CoreMessage[] = [];
-	let skipToolResults = false;
-
-	for (const message of messages) {
-		if (skipToolResults) {
-			if (message.role === "tool") {
-				mutated = true;
-				continue;
-			}
-			skipToolResults = false;
-		}
-
-		let contentMutated = false;
-		const strippedContent = Array.isArray(message.content)
-			? message.content.map((part) => {
-					const cleaned = stripOpenAIItemIdFromPart(part);
-					if (cleaned.changed) contentMutated = true;
-					return cleaned.part;
-				})
-			: message.content;
-
-		const msgAfterIdStrip: CoreMessage = contentMutated
-			? ({
-					...message,
-					content: strippedContent as CoreMessage["content"],
-				} as CoreMessage)
-			: message;
-
-		if (contentMutated) mutated = true;
-
-		if (
-			message.role === "assistant" &&
-			Array.isArray(msgAfterIdStrip.content)
-		) {
-			const filtered = msgAfterIdStrip.content.filter(
-				(part) => !isCommentaryTextPart(part),
-			);
-			if (filtered.length === msgAfterIdStrip.content.length) {
-				result.push(msgAfterIdStrip);
-			} else if (filtered.length === 0) {
-				mutated = true;
-				skipToolResults = true;
-			} else {
-				mutated = true;
-				result.push({ ...msgAfterIdStrip, content: filtered } as CoreMessage);
-			}
-		} else {
-			result.push(msgAfterIdStrip);
-		}
-	}
-
-	return mutated ? result : messages;
+	return stripOpenAIHistory(messages, modelString, { stripItemIds: true });
 }
