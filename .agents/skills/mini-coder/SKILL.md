@@ -88,8 +88,6 @@ Inside `mc`, the user can run slash commands such as:
 - `/context prune <off|balanced|aggressive>` — set pruning strategy
 - `/context cap <off|bytes|kb>` — cap tool payload size
 - `/cache <on|off>` — toggle prompt caching
-- `/plan` — toggle read-only planning mode
-- `/ralph` — toggle autonomous execution looping
 - `/undo` — revert the last turn
 - `/new` — start a fresh session
 - `/mcp list` — list configured MCP servers

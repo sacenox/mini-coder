@@ -27,7 +27,7 @@ conventions and not introduce more specs. (`.agents` / `AGENTS.md`, while also s
 - Session management and command to create new/resume/list with local sqlite file.
 - Rich line editing/history/image paste
 - Seamless shell integration with `!` in prompt input.
-- Reference files and skills from the working directory and global configs with `@` in prompt input, plus autocomplete for files, skills, to include in the prompt.
+- Reference files and skills from the working directory and global configs with `@` in prompt input, plus autocomplete for files, skills, to include in the prompt. Skills should have their respective tools and implementation to match other coding agents
 - Press `ESC` at any point during an assistant response to interrupt it: the partial response is preserved in history with an interrupt stub appended (so the LLM retains context), and the user is returned to the prompt silently. `ctrl+c` exits forcefully. `ctrl+d` (EOF) gracefully exits.
 - Elegantly handles hitting max context size for the model. Also handles max tool calls, gracefully finishing the turn with an update from the agent
 - Support prompt caching via the used sdks.
