@@ -31,6 +31,27 @@ export async function renderTurn(
 	let newMessages: CoreMessage[] = [];
 	const startedToolCalls = new Set<string>();
 
+	let reasoningComputed = false;
+	let reasoningText = "";
+	const getReasoningText = (): string => {
+		if (!reasoningComputed) {
+			reasoningText = normalizeReasoningText(content.getReasoning());
+			reasoningComputed = true;
+		}
+		return reasoningText;
+	};
+
+	const renderReasoningBlock = (): boolean => {
+		if (!showReasoning) return false;
+		const text = getReasoningText();
+		if (!text) return false;
+		writeln(`${G.info} ${c.dim("reasoning")}`);
+		for (const line of text.split("\n")) {
+			writeln(`  ${c.dim(line)}`);
+		}
+		return true;
+	};
+
 	for await (const event of events) {
 		switch (event.type) {
 			case "text-delta": {
@@ -39,7 +60,8 @@ export async function renderTurn(
 			}
 			case "reasoning-delta": {
 				const delta = normalizeReasoningDelta(event.delta);
-				content.appendReasoningDelta(delta, showReasoning);
+				content.appendReasoningDelta(delta);
+				reasoningComputed = false;
 				break;
 			}
 
@@ -79,7 +101,8 @@ export async function renderTurn(
 				const hadContent = content.hasOpenContent();
 				content.flushOpenContent();
 				spinner.stop();
-				if (!hadContent) writeln();
+				const renderedReasoning = renderReasoningBlock();
+				if (!hadContent && !renderedReasoning) writeln();
 				inputTokens = event.inputTokens;
 				outputTokens = event.outputTokens;
 				contextTokens = event.contextTokens;
@@ -109,6 +132,6 @@ export async function renderTurn(
 		outputTokens,
 		contextTokens,
 		newMessages,
-		reasoningText: normalizeReasoningText(content.getReasoning()),
+		reasoningText: getReasoningText(),
 	};
 }

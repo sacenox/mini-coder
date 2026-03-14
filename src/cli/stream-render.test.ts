@@ -348,6 +348,21 @@ describe("renderTurn", () => {
 		expect(result.reasoningText).toBe("thinking");
 	});
 
+	test("renders reasoning after assistant text for a stable final layout", async () => {
+		captureStdout();
+
+		await renderTurn(
+			eventsFrom([
+				{ type: "reasoning-delta", delta: "step" },
+				{ type: "text-delta", delta: "answer" },
+				done(),
+			]),
+			new Spinner(),
+		);
+
+		expect(simulateTerminal(stdout)).toBe("◆ answer\n· reasoning\n  step\n");
+	});
+
 	test("stops spinner defensively before each rendered line", async () => {
 		captureStdout();
 		const spinner = new Spinner();

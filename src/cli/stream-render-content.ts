@@ -1,15 +1,12 @@
-import * as c from "yoctocolors";
 import { renderLine } from "./markdown.ts";
 import { G, write, writeln } from "./output.ts";
 import type { Spinner } from "./spinner.ts";
 
 export class StreamRenderContent {
 	private inText = false;
-	private inReasoning = false;
 	private rawBuffer = "";
 	private streamedChars = 0;
 	private inFence = false;
-	private reasoningBlankLineRun = 0;
 	private accumulatedText = "";
 	private accumulatedReasoning = "";
 
@@ -24,13 +21,10 @@ export class StreamRenderContent {
 	}
 
 	hasOpenContent(): boolean {
-		return this.inText || this.inReasoning;
+		return this.inText;
 	}
 
 	appendTextDelta(delta: string): void {
-		if (this.inReasoning) {
-			this.flushOpenContent();
-		}
 		if (!this.inText) {
 			this.spinner.stop();
 			write(`${G.reply} `);
@@ -42,49 +36,22 @@ export class StreamRenderContent {
 		this.streamPartialRemainder();
 	}
 
-	appendReasoningDelta(delta: string, showReasoning: boolean): void {
+	appendReasoningDelta(delta: string): void {
 		this.accumulatedReasoning += delta;
-		if (!showReasoning) return;
-
-		if (!this.inReasoning) {
-			if (this.inText) {
-				this.flushOpenContent();
-			}
-			this.spinner.stop();
-			writeln(`${G.info} ${c.dim("reasoning")}`);
-			this.inReasoning = true;
-			this.inFence = false;
-		}
-		this.rawBuffer += delta;
-		this.flushCompleteLines();
-		this.streamPartialRemainder();
 	}
 
 	flushOpenContent(): void {
-		if (!this.inText && !this.inReasoning) return;
+		if (!this.inText) return;
 		this.streamPartialRemainder();
 		writeln();
 		this.inText = false;
-		this.inReasoning = false;
 		this.inFence = false;
-		this.reasoningBlankLineRun = 0;
 		this.rawBuffer = "";
 		this.streamedChars = 0;
 	}
 
-	private renderSingleLine(raw: string): string | null {
-		const source = this.inReasoning ? raw.replace(/[ \t]+$/g, "") : raw;
-		if (this.inReasoning && source.trim() === "") {
-			this.reasoningBlankLineRun += 1;
-			if (this.reasoningBlankLineRun > 1) return null;
-		} else if (this.inReasoning) {
-			this.reasoningBlankLineRun = 0;
-		}
-
-		if (this.inReasoning) {
-			return `  ${c.dim(source)}`;
-		}
-		const rendered = renderLine(source, this.inFence);
+	private renderSingleLine(raw: string): string {
+		const rendered = renderLine(raw, this.inFence);
 		this.inFence = rendered.inFence;
 		return rendered.output;
 	}
@@ -105,8 +72,7 @@ export class StreamRenderContent {
 				}
 				writeln();
 			} else {
-				if (rendered !== null) writeln(rendered);
-				else writeln();
+				writeln(rendered);
 			}
 
 			this.rawBuffer = this.rawBuffer.slice(boundary + 1);
@@ -124,11 +90,6 @@ export class StreamRenderContent {
 
 	private writePartial(text: string): void {
 		if (!text) return;
-		if (this.inReasoning) {
-			const prefix = this.streamedChars === 0 ? "  " : "";
-			write(`${prefix}${c.dim(text)}`);
-			return;
-		}
 		write(text);
 	}
 }
