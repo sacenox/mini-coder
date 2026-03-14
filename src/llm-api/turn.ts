@@ -1,21 +1,12 @@
 import type { FlexibleSchema, StepResult } from "ai";
 import { dynamicTool, jsonSchema, stepCountIs, streamText } from "ai";
 import { isApiLogEnabled, logApiEvent } from "./api-log.ts";
+import type { ThinkingEffort } from "./provider-options.ts";
 import {
-	normalizeOpenAICompatibleToolCallInputs,
-	sanitizeGeminiToolMessagesWithMetadata,
-	stripOpenAIHistoryTransforms,
-} from "./history-transforms.ts";
-import { getCacheFamily, type ThinkingEffort } from "./provider-options.ts";
-import {
-	annotateAnthropicCacheBreakpoints,
-	applyContextPruning,
 	type ContextPruningMode,
-	compactToolResultPayloads,
 	DEFAULT_TOOL_RESULT_PAYLOAD_CAP_BYTES,
-	getMessageDiagnostics,
-	getMessageStats,
 } from "./turn-context.ts";
+import { prepareTurnMessages } from "./turn-prepare-messages.ts";
 import { buildTurnProviderOptions } from "./turn-provider-options.ts";
 
 export type { ContextPruningMode } from "./turn-context.ts";
@@ -60,123 +51,6 @@ function toCoreTool(def: ToolDef): ReturnType<typeof dynamicTool> {
 			}
 		},
 	});
-}
-
-// ─── Message preparation pipeline ────────────────────────────────────────────
-
-interface PreparedMessages {
-	messages: CoreMessage[];
-	systemPrompt: string | undefined;
-	/** True if context pruning removed any messages. */
-	pruned: boolean;
-	prePruneMessageCount: number;
-	prePruneTotalBytes: number;
-	postPruneMessageCount: number;
-	postPruneTotalBytes: number;
-}
-
-/**
- * Apply provider-specific history sanitisation, context pruning, and
- * payload compaction. Returns the messages ready to send to the model.
- */
-function prepareMessages(
-	messages: CoreMessage[],
-	modelString: string,
-	toolCount: number,
-	systemPrompt: string | undefined,
-	pruningMode: ContextPruningMode,
-	toolResultPayloadCapBytes: number,
-	promptCachingEnabled: boolean,
-): PreparedMessages {
-	const apiLogOn = isApiLogEnabled();
-
-	// 1. Provider-specific sanitisation
-	const geminiResult = sanitizeGeminiToolMessagesWithMetadata(
-		messages,
-		modelString,
-		toolCount > 0,
-	);
-	if (geminiResult.repaired && apiLogOn) {
-		logApiEvent("gemini tool history repaired", {
-			modelString,
-			reason: geminiResult.reason,
-			repairedFromIndex: geminiResult.repairedFromIndex,
-			droppedMessageCount: geminiResult.droppedMessageCount,
-			tailOnlyAffected: geminiResult.tailOnlyAffected,
-		});
-	}
-
-	const openaiStripped = stripOpenAIHistoryTransforms(
-		geminiResult.messages,
-		modelString,
-	);
-	if (openaiStripped !== geminiResult.messages && apiLogOn) {
-		logApiEvent("openai history transforms applied", { modelString });
-	}
-
-	const normalised = normalizeOpenAICompatibleToolCallInputs(
-		openaiStripped,
-		modelString,
-	);
-	if (normalised !== openaiStripped && apiLogOn) {
-		logApiEvent("openai-compatible tool input normalized", { modelString });
-	}
-
-	// 2. Context pruning
-	const preStats = apiLogOn
-		? getMessageDiagnostics(normalised)
-		: getMessageStats(normalised);
-	if (apiLogOn) logApiEvent("turn context pre-prune", preStats);
-
-	const pruned = applyContextPruning(normalised, pruningMode);
-
-	const postStats = apiLogOn
-		? getMessageDiagnostics(pruned)
-		: getMessageStats(pruned);
-	if (apiLogOn) logApiEvent("turn context post-prune", postStats);
-
-	// 3. Payload compaction
-	const compacted = compactToolResultPayloads(
-		pruned,
-		toolResultPayloadCapBytes,
-	);
-	if (compacted !== pruned && apiLogOn) {
-		logApiEvent("turn context post-compaction", {
-			capBytes: toolResultPayloadCapBytes,
-			diagnostics: getMessageDiagnostics(compacted),
-		});
-	}
-
-	// 4. Anthropic prompt caching breakpoints
-	let finalMessages = compacted;
-	let finalSystemPrompt = systemPrompt;
-
-	const cacheFamily = getCacheFamily(modelString);
-	if (cacheFamily === "anthropic" && promptCachingEnabled) {
-		const annotated = annotateAnthropicCacheBreakpoints(
-			compacted,
-			systemPrompt,
-		);
-		finalMessages = annotated.messages;
-		finalSystemPrompt = annotated.systemPrompt;
-		if (apiLogOn)
-			logApiEvent("Anthropic prompt caching", annotated.diagnostics);
-	}
-
-	const wasPruned =
-		(pruningMode === "balanced" || pruningMode === "aggressive") &&
-		(postStats.messageCount < preStats.messageCount ||
-			postStats.totalBytes < preStats.totalBytes);
-
-	return {
-		messages: finalMessages,
-		systemPrompt: finalSystemPrompt,
-		pruned: wasPruned,
-		prePruneMessageCount: preStats.messageCount,
-		prePruneTotalBytes: preStats.totalBytes,
-		postPruneMessageCount: postStats.messageCount,
-		postPruneTotalBytes: postStats.totalBytes,
-	};
 }
 
 // ─── runTurn ──────────────────────────────────────────────────────────────────
@@ -249,7 +123,7 @@ export async function* runTurn(options: {
 		});
 
 		// Prepare messages: sanitize, prune, compact, annotate cache breakpoints
-		const prepared = prepareMessages(
+		const prepared = prepareTurnMessages({
 			messages,
 			modelString,
 			toolCount,
@@ -257,7 +131,7 @@ export async function* runTurn(options: {
 			pruningMode,
 			toolResultPayloadCapBytes,
 			promptCachingEnabled,
-		);
+		});
 
 		if (prepared.pruned) {
 			yield {
