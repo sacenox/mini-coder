@@ -26,10 +26,16 @@ type ProviderName = (typeof SUPPORTED_PROVIDERS)[number];
 
 const ZEN_BASE = "https://opencode.ai/zen/v1";
 
-function getFetchWithLogging(): typeof fetch {
+type ProviderFetch = typeof fetch;
+type AnthropicProvider = ReturnType<typeof createAnthropic>;
+type OpenAIProvider = ReturnType<typeof createOpenAI>;
+type GoogleProvider = ReturnType<typeof createGoogleGenerativeAI>;
+type OpenAICompatProvider = ReturnType<typeof createOpenAICompatible>;
+
+function createFetchWithLogging(): ProviderFetch {
 	const customFetch = async (
-		input: Parameters<typeof fetch>[0],
-		init?: Parameters<typeof fetch>[1],
+		input: Parameters<ProviderFetch>[0],
+		init?: Parameters<ProviderFetch>[1],
 	): Promise<Response> => {
 		if (init?.body) {
 			try {
@@ -52,10 +58,10 @@ function getFetchWithLogging(): typeof fetch {
 		}
 		return fetch(input, init);
 	};
-	return customFetch as unknown as typeof fetch;
+	return customFetch as ProviderFetch;
 }
 
-const fetchWithLogging = getFetchWithLogging();
+const fetchWithLogging = createFetchWithLogging();
 
 function requireEnv(name: string): string {
 	const value = process.env[name];
@@ -71,131 +77,105 @@ function requireAnyEnv(names: string[]): string {
 	throw new Error(`${names.join(" or ")} is not set`);
 }
 
-let _zenAnthropic: ReturnType<typeof createAnthropic> | null = null;
-let _zenOpenAI: ReturnType<typeof createOpenAI> | null = null;
-let _zenGoogle: ReturnType<typeof createGoogleGenerativeAI> | null = null;
-let _zenCompat: ReturnType<typeof createOpenAICompatible> | null = null;
+function lazy<T>(factory: () => T): () => T {
+	let instance: T | null = null;
+	return () => {
+		if (instance === null) {
+			instance = factory();
+		}
+		return instance;
+	};
+}
 
-function zenAnthropic() {
-	if (!_zenAnthropic) {
-		_zenAnthropic = createAnthropic({
+const zenProviders = {
+	anthropic: lazy<AnthropicProvider>(() =>
+		createAnthropic({
 			fetch: fetchWithLogging,
 			apiKey: requireEnv("OPENCODE_API_KEY"),
 			baseURL: ZEN_BASE,
-		});
-	}
-	return _zenAnthropic;
-}
-
-function zenOpenAI() {
-	if (!_zenOpenAI) {
-		_zenOpenAI = createOpenAI({
+		}),
+	),
+	openai: lazy<OpenAIProvider>(() =>
+		createOpenAI({
 			fetch: fetchWithLogging,
 			apiKey: requireEnv("OPENCODE_API_KEY"),
 			baseURL: ZEN_BASE,
-		});
-	}
-	return _zenOpenAI;
-}
-
-function zenGoogle() {
-	if (!_zenGoogle) {
-		_zenGoogle = createGoogleGenerativeAI({
+		}),
+	),
+	google: lazy<GoogleProvider>(() =>
+		createGoogleGenerativeAI({
 			fetch: fetchWithLogging,
 			apiKey: requireEnv("OPENCODE_API_KEY"),
 			baseURL: ZEN_BASE,
-		});
-	}
-	return _zenGoogle;
-}
-
-function zenCompat() {
-	if (!_zenCompat) {
-		_zenCompat = createOpenAICompatible({
+		}),
+	),
+	compat: lazy<OpenAICompatProvider>(() =>
+		createOpenAICompatible({
 			fetch: fetchWithLogging,
 			name: "zen-compat",
 			apiKey: requireEnv("OPENCODE_API_KEY"),
 			baseURL: ZEN_BASE,
-		});
-	}
-	return _zenCompat;
-}
+		}),
+	),
+};
 
-let _directAnthropic: ReturnType<typeof createAnthropic> | null = null;
-let _directOpenAI: ReturnType<typeof createOpenAI> | null = null;
-let _directGoogle: ReturnType<typeof createGoogleGenerativeAI> | null = null;
-let _ollama: ReturnType<typeof createOpenAICompatible> | null = null;
-
-function directAnthropic() {
-	if (!_directAnthropic) {
-		_directAnthropic = createAnthropic({
+const directProviders = {
+	anthropic: lazy<AnthropicProvider>(() =>
+		createAnthropic({
 			fetch: fetchWithLogging,
 			apiKey: requireEnv("ANTHROPIC_API_KEY"),
-		});
-	}
-	return _directAnthropic;
-}
-
-function directOpenAI() {
-	if (!_directOpenAI) {
-		_directOpenAI = createOpenAI({
+		}),
+	),
+	openai: lazy<OpenAIProvider>(() =>
+		createOpenAI({
 			fetch: fetchWithLogging,
 			apiKey: requireEnv("OPENAI_API_KEY"),
-		});
-	}
-	return _directOpenAI;
-}
-
-function directGoogle() {
-	if (!_directGoogle) {
-		_directGoogle = createGoogleGenerativeAI({
+		}),
+	),
+	google: lazy<GoogleProvider>(() =>
+		createGoogleGenerativeAI({
 			fetch: fetchWithLogging,
 			apiKey: requireAnyEnv(["GOOGLE_API_KEY", "GEMINI_API_KEY"]),
-		});
-	}
-	return _directGoogle;
-}
-
-function ollamaProvider() {
-	if (!_ollama) {
+		}),
+	),
+	ollama: lazy<OpenAICompatProvider>(() => {
 		const baseURL = process.env.OLLAMA_BASE_URL ?? "http://localhost:11434";
-		_ollama = createOpenAICompatible({
+		return createOpenAICompatible({
 			name: "ollama",
 			baseURL: `${baseURL}/v1`,
 			apiKey: "ollama",
 			fetch: fetchWithLogging,
 		});
-	}
-	return _ollama;
-}
+	}),
+};
 
 function resolveZenModel(modelId: string): LanguageModel {
 	switch (getZenBackend(modelId)) {
 		case "anthropic":
-			return zenAnthropic()(modelId);
+			return zenProviders.anthropic()(modelId);
 		case "openai":
-			return zenOpenAI().responses(modelId);
+			return zenProviders.openai().responses(modelId);
 		case "google":
-			return zenGoogle()(modelId);
+			return zenProviders.google()(modelId);
 		case "compat":
-			return zenCompat()(modelId);
+			return zenProviders.compat()(modelId);
 	}
 }
 
 function resolveOpenAIModel(modelId: string): LanguageModel {
 	return modelId.startsWith("gpt-")
-		? directOpenAI().responses(modelId)
-		: directOpenAI()(modelId);
+		? directProviders.openai().responses(modelId)
+		: directProviders.openai()(modelId);
 }
 
 const PROVIDER_MODEL_RESOLVERS: Readonly<
 	Record<ProviderName, (modelId: string) => LanguageModel>
 > = {
 	zen: resolveZenModel,
-	anthropic: (modelId) => directAnthropic()(modelId),
+	anthropic: (modelId) => directProviders.anthropic()(modelId),
 	openai: resolveOpenAIModel,
-	google: (modelId) => directGoogle()(modelId),
-	ollama: (modelId) => ollamaProvider().chatModel(modelId),
+	google: (modelId) => directProviders.google()(modelId),
+	ollama: (modelId) => directProviders.ollama().chatModel(modelId),
 };
 
 function isProviderName(provider: string): provider is ProviderName {
