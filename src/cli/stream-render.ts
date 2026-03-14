@@ -2,10 +2,8 @@ import * as c from "yoctocolors";
 import { buildAbortMessages, isAbortError } from "../agent/agent-helpers.ts";
 import type { CoreMessage } from "../llm-api/turn.ts";
 import type { TurnEvent } from "../llm-api/types.ts";
-import { logError } from "./error-log.ts";
-import { parseAppError } from "./error-parse.ts";
 import { renderLine } from "./markdown.ts";
-import { G, RenderedError, write, writeln } from "./output.ts";
+import { G, RenderedError, renderError, write, writeln } from "./output.ts";
 import {
 	normalizeReasoningDelta,
 	normalizeReasoningText,
@@ -301,19 +299,13 @@ export async function renderTurn(
 			case "turn-error": {
 				flushAnyText();
 				spinner.stop();
-				const isAbort = isAbortError(event.error);
-				if (isAbort) {
+				if (isAbortError(event.error)) {
 					newMessages = buildAbortMessages(
 						event.partialMessages,
 						accumulatedText,
 					);
 				} else {
-					logError(event.error, "turn");
-					const parsed = parseAppError(event.error);
-					writeln(`${G.err} ${c.red(parsed.headline)}`);
-					if (parsed.hint) {
-						writeln(`  ${c.dim(parsed.hint)}`);
-					}
+					renderError(event.error, "turn");
 					throw new RenderedError(event.error);
 				}
 				break;
