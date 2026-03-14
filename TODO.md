@@ -10,6 +10,7 @@ The issue is not fixed, it's just suppressed.
 This seems like an issue on how we are parsing stream events, and not recognzing tool calls from other events.
 
 neither pi or opencode have this bug with the same provider, and opencode uses the same sdks as we do
+use the `gh` tool to clone and inspect how they avoid this issue
 
 Relevant reasoning output:
 

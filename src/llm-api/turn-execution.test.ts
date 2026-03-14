@@ -151,6 +151,44 @@ describe("mapFullStreamToTurnEvents", () => {
 		]);
 	});
 
+	test("prefers explicit reasoning events over duplicate openai commentary text in the same step", async () => {
+		const events = await collectEvents([
+			{ type: "start-step" },
+			{ type: "reasoning-start", id: "rs-1" },
+			{ type: "reasoning-delta", id: "rs-1", delta: "real reasoning" },
+			{ type: "reasoning-end", id: "rs-1" },
+			{
+				type: "text-start",
+				id: "msg-commentary",
+				providerMetadata: {
+					openai: { itemId: "msg-commentary", phase: "commentary" },
+				},
+			},
+			{
+				type: "text-delta",
+				id: "msg-commentary",
+				text: "to=functions.shell json{...}",
+			},
+			{ type: "text-end", id: "msg-commentary" },
+			{
+				type: "tool-call",
+				toolCallId: "call-4",
+				toolName: "shell",
+				input: { command: "echo hi" },
+			},
+		]);
+
+		expect(events).toEqual([
+			{ type: "reasoning-delta", delta: "real reasoning" },
+			{
+				type: "tool-call-start",
+				toolCallId: "call-4",
+				toolName: "shell",
+				args: { command: "echo hi" },
+			},
+		]);
+	});
+
 	test("keeps unphased text deltas visible", async () => {
 		const events = await collectEvents([
 			{ type: "text-delta", id: "msg-plain", text: "visible" },

@@ -166,10 +166,22 @@ function extractTextDelta(chunk: StreamTextChunk): string {
 
 class StreamTextPhaseTracker {
 	private phaseByTextPartId = new Map<string, "commentary" | "final_answer">();
+	private sawExplicitReasoningThisStep = false;
 
 	route(chunk: StreamTextChunk): StreamTextRoute {
 		const textPartId = normalizeTextPartId(chunk.id);
 		switch (chunk.type) {
+			case "start-step": {
+				this.sawExplicitReasoningThisStep = false;
+				return "text";
+			}
+			case "reasoning-start":
+			case "reasoning-delta":
+			case "reasoning-end":
+			case "reasoning": {
+				this.sawExplicitReasoningThisStep = true;
+				return "text";
+			}
 			case "text-start": {
 				const phase = getOpenAITextPhase(chunk);
 				if (textPartId && phase) this.phaseByTextPartId.set(textPartId, phase);
@@ -181,9 +193,10 @@ class StreamTextPhaseTracker {
 			}
 			case "text-delta": {
 				if (!textPartId) return "text";
-				return this.phaseByTextPartId.get(textPartId) === "commentary"
-					? "reasoning"
-					: "text";
+				if (this.phaseByTextPartId.get(textPartId) !== "commentary") {
+					return "text";
+				}
+				return this.sawExplicitReasoningThisStep ? "skip" : "reasoning";
 			}
 			default:
 				return "text";
