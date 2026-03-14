@@ -8,7 +8,7 @@ import { handleCommand } from "./commands.ts";
 import { resolveFileRefs } from "./file-refs.ts";
 import { createGitBranchCache } from "./git-branch-cache.ts";
 import { type InputResult, readline } from "./input.ts";
-import { tildePath } from "./output.ts";
+import { renderUserMessage, tildePath } from "./output.ts";
 import { buildStatusBarSignature } from "./status-bar.ts";
 
 import type { CommandContext } from "./types.ts";
@@ -80,6 +80,7 @@ export async function runInputLoop(opts: InputLoopOptions): Promise<void> {
 					return;
 				}
 				if (result.type === "inject-user-message") {
+					renderUserMessage(result.text);
 					const { text: resolvedText, images: refImages } =
 						await resolveFileRefs(result.text, cwd);
 					try {
@@ -102,6 +103,7 @@ export async function runInputLoop(opts: InputLoopOptions): Promise<void> {
 			}
 
 			case "submit": {
+				renderUserMessage(input.text);
 				const { text: resolvedText, images: refImages } = await resolveFileRefs(
 					input.text,
 					cwd,

@@ -17,6 +17,7 @@ import {
 	registerTerminalCleanup,
 	renderBanner,
 	renderError,
+	renderUserMessage,
 	writeln,
 } from "./cli/output.ts";
 import { resolvePromptInput } from "./cli/stdin-prompt.ts";
@@ -182,6 +183,7 @@ async function main(): Promise<void> {
 		const { runner, cmdCtx } = await initAgent(agentOpts);
 
 		if (prompt) {
+			renderUserMessage(prompt);
 			const { text: resolvedText, images: refImages } = await resolveFileRefs(
 				prompt,
 				args.cwd,

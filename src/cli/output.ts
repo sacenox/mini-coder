@@ -47,6 +47,19 @@ export function write(text: string): void {
 	terminal.stdoutWrite(text);
 }
 
+export function renderUserMessage(text: string): void {
+	const lines = text.split("\n");
+	if (lines.length === 0) {
+		writeln(`${G.prompt}`);
+		return;
+	}
+
+	writeln(`${G.prompt} ${lines[0] ?? ""}`);
+	for (const line of lines.slice(1)) {
+		writeln(`  ${line}`);
+	}
+}
+
 // ─── Glyph vocabulary ─────────────────────────────────────────────────────────
 // All from the 16-color ANSI palette — inherits terminal theme.
 
