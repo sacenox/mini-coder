@@ -27,7 +27,24 @@ export async function renderTurn(
 	const showReasoning = opts?.showReasoning ?? true;
 	let inText = false;
 	let inReasoning = false;
+	// rawBuffer holds the current incomplete (no trailing \n) line being built.
 	let rawBuffer = "";
+	// How many characters of rawBuffer have already been written to the terminal
+	// as a raw partial line (before markdown rendering). When a newline arrives
+	// the partial is overwritten with the properly styled complete line.
+	let partialWritten = 0;
+	// Prefix shown before raw partial content during streaming previews.
+	// For text replies: "◆ " (already written before streaming starts, so
+	// streamPartialLine skips it). For reasoning: "│ " (written by
+	// streamPartialLine since renderSingleLine doesn't emit a separate write).
+	let streamPrefix = "";
+	// Whether streamPrefix has already been written to the terminal.
+	// True for text replies; false for reasoning (streamPartialLine emits it).
+	let streamPrefixWritten = false;
+	// Prefix prepended when overwriting the raw partial with the styled complete
+	// line. For text replies: "◆ " (renderSingleLine output doesn't include it).
+	// For reasoning: "" (renderSingleLine already includes "│ " in its output).
+	let styledPrefix = "";
 	let accumulatedText = "";
 	let accumulatedReasoning = "";
 
@@ -58,42 +75,60 @@ export async function renderTurn(
 		return inReasoning ? `${c.dim("│ ")}${rendered.output}` : rendered.output;
 	}
 
-	function renderAndWrite(raw: string, endWithNewline: boolean): void {
-		// Defensive stop: some providers stream tiny chunks and spinner ticks can
-		// interleave with stdout writes unless we stop right before each render.
-		spinner.stop();
-
-		const out = renderSingleLine(raw);
-		if (out === null) return;
-		write(out);
-		if (endWithNewline) {
-			write("\n");
-		}
+	// Reset per-line partial-preview tracking. styledPrefix is intentionally
+	// excluded — it is turn-level state (◆ for text, "" for reasoning) and must
+	// persist across lines within the same turn.
+	function resetLineState(): void {
+		partialWritten = 0;
+		streamPrefix = "";
+		streamPrefixWritten = false;
 	}
 
+	/**
+	 * Flush the trailing partial line (rawBuffer) and write a newline.
+	 * If a partial-line preview was already written to the terminal, overwrite
+	 * it with the properly markdown-rendered version first.
+	 */
 	function flushAnyText(): void {
-		if (inText || inReasoning) {
-			flushAll();
-			writeln();
-			inText = false;
-			inReasoning = false;
-			reasoningBlankLineRun = 0;
+		if (!inText && !inReasoning) return;
+
+		if (rawBuffer) {
+			spinner.stop();
+			const out = renderSingleLine(rawBuffer);
+			rawBuffer = "";
+			if (partialWritten > 0) {
+				// Raw partial content is on the terminal — overwrite it with the
+				// properly styled version.
+				if (out !== null) write(`\r\x1b[2K${styledPrefix}${out}`);
+				else write("\r\x1b[2K");
+			} else {
+				if (out !== null) write(out);
+			}
 		}
+		writeln();
+		inText = false;
+		inReasoning = false;
+		reasoningBlankLineRun = 0;
+		styledPrefix = "";
+		resetLineState();
 	}
 
+	/**
+	 * Process rawBuffer: render and output all complete (newline-terminated)
+	 * lines; leave any trailing partial in rawBuffer.
+	 * If a partial-line preview was already written, the first complete line
+	 * overwrites it with `\r\x1b[2K` before its styled content.
+	 */
 	function flushCompleteLines(): void {
 		// Use an index cursor instead of repeatedly slicing rawBuffer after each
-		// line — the original `rawBuffer = rawBuffer.slice(boundary + 1)` pattern
-		// is O(n²) for large blocks because it copies all remaining content on
-		// every iteration.  We do a single slice at the end instead.
-		// All rendered lines are also batched into one write() call to avoid the
-		// overhead of thousands of individual stdout syscalls.
+		// line — O(n) single scan, single slice at the end.
 		let start = 0;
 		let boundary = rawBuffer.indexOf("\n", start);
 		if (boundary === -1) return;
 
 		spinner.stop();
 		let batchOutput = "";
+		let firstLine = true;
 
 		while (boundary !== -1) {
 			const raw = rawBuffer.slice(start, boundary);
@@ -101,19 +136,39 @@ export async function renderTurn(
 			boundary = rawBuffer.indexOf("\n", start);
 
 			const out = renderSingleLine(raw);
-			if (out !== null) batchOutput += `${out}\n`;
+			// If raw partial content was already streamed to the terminal, overwrite
+			// it with the properly styled complete-line render.
+			if (firstLine && partialWritten > 0) {
+				if (out !== null) batchOutput += `\r\x1b[2K${styledPrefix}${out}\n`;
+				else batchOutput += "\r\x1b[2K\n";
+			} else if (out !== null) {
+				batchOutput += `${out}\n`;
+			}
+			firstLine = false;
 		}
 
 		rawBuffer = start > 0 ? rawBuffer.slice(start) : rawBuffer;
+		// rawBuffer now holds a fresh partial line. Reset per-line tracking.
+		// styledPrefix is also cleared: the reply glyph only prefixes the first
+		// line of a turn; continuation lines have no prefix.
+		styledPrefix = "";
+		resetLineState();
 		if (batchOutput) write(batchOutput);
 	}
 
-	function flushAll(): void {
-		if (!rawBuffer) {
-			return;
-		}
-		renderAndWrite(rawBuffer, false);
-		rawBuffer = "";
+	/**
+	 * Write any new characters in rawBuffer that haven't been streamed yet,
+	 * giving the user immediate visual feedback before the line is complete.
+	 * Emits streamPrefix before the first characters of each new line when
+	 * it hasn't been written yet (e.g. "│ " gutter for reasoning).
+	 */
+	function streamPartialLine(): void {
+		if (rawBuffer.length <= partialWritten) return;
+		spinner.stop();
+		const prefix = !streamPrefixWritten && streamPrefix ? streamPrefix : "";
+		write(`${prefix}${rawBuffer.slice(partialWritten)}`);
+		streamPrefixWritten = true;
+		partialWritten = rawBuffer.length;
 	}
 
 	for await (const event of events) {
@@ -125,12 +180,20 @@ export async function renderTurn(
 				if (!inText) {
 					spinner.stop();
 					write(`${G.reply} `);
+					// "◆ " is already on the terminal. Record it for overwrite
+					// restoration and mark the prefix as already written.
+					streamPrefix = `${G.reply} `;
+					styledPrefix = `${G.reply} `;
+					streamPrefixWritten = true;
 					inText = true;
 				}
 				rawBuffer += event.delta;
 				accumulatedText += event.delta;
 
 				flushCompleteLines();
+				// Stream any new partial-line content immediately so the user sees
+				// output without waiting for the next newline.
+				streamPartialLine();
 				break;
 			}
 			case "reasoning-delta": {
@@ -146,9 +209,18 @@ export async function renderTurn(
 					spinner.stop();
 					writeln(`${G.info} ${c.dim("reasoning")}`);
 					inReasoning = true;
+					// streamPrefix is written by streamPartialLine before the first
+					// chars of each line to show the "│ " gutter in the raw preview.
+					// styledPrefix is empty because renderSingleLine already includes
+					// "│ " in its output for reasoning lines.
+					streamPrefix = c.dim("│ ");
+					styledPrefix = "";
+					streamPrefixWritten = false;
 				}
 				rawBuffer += delta;
 				flushCompleteLines();
+				// Stream any new partial-line content immediately.
+				streamPartialLine();
 				break;
 			}
 

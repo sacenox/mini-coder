@@ -42,6 +42,51 @@ function strip(s: string): string {
 	return s.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "");
 }
 
+/**
+ * Simulate terminal rendering: apply carriage-return + erase-line sequences
+ * (`\r\x1b[2K`) so tests reflect what the user actually sees on screen.
+ * This mirrors the partial-line overwrite strategy used by the stream renderer.
+ */
+function simulateTerminal(raw: string): string {
+	const esc = String.fromCharCode(0x1b);
+	// Strip all ANSI SGR color/style codes first so we can compare plain text.
+	const noColor = raw.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "");
+	// Process line-by-line, handling \r (return to line start) and \x1b[2K (erase line).
+	const lines: string[] = [];
+	let current = "";
+	let i = 0;
+	while (i < noColor.length) {
+		const ch = noColor[i];
+		if (ch === "\n") {
+			lines.push(current);
+			current = "";
+			i++;
+		} else if (ch === "\r") {
+			// Carriage return: check for \x1b[2K (erase-line) immediately after.
+			if (
+				noColor[i + 1] === esc &&
+				noColor[i + 2] === "[" &&
+				noColor[i + 3] === "2" &&
+				noColor[i + 4] === "K"
+			) {
+				// Clear the current line and skip the escape sequence.
+				current = "";
+				i += 5;
+			} else {
+				// Plain \r: go to start of line but keep existing content to be
+				// overwritten character by character. Just reset position marker.
+				current = "";
+				i++;
+			}
+		} else {
+			current += ch;
+			i++;
+		}
+	}
+	lines.push(current);
+	return lines.join("\n");
+}
+
 function hasAnsi(s: string, code: string): boolean {
 	return s.includes(`${String.fromCharCode(0x1b)}${code}`);
 }
@@ -59,7 +104,7 @@ describe("renderTurn", () => {
 			new Spinner(),
 		);
 
-		expect(strip(stdout)).toBe("◆ first line\nsecond line\n");
+		expect(simulateTerminal(stdout)).toBe("◆ first line\nsecond line\n");
 		expect(result).toEqual({
 			inputTokens: 1,
 			outputTokens: 2,
@@ -67,6 +112,20 @@ describe("renderTurn", () => {
 			newMessages: [],
 			reasoningText: "",
 		});
+	});
+
+	test("preserves reply glyph on partial-line overwrite after a complete line in same delta", async () => {
+		captureStdout();
+
+		await renderTurn(
+			eventsFrom([{ type: "text-delta", delta: "hello\nworld" }, done()]),
+			new Spinner(),
+		);
+
+		// "hello\n" is flushed as a complete line. "world" is streamed as a
+		// partial then overwritten on turn-end. The ◆ prefix appears only on
+		// the first line; continuation lines have no prefix.
+		expect(simulateTerminal(stdout)).toBe("◆ hello\nworld\n");
 	});
 
 	test("renders buffered markdown correctly and preserves emoji across deltas", async () => {
@@ -81,7 +140,9 @@ describe("renderTurn", () => {
 			new Spinner(),
 		);
 
-		expect(strip(stdout)).toBe("◆ bold 👩🏽‍💻\n");
+		// The partial raw text is streamed immediately and then overwritten on
+		// turn-end with the fully styled line (bold ANSI codes applied).
+		expect(simulateTerminal(stdout)).toBe("◆ bold 👩🏽‍💻\n");
 		expect(hasAnsi(stdout, "[1m")).toBe(true);
 	});
 
@@ -116,7 +177,7 @@ describe("renderTurn", () => {
 			{ showReasoning: false },
 		);
 
-		expect(strip(stdout)).toBe("◆ final\n");
+		expect(simulateTerminal(stdout)).toBe("◆ final\n");
 		expect(result.reasoningText).toBe("step 1\nstep 2");
 	});
 
@@ -146,7 +207,9 @@ describe("renderTurn", () => {
 			new Spinner(),
 		);
 
-		expect(strip(stdout)).toBe("· reasoning\n│ thinking\n");
+		// The partial reasoning text is streamed raw and then overwritten on
+		// turn-end with the properly styled (dimmed) version.
+		expect(simulateTerminal(stdout)).toBe("· reasoning\n│ thinking\n");
 		expect(hasAnsi(stdout, "[2m")).toBe(true);
 		expect(result.reasoningText).toBe("thinking");
 	});
