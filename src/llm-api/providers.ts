@@ -294,7 +294,7 @@ interface CachingOptions {
 	googleExplicitCachingCompatible?: boolean;
 }
 
-type CacheFamily = "openai" | "google" | "anthropic" | "none";
+type CacheFamily = "google" | "anthropic" | "none";
 
 export function getCacheFamily(modelString: string): CacheFamily {
 	const { provider, modelId } = parseModelString(modelString);
@@ -323,12 +323,6 @@ export function getCachingProviderOptions(
 	if (!opts.enabled) return null;
 
 	const family = getCacheFamily(modelString);
-
-	if (family === "openai") {
-		return {
-			openai: { promptCacheRetention: opts.openaiRetention ?? "in_memory" },
-		};
-	}
 
 	if (
 		family === "google" &&

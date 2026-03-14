@@ -25,7 +25,6 @@ describe("Spinner", () => {
 			stderr += text;
 			return true;
 		}) as typeof process.stderr.write;
-		// @ts-expect-error override read-only for test
 		process.stderr.isTTY = true;
 
 		try {
@@ -37,7 +36,6 @@ describe("Spinner", () => {
 			expect(stderr).not.toContain("\n");
 		} finally {
 			process.stderr.write = originalWrite;
-			// @ts-expect-error override read-only for test
 			process.stderr.isTTY = originalIsTTY;
 		}
 	});
