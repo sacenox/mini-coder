@@ -7,7 +7,7 @@ import {
 	normalizeMessageProviderOptions,
 } from "./shared.ts";
 
-export type GeminiToolHistoryRepairReason = "missing-signature-anchor";
+type GeminiToolHistoryRepairReason = "missing-signature-anchor";
 
 function getGeminiThoughtSignature(part: unknown): string | null {
 	const providerOptions = getPartProviderOptions(part);

@@ -1,4 +1,7 @@
-export { getReasoningDeltaFromStreamChunk } from "./history/reasoning.ts";
+export {
+	sanitizeGeminiToolMessages,
+	sanitizeGeminiToolMessagesWithMetadata,
+} from "./history/gemini.ts";
 
 export {
 	isOpenAIGPT,
@@ -7,9 +10,4 @@ export {
 	stripOpenAIHistoryTransforms,
 	stripOpenAIItemIdsFromHistory,
 } from "./history/openai.ts";
-
-export {
-	sanitizeGeminiToolMessages,
-	sanitizeGeminiToolMessagesWithMetadata,
-	type GeminiToolHistoryRepairReason,
-} from "./history/gemini.ts";
+export { getReasoningDeltaFromStreamChunk } from "./history/reasoning.ts";

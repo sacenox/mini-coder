@@ -18,7 +18,9 @@ function normalizeProviderOptions<T>(part: T): T {
 	} as T;
 }
 
-export function normalizeMessageProviderOptions(message: CoreMessage): CoreMessage {
+export function normalizeMessageProviderOptions(
+	message: CoreMessage,
+): CoreMessage {
 	if (!Array.isArray(message.content)) return message;
 	return {
 		...message,
