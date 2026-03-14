@@ -29,13 +29,53 @@ function getMcCommand(): string[] {
 // Loose recursion cap passed via environment so subprocess chains are bounded
 // without an in-process depth parameter. Generous enough for real use-cases.
 const MAX_SUBAGENT_DEPTH = 10;
+
+function tailBytesFromChunks(
+	chunks: readonly Uint8Array[],
+	maxBytes: number,
+): Uint8Array {
+	if (maxBytes <= 0) return new Uint8Array(0);
+
+	const ring = new Uint8Array(maxBytes);
+	let writePos = 0;
+	let totalSeen = 0;
+
+	for (const chunk of chunks) {
+		let offset = 0;
+		while (offset < chunk.length) {
+			const remaining = chunk.length - offset;
+			const writable = Math.min(maxBytes - writePos, remaining);
+			ring.set(chunk.subarray(offset, offset + writable), writePos);
+			writePos = (writePos + writable) % maxBytes;
+			offset += writable;
+			totalSeen += writable;
+		}
+	}
+
+	const kept = Math.min(totalSeen, maxBytes);
+	if (kept === 0) return new Uint8Array(0);
+	if (totalSeen <= maxBytes) return ring.subarray(0, kept);
+
+	const out = new Uint8Array(kept);
+	const tailBytes = ring.subarray(writePos);
+	out.set(tailBytes, 0);
+	out.set(ring.subarray(0, writePos), tailBytes.length);
+	return out;
+}
+
+export function tailTextFromChunks(
+	chunks: readonly Uint8Array[],
+	maxBytes: number,
+): string {
+	return new TextDecoder().decode(tailBytesFromChunks(chunks, maxBytes));
+}
+
 async function consumeTail(
 	stream: ReadableStream | null,
 	maxBytes = 8192,
 ): Promise<string> {
 	if (!stream) return "";
 	const reader = stream.getReader();
-	// Accumulate Uint8Array chunks and decode once at the end to avoid O(n²) string concatenation.
 	const chunks: Uint8Array[] = [];
 	try {
 		while (true) {
@@ -46,8 +86,7 @@ async function consumeTail(
 	} finally {
 		reader.releaseLock();
 	}
-	const text = new TextDecoder().decode(Buffer.concat(chunks));
-	return text.length > maxBytes ? text.slice(-maxBytes) : text;
+	return tailTextFromChunks(chunks, maxBytes);
 }
 
 function formatSubagentDiagnostics(stdout: string, stderr: string): string {

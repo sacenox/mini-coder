@@ -1,5 +1,26 @@
 import { describe, expect, test } from "bun:test";
-import { resolveMcCommand } from "./subagent-runner.ts";
+import { resolveMcCommand, tailTextFromChunks } from "./subagent-runner.ts";
+
+describe("tailTextFromChunks", () => {
+	test("keeps only the byte tail without buffering everything", () => {
+		const encode = (text: string) => new TextEncoder().encode(text);
+		expect(tailTextFromChunks([encode("abc"), encode("def")], 4)).toBe("cdef");
+		expect(tailTextFromChunks([encode("hello"), encode(" world")], 64)).toBe(
+			"hello world",
+		);
+		expect(tailTextFromChunks([encode("hello")], 0)).toBe("");
+	});
+
+	test("respects utf-8 boundaries across chunk rotations", () => {
+		const encoder = new TextEncoder();
+		const emoji = encoder.encode("🙂");
+		const prefix = encoder.encode("xx");
+		const suffix = encoder.encode("yy");
+		expect(tailTextFromChunks([prefix, emoji, suffix], emoji.length + 2)).toBe(
+			"🙂yy",
+		);
+	});
+});
 
 describe("resolveMcCommand", () => {
 	test("uses Bun.main for TypeScript entrypoints", () => {
