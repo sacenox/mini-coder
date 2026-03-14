@@ -1,4 +1,5 @@
 import * as c from "yoctocolors";
+import type { StatusBarData } from "../agent/reporter.ts";
 import { terminal } from "./terminal-io.ts";
 
 const ANSI_ESCAPE = "\u001b";
@@ -47,22 +48,7 @@ function renderStatusLine(segments: string[]): string {
 	return segments.join(STATUS_SEP);
 }
 
-interface StatusBarRenderData {
-	model: string;
-	provider: string;
-	cwd: string;
-	gitBranch: string | null;
-	sessionId: string;
-	inputTokens: number;
-	outputTokens: number;
-	contextTokens: number;
-	contextWindow: number | null;
-	thinkingEffort?: string | null;
-	activeAgent?: string | null;
-	showReasoning?: boolean;
-}
-
-export function buildStatusBarSignature(opts: StatusBarRenderData): string {
+export function buildStatusBarSignature(opts: StatusBarData): string {
 	return JSON.stringify({
 		model: opts.model,
 		provider: opts.provider,
@@ -104,7 +90,7 @@ function fitStatusSegments(
 	return `${required[0]}${STATUS_SEP}${c.dim(truncatedTail)}`;
 }
 
-export function renderStatusBar(opts: StatusBarRenderData): void {
+export function renderStatusBar(opts: StatusBarData): void {
 	const cols = Math.max(20, terminal.stdoutColumns || 80);
 	const required = [c.cyan(opts.model), c.dim(opts.cwd)];
 	const optional: string[] = [];

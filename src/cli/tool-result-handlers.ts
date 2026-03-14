@@ -1,1 +1,1 @@
-export { renderToolResultByName } from "./tool-results/index.ts";
+export { renderToolResultByName } from "./tool-result-renderers.ts";
