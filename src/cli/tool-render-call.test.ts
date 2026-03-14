@@ -30,4 +30,16 @@ describe("buildToolCallLine", () => {
 		expect(line).toContain("[@reviewer]");
 		expect(line).toContain("Review this diff");
 	});
+
+	test("formats empty shell start events as a generic shell label", () => {
+		const line = buildToolCallLine("shell", {});
+		expect(line).toContain("$");
+		expect(line).toContain("shell");
+	});
+
+	test("formats read start events without path cleanly", () => {
+		const line = buildToolCallLine("read", {});
+		expect(line).toContain("read");
+		expect(line).not.toContain("undefined");
+	});
 });

@@ -52,7 +52,22 @@ describe("mapStreamChunkToTurnEvent", () => {
 		});
 	});
 
-	test("ignores empty tool-input-start chunks", () => {
+	test("maps empty tool-input-start chunks when tool call id is not available yet", () => {
+		expect(
+			mapStreamChunkToTurnEvent({
+				type: "tool-input-start",
+				toolName: "shell",
+				input: {},
+			}),
+		).toEqual({
+			type: "tool-call-start",
+			toolCallId: "",
+			toolName: "shell",
+			args: {},
+		});
+	});
+
+	test("ignores empty tool-input-start chunks when toolCallId is stable", () => {
 		expect(
 			mapStreamChunkToTurnEvent({
 				type: "tool-input-start",

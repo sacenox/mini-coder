@@ -43,7 +43,9 @@ export function mapStreamChunkToTurnEvent(c: StreamChunk): TurnEvent | null {
 		}
 		case "tool-input-start": {
 			const args = extractToolArgs(c);
-			if (!hasRenderableToolArgs(args)) return null;
+			const hasStableToolCallId =
+				typeof c.toolCallId === "string" && c.toolCallId.trim().length > 0;
+			if (hasStableToolCallId && !hasRenderableToolArgs(args)) return null;
 			return {
 				type: "tool-call-start",
 				toolCallId: String(c.toolCallId ?? ""),

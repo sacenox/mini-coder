@@ -29,7 +29,9 @@ export function buildToolCallLine(name: string, args: unknown): string {
 		const count = Number.isFinite(a.count as number) ? Number(a.count) : null;
 		const range =
 			line || count ? c.dim(`:${line ?? 1}${count ? `+${count}` : ""}`) : "";
-		return `${G.read} ${c.dim("read")} ${String(a.path ?? "")}${range}`;
+		const path =
+			typeof a.path === "string" && a.path.length > 0 ? a.path : null;
+		return `${G.read} ${c.dim("read")}${path ? ` ${path}${range}` : ""}`;
 	}
 
 	if (name === "create") {
@@ -50,7 +52,8 @@ export function buildToolCallLine(name: string, args: unknown): string {
 	}
 
 	if (name === "shell") {
-		const cmd = String(a.command ?? "");
+		const cmd = String(a.command ?? "").trim();
+		if (!cmd) return `${G.run} ${c.dim("shell")}`;
 		const shortCmd = cmd.length > 72 ? `${cmd.slice(0, 69)}…` : cmd;
 		return `${G.run} ${shortCmd}`;
 	}
