@@ -8,3 +8,5 @@ dist/
 !.env.example
 bun.lock
 .DS_Store
+logs/
+
