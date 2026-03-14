@@ -3,15 +3,11 @@ import * as c from "yoctocolors";
 
 import { addPromptHistory, getPromptHistory } from "../session/db/index.ts";
 import {
-	getAtCompletions,
-	getCommandCompletions,
-	getFilePathCompletions,
-} from "./completions.ts";
-import {
 	type ImageAttachment,
 	isImageFilename,
 	loadImageFile,
 } from "./image-types.ts";
+import { getInputCompletion } from "./input-completion.ts";
 import { terminal } from "./terminal-io.ts";
 
 // ─── ANSI escape sequences ────────────────────────────────────────────────────
@@ -625,48 +621,24 @@ export async function readline(opts: { cwd?: string }): Promise<InputResult> {
 
 			if (raw === TAB) {
 				const beforeCursor = buf.slice(0, cursor);
+				const completion = await getInputCompletion(beforeCursor, cursor, cwd);
 
-				// Apply a single completion or show multiple options
-				const applyCompletions = (
-					completions: string[],
-					replaceFrom: number,
-				) => {
-					if (completions.length === 1 && completions[0]) {
-						const replacement = completions[0];
-						buf = buf.slice(0, replaceFrom) + replacement + buf.slice(cursor);
-						cursor = replaceFrom + replacement.length;
-						renderPrompt();
-					} else if (completions.length > 1) {
-						process.stdout.write("\n");
-						for (const item of completions) process.stdout.write(`  ${item}\n`);
-						renderPrompt();
+				if (completion?.completions.length === 1 && completion.completions[0]) {
+					const replacement = completion.completions[0];
+					buf =
+						buf.slice(0, completion.replaceFrom) +
+						replacement +
+						buf.slice(cursor);
+					cursor = completion.replaceFrom + replacement.length;
+					renderPrompt();
+				} else if ((completion?.completions.length ?? 0) > 1) {
+					process.stdout.write("\n");
+					for (const item of completion?.completions ?? []) {
+						process.stdout.write(`  ${item}\n`);
 					}
-				};
-
-				// 1) Command completion: `/...`
-				if (beforeCursor.startsWith("/")) {
-					const completions = getCommandCompletions(beforeCursor, cwd);
-					applyCompletions(completions, 0);
-					continue;
+					renderPrompt();
 				}
 
-				// 2) @ reference completion: `@...`
-				const atMatch = beforeCursor.match(/@(\S*)$/);
-				if (atMatch) {
-					const completions = await getAtCompletions(atMatch[0], cwd);
-					applyCompletions(completions, cursor - (atMatch[0] ?? "").length);
-					continue;
-				}
-
-				// 3) Bare file path completion: complete the current word as a path
-				const wordMatch = beforeCursor.match(/(\S+)$/);
-				if (wordMatch) {
-					const completions = await getFilePathCompletions(
-						wordMatch[1] ?? "",
-						cwd,
-					);
-					applyCompletions(completions, cursor - (wordMatch[1] ?? "").length);
-				}
 				continue;
 			}
 
