@@ -4,7 +4,6 @@ import {
 	annotateAnthropicCacheBreakpoints,
 	applyContextPruning,
 	compactToolResultPayloads,
-	consumePendingToolInputStart,
 	getMessageDiagnostics,
 	getReasoningDeltaFromStreamChunk,
 	isOpenAIGPT,
@@ -119,78 +118,6 @@ describe("getReasoningDeltaFromStreamChunk", () => {
 		expect(
 			getReasoningDeltaFromStreamChunk({ type: "text-delta", text: "hi" }),
 		).toBe(null);
-	});
-});
-
-describe("consumePendingToolInputStart", () => {
-	test("consumes one queued start by id", () => {
-		const pendingById = new Set<string>(["call_1"]);
-		const pendingByName = new Map<string, number>([["read", 2]]);
-
-		expect(
-			consumePendingToolInputStart(
-				pendingById,
-				pendingByName,
-				"call_1",
-				"read",
-			),
-		).toBe(true);
-		expect(pendingById.has("call_1")).toBe(false);
-		expect(pendingByName.get("read")).toBe(2);
-	});
-
-	test("falls back to name only when id is missing", () => {
-		const pendingById = new Set<string>();
-		const pendingByName = new Map<string, number>([["read", 2]]);
-
-		expect(
-			consumePendingToolInputStart(pendingById, pendingByName, "", "read"),
-		).toBe(true);
-		expect(pendingByName.get("read")).toBe(1);
-		expect(
-			consumePendingToolInputStart(pendingById, pendingByName, "", "read"),
-		).toBe(true);
-		expect(pendingByName.has("read")).toBe(false);
-	});
-
-	test("does not consume by name when an id is present but unmatched", () => {
-		const pendingById = new Set<string>(["call_a", "call_b"]);
-		const pendingByName = new Map<string, number>([["read", 2]]);
-
-		expect(
-			consumePendingToolInputStart(
-				pendingById,
-				pendingByName,
-				"call_missing",
-				"read",
-			),
-		).toBe(false);
-		expect(pendingById.size).toBe(2);
-		expect(pendingByName.get("read")).toBe(2);
-	});
-
-	test("handles interleaved same-name calls without cross-consuming", () => {
-		const pendingById = new Set<string>(["call_a", "call_b"]);
-		const pendingByName = new Map<string, number>();
-
-		// tool-call for B arrives before A; both should dedupe correctly by id.
-		expect(
-			consumePendingToolInputStart(
-				pendingById,
-				pendingByName,
-				"call_b",
-				"read",
-			),
-		).toBe(true);
-		expect(
-			consumePendingToolInputStart(
-				pendingById,
-				pendingByName,
-				"call_a",
-				"read",
-			),
-		).toBe(true);
-		expect(pendingById.size).toBe(0);
 	});
 });
 

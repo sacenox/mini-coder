@@ -275,29 +275,6 @@ export function getReasoningDeltaFromStreamChunk(
 	return "";
 }
 
-export function consumePendingToolInputStart(
-	pendingToolStartsById: Set<string>,
-	pendingToolStartsByName: Map<string, number>,
-	toolCallId: string,
-	toolName: string,
-): boolean {
-	if (toolCallId.length > 0) {
-		if (!pendingToolStartsById.has(toolCallId)) return false;
-		pendingToolStartsById.delete(toolCallId);
-		return true;
-	}
-
-	if (toolName.length === 0) return false;
-	const pending = pendingToolStartsByName.get(toolName) ?? 0;
-	if (pending <= 0) return false;
-	if (pending === 1) {
-		pendingToolStartsByName.delete(toolName);
-	} else {
-		pendingToolStartsByName.set(toolName, pending - 1);
-	}
-	return true;
-}
-
 type StreamTextResult = ReturnType<typeof streamText>;
 type StreamTextResultFull = StreamTextResult & {
 	fullStream: AsyncIterable<StreamChunk>;
@@ -1116,9 +1093,6 @@ export async function* runTurn(options: {
 		// awaited, causing an unhandled rejection that crashes the app.
 		// We catch it here to mark it as handled (awaiting it later will still throw).
 		result.response.catch(() => {});
-		const pendingToolStartsById = new Set<string>();
-		const pendingToolStartsByName = new Map<string, number>();
-
 		// Stream events
 		for await (const chunk of result.fullStream) {
 			const c = chunk as StreamChunk;
@@ -1161,26 +1135,10 @@ export async function* runTurn(options: {
 				}
 
 				case "tool-input-start": {
-					const toolName =
-						typeof c.toolName === "string" && c.toolName.length > 0
-							? c.toolName
-							: "";
-					const toolCallId = String(c.toolCallId ?? "");
-					if (toolCallId.length > 0) {
-						pendingToolStartsById.add(toolCallId);
-					} else if (toolName.length > 0) {
-						pendingToolStartsByName.set(
-							toolName,
-							(pendingToolStartsByName.get(toolName) ?? 0) + 1,
-						);
-					} else {
-						break;
-					}
 					yield {
-						type: "tool-call-start",
-						toolCallId,
-						toolName,
-						// tool-input-start usually arrives before full args are available.
+						type: "tool-input-start",
+						toolCallId: String(c.toolCallId ?? ""),
+						toolName: String(c.toolName ?? ""),
 						args: c.input ?? c.args,
 					};
 					break;
@@ -1189,16 +1147,6 @@ export async function* runTurn(options: {
 				case "tool-call": {
 					const toolName = String(c.toolName ?? "");
 					const toolCallId = String(c.toolCallId ?? "");
-					if (
-						consumePendingToolInputStart(
-							pendingToolStartsById,
-							pendingToolStartsByName,
-							toolCallId,
-							toolName,
-						)
-					) {
-						break;
-					}
 					yield {
 						type: "tool-call-start",
 						toolCallId,
