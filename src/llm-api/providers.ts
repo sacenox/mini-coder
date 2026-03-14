@@ -11,6 +11,13 @@ import {
 	getContextWindow as getContextWindowFromCache,
 	supportsThinking as supportsThinkingFromCache,
 } from "./model-info.ts";
+import {
+	getZenBackend,
+	isAnthropicModelFamily,
+	isGeminiModelFamily,
+	isOpenAIReasoningModelFamily,
+	parseModelString,
+} from "./model-routing.ts";
 
 // ─── Zen endpoint constants ────────────────────────────────────────────────────
 
@@ -47,10 +54,16 @@ const ZEN_BASE = "https://opencode.ai/zen/v1";
 
 // Zen endpoint routing — matched in order, fallthrough to OpenAI-compatible
 function zenEndpointFor(modelId: string) {
-	if (modelId.startsWith("claude-")) return zenAnthropic()(modelId);
-	if (modelId.startsWith("gpt-")) return zenOpenAI().responses(modelId);
-	if (modelId.startsWith("gemini-")) return zenGoogle()(modelId);
-	return zenCompat()(modelId);
+	switch (getZenBackend(modelId)) {
+		case "anthropic":
+			return zenAnthropic()(modelId);
+		case "openai":
+			return zenOpenAI().responses(modelId);
+		case "google":
+			return zenGoogle()(modelId);
+		case "compat":
+			return zenCompat()(modelId);
+	}
 }
 
 // ─── Lazy provider factories (created on first use) ───────────────────────────
@@ -157,22 +170,6 @@ function directGoogle() {
 
 // ─── Model string parsing ─────────────────────────────────────────────────────
 
-/**
- * Split a "<provider>/<model-id>" string into its two parts.
- * When there is no slash, provider is the full string and modelId is "".
- */
-export function parseModelString(modelString: string): {
-	provider: string;
-	modelId: string;
-} {
-	const slashIdx = modelString.indexOf("/");
-	if (slashIdx === -1) return { provider: modelString, modelId: "" };
-	return {
-		provider: modelString.slice(0, slashIdx),
-		modelId: modelString.slice(slashIdx + 1),
-	};
-}
-
 export type ThinkingEffort = "low" | "medium" | "high" | "xhigh";
 
 function supportsThinking(modelString: string): boolean {
@@ -206,13 +203,10 @@ export function getThinkingProviderOptions(
 ): Record<string, unknown> | null {
 	if (!supportsThinking(modelString)) return null;
 
-	const { provider, modelId } = parseModelString(modelString);
+	const { modelId } = parseModelString(modelString);
 
 	// Anthropic (direct or via Zen routing through @ai-sdk/anthropic)
-	if (
-		provider === "anthropic" ||
-		(provider === "zen" && modelId.startsWith("claude-"))
-	) {
+	if (isAnthropicModelFamily(modelString)) {
 		// Claude 3.7+, Sonnet 4.x, Opus 4.x support adaptive effort strings.
 		const isAdaptive =
 			/^claude-3-7/.test(modelId) ||
@@ -237,11 +231,7 @@ export function getThinkingProviderOptions(
 	}
 
 	// OpenAI o-series and GPT-5 (direct or via Zen routing through @ai-sdk/openai)
-	if (
-		provider === "openai" ||
-		(provider === "zen" &&
-			(modelId.startsWith("o") || modelId.startsWith("gpt-5")))
-	) {
+	if (isOpenAIReasoningModelFamily(modelString)) {
 		// xhigh only valid on gpt-5.2+, o4+; clamp for others.
 		const supportsXhigh = /^gpt-5\.[2-9]/.test(modelId) || /^o4/.test(modelId);
 		const clamped = supportsXhigh ? effort : clampEffort(effort, "high");
@@ -249,10 +239,7 @@ export function getThinkingProviderOptions(
 	}
 
 	// Google Gemini (direct or via Zen routing through @ai-sdk/google)
-	if (
-		provider === "google" ||
-		(provider === "zen" && modelId.startsWith("gemini-"))
-	) {
+	if (isGeminiModelFamily(modelString)) {
 		// Gemini 3.x: thinkingLevel enum. 2.5.x: budgetTokens.
 		if (/^gemini-3/.test(modelId)) {
 			// No xhigh for Gemini 3.
@@ -297,22 +284,8 @@ interface CachingOptions {
 type CacheFamily = "google" | "anthropic" | "none";
 
 export function getCacheFamily(modelString: string): CacheFamily {
-	const { provider, modelId } = parseModelString(modelString);
-
-	if (
-		provider === "anthropic" ||
-		(provider === "zen" && modelId.startsWith("claude-"))
-	) {
-		return "anthropic";
-	}
-
-	if (
-		provider === "google" ||
-		(provider === "zen" && modelId.startsWith("gemini-"))
-	) {
-		return "google";
-	}
-
+	if (isAnthropicModelFamily(modelString)) return "anthropic";
+	if (isGeminiModelFamily(modelString)) return "google";
 	return "none";
 }
 
