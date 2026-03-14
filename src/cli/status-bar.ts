@@ -2,6 +2,7 @@ import * as c from "yoctocolors";
 import { terminal } from "./terminal-io.ts";
 
 const ANSI_ESCAPE = "\u001b";
+const STATUS_SEP = c.dim("  ·  ");
 
 function stripAnsi(s: string): string {
 	if (!s.includes(ANSI_ESCAPE)) return s;
@@ -11,25 +12,64 @@ function stripAnsi(s: string): string {
 		.join("");
 }
 
-function truncateAnsi(s: string, maxLen: number): string {
-	const plain = stripAnsi(s);
-	if (plain.length <= maxLen) return s;
-	let visible = 0;
-	let i = 0;
-	while (i < s.length && visible < maxLen - 1) {
-		if (s[i] === "\x1B") {
-			while (i < s.length && s[i] !== "m") i++;
-		} else {
-			visible++;
-		}
-		i++;
-	}
-	return s.slice(0, i) + c.dim("…");
+function truncatePlainText(value: string, maxLen: number): string {
+	if (value.length <= maxLen) return value;
+	if (maxLen <= 1) return "…";
+	return `${value.slice(0, maxLen - 1)}…`;
 }
 
 function fmtTokens(n: number): string {
 	if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
 	return String(n);
+}
+
+function buildContextSegment(opts: {
+	contextTokens: number;
+	contextWindow: number | null;
+}): string | null {
+	if (opts.contextTokens <= 0) return null;
+	if (opts.contextWindow === null) {
+		return c.dim(`ctx ${fmtTokens(opts.contextTokens)}`);
+	}
+
+	const pct = Math.round((opts.contextTokens / opts.contextWindow) * 100);
+	const pctStr = `${pct}%`;
+	const pctColored =
+		pct >= 90 ? c.red(pctStr) : pct >= 75 ? c.yellow(pctStr) : c.dim(pctStr);
+	return (
+		c.dim(
+			`ctx ${fmtTokens(opts.contextTokens)}/${fmtTokens(opts.contextWindow)} `,
+		) + pctColored
+	);
+}
+
+function renderStatusLine(segments: string[]): string {
+	return segments.join(STATUS_SEP);
+}
+
+function fitStatusSegments(
+	required: string[],
+	optional: string[],
+	cols: number,
+): string {
+	const fittedOptional = [...optional];
+	let line = renderStatusLine([...required, ...fittedOptional]);
+
+	while (stripAnsi(line).length > cols && fittedOptional.length > 0) {
+		fittedOptional.pop();
+		line = renderStatusLine([...required, ...fittedOptional]);
+	}
+
+	if (stripAnsi(line).length <= cols) return line;
+
+	const plainRequired = required.map((segment) => stripAnsi(segment));
+	const sepLen = stripAnsi(STATUS_SEP).length;
+	const fixedPrefix = plainRequired[0] ?? "";
+	if (plainRequired.length <= 1) return truncatePlainText(fixedPrefix, cols);
+
+	const maxTailLen = Math.max(8, cols - fixedPrefix.length - sepLen);
+	const truncatedTail = truncatePlainText(plainRequired[1] ?? "", maxTailLen);
+	return `${required[0]}${STATUS_SEP}${c.dim(truncatedTail)}`;
 }
 
 export function renderStatusBar(opts: {
@@ -46,53 +86,34 @@ export function renderStatusBar(opts: {
 	activeAgent?: string | null;
 	showReasoning?: boolean;
 }): void {
-	const cols = terminal.stdoutColumns || 80;
+	const cols = Math.max(20, terminal.stdoutColumns || 80);
+	const required = [c.cyan(opts.model), c.dim(opts.cwd)];
+	const optional: string[] = [];
 
-	// Build segments from right priority (rightmost items drop first)
-	const left: string[] = [c.cyan(opts.model)];
-	if (opts.thinkingEffort) left.push(c.dim(`✦ ${opts.thinkingEffort}`));
-	if (opts.showReasoning) left.push(c.dim("🤔"));
-	if (opts.provider && opts.provider !== "zen") left.push(c.dim(opts.provider));
-	left.push(c.dim(opts.sessionId.slice(0, 8)));
-	if (opts.activeAgent) left.push(c.green(`@${opts.activeAgent}`));
+	if (opts.activeAgent) optional.push(c.green(`@${opts.activeAgent}`));
+	if (opts.thinkingEffort) optional.push(c.dim(`✦ ${opts.thinkingEffort}`));
+	if (opts.showReasoning) optional.push(c.dim("reasoning"));
+	if (opts.provider && opts.provider !== "zen") {
+		optional.push(c.dim(opts.provider));
+	}
+	if (opts.gitBranch) optional.push(c.dim(`⎇ ${opts.gitBranch}`));
 
-	const right: string[] = [];
 	if (opts.inputTokens > 0 || opts.outputTokens > 0) {
-		right.push(
+		optional.push(
 			c.dim(
-				`↑ ${fmtTokens(opts.inputTokens)} ↓ ${fmtTokens(opts.outputTokens)}`,
+				`tok ${fmtTokens(opts.inputTokens)}/${fmtTokens(opts.outputTokens)}`,
 			),
 		);
 	}
-	if (opts.contextTokens > 0) {
-		const ctxRaw = fmtTokens(opts.contextTokens);
-		if (opts.contextWindow !== null) {
-			const pct = Math.round((opts.contextTokens / opts.contextWindow) * 100);
-			const ctxMax = fmtTokens(opts.contextWindow);
-			const pctStr = `${pct}%`;
-			const colored =
-				pct >= 90
-					? c.red(pctStr)
-					: pct >= 75
-						? c.yellow(pctStr)
-						: c.dim(pctStr);
-			right.push(c.dim(`ctx ${ctxRaw}/${ctxMax} `) + colored);
-		} else {
-			right.push(c.dim(`ctx ${ctxRaw}`));
-		}
-	}
-	if (opts.gitBranch) right.push(c.dim(`⎇ ${opts.gitBranch}`));
 
-	const cwdDisplay = opts.cwd;
+	const contextSegment = buildContextSegment({
+		contextTokens: opts.contextTokens,
+		contextWindow: opts.contextWindow,
+	});
+	if (contextSegment) optional.push(contextSegment);
 
-	// Assemble: left  ·  cwd  ·  right (respects terminal width)
-	const middle = c.dim(cwdDisplay);
-	const sep = c.dim("  ");
-	const full = [...left, middle, ...right.reverse()].join(sep);
+	optional.push(c.dim(`#${opts.sessionId.slice(0, 8)}`));
 
-	const visible = stripAnsi(full);
-
-	const out = visible.length > cols ? truncateAnsi(full, cols - 1) : full;
-
+	const out = fitStatusSegments(required, optional, cols);
 	terminal.stdoutWrite(`${out}\n`);
 }
