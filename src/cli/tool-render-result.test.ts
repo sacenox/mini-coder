@@ -62,6 +62,29 @@ describe("renderToolResult", () => {
 		expect(plain).not.toContain("stdout (5 lines)");
 	});
 
+	test("renders compact one-line stdout for successful shell calls", () => {
+		terminal.stdoutWrite = (chunk: string) => {
+			stdout += chunk;
+		};
+
+		renderToolResult(
+			"shell",
+			{
+				stdout: "/home/xonecas/src/mini-coder\n",
+				stderr: "",
+				exitCode: 0,
+				success: true,
+				timedOut: false,
+			},
+			false,
+		);
+
+		const plain = stripAnsi(stdout);
+		expect(plain).toContain("exit 0 · stdout 1L · stderr 0L");
+		expect(plain).toContain("stdout: /home/xonecas/src/mini-coder");
+		expect(plain).not.toContain("stdout (1 lines)");
+	});
+
 	test("renders file edit diff for create", () => {
 		terminal.stdoutWrite = (chunk: string) => {
 			stdout += chunk;

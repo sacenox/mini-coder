@@ -64,12 +64,36 @@ function renderShellResult(result: unknown): boolean {
 			? c.green("success")
 			: c.red("error");
 
-	const stdoutLines = r.stdout.trim() ? r.stdout.split("\n").length : 0;
-	const stderrLines = r.stderr.trim() ? r.stderr.split("\n").length : 0;
+	const stdoutNormalized = r.stdout.replace(/[\r\n]+$/, "");
+	const stderrNormalized = r.stderr.replace(/[\r\n]+$/, "");
+	const stdoutLines = stdoutNormalized
+		? stdoutNormalized.split(/\r?\n/).length
+		: 0;
+	const stderrLines = stderrNormalized
+		? stderrNormalized.split(/\r?\n/).length
+		: 0;
+	const stdoutSingleLine =
+		stdoutLines === 1 ? (stdoutNormalized.split(/\r?\n/)[0] ?? "") : null;
 
 	writeln(
 		`    ${badge} ${c.dim(`exit ${r.exitCode} · stdout ${stdoutLines}L · stderr ${stderrLines}L`)}`,
 	);
+
+	if (
+		r.success &&
+		!r.timedOut &&
+		stderrLines === 0 &&
+		stdoutSingleLine !== null
+	) {
+		const compact =
+			stdoutSingleLine.length > 100
+				? `${stdoutSingleLine.slice(0, 97)}…`
+				: stdoutSingleLine;
+		if (compact.length > 0) {
+			writeln(`    ${c.dim(`stdout: ${compact}`)}`);
+		}
+		return true;
+	}
 
 	if (!r.success || r.timedOut) {
 		writePreviewLines({
