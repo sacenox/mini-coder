@@ -1,0 +1,74 @@
+import { describe, expect, test } from "bun:test";
+import {
+	handleCacheCommand,
+	handleContextCommand,
+	handleReasoningCommand,
+} from "./commands-config.ts";
+import type { CommandContext } from "./types.ts";
+
+function createContext(overrides?: Partial<CommandContext>): CommandContext {
+	return {
+		currentModel: "zen/claude-sonnet-4-6",
+		setModel: () => {},
+		thinkingEffort: null,
+		setThinkingEffort: () => {},
+		showReasoning: true,
+		setShowReasoning: () => {},
+		pruningMode: "balanced",
+		setPruningMode: () => {},
+		toolResultPayloadCapBytes: 0,
+		setToolResultPayloadCapBytes: () => {},
+		promptCachingEnabled: true,
+		setPromptCachingEnabled: () => {},
+		openaiPromptCacheRetention: "in_memory",
+		setOpenAIPromptCacheRetention: () => {},
+		googleCachedContent: null,
+		setGoogleCachedContent: () => {},
+		undoLastTurn: async () => false,
+		startNewSession: () => {},
+		connectMcpServer: async () => {},
+		runSubagent: async () => ({ result: "", inputTokens: 0, outputTokens: 0 }),
+		activeAgent: null,
+		setActiveAgent: () => {},
+		startSpinner: () => {},
+		stopSpinner: () => {},
+		cwd: process.cwd(),
+		...overrides,
+	};
+}
+
+describe("commands-config", () => {
+	test("/context cap accepts kilobytes", () => {
+		let captured = 0;
+		const ctx = createContext({
+			setToolResultPayloadCapBytes: (bytes) => {
+				captured = bytes;
+			},
+		});
+		handleContextCommand(ctx, "cap 12kb");
+		expect(captured).toBe(12 * 1024);
+	});
+
+	test("/cache gemini off clears cached content", () => {
+		let cachedContent: string | null = "cachedContents/foo";
+		const ctx = createContext({
+			setGoogleCachedContent: (value) => {
+				cachedContent = value;
+			},
+		});
+		handleCacheCommand(ctx, "gemini off");
+		expect(cachedContent).toBeNull();
+	});
+
+	test("/reasoning toggles when no arg is provided", () => {
+		let reasoningVisible = true;
+		const ctx = createContext({
+			showReasoning: reasoningVisible,
+			setShowReasoning: (value) => {
+				reasoningVisible = value;
+			},
+		});
+		handleReasoningCommand(ctx, "");
+		expect(reasoningVisible).toBe(false);
+	});
+});
