@@ -35,11 +35,11 @@ describe("renderToolResult", () => {
 
 		const plain = stripAnsi(stdout);
 		expect(plain).toContain("exit 0 · stdout 2L · stderr 1L");
-		expect(plain).toContain("stdout (2 lines)");
-		expect(plain).toContain("stderr (1 lines)");
+		expect(plain).not.toContain("stdout (2 lines)");
+		expect(plain).not.toContain("stderr (1 lines)");
 	});
 
-	test("omits long stdout previews for successful shell calls", () => {
+	test("keeps successful multi-line shell output compact", () => {
 		terminal.stdoutWrite = (chunk: string) => {
 			stdout += chunk;
 		};
@@ -58,7 +58,7 @@ describe("renderToolResult", () => {
 
 		const plain = stripAnsi(stdout);
 		expect(plain).toContain("exit 0 · stdout 5L · stderr 0L");
-		expect(plain).toContain("stdout omitted (5 lines)");
+		expect(plain).not.toContain("stdout omitted");
 		expect(plain).not.toContain("stdout (5 lines)");
 	});
 
@@ -81,7 +81,7 @@ describe("renderToolResult", () => {
 
 		const plain = stripAnsi(stdout);
 		expect(plain).toContain("exit 0 · stdout 1L · stderr 0L");
-		expect(plain).toContain("stdout: /home/xonecas/src/mini-coder");
+		expect(plain).toContain("out: /home/xonecas/src/mini-coder");
 		expect(plain).not.toContain("stdout (1 lines)");
 	});
 

@@ -2,6 +2,10 @@ import * as c from "yoctocolors";
 import { writeln } from "../output.ts";
 import { writePreviewLines } from "../tool-result-shared.ts";
 
+function truncateOneLine(value: string, max = 100): string {
+	return value.length > max ? `${value.slice(0, max - 1)}…` : value;
+}
+
 export function renderShellResult(result: unknown): boolean {
 	const r = result as {
 		stdout: string;
@@ -31,61 +35,40 @@ export function renderShellResult(result: unknown): boolean {
 	const stdoutSingleLine =
 		stdoutLines === 1 ? (stdoutNormalized.split(/\r?\n/)[0] ?? "") : null;
 
-	writeln(
-		`    ${badge} ${c.dim(`exit ${r.exitCode} · stdout ${stdoutLines}L · stderr ${stderrLines}L`)}`,
-	);
+	const parts = [
+		`exit ${r.exitCode}`,
+		`stdout ${stdoutLines}L`,
+		`stderr ${stderrLines}L`,
+	];
 
 	if (
 		r.success &&
 		!r.timedOut &&
 		stderrLines === 0 &&
-		stdoutSingleLine !== null
+		stdoutSingleLine !== null &&
+		stdoutSingleLine.length > 0
 	) {
-		const compact =
-			stdoutSingleLine.length > 100
-				? `${stdoutSingleLine.slice(0, 97)}…`
-				: stdoutSingleLine;
-		if (compact.length > 0) {
-			writeln(`    ${c.dim(`stdout: ${compact}`)}`);
-		}
+		parts.push(`out: ${truncateOneLine(stdoutSingleLine)}`);
+	}
+
+	writeln(`    ${badge} ${c.dim(parts.join(" · "))}`);
+
+	if (r.success && !r.timedOut) {
 		return true;
 	}
 
-	if (!r.success || r.timedOut) {
-		writePreviewLines({
-			label: "stderr",
-			value: r.stderr,
-			lineColor: c.red,
-			maxLines: 6,
-		});
-		writePreviewLines({
-			label: "stdout",
-			value: r.stdout,
-			lineColor: c.dim,
-			maxLines: 4,
-		});
-		return true;
-	}
-
-	if (stderrLines > 0) {
-		writePreviewLines({
-			label: "stderr",
-			value: r.stderr,
-			lineColor: c.red,
-			maxLines: 4,
-		});
-	}
-
-	if (stdoutLines > 0 && stdoutLines <= 3) {
-		writePreviewLines({
-			label: "stdout",
-			value: r.stdout,
-			lineColor: c.dim,
-			maxLines: 3,
-		});
-	} else if (stdoutLines > 3) {
-		writeln(`    ${c.dim(`stdout omitted (${stdoutLines} lines)`)}`);
-	}
+	writePreviewLines({
+		label: "stderr",
+		value: r.stderr,
+		lineColor: c.red,
+		maxLines: 6,
+	});
+	writePreviewLines({
+		label: "stdout",
+		value: r.stdout,
+		lineColor: c.dim,
+		maxLines: 4,
+	});
 
 	return true;
 }
