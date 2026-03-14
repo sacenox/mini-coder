@@ -25,6 +25,33 @@ test("parseAppError - APICallError 429", () => {
 	});
 });
 
+test("parseAppError - APICallError context_length_exceeded", () => {
+	const err = new APICallError({
+		message:
+			"This model's maximum context length is 128000 tokens. context_length_exceeded",
+		statusCode: 400,
+		url: "https://api.example.com",
+		requestBodyValues: {},
+	});
+	expect(parseAppError(err)).toEqual({
+		headline: "Max context size reached",
+		hint: "Use /context prune to reduce history, or /new to start fresh",
+	});
+});
+
+test("parseAppError - APICallError request too large", () => {
+	const err = new APICallError({
+		message: "Request too large for model",
+		statusCode: 400,
+		url: "https://api.example.com",
+		requestBodyValues: {},
+	});
+	expect(parseAppError(err)).toEqual({
+		headline: "Max context size reached",
+		hint: "Use /context prune to reduce history, or /new to start fresh",
+	});
+});
+
 test("parseAppError - APICallError 401", () => {
 	const err = new APICallError({
 		message: "Unauthorized",

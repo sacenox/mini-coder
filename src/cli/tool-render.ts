@@ -14,11 +14,7 @@ function toolGlyph(name: string): string {
 	return G.info;
 }
 
-function toolCallLine(
-	name: string,
-	args: unknown,
-	_toolCallId?: string,
-): string {
+function toolCallLine(name: string, args: unknown): string {
 	const a =
 		args && typeof args === "object" ? (args as Record<string, unknown>) : {};
 
@@ -62,12 +58,8 @@ function toolCallLine(
 	return `${toolGlyph(name)} ${c.dim(name)}`;
 }
 
-export function renderToolCall(
-	toolName: string,
-	args: unknown,
-	toolCallId?: string,
-): void {
-	writeln(`  ${toolCallLine(toolName, args, toolCallId)}`);
+export function renderToolCall(toolName: string, args: unknown): void {
+	writeln(`  ${toolCallLine(toolName, args)}`);
 }
 export function renderHook(
 	toolName: string,
@@ -129,7 +121,6 @@ export function renderToolResult(
 	toolName: string,
 	result: unknown,
 	isError: boolean,
-	_toolCallId?: string,
 ): void {
 	if (isError) {
 		writeln(`    ${formatErrorBadge(result)}`);

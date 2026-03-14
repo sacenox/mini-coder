@@ -23,6 +23,18 @@ export function parseAppError(err: unknown): {
 	}
 
 	if (err instanceof APICallError) {
+		const body = String(err.message).toLowerCase();
+		if (
+			body.includes("context_length_exceeded") ||
+			body.includes("maximum context length") ||
+			body.includes("too many tokens") ||
+			body.includes("request too large")
+		) {
+			return {
+				headline: "Max context size reached",
+				hint: "Use /context prune to reduce history, or /new to start fresh",
+			};
+		}
 		if (err.statusCode === 429) {
 			return {
 				headline: "Rate limit hit",

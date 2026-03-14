@@ -1,12 +1,17 @@
-import { join, relative } from "node:path";
+import { join } from "node:path";
 import * as c from "yoctocolors";
+
 import { addPromptHistory, getPromptHistory } from "../session/db/index.ts";
+import {
+	getAtCompletions,
+	getCommandCompletions,
+	getFilePathCompletions,
+} from "./completions.ts";
 import {
 	type ImageAttachment,
 	isImageFilename,
 	loadImageFile,
 } from "./image-types.ts";
-import { loadSkillsIndex } from "./skills.ts";
 import { terminal } from "./terminal-io.ts";
 
 // ─── ANSI escape sequences ────────────────────────────────────────────────────
@@ -14,12 +19,6 @@ import { terminal } from "./terminal-io.ts";
 const ESC = "\x1B";
 const CSI = `${ESC}[`;
 const CLEAR_LINE = `\r${CSI}2K`;
-const _CURSOR_LEFT = `${CSI}D`;
-const _CURSOR_RIGHT = `${CSI}C`;
-const _CURSOR_UP = `${CSI}A`;
-const _CURSOR_DOWN = `${CSI}B`;
-const _SAVE_CURSOR = `${CSI}s`;
-const _RESTORE_CURSOR = `${CSI}u`;
 const BPASTE_ENABLE = `${ESC}[?2004h`;
 const BPASTE_DISABLE = `${ESC}[?2004l`;
 const BPASTE_START = `${ESC}[200~`;
@@ -53,36 +52,6 @@ export type InputResult =
 	| { type: "eof" }
 	| { type: "command"; command: string; args: string }
 	| { type: "shell"; command: string };
-
-// ─── File autocomplete ────────────────────────────────────────────────────────
-
-async function getAtCompletions(
-	prefix: string,
-	cwd: string,
-): Promise<string[]> {
-	const query = prefix.startsWith("@") ? prefix.slice(1) : prefix;
-	const results: string[] = [];
-	const MAX = 10;
-
-	// Skills: @<skill-name>
-	const skills = loadSkillsIndex(cwd);
-	for (const [name] of skills) {
-		if (results.length >= MAX) break;
-		if (name.includes(query)) results.push(`@${name}`);
-	}
-
-	// Files: @<relative-path> — fill remaining slots up to MAX
-	if (results.length < MAX) {
-		const glob = new Bun.Glob(`**/*${query}*`);
-		for await (const file of glob.scan({ cwd, onlyFiles: true })) {
-			if (file.includes("node_modules") || file.includes(".git")) continue;
-			results.push(`@${relative(cwd, join(cwd, file))}`);
-			if (results.length >= MAX) break;
-		}
-	}
-
-	return results;
-}
 
 // ─── Image detection ─────────────────────────────────────────────────────────
 
@@ -655,24 +624,48 @@ export async function readline(opts: { cwd?: string }): Promise<InputResult> {
 			}
 
 			if (raw === TAB) {
-				// File autocomplete for @-prefixed words
 				const beforeCursor = buf.slice(0, cursor);
-				const atMatch = beforeCursor.match(/@(\S*)$/);
-				if (atMatch) {
-					const completions = await getAtCompletions(atMatch[0], cwd);
+
+				// Apply a single completion or show multiple options
+				const applyCompletions = (
+					completions: string[],
+					replaceFrom: number,
+				) => {
 					if (completions.length === 1 && completions[0]) {
 						const replacement = completions[0];
-						buf =
-							buf.slice(0, cursor - (atMatch[0] ?? "").length) +
-							replacement +
-							buf.slice(cursor);
-						cursor = cursor - (atMatch[0] ?? "").length + replacement.length;
+						buf = buf.slice(0, replaceFrom) + replacement + buf.slice(cursor);
+						cursor = replaceFrom + replacement.length;
 						renderPrompt();
 					} else if (completions.length > 1) {
 						process.stdout.write("\n");
-						for (const c of completions) process.stdout.write(`  ${c}\n`);
+						for (const item of completions) process.stdout.write(`  ${item}\n`);
 						renderPrompt();
 					}
+				};
+
+				// 1) Command completion: `/...`
+				if (beforeCursor.startsWith("/")) {
+					const completions = getCommandCompletions(beforeCursor, cwd);
+					applyCompletions(completions, 0);
+					continue;
+				}
+
+				// 2) @ reference completion: `@...`
+				const atMatch = beforeCursor.match(/@(\S*)$/);
+				if (atMatch) {
+					const completions = await getAtCompletions(atMatch[0], cwd);
+					applyCompletions(completions, cursor - (atMatch[0] ?? "").length);
+					continue;
+				}
+
+				// 3) Bare file path completion: complete the current word as a path
+				const wordMatch = beforeCursor.match(/(\S+)$/);
+				if (wordMatch) {
+					const completions = await getFilePathCompletions(
+						wordMatch[1] ?? "",
+						cwd,
+					);
+					applyCompletions(completions, cursor - (wordMatch[1] ?? "").length);
 				}
 				continue;
 			}

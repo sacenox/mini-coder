@@ -845,7 +845,7 @@ export async function* runTurn(options: {
 
 		const toolCount = Object.keys(toolSet).length;
 		const thinkingOpts = thinkingEffort
-			? getThinkingProviderOptions(modelString, thinkingEffort, toolCount > 0)
+			? getThinkingProviderOptions(modelString, thinkingEffort)
 			: null;
 		const reasoningSummaryRequested =
 			isRecord(thinkingOpts) &&

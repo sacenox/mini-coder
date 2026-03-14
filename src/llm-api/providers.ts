@@ -203,7 +203,6 @@ function clampEffort(
 export function getThinkingProviderOptions(
 	modelString: string,
 	effort: ThinkingEffort,
-	_hasTools = false,
 ): Record<string, unknown> | null {
 	if (!supportsThinking(modelString)) return null;
 

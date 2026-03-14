@@ -1,5 +1,10 @@
+import { existsSync } from "node:fs";
 import { homedir } from "node:os";
+import { join } from "node:path";
 import * as c from "yoctocolors";
+import { loadAgents } from "./agents.ts";
+import { loadCustomCommands } from "./custom-commands.ts";
+import { loadSkillsIndex } from "./skills.ts";
 import { terminal } from "./terminal-io.ts";
 
 const HOME = homedir();
@@ -68,6 +73,23 @@ export const PREFIX = {
 
 // ─── Banner ───────────────────────────────────────────────────────────────────
 
+/** Discover which context/config files exist for display in the banner. */
+function discoverContextFiles(cwd: string): string[] {
+	const found: string[] = [];
+	const globalDir = join(HOME, ".agents");
+	const candidates: [string, string][] = [
+		[join(globalDir, "AGENTS.md"), "~/.agents/AGENTS.md"],
+		[join(globalDir, "CLAUDE.md"), "~/.agents/CLAUDE.md"],
+		[join(cwd, ".agents", "AGENTS.md"), ".agents/AGENTS.md"],
+		[join(cwd, "CLAUDE.md"), "CLAUDE.md"],
+		[join(cwd, "AGENTS.md"), "AGENTS.md"],
+	];
+	for (const [abs, label] of candidates) {
+		if (existsSync(abs)) found.push(label);
+	}
+	return found;
+}
+
 export function renderBanner(model: string, cwd: string): void {
 	writeln();
 	writeln(`  ${c.cyan("mc")}  ${c.dim(`mini-coder · v${PACKAGE_VERSION}`)}`);
@@ -75,6 +97,28 @@ export function renderBanner(model: string, cwd: string): void {
 	writeln(
 		`  ${c.dim("/help for commands  ·  esc cancel  ·  ctrl+c/ctrl+d exit")}`,
 	);
+
+	// Show discovered configs and context
+	const items: string[] = [];
+	const contextFiles = discoverContextFiles(cwd);
+	if (contextFiles.length > 0) items.push(...contextFiles);
+
+	const agents = loadAgents(cwd);
+	if (agents.size > 0)
+		items.push(`${agents.size} agent${agents.size > 1 ? "s" : ""}`);
+
+	const skills = loadSkillsIndex(cwd);
+	if (skills.size > 0)
+		items.push(`${skills.size} skill${skills.size > 1 ? "s" : ""}`);
+
+	const commands = loadCustomCommands(cwd);
+	if (commands.size > 0)
+		items.push(`${commands.size} custom cmd${commands.size > 1 ? "s" : ""}`);
+
+	if (items.length > 0) {
+		writeln(`  ${c.dim(items.join("  ·  "))}`);
+	}
+
 	writeln();
 }
 

@@ -1,11 +1,10 @@
 # TODO
 
-- Improve our autocomplete via TAB. it should work on all commands and parameters. When the user uses tab assume it's a file path autocompletion.
 - Tool hooks output prints inline with spinner
-- When the user uses /new reset the terminal and clear the history, print the banner again
 - Review our markdown renderer. Let's make it render the raw markdown, but syntax highlited
 - add a spinner state showing the user when the undo snapshotting is happening
 - Structuted output when a skill is auto loaded for the agent
+
 - Kimi-k2.5 and other models that use the same sdk hang for long periods during turns.
 - Kimi-k2.5, GLM-5 and other models that use the same sdk produce these errors:
 

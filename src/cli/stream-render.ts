@@ -155,19 +155,16 @@ export async function renderTurn(
 			case "tool-call-start": {
 				flushAnyText();
 				spinner.stop();
-				renderToolCall(event.toolName, event.args, event.toolCallId);
+				renderToolCall(event.toolName, event.args);
+
 				spinner.start(event.toolName);
 				break;
 			}
 
 			case "tool-result": {
 				spinner.stop();
-				renderToolResult(
-					event.toolName,
-					event.result,
-					event.isError,
-					event.toolCallId,
-				);
+				renderToolResult(event.toolName, event.result, event.isError);
+
 				spinner.start("thinking");
 				break;
 			}

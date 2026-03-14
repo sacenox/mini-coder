@@ -82,6 +82,10 @@ Inside the interactive session, the following slash commands are available:
 **/agent [name]**
 :   Set or clear an active primary custom agent.
 
+**/review**
+:   Custom command that reviews the current session's changes (defined via `.agents/commands/`).
+
+
 **/help**
 :   Display command help.
 
@@ -146,4 +150,5 @@ The agent has access to the following tools:
 *   **Model Context Protocol (MCP)**: Native support for connecting external tools via MCP servers over HTTP or stdio.
 *   **Prompt Caching**: Configurable caching behaviors for supported providers (OpenAI, Gemini).
 *   **Undo Functionality**: Roll back the last conversation turn, cleanly restoring previous file states and git history via snapshots.
-ack the last conversation turn, cleanly restoring previous file states and git history via snapshots.
+
+

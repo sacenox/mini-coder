@@ -28,19 +28,20 @@ If multiple skills share the same `name`, precedence is deterministic:
 2. Any local skill wins over global.
 3. At the same scope/path level, `.agents` wins over `.claude`.
 
-## Frontmatter validation
+## Frontmatter
 
-`SKILL.md` frontmatter must include:
+`SKILL.md` frontmatter supports:
 
-- `name` (required)
-- `description` (required)
+- `name` (optional — defaults to the folder name)
+- `description` (optional — defaults to `"(no description)"`)
 
-`name` constraints:
+`name` constraints (when provided):
 
 - lowercase alphanumeric and hyphen format (`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
 - 1–64 characters
 
-Invalid skills are skipped with warnings. Unknown frontmatter fields are allowed.
+Unknown frontmatter fields are allowed.
+
 
 ## Create a skill
 

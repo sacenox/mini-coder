@@ -15,7 +15,7 @@ import {
 } from "./custom-commands.ts";
 import { watchForCancel } from "./input.ts";
 import { renderMarkdown } from "./markdown.ts";
-import { PREFIX, write, writeln } from "./output.ts";
+import { PREFIX, renderBanner, write, writeln } from "./output.ts";
 
 import { loadSkillsIndex } from "./skills.ts";
 
@@ -425,9 +425,9 @@ async function handleMcp(ctx: CommandContext, args: string): Promise<void> {
 
 function handleNew(ctx: CommandContext): void {
 	ctx.startNewSession();
-	writeln(
-		`${PREFIX.success} ${c.dim("new session started — context cleared")}`,
-	);
+	// Clear terminal and reprint banner for a fresh session feel
+	process.stdout.write("\x1b[2J\x1b[H");
+	renderBanner(ctx.currentModel, ctx.cwd);
 }
 
 // ─── Custom commands ──────────────────────────────────────────────────────────
@@ -448,7 +448,7 @@ async function handleCustomCommand(
 	writeln();
 
 	// context: fork (Claude Code) or subtask: true (OpenCode) → isolated subagent.
-	// context: fork (Claude Code) or subtask: true (OpenCode) → isolated subagent.
+
 	// Default: run inline in the current conversation.
 	const fork = cmd.context === "fork" || cmd.subtask === true;
 
