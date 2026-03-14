@@ -53,4 +53,40 @@ describe("mapFullStreamToTurnEvents", () => {
 		const result = events[1] as Extract<TurnEvent, { type: "tool-result" }>;
 		expect(result.toolCallId).toBe("call-1");
 	});
+
+	test("prefers tool-call over empty tool-input-start chunks", async () => {
+		const events = await collectEvents([
+			{
+				type: "tool-input-start",
+				toolCallId: "call-2",
+				toolName: "shell",
+				input: {},
+			},
+			{
+				type: "tool-call",
+				toolCallId: "call-2",
+				toolName: "shell",
+				input: { command: "ls -1" },
+			},
+			{
+				type: "tool-result",
+				toolCallId: "call-2",
+				toolName: "shell",
+				output: "ok",
+			},
+		]);
+
+		expect(events).toHaveLength(2);
+		expect(events[0]).toMatchObject({
+			type: "tool-call-start",
+			toolCallId: "call-2",
+			toolName: "shell",
+			args: { command: "ls -1" },
+		});
+		expect(events[1]).toMatchObject({
+			type: "tool-result",
+			toolCallId: "call-2",
+			toolName: "shell",
+		});
+	});
 });

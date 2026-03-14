@@ -11,6 +11,18 @@ export function shouldLogStreamChunk(c: StreamChunk): boolean {
 	);
 }
 
+function extractToolArgs(c: StreamChunk): unknown {
+	return c.input ?? c.args;
+}
+
+function hasRenderableToolArgs(args: unknown): boolean {
+	if (args === null || args === undefined) return false;
+	if (typeof args === "string") return args.trim().length > 0;
+	if (Array.isArray(args)) return args.length > 0;
+	if (typeof args === "object") return Object.keys(args).length > 0;
+	return true;
+}
+
 export function mapStreamChunkToTurnEvent(c: StreamChunk): TurnEvent | null {
 	switch (c.type) {
 		case "text-delta": {
@@ -29,15 +41,22 @@ export function mapStreamChunkToTurnEvent(c: StreamChunk): TurnEvent | null {
 				delta,
 			};
 		}
-		case "tool-input-start":
-		case "tool-call": {
-			const toolName = String(c.toolName ?? "");
-			const toolCallId = String(c.toolCallId ?? "");
+		case "tool-input-start": {
+			const args = extractToolArgs(c);
+			if (!hasRenderableToolArgs(args)) return null;
 			return {
 				type: "tool-call-start",
-				toolCallId,
-				toolName,
-				args: c.input ?? c.args,
+				toolCallId: String(c.toolCallId ?? ""),
+				toolName: String(c.toolName ?? ""),
+				args,
+			};
+		}
+		case "tool-call": {
+			return {
+				type: "tool-call-start",
+				toolCallId: String(c.toolCallId ?? ""),
+				toolName: String(c.toolName ?? ""),
+				args: extractToolArgs(c),
 			};
 		}
 		case "tool-result": {
