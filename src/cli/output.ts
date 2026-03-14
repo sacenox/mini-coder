@@ -22,7 +22,7 @@ import { renderHook } from "./tool-render.ts";
 const HOME = homedir();
 declare const __PACKAGE_VERSION__: string;
 const PACKAGE_VERSION =
-	typeof __PACKAGE_VERSION__ !== "undefined" ? __PACKAGE_VERSION__ : "unknown";
+	typeof __PACKAGE_VERSION__ !== "undefined" ? __PACKAGE_VERSION__ : null;
 
 /** Replace the home directory prefix with `~` for display. */
 export function tildePath(p: string): string {
@@ -128,7 +128,10 @@ function discoverContextFiles(cwd: string): string[] {
 
 export function renderBanner(model: string, cwd: string): void {
 	writeln();
-	writeln(`  ${c.cyan("mc")}  ${c.dim(`mini-coder · v${PACKAGE_VERSION}`)}`);
+	const title = PACKAGE_VERSION
+		? `mini-coder · v${PACKAGE_VERSION}`
+		: "mini-coder";
+	writeln(`  ${c.cyan("mc")}  ${c.dim(title)}`);
 	writeln(`  ${c.dim(model)}  ${c.dim("·")}  ${c.dim(cwd)}`);
 	writeln(
 		`  ${c.dim("/help for commands  ·  esc cancel  ·  ctrl+c/ctrl+d exit")}`,

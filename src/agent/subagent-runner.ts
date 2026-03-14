@@ -30,37 +30,52 @@ function getMcCommand(): string[] {
 // without an in-process depth parameter. Generous enough for real use-cases.
 const MAX_SUBAGENT_DEPTH = 10;
 
+class TailByteBuffer {
+	private readonly ring: Uint8Array;
+	private writePos = 0;
+	private totalSeen = 0;
+
+	constructor(private readonly maxBytes: number) {
+		this.ring = new Uint8Array(Math.max(0, maxBytes));
+	}
+
+	push(chunk: Uint8Array): void {
+		if (this.maxBytes <= 0 || chunk.length === 0) return;
+
+		let offset = 0;
+		while (offset < chunk.length) {
+			const remaining = chunk.length - offset;
+			const writable = Math.min(this.maxBytes - this.writePos, remaining);
+			this.ring.set(chunk.subarray(offset, offset + writable), this.writePos);
+			this.writePos = (this.writePos + writable) % this.maxBytes;
+			offset += writable;
+			this.totalSeen += writable;
+		}
+	}
+
+	toUint8Array(): Uint8Array {
+		if (this.maxBytes <= 0) return new Uint8Array(0);
+		const kept = Math.min(this.totalSeen, this.maxBytes);
+		if (kept === 0) return new Uint8Array(0);
+		if (this.totalSeen <= this.maxBytes) return this.ring.subarray(0, kept);
+
+		const out = new Uint8Array(kept);
+		const tailBytes = this.ring.subarray(this.writePos);
+		out.set(tailBytes, 0);
+		out.set(this.ring.subarray(0, this.writePos), tailBytes.length);
+		return out;
+	}
+}
+
 function tailBytesFromChunks(
 	chunks: readonly Uint8Array[],
 	maxBytes: number,
 ): Uint8Array {
-	if (maxBytes <= 0) return new Uint8Array(0);
-
-	const ring = new Uint8Array(maxBytes);
-	let writePos = 0;
-	let totalSeen = 0;
-
+	const buffer = new TailByteBuffer(maxBytes);
 	for (const chunk of chunks) {
-		let offset = 0;
-		while (offset < chunk.length) {
-			const remaining = chunk.length - offset;
-			const writable = Math.min(maxBytes - writePos, remaining);
-			ring.set(chunk.subarray(offset, offset + writable), writePos);
-			writePos = (writePos + writable) % maxBytes;
-			offset += writable;
-			totalSeen += writable;
-		}
+		buffer.push(chunk);
 	}
-
-	const kept = Math.min(totalSeen, maxBytes);
-	if (kept === 0) return new Uint8Array(0);
-	if (totalSeen <= maxBytes) return ring.subarray(0, kept);
-
-	const out = new Uint8Array(kept);
-	const tailBytes = ring.subarray(writePos);
-	out.set(tailBytes, 0);
-	out.set(ring.subarray(0, writePos), tailBytes.length);
-	return out;
+	return buffer.toUint8Array();
 }
 
 export function tailTextFromChunks(
@@ -70,23 +85,27 @@ export function tailTextFromChunks(
 	return new TextDecoder().decode(tailBytesFromChunks(chunks, maxBytes));
 }
 
-async function consumeTail(
+async function drainTail(
 	stream: ReadableStream | null,
 	maxBytes = 8192,
 ): Promise<string> {
 	if (!stream) return "";
 	const reader = stream.getReader();
-	const chunks: Uint8Array[] = [];
+	const buffer = new TailByteBuffer(maxBytes);
+
 	try {
 		while (true) {
 			const { done, value } = await reader.read();
 			if (done) break;
-			if (value) chunks.push(value as Uint8Array);
+			if (value) {
+				buffer.push(value as Uint8Array);
+			}
 		}
 	} finally {
 		reader.releaseLock();
 	}
-	return tailTextFromChunks(chunks, maxBytes);
+
+	return new TextDecoder().decode(buffer.toUint8Array());
 }
 
 function formatSubagentDiagnostics(stdout: string, stderr: string): string {
@@ -96,6 +115,17 @@ function formatSubagentDiagnostics(stdout: string, stderr: string): string {
 	if (lines.length === 0) return "";
 	const tail = lines.slice(-6).join(" | ");
 	return ` (diagnostics: ${tail.slice(0, 300)})`;
+}
+
+async function resolveDiagnostics(opts: {
+	stdoutTail: Promise<string>;
+	stderrTail: Promise<string>;
+}): Promise<string> {
+	const [stdout, stderr] = await Promise.all([
+		opts.stdoutTail,
+		opts.stderrTail,
+	]);
+	return formatSubagentDiagnostics(stdout, stderr);
 }
 
 export function createSubagentRunner(
@@ -172,11 +202,12 @@ export function createSubagentRunner(
 			abortSignal.addEventListener("abort", onAbort);
 		}
 
+		const stdoutTail = drainTail(proc.stdout).catch(() => "");
+		const stderrTail = drainTail(proc.stderr).catch(() => "");
+
 		try {
-			const [text, stdout, stderr] = await Promise.all([
+			const [text] = await Promise.all([
 				Bun.file(proc.stdio[3] as number).text(),
-				consumeTail(proc.stdout),
-				consumeTail(proc.stderr),
 				proc.exited,
 			]);
 
@@ -187,10 +218,12 @@ export function createSubagentRunner(
 				);
 			}
 
-			const diagnostics = formatSubagentDiagnostics(stdout, stderr);
-
 			const trimmed = text.trim();
 			if (!trimmed) {
+				const diagnostics = await resolveDiagnostics({
+					stdoutTail,
+					stderrTail,
+				});
 				throw new Error(
 					`Subagent subprocess produced no output (exit code ${String(proc.exitCode)})${diagnostics}`,
 				);
@@ -200,15 +233,27 @@ export function createSubagentRunner(
 			try {
 				parsed = JSON.parse(trimmed) as SubagentSummary & { error?: string };
 			} catch {
+				const diagnostics = await resolveDiagnostics({
+					stdoutTail,
+					stderrTail,
+				});
 				throw new Error(
 					`Subagent subprocess wrote non-JSON output (exit code ${String(proc.exitCode)}): ${trimmed.slice(0, 200)}${diagnostics}`,
 				);
 			}
 
 			if (parsed.error) {
+				const diagnostics = await resolveDiagnostics({
+					stdoutTail,
+					stderrTail,
+				});
 				throw new Error(`Subagent failed: ${parsed.error}${diagnostics}`);
 			}
 			if (proc.exitCode !== 0) {
+				const diagnostics = await resolveDiagnostics({
+					stdoutTail,
+					stderrTail,
+				});
 				throw new Error(
 					`Subagent process exited with code ${String(proc.exitCode)}${diagnostics}`,
 				);
