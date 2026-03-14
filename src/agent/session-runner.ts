@@ -75,8 +75,6 @@ export class SessionRunner {
 		}
 	}
 
-	public ralphMode = false;
-
 	public totalIn = 0;
 	public totalOut = 0;
 	public lastContextTokens = 0;

@@ -64,9 +64,6 @@ Inside the interactive session, the following slash commands are available:
 **/plan**
 :   Toggle read-only planning mode.
 
-**/ralph**
-:   Toggle autonomous execution looping.
-
 **/undo**
 :   Revert the last turn and restore files.
 
@@ -149,7 +146,6 @@ The agent has access to the following tools:
 *   **Multi-Provider LLM Routing**: Automatically discovers API keys to route to OpenCode (Zen), Anthropic, OpenAI, Google/Gemini, or local Ollama instances.
 *   **Session Memory**: Persists conversation history in a local SQLite database, allowing users to resume past sessions effortlessly.
 *   **Subagent Delegation**: Includes a tool to spawn parallel instances of itself to tackle independent subtasks simultaneously (up to 10 levels deep).
-*   **Autonomous Mode (Ralph)**: An autonomous looping mode that runs tasks in an isolated context loop (up to 20 iterations) until completion.
 *   **Plan Mode**: A read-only thinking mode utilizing read tools + MCP, safely analyzing code without making mutations or executing shell commands.
 *   **Model Context Protocol (MCP)**: Native support for connecting external tools via MCP servers over HTTP or stdio.
 *   **Prompt Caching**: Configurable caching behaviors for supported providers (OpenAI, Gemini).

@@ -1,10 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { CoreMessage } from "../llm-api/turn.ts";
-import {
-	extractAssistantText,
-	hasRalphSignal,
-	makeInterruptMessage,
-} from "./agent-helpers.ts";
+import { extractAssistantText, makeInterruptMessage } from "./agent-helpers.ts";
 
 // ─── extractAssistantText ─────────────────────────────────────────────────────
 
@@ -19,10 +15,8 @@ describe("extractAssistantText", () => {
 	});
 
 	test("extracts string content from an assistant message", () => {
-		const msgs: CoreMessage[] = [
-			{ role: "assistant", content: "All done. /ralph" },
-		];
-		expect(extractAssistantText(msgs)).toBe("All done. /ralph");
+		const msgs: CoreMessage[] = [{ role: "assistant", content: "All done." }];
+		expect(extractAssistantText(msgs)).toBe("All done.");
 	});
 
 	test("extracts text parts from array content", () => {
@@ -42,11 +36,9 @@ describe("extractAssistantText", () => {
 		const msgs: CoreMessage[] = [
 			{ role: "user", content: "go" },
 			{ role: "assistant", content: "Fixing the bug." },
-			{ role: "assistant", content: "All done. /ralph" },
+			{ role: "assistant", content: "All done." },
 		];
-		expect(extractAssistantText(msgs)).toBe(
-			"Fixing the bug.\nAll done. /ralph",
-		);
+		expect(extractAssistantText(msgs)).toBe("Fixing the bug.\nAll done.");
 	});
 
 	test("returns empty string when assistant message has no text parts", () => {
@@ -61,50 +53,18 @@ describe("extractAssistantText", () => {
 		expect(extractAssistantText(msgs)).toBe("");
 	});
 
-	test("captures /ralph even when the last content part is a tool call", () => {
+	test("extracts text from array content when last part is a tool call", () => {
 		// Typical agentic pattern: text block followed by a trailing tool call
 		const msgs: CoreMessage[] = [
 			{
 				role: "assistant",
 				content: [
-					{ type: "text", text: "Tests pass. /ralph" },
+					{ type: "text", text: "Tests pass." },
 					{ type: "tool-call", toolCallId: "1", toolName: "shell", input: {} },
 				],
 			},
 		];
-		expect(extractAssistantText(msgs)).toBe("Tests pass. /ralph");
-	});
-});
-
-// ─── hasRalphSignal ───────────────────────────────────────────────────────────
-
-describe("hasRalphSignal", () => {
-	test("returns false for empty string", () => {
-		expect(hasRalphSignal("")).toBe(false);
-	});
-
-	test("returns true for bare /ralph", () => {
-		expect(hasRalphSignal("/ralph")).toBe(true);
-	});
-
-	test("returns true when /ralph has trailing whitespace", () => {
-		expect(hasRalphSignal("/ralph  \n")).toBe(true);
-	});
-
-	test("returns true when /ralph is preceded by prose", () => {
-		expect(hasRalphSignal("All tests pass. /ralph")).toBe(true);
-	});
-
-	test("returns true when /ralph appears mid-text", () => {
-		expect(hasRalphSignal("Done. /ralph\nSee you.")).toBe(true);
-	});
-
-	test("returns false when /ralphy (not a word boundary)", () => {
-		expect(hasRalphSignal("/ralphy")).toBe(false);
-	});
-
-	test("returns false for unrelated text", () => {
-		expect(hasRalphSignal("I finished the task.")).toBe(false);
+		expect(extractAssistantText(msgs)).toBe("Tests pass.");
 	});
 });
 

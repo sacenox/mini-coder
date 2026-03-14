@@ -41,7 +41,6 @@ export function renderStatusBar(opts: {
 	outputTokens: number;
 	contextTokens: number;
 	contextWindow: number | null;
-	ralphMode?: boolean;
 	thinkingEffort?: string | null;
 	activeAgent?: string | null;
 	showReasoning?: boolean;
@@ -54,7 +53,6 @@ export function renderStatusBar(opts: {
 	if (opts.showReasoning) left.push(c.dim("🤔"));
 	if (opts.provider && opts.provider !== "zen") left.push(c.dim(opts.provider));
 	left.push(c.dim(opts.sessionId.slice(0, 8)));
-	if (opts.ralphMode) left.push(c.magenta("↻ ralph"));
 	if (opts.activeAgent) left.push(c.green(`@${opts.activeAgent}`));
 
 	const right: string[] = [];

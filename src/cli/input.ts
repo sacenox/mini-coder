@@ -384,14 +384,10 @@ export function buildPromptDisplay(
 // ─── Main readline function ───────────────────────────────────────────────────
 
 const PROMPT = c.green("▶ ");
-const PROMPT_RALPH = c.magenta("↻ ");
 
-const PROMPT_RAW_LEN = 2; // both prompts are 2 visible chars
+const PROMPT_RAW_LEN = 2; // prompt is 2 visible chars
 
-export async function readline(opts: {
-	cwd?: string;
-	ralphMode?: boolean;
-}): Promise<InputResult> {
+export async function readline(opts: { cwd?: string }): Promise<InputResult> {
 	const cwd = opts.cwd ?? process.cwd();
 
 	// Load history
@@ -448,7 +444,7 @@ export async function readline(opts: {
 			Math.max(1, cols - PROMPT_RAW_LEN - 2),
 		);
 
-		const prompt = opts.ralphMode ? PROMPT_RALPH : PROMPT;
+		const prompt = PROMPT;
 
 		process.stdout.write(
 			`${CLEAR_LINE}${prompt}${display}${CSI}${PROMPT_RAW_LEN + displayCursor + 1}G`,

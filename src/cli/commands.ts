@@ -299,17 +299,6 @@ function handleCache(ctx: CommandContext, args: string): void {
 	writeln(`${PREFIX.error} usage: /cache <on|off|openai|gemini> ...`);
 }
 
-function handleRalph(ctx: CommandContext): void {
-	ctx.setRalphMode(!ctx.ralphMode);
-	if (ctx.ralphMode) {
-		writeln(
-			`${PREFIX.info} ${c.magenta("ralph mode")} ${c.dim("— loops until done, fresh context each iteration")}`,
-		);
-	} else {
-		writeln(`${PREFIX.info} ${c.dim("ralph mode off")}`);
-	}
-}
-
 async function handleUndo(ctx: CommandContext): Promise<void> {
 	const ok = await ctx.undoLastTurn();
 	if (ok) {
@@ -566,10 +555,6 @@ function handleHelp(
 		["/undo", "remove the last turn from conversation history"],
 		["/reasoning [on|off]", "toggle display of model reasoning output"],
 		["/context [prune|cap]", "configure context pruning and tool-result caps"],
-		[
-			"/ralph",
-			"toggle ralph mode (autonomous loop, fresh context each iteration)",
-		],
 		["/agent [name]", "set or clear active primary agent"],
 		["/mcp list", "list MCP servers"],
 		["/mcp add <n> <t> [u]", "add an MCP server"],
@@ -681,10 +666,6 @@ export async function handleCommand(
 			return { type: "handled" };
 		case "cache":
 			handleCache(ctx, args);
-			return { type: "handled" };
-
-		case "ralph":
-			handleRalph(ctx);
 			return { type: "handled" };
 
 		case "agent":

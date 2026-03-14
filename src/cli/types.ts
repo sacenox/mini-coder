@@ -19,8 +19,6 @@ export interface CommandContext {
 	setOpenAIPromptCacheRetention: (retention: "in_memory" | "24h") => void;
 	googleCachedContent: string | null;
 	setGoogleCachedContent: (contentId: string | null) => void;
-	ralphMode: boolean;
-	setRalphMode: (enabled: boolean) => void;
 	undoLastTurn: () => Promise<boolean>;
 	startNewSession: () => void;
 

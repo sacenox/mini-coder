@@ -42,11 +42,3 @@ export function extractAssistantText(newMessages: CoreMessage[]): string {
 	}
 	return parts.join("\n");
 }
-
-export function hasRalphSignal(text: string): boolean {
-	return /\/ralph\b/.test(text);
-}
-
-export function buildRalphIterationPrompt(goal: string): string {
-	return `${goal}\n\n<system-message>RALPH MODE: Work autonomously toward the goal. **Only when the task is fully complete**, output \`/ralph\` as your final message.</system-message>`;
-}
