@@ -63,6 +63,7 @@ export class CliReporter implements AgentReporter {
 	}
 
 	renderHook(toolName: string, scriptPath: string, success: boolean): void {
+		this.spinner.stop();
 		renderHook(toolName, scriptPath, success);
 	}
 

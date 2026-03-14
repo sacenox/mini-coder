@@ -300,13 +300,18 @@ function handleCache(ctx: CommandContext, args: string): void {
 }
 
 async function handleUndo(ctx: CommandContext): Promise<void> {
-	const ok = await ctx.undoLastTurn();
-	if (ok) {
-		writeln(
-			`${PREFIX.success} ${c.dim("last turn undone — history and files restored")}`,
-		);
-	} else {
-		writeln(`${PREFIX.info} ${c.dim("nothing to undo")}`);
+	ctx.startSpinner("restoring snapshot");
+	try {
+		const ok = await ctx.undoLastTurn();
+		if (ok) {
+			writeln(
+				`${PREFIX.success} ${c.dim("last turn undone — history and files restored")}`,
+			);
+		} else {
+			writeln(`${PREFIX.info} ${c.dim("nothing to undo")}`);
+		}
+	} finally {
+		ctx.stopSpinner();
 	}
 }
 
@@ -555,6 +560,11 @@ function handleHelp(
 		["/undo", "remove the last turn from conversation history"],
 		["/reasoning [on|off]", "toggle display of model reasoning output"],
 		["/context [prune|cap]", "configure context pruning and tool-result caps"],
+		[
+			"/cache [on|off|openai|gemini]",
+			"configure provider prompt-caching settings",
+		],
+
 		["/agent [name]", "set or clear active primary agent"],
 		["/mcp list", "list MCP servers"],
 		["/mcp add <n> <t> [u]", "add an MCP server"],
