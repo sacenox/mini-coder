@@ -33,6 +33,9 @@ export async function renderTurn(
 	// as a raw partial line (before markdown rendering). When a newline arrives
 	// the partial is overwritten with the properly styled complete line.
 	let partialWritten = 0;
+	// Approximate visible character count shown for the streamed partial preview
+	// (including any streamed prefix). Used to clear wrapped terminal rows.
+	let partialVisibleChars = 0;
 	// Prefix shown before raw partial content during streaming previews.
 	// For text replies: "◆ " (already written before streaming starts, so
 	// streamPartialLine skips it). For reasoning: "│ " (written by
@@ -75,11 +78,150 @@ export async function renderTurn(
 		return inReasoning ? `${c.dim("│ ")}${rendered.output}` : rendered.output;
 	}
 
+	const emojiLikeRegex = /\p{Extended_Pictographic}/u;
+	const ansiEscapeChar = String.fromCharCode(0x1b);
+	const graphemeSegmenter =
+		typeof Intl !== "undefined" && typeof Intl.Segmenter === "function"
+			? new Intl.Segmenter(undefined, { granularity: "grapheme" })
+			: null;
+
+	function stripSgrAnsi(s: string): string {
+		if (!s) return "";
+		let out = "";
+		for (let i = 0; i < s.length; i++) {
+			if (s[i] !== ansiEscapeChar || s[i + 1] !== "[") {
+				out += s[i] ?? "";
+				continue;
+			}
+
+			let j = i + 2;
+			while (j < s.length) {
+				const ch = s[j] ?? "";
+				if ((ch >= "0" && ch <= "9") || ch === ";") {
+					j++;
+					continue;
+				}
+				break;
+			}
+
+			if (s[j] === "m") {
+				i = j;
+				continue;
+			}
+
+			out += s[i] ?? "";
+		}
+		return out;
+	}
+
+	function isControlCodePoint(cp: number): boolean {
+		return (cp >= 0 && cp <= 0x1f) || (cp >= 0x7f && cp <= 0x9f);
+	}
+
+	function isCombiningCodePoint(cp: number): boolean {
+		return (
+			(cp >= 0x0300 && cp <= 0x036f) ||
+			(cp >= 0x1ab0 && cp <= 0x1aff) ||
+			(cp >= 0x1dc0 && cp <= 0x1dff) ||
+			(cp >= 0x20d0 && cp <= 0x20ff) ||
+			(cp >= 0xfe20 && cp <= 0xfe2f)
+		);
+	}
+
+	function isVariationSelector(cp: number): boolean {
+		return (cp >= 0xfe00 && cp <= 0xfe0f) || (cp >= 0xe0100 && cp <= 0xe01ef);
+	}
+
+	function isWideCodePoint(cp: number): boolean {
+		return (
+			cp >= 0x1100 &&
+			(cp <= 0x115f ||
+				cp === 0x2329 ||
+				cp === 0x232a ||
+				(cp >= 0x2e80 && cp <= 0xa4cf && cp !== 0x303f) ||
+				(cp >= 0xac00 && cp <= 0xd7a3) ||
+				(cp >= 0xf900 && cp <= 0xfaff) ||
+				(cp >= 0xfe10 && cp <= 0xfe19) ||
+				(cp >= 0xfe30 && cp <= 0xfe6f) ||
+				(cp >= 0xff00 && cp <= 0xff60) ||
+				(cp >= 0xffe0 && cp <= 0xffe6) ||
+				(cp >= 0x1f300 && cp <= 0x1f64f) ||
+				(cp >= 0x1f900 && cp <= 0x1f9ff) ||
+				(cp >= 0x20000 && cp <= 0x3fffd))
+		);
+	}
+
+	function graphemeWidth(grapheme: string): number {
+		if (!grapheme) return 0;
+		if (emojiLikeRegex.test(grapheme)) return 2;
+
+		let width = 0;
+		let hasRegionalIndicator = false;
+		for (const ch of grapheme) {
+			const cp = ch.codePointAt(0);
+			if (cp === undefined) continue;
+			if (cp >= 0x1f1e6 && cp <= 0x1f1ff) hasRegionalIndicator = true;
+			if (
+				isControlCodePoint(cp) ||
+				isCombiningCodePoint(cp) ||
+				isVariationSelector(cp) ||
+				cp === 0x200d ||
+				(cp >= 0x1f3fb && cp <= 0x1f3ff)
+			) {
+				continue;
+			}
+			width += isWideCodePoint(cp) ? 2 : 1;
+		}
+
+		if (hasRegionalIndicator) return 2;
+		return width;
+	}
+
+	function visibleLength(s: string): number {
+		if (!s) return 0;
+		const plain = stripSgrAnsi(s);
+		if (!plain) return 0;
+
+		if (!graphemeSegmenter) {
+			let width = 0;
+			for (const ch of plain) {
+				const cp = ch.codePointAt(0);
+				if (cp === undefined || isControlCodePoint(cp)) continue;
+				width += isWideCodePoint(cp) ? 2 : 1;
+			}
+			return width;
+		}
+
+		let width = 0;
+		for (const { segment } of graphemeSegmenter.segment(plain)) {
+			width += graphemeWidth(segment);
+		}
+		return width;
+	}
+
+	function estimateWrappedRows(visibleChars: number): number {
+		if (visibleChars <= 0) return 1;
+		const cols = process.stdout.columns ?? 0;
+		if (cols <= 0) return 1;
+		return Math.max(1, Math.ceil(visibleChars / cols));
+	}
+
+	function clearPartialPreview(): string {
+		if (partialWritten <= 0) return "";
+		const rows = estimateWrappedRows(partialVisibleChars);
+		let seq = "\r\x1b[2K";
+		for (let i = 1; i < rows; i++) {
+			seq += "\x1b[1A\r\x1b[2K";
+		}
+		return seq;
+	}
+
 	// Reset per-line partial-preview tracking. styledPrefix is intentionally
 	// excluded — it is turn-level state (◆ for text, "" for reasoning) and must
 	// persist across lines within the same turn.
 	function resetLineState(): void {
 		partialWritten = 0;
+		partialVisibleChars = 0;
 		streamPrefix = "";
 		streamPrefixWritten = false;
 	}
@@ -97,10 +239,11 @@ export async function renderTurn(
 			const out = renderSingleLine(rawBuffer);
 			rawBuffer = "";
 			if (partialWritten > 0) {
-				// Raw partial content is on the terminal — overwrite it with the
-				// properly styled version.
-				if (out !== null) write(`\r\x1b[2K${styledPrefix}${out}`);
-				else write("\r\x1b[2K");
+				// Raw partial content is on the terminal — clear wrapped rows and
+				// replace it with the properly styled version.
+				const clearSeq = clearPartialPreview();
+				if (out !== null) write(`${clearSeq}${styledPrefix}${out}`);
+				else write(clearSeq);
 			} else {
 				if (out !== null) write(out);
 			}
@@ -117,7 +260,7 @@ export async function renderTurn(
 	 * Process rawBuffer: render and output all complete (newline-terminated)
 	 * lines; leave any trailing partial in rawBuffer.
 	 * If a partial-line preview was already written, the first complete line
-	 * overwrites it with `\r\x1b[2K` before its styled content.
+	 * clears it before writing styled content.
 	 */
 	function flushCompleteLines(): void {
 		// Use an index cursor instead of repeatedly slicing rawBuffer after each
@@ -136,11 +279,12 @@ export async function renderTurn(
 			boundary = rawBuffer.indexOf("\n", start);
 
 			const out = renderSingleLine(raw);
-			// If raw partial content was already streamed to the terminal, overwrite
-			// it with the properly styled complete-line render.
+			// If raw partial content was already streamed to the terminal, clear it
+			// and replace with the properly styled complete-line render.
 			if (firstLine && partialWritten > 0) {
-				if (out !== null) batchOutput += `\r\x1b[2K${styledPrefix}${out}\n`;
-				else batchOutput += "\r\x1b[2K\n";
+				const clearSeq = clearPartialPreview();
+				if (out !== null) batchOutput += `${clearSeq}${styledPrefix}${out}\n`;
+				else batchOutput += `${clearSeq}\n`;
 			} else if (out !== null) {
 				batchOutput += `${out}\n`;
 			}
@@ -165,10 +309,17 @@ export async function renderTurn(
 	function streamPartialLine(): void {
 		if (rawBuffer.length <= partialWritten) return;
 		spinner.stop();
-		const prefix = !streamPrefixWritten && streamPrefix ? streamPrefix : "";
-		write(`${prefix}${rawBuffer.slice(partialWritten)}`);
-		streamPrefixWritten = true;
+		let out = "";
+		if (!streamPrefixWritten && streamPrefix) {
+			out += streamPrefix;
+			streamPrefixWritten = true;
+			partialVisibleChars += visibleLength(streamPrefix);
+		}
+		const delta = rawBuffer.slice(partialWritten);
+		out += delta;
+		partialVisibleChars += visibleLength(delta);
 		partialWritten = rawBuffer.length;
+		write(out);
 	}
 
 	for await (const event of events) {
@@ -181,10 +332,11 @@ export async function renderTurn(
 					spinner.stop();
 					write(`${G.reply} `);
 					// "◆ " is already on the terminal. Record it for overwrite
-					// restoration and mark the prefix as already written.
+					// restoration and count it toward wrapped-row clearing.
 					streamPrefix = `${G.reply} `;
 					styledPrefix = `${G.reply} `;
 					streamPrefixWritten = true;
+					partialVisibleChars += visibleLength(streamPrefix);
 					inText = true;
 				}
 				rawBuffer += event.delta;

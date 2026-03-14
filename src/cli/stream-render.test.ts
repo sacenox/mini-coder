@@ -43,52 +43,97 @@ function strip(s: string): string {
 }
 
 /**
- * Simulate terminal rendering: apply carriage-return + erase-line sequences
- * (`\r\x1b[2K`) so tests reflect what the user actually sees on screen.
- * This mirrors the partial-line overwrite strategy used by the stream renderer.
+ * Simulate terminal rendering for key cursor-control sequences used by the
+ * stream renderer: `\r`, `\n`, `\x1b[2K` (erase line), and `\x1b[1A` (cursor up).
  */
 function simulateTerminal(raw: string): string {
 	const esc = String.fromCharCode(0x1b);
-	// Strip all ANSI SGR color/style codes first so we can compare plain text.
+	// Strip ANSI SGR color/style codes first so we can compare plain text.
 	const noColor = raw.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "");
-	// Process line-by-line, handling \r (return to line start) and \x1b[2K (erase line).
-	const lines: string[] = [];
-	let current = "";
+	const lines: string[] = [""];
+	let row = 0;
+	let col = 0;
 	let i = 0;
+
+	const ensureRow = (idx: number): void => {
+		while (lines.length <= idx) lines.push("");
+	};
+
 	while (i < noColor.length) {
 		const ch = noColor[i];
 		if (ch === "\n") {
-			lines.push(current);
-			current = "";
+			row++;
+			ensureRow(row);
+			col = 0;
 			i++;
-		} else if (ch === "\r") {
-			// Carriage return: check for \x1b[2K (erase-line) immediately after.
-			if (
-				noColor[i + 1] === esc &&
-				noColor[i + 2] === "[" &&
-				noColor[i + 3] === "2" &&
-				noColor[i + 4] === "K"
-			) {
-				// Clear the current line and skip the escape sequence.
-				current = "";
-				i += 5;
-			} else {
-				// Plain \r: go to start of line but keep existing content to be
-				// overwritten character by character. Just reset position marker.
-				current = "";
-				i++;
-			}
-		} else {
-			current += ch;
-			i++;
+			continue;
 		}
+		if (ch === "\r") {
+			col = 0;
+			i++;
+			continue;
+		}
+		if (ch === esc && noColor[i + 1] === "[") {
+			if (noColor[i + 2] === "2" && noColor[i + 3] === "K") {
+				lines[row] = "";
+				col = 0;
+				i += 4;
+				continue;
+			}
+			if (noColor[i + 2] === "1" && noColor[i + 3] === "A") {
+				row = Math.max(0, row - 1);
+				col = Math.min(col, lines[row]?.length ?? 0);
+				i += 4;
+				continue;
+			}
+		}
+
+		ensureRow(row);
+		const line = lines[row] ?? "";
+		if (col >= line.length) {
+			lines[row] = line + ch;
+		} else {
+			lines[row] = `${line.slice(0, col)}${ch}${line.slice(col + 1)}`;
+		}
+		col++;
+		i++;
 	}
-	lines.push(current);
+
 	return lines.join("\n");
 }
 
 function hasAnsi(s: string, code: string): boolean {
 	return s.includes(`${String.fromCharCode(0x1b)}${code}`);
+}
+
+async function withTerminalColumns(
+	cols: number,
+	fn: () => Promise<void>,
+): Promise<void> {
+	const out = process.stdout as NodeJS.WriteStream & { columns?: number };
+	const previous = Object.getOwnPropertyDescriptor(out, "columns");
+	Object.defineProperty(out, "columns", {
+		value: cols,
+		configurable: true,
+		writable: true,
+	});
+	try {
+		await fn();
+	} finally {
+		if (previous) {
+			Object.defineProperty(out, "columns", previous);
+		} else {
+			Object.defineProperty(out, "columns", {
+				value: undefined,
+				configurable: true,
+				writable: true,
+			});
+		}
+	}
+}
+
+function countOccurrences(haystack: string, needle: string): number {
+	return haystack.split(needle).length - 1;
 }
 
 describe("renderTurn", () => {
@@ -126,6 +171,83 @@ describe("renderTurn", () => {
 		// partial then overwritten on turn-end. The ◆ prefix appears only on
 		// the first line; continuation lines have no prefix.
 		expect(simulateTerminal(stdout)).toBe("◆ hello\nworld\n");
+	});
+
+	test("clears wrapped streamed partials before rendering final line", async () => {
+		captureStdout();
+		await withTerminalColumns(20, async () => {
+			await renderTurn(
+				eventsFrom([
+					{ type: "text-delta", delta: "this is a long streamed partial" },
+					{ type: "text-delta", delta: " line\n" },
+					done(),
+				]),
+				new Spinner(),
+			);
+		});
+
+		expect(stdout.includes("\x1b[1A\r\x1b[2K")).toBe(true);
+		expect(simulateTerminal(stdout)).toContain(
+			"◆ this is a long streamed partial line\n",
+		);
+		expect(
+			countOccurrences(
+				simulateTerminal(stdout),
+				"this is a long streamed partial line",
+			),
+		).toBe(1);
+	});
+
+	test("counts initial reply prefix when clearing near wrap boundary", async () => {
+		captureStdout();
+		await withTerminalColumns(20, async () => {
+			await renderTurn(
+				eventsFrom([
+					{ type: "text-delta", delta: "1234567890123456789" },
+					{ type: "text-delta", delta: "\n" },
+					done(),
+				]),
+				new Spinner(),
+			);
+		});
+
+		expect(stdout.includes("\r\x1b[2K\x1b[1A\r\x1b[2K")).toBe(true);
+		expect(countOccurrences(stdout, "\x1b[1A\r\x1b[2K")).toBe(1);
+		expect(simulateTerminal(stdout)).toContain("◆ 1234567890123456789\n");
+	});
+
+	test("does not over-clear wrapped rows for emoji grapheme clusters", async () => {
+		captureStdout();
+		await withTerminalColumns(8, async () => {
+			await renderTurn(
+				eventsFrom([
+					{ type: "text-delta", delta: "👩🏽‍💻abc" },
+					{ type: "text-delta", delta: "\n" },
+					done(),
+				]),
+				new Spinner(),
+			);
+		});
+
+		expect(countOccurrences(stdout, "\x1b[1A\r\x1b[2K")).toBe(0);
+		expect(simulateTerminal(stdout)).toContain("◆ 👩🏽‍💻abc\n");
+	});
+
+	test("clears extra wrapped row for wide CJK characters", async () => {
+		captureStdout();
+		await withTerminalColumns(10, async () => {
+			await renderTurn(
+				eventsFrom([
+					{ type: "text-delta", delta: "你好你好a" },
+					{ type: "text-delta", delta: "\n" },
+					done(),
+				]),
+				new Spinner(),
+			);
+		});
+
+		expect(countOccurrences(stdout, "\x1b[1A\r\x1b[2K")).toBe(1);
+		expect(simulateTerminal(stdout)).toContain("◆ 你好你好a\n");
 	});
 
 	test("renders buffered markdown correctly and preserves emoji across deltas", async () => {

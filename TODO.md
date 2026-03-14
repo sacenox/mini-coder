@@ -86,6 +86,28 @@ AI_APICallError: Expected dict in tool call arguments, got <class 'str'>
 ◆ Subagent parallelism hit a SQLite lock in the shared app DB, so I’m finishing the audit with direct reads and a smaller follow-up pass grounded in file references.
 ```
 
+- double line print bug:
+
+```
+· reasoning
+│ Mapping command definitions
+◆ Progress update: I’ve loaded the idea/TODO and core user docs; next I’m scanning implementation files to map actual behavior against t
+◆ Progress update: I’ve loaded the idea/TODO and core user docs; next I’m scanning implementation files to map actual behavior against those sources and capture precise gaps/inconsistencies for the report.
+```
+
+- read tool path issues, says file not found on valid path:
+
+```
+· reasoning
+│ Investigating duplicate progress lines
+  ← read ~/src/mini-coder/src/cli/stream-render.ts:1+360
+    ✖ File not found: ~/src/mini-coder/src/cli/stream-render.ts
+· reasoning
+│ Deciding relative path usage
+  ← read src/cli/stream-render.ts:1+380
+    · src/cli/stream-render.ts  296 lines
+```
+
 ---
 
 ## UI Audit
