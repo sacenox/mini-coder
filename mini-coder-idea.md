@@ -43,7 +43,7 @@ conventions and not introduce more specs. (`.agents` / `AGENTS.md`, while also s
   - `/new` starts a new session with clean context.
 - Connect to MCP servers over Streamable HTTP / SSE fallback or stdio.
 - Image support in prompt input, including pasted image data URLs and pasted image file paths.
-- Excellent auto complete for all commands, subtituitions. The user should also be able to reference files with autocomplete wihtout including them into the prompt like `@` does.
+- Excellent auto complete for all commands, subtituitions. The user should also be able to reference files with autocomplete wihtout including them into the prompt like `@` does with TAB
 
 ## UI/Output
 

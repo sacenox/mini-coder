@@ -1,65 +1,170 @@
 ---
 name: mini-coder
-description: Architecture and conventions for the mini-coder codebase
+description: How to use the `mc` CLI coding agent
 ---
 
 # mini-coder
 
-mini-coder is a small, fast CLI coding agent built with Bun and TypeScript.
+Use this skill when you need to help a user operate the `mc` command-line tool.
 
-## Key source paths
+`mc` is the executable for **mini-coder**, a small CLI coding agent. This skill is about **how to use the tool**, not how the mini-coder repo is implemented.
 
-| Path | Purpose |
-|------|---------|
-| `src/agent/` | Core agent loop, session runner, subagent runner, system prompt builder |
-| `src/cli/` | CLI commands, custom commands, agents/skills loaders, input/output rendering |
-| `src/llm-api/` | Provider abstraction, turn streaming, model metadata |
-| `src/tools/` | All tools (read, replace, insert, create, shell, subagent, exa, …) |
-| `src/session/` | Session manager and SQLite DB repositories |
-| `src/mcp/` | MCP client integration |
-| `.agents/` | Local config: agents, commands, skills, hooks |
+## What `mc` does
 
-## Config system
+- Starts an interactive coding session in the terminal
+- Accepts a one-shot prompt from the command line
+- Persists sessions locally so they can be resumed
+- Lets users switch models, manage MCP servers, and load custom agents/skills/commands
 
-All config lives under `.agents/` (or `~/.agents/` globally). Local wins over global; within the same scope, `.agents/` wins over `.claude/`.
+## Core command-line usage
 
-| Type | Path | Strategy |
-|------|------|----------|
-| Agents | `.agents/agents/<name>.md` | flat — one `.md` per agent |
-| Commands | `.agents/commands/<name>.md` | flat — one `.md` per command |
-| Skills | `.agents/skills/<name>/SKILL.md` | nested — one directory per skill |
-
-### Frontmatter fields
-
-- `description` — shown in `/help` and agent/skill listings
-- `model` — override the LLM model for this config (commands: only used when `context: fork`)
-- `mode` — `primary` / `subagent` / `all` (agents only; default: `subagent`)
-- `agent` — run command under a named agent's system prompt (commands: only used when `context: fork`)
-- `name` — override the key name (nested skills only; defaults to folder name)
-- `context` — `fork` to run command as isolated subagent; default is inline in current conversation (commands only; Claude Code standard)
-- `subtask` — `true` to force subagent invocation (commands only; OpenCode compat, equivalent to `context: fork`)
-
-### Agent modes
-
-- `primary` — activated interactively via `/agent <name>` in the CLI
-- `subagent` — callable via the `subagent` tool (the default when `mode` is omitted)
-- `all` — available in both contexts
-
-## Tools
-
-Every tool is declared in `src/agent/tools.ts`. Core tools: `read`, `replace`, `insert`, `create`, `shell`, `subagent`, `webSearch`, `webContent`.
-
-Hooks in `.agents/hooks/` fire after any of the 5 hookable tools: `read`, `create`, `replace`, `insert`, `shell`. The repo currently uses `post-create`, `post-insert`, and `post-replace` to auto-format changed files.
-
-
-## Testing
-
-```
-bun run jscpd && bun run knip && bun run typecheck && bun run format && bun run lint && bun test
+```sh
+mc
+mc "explain this codebase"
+mc -c
+mc -r <session-id>
+mc -l
+mc -m <model-id>
+mc --cwd <path>
+mc -h
 ```
 
-Tests are `*.test.ts` files co-located with source. Write minimal tests focused on our own logic — no mocks, no stubs, no mock servers.
+## Most common flows
 
-## Data
+### Start an interactive session
 
-App data: `~/.config/mini-coder/` — SQLite DB for sessions, model info, MCP servers, and settings.
+```sh
+mc
+```
+
+Use this when the user wants a normal back-and-forth coding session.
+
+### Run a prompt immediately
+
+```sh
+mc "refactor the auth module to use async/await"
+```
+
+Use this when the user already knows the task they want to give `mc`.
+
+### Continue a previous session
+
+```sh
+mc -c
+mc -r <session-id>
+mc -l
+```
+
+- `mc -c` continues the most recent session
+- `mc -r <session-id>` resumes a specific session
+- `mc -l` lists recent sessions so the user can find an ID
+
+### Pick a model
+
+```sh
+mc -m zen/claude-sonnet-4-6
+mc -m ollama/llama3.2
+```
+
+Use `-m` when the user wants a specific provider or local model.
+
+### Run in another directory
+
+```sh
+mc --cwd ~/src/other-project
+```
+
+Useful when the user is not already inside the target repo.
+
+## Interactive slash commands
+
+Inside `mc`, the user can run slash commands such as:
+
+- `/help` — show help
+- `/model` — list models
+- `/model <id>` — switch models
+- `/model effort <low|medium|high|xhigh|off>` — set reasoning effort when supported
+- `/reasoning [on|off]` — toggle reasoning display
+- `/context prune <off|balanced|aggressive>` — set pruning strategy
+- `/context cap <off|bytes|kb>` — cap tool payload size
+- `/cache <on|off>` — toggle prompt caching
+- `/plan` — toggle read-only planning mode
+- `/ralph` — toggle autonomous execution looping
+- `/undo` — revert the last turn
+- `/new` — start a fresh session
+- `/mcp list` — list configured MCP servers
+- `/mcp add <name> http <url>` — add an HTTP MCP server
+- `/mcp add <name> stdio <cmd> [args...]` — add a stdio MCP server
+- `/mcp remove <name>` — remove an MCP server
+- `/agent [name]` — set or clear an active primary custom agent
+- `/exit`, `/quit`, `/q` — leave the session
+
+## Prompt input features
+
+### Shell input
+
+If the user starts a prompt with `!`, `mc` runs that shell command inline and can use the result in context.
+
+### References with `@`
+
+`mc` supports `@` references in prompts for:
+
+- files
+- custom agents
+- skills
+
+This helps users quickly pull relevant context into a prompt.
+
+## Config locations
+
+mini-coder supports both `.agents` and `.claude` config layouts.
+
+### Local config in a repo
+
+- `.agents/commands/*.md`
+- `.agents/agents/*.md`
+- `.agents/skills/<name>/SKILL.md`
+- `.agents/hooks/post-<tool>`
+
+### Global config in the home directory
+
+- `~/.agents/commands/*.md`
+- `~/.agents/agents/*.md`
+- `~/.agents/skills/<name>/SKILL.md`
+
+Same ideas also work under `.claude/` and `~/.claude/`.
+
+## Data and state
+
+mini-coder stores app data in:
+
+```text
+~/.config/mini-coder/
+```
+
+This includes session history and related local state.
+
+## How to help users effectively
+
+When answering questions about `mc`:
+
+- Prefer giving exact commands the user can paste
+- Distinguish clearly between **shell commands** (run before or around `mc`) and **slash commands** (run inside `mc`)
+- Suggest `mc -h` or `/help` when the user needs command discovery
+- Suggest `mc -l`, `mc -c`, or `mc -r <id>` for session recovery
+- Mention `--cwd` when the problem is about the wrong working directory
+- Mention `-m <model-id>` when the problem is model selection
+- Mention MCP commands only when the user is integrating external tools
+
+## Examples to suggest
+
+```sh
+mc
+mc "add tests for src/tools/replace.ts"
+mc -c
+mc -l
+mc -m zen/claude-sonnet-4-6
+mc --cwd ~/src/my-project
+```
+
+If a user asks how to do something in mini-coder, answer in terms of the `mc` CLI and its interactive commands.
