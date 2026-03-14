@@ -1,57 +1,28 @@
-import type { FlexibleSchema, StepResult } from "ai";
-import { dynamicTool, jsonSchema, stepCountIs, streamText } from "ai";
+import { stepCountIs, streamText } from "ai";
 import { isApiLogEnabled, logApiEvent } from "./api-log.ts";
 import type { ThinkingEffort } from "./provider-options.ts";
 import {
 	type ContextPruningMode,
 	DEFAULT_TOOL_RESULT_PAYLOAD_CAP_BYTES,
 } from "./turn-context.ts";
+import {
+	buildToolSet,
+	createTurnStepTracker,
+	mapFullStreamToTurnEvents,
+	type StreamTextResultFull,
+} from "./turn-execution.ts";
 import { prepareTurnMessages } from "./turn-prepare-messages.ts";
 import { buildTurnProviderOptions } from "./turn-provider-options.ts";
 
 export type { ContextPruningMode } from "./turn-context.ts";
 
-import {
-	mapStreamChunkToTurnEvent,
-	shouldLogStreamChunk,
-} from "./turn-stream-events.ts";
 import type { ToolDef, TurnEvent } from "./types.ts";
 
 type StreamTextOptions = Parameters<typeof streamText>[0];
 export type CoreMessage = NonNullable<StreamTextOptions["messages"]>[number];
 type CoreModel = StreamTextOptions["model"];
-type ToolSet = NonNullable<StreamTextOptions["tools"]>;
-type ToolEntry = ToolSet extends Record<string, infer T> ? T : never;
-
-type StreamTextResultFull = ReturnType<typeof streamText> & {
-	fullStream: AsyncIterable<{ type?: string; [key: string]: unknown }>;
-	response: Promise<{ messages?: CoreMessage[] }>;
-};
 
 const MAX_STEPS = 50;
-
-// ─── Local helpers ────────────────────────────────────────────────────────────
-
-function isZodSchema(s: unknown): boolean {
-	return s !== null && typeof s === "object" && "_def" in (s as object);
-}
-
-function toCoreTool(def: ToolDef): ReturnType<typeof dynamicTool> {
-	const schema = isZodSchema(def.schema)
-		? (def.schema as FlexibleSchema<unknown>)
-		: jsonSchema(def.schema);
-	return dynamicTool({
-		description: def.description,
-		inputSchema: schema,
-		execute: async (input: unknown) => {
-			try {
-				return await def.execute(input);
-			} catch (err) {
-				throw err instanceof Error ? err : new Error(String(err));
-			}
-		},
-	});
-}
 
 // ─── runTurn ──────────────────────────────────────────────────────────────────
 
@@ -90,16 +61,16 @@ export async function* runTurn(options: {
 		toolResultPayloadCapBytes = DEFAULT_TOOL_RESULT_PAYLOAD_CAP_BYTES,
 	} = options;
 
-	let stepCount = 0;
-	const toolSet = {} as ToolSet;
-	for (const def of tools) {
-		(toolSet as Record<string, ToolEntry>)[def.name] = toCoreTool(def);
-	}
-
-	let inputTokens = 0;
-	let outputTokens = 0;
-	let contextTokens = 0;
-	const partialState = { messages: [] as CoreMessage[] };
+	const toolSet = buildToolSet(tools);
+	const stepTracker = createTurnStepTracker({
+		onStepLog: ({ stepNumber, finishReason, usage }) => {
+			logApiEvent("step finish", {
+				stepNumber,
+				finishReason,
+				usage,
+			});
+		},
+	});
 
 	try {
 		const toolCount = Object.keys(toolSet).length;
@@ -161,23 +132,7 @@ export async function* runTurn(options: {
 			messages: prepared.messages,
 			tools: toolSet,
 			stopWhen: stepCountIs(MAX_STEPS),
-			onStepFinish: (step: StepResult<ToolSet>) => {
-				logApiEvent("step finish", {
-					stepNumber: stepCount + 1,
-					finishReason: step.finishReason,
-					usage: step.usage,
-				});
-				inputTokens += step.usage?.inputTokens ?? 0;
-				outputTokens += step.usage?.outputTokens ?? 0;
-				contextTokens = step.usage?.inputTokens ?? contextTokens;
-				stepCount++;
-				const s = step as unknown as {
-					response?: { messages?: CoreMessage[] };
-					messages?: CoreMessage[];
-				};
-				partialState.messages =
-					s.response?.messages ?? s.messages ?? partialState.messages;
-			},
+			onStepFinish: stepTracker.onStepFinish,
 			prepareStep: ({ stepNumber }: { stepNumber: number }) => {
 				// On the last allowed step, disable tools so the model gives a final answer
 				if (stepNumber >= MAX_STEPS - 1) {
@@ -194,9 +149,8 @@ export async function* runTurn(options: {
 		} as StreamTextOptions) as StreamTextResultFull;
 		result.response.catch(() => {});
 
-		for await (const chunk of result.fullStream) {
-			const streamChunk = chunk as Record<string, unknown> & { type?: string };
-			if (shouldLogStreamChunk(streamChunk)) {
+		for await (const event of mapFullStreamToTurnEvents(result.fullStream, {
+			onChunk: (streamChunk) => {
 				logApiEvent("stream chunk", {
 					type: streamChunk.type,
 					toolCallId: streamChunk.toolCallId,
@@ -205,30 +159,32 @@ export async function* runTurn(options: {
 					hasArgs: "args" in streamChunk || "input" in streamChunk,
 					hasOutput: "output" in streamChunk || "result" in streamChunk,
 				});
-			}
-			const event = mapStreamChunkToTurnEvent(streamChunk);
-			if (event) yield event;
+			},
+		})) {
+			yield event;
 		}
 
+		const finalState = stepTracker.getState();
 		logApiEvent("turn complete", {
-			newMessagesCount: partialState.messages.length,
-			inputTokens,
-			outputTokens,
+			newMessagesCount: finalState.partialMessages.length,
+			inputTokens: finalState.inputTokens,
+			outputTokens: finalState.outputTokens,
 		});
 
 		yield {
 			type: "turn-complete",
-			inputTokens,
-			outputTokens,
-			contextTokens,
-			messages: partialState.messages,
+			inputTokens: finalState.inputTokens,
+			outputTokens: finalState.outputTokens,
+			contextTokens: finalState.contextTokens,
+			messages: finalState.partialMessages,
 		};
 	} catch (err) {
+		const finalState = stepTracker.getState();
 		logApiEvent("turn error", err);
 		yield {
 			type: "turn-error",
 			error: err instanceof Error ? err : new Error(String(err)),
-			partialMessages: partialState.messages,
+			partialMessages: finalState.partialMessages,
 		};
 	}
 }
