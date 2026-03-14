@@ -1,4 +1,3 @@
-import * as c from "yoctocolors";
 import type { AgentReporter } from "../agent/reporter.ts";
 
 export async function getGitBranch(cwd: string): Promise<string | null> {
@@ -34,7 +33,7 @@ export async function runShellPassthrough(
 		]);
 		await proc.exited;
 		const out = [stdout, stderr].filter(Boolean).join("\n").trim();
-		if (out) reporter.writeText(c.dim(out));
+		if (out) reporter.streamChunk(`${out}\n`);
 		return out;
 	} finally {
 		reporter.restoreTerminal();

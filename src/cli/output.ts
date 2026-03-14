@@ -12,6 +12,7 @@ import { loadAgents } from "./agents.ts";
 import { loadCustomCommands } from "./custom-commands.ts";
 import { logError } from "./error-log.ts";
 import { parseAppError } from "./error-parse.ts";
+import { LiveOutputBlock } from "./live-output.ts";
 import { loadSkillsIndex } from "./skills.ts";
 import { Spinner } from "./spinner.ts";
 import { renderStatusBar } from "./status-bar.ts";
@@ -179,14 +180,24 @@ export function renderBanner(model: string, cwd: string): void {
 
 export class CliReporter implements AgentReporter {
 	private spinner = new Spinner();
+	private liveOutput = new LiveOutputBlock();
+
+	private haltSpinner(): void {
+		this.spinner.stop();
+	}
+
+	private haltSpinnerAndFlushLiveOutput(): void {
+		this.spinner.stop();
+		this.liveOutput.finish();
+	}
 
 	info(msg: string): void {
-		this.spinner.stop();
+		this.haltSpinnerAndFlushLiveOutput();
 		writeln(`${G.info} ${c.dim(msg)}`);
 	}
 
 	error(msg: string | Error, hint?: string): void {
-		this.spinner.stop();
+		this.haltSpinnerAndFlushLiveOutput();
 		if (typeof msg === "string") {
 			renderError(msg, hint);
 		} else {
@@ -195,18 +206,18 @@ export class CliReporter implements AgentReporter {
 	}
 
 	warn(msg: string): void {
-		this.spinner.stop();
+		this.haltSpinnerAndFlushLiveOutput();
 		writeln(`${G.warn} ${msg}`);
 	}
 
 	writeText(text: string): void {
-		this.spinner.stop();
+		this.haltSpinnerAndFlushLiveOutput();
 		writeln(text);
 	}
 
 	streamChunk(text: string): void {
-		this.spinner.stop();
-		write(text);
+		this.haltSpinner();
+		this.liveOutput.append(text);
 	}
 
 	startSpinner(label?: string): void {
@@ -214,11 +225,11 @@ export class CliReporter implements AgentReporter {
 	}
 
 	stopSpinner(): void {
-		this.spinner.stop();
+		this.haltSpinner();
 	}
 
 	renderSubState(label: string): void {
-		this.spinner.stop();
+		this.haltSpinnerAndFlushLiveOutput();
 		writeln(`    ${G.info} ${c.dim(label)}`);
 		this.spinner.start();
 	}
@@ -227,15 +238,17 @@ export class CliReporter implements AgentReporter {
 		events: AsyncIterable<TurnEvent>,
 		opts?: { showReasoning?: boolean },
 	): Promise<TurnResult> {
+		this.liveOutput.finish();
 		return renderTurn(events, this.spinner, opts);
 	}
 
 	renderStatusBar(data: StatusBarData): void {
+		this.liveOutput.finish();
 		renderStatusBar(data);
 	}
 
 	renderHook(toolName: string, scriptPath: string, success: boolean): void {
-		this.spinner.stop();
+		this.haltSpinnerAndFlushLiveOutput();
 		renderHook(toolName, scriptPath, success);
 	}
 

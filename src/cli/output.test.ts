@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { renderUserMessage } from "./output.ts";
+import { CliReporter, renderUserMessage } from "./output.ts";
 import { terminal } from "./terminal-io.ts";
 
 let stdout = "";
@@ -36,5 +36,28 @@ describe("renderUserMessage", () => {
 		renderUserMessage("plan\nstep 1\n\nstep 2");
 
 		expect(stripAnsi(stdout)).toBe("› plan\n  step 1\n  \n  step 2\n");
+	});
+});
+
+describe("CliReporter live output", () => {
+	test("groups streamed chunks into an indented output block", () => {
+		captureStdout();
+		const reporter = new CliReporter();
+
+		reporter.streamChunk("hello");
+		reporter.streamChunk("\nworld\n");
+		reporter.info("done");
+
+		expect(stripAnsi(stdout)).toBe("    │ hello\n    │ world\n· done\n");
+	});
+
+	test("flushes an unterminated streamed line before the next log line", () => {
+		captureStdout();
+		const reporter = new CliReporter();
+
+		reporter.streamChunk("partial line");
+		reporter.warn("next");
+
+		expect(stripAnsi(stdout)).toBe("    │ partial line\n! next\n");
 	});
 });
