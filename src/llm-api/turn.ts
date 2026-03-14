@@ -26,6 +26,8 @@ import {
 	getMessageDiagnostics,
 	getMessageStats,
 } from "./turn-context.ts";
+
+export type { ContextPruningMode } from "./turn-context.ts";
 import {
 	mapStreamChunkToTurnEvent,
 	shouldLogStreamChunk,
@@ -68,19 +70,7 @@ const mergeDeep = (
 	return output;
 };
 
-export {
-	annotateAnthropicCacheBreakpoints,
-	applyContextPruning,
-	compactToolResultPayloads,
-	type ContextPruningMode,
-	getMessageDiagnostics,
-	getReasoningDeltaFromStreamChunk,
-	isOpenAIGPT,
-	normalizeOpenAICompatibleToolCallInputs,
-	sanitizeGeminiToolMessages,
-	stripGPTCommentaryFromHistory,
-	stripOpenAIItemIdsFromHistory,
-};
+
 
 /**
  * Run a single agent turn against the model.

@@ -1,17 +1,19 @@
 import { describe, expect, test } from "bun:test";
-import type { CoreMessage } from "./turn.ts";
 import {
-	annotateAnthropicCacheBreakpoints,
-	applyContextPruning,
-	compactToolResultPayloads,
-	getMessageDiagnostics,
 	getReasoningDeltaFromStreamChunk,
 	isOpenAIGPT,
 	normalizeOpenAICompatibleToolCallInputs,
 	sanitizeGeminiToolMessages,
 	stripGPTCommentaryFromHistory,
 	stripOpenAIItemIdsFromHistory,
-} from "./turn.ts";
+} from "./history-transforms.ts";
+import {
+	annotateAnthropicCacheBreakpoints,
+	applyContextPruning,
+	compactToolResultPayloads,
+	getMessageDiagnostics,
+} from "./turn-context.ts";
+import type { CoreMessage } from "./turn.ts";
 
 describe("isOpenAIGPT", () => {
 	test("matches openai/gpt-* models", () => {
