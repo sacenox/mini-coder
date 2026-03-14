@@ -1,20 +1,5 @@
 import type { CoreMessage } from "../llm-api/turn.ts";
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return value !== null && typeof value === "object";
-}
-
-function isCommentaryTextPart(part: unknown): boolean {
-	if (!isRecord(part) || part.type !== "text") return false;
-	const providerData = isRecord(part.providerOptions)
-		? part.providerOptions
-		: isRecord(part.providerMetadata)
-			? part.providerMetadata
-			: null;
-	if (!providerData || !isRecord(providerData.openai)) return false;
-	return providerData.openai.phase === "commentary";
-}
-
 export function makeInterruptMessage(reason: "user" | "error"): CoreMessage {
 	const text =
 		reason === "user"
@@ -51,9 +36,7 @@ export function extractAssistantText(newMessages: CoreMessage[]): string {
 			parts.push(content);
 		} else if (Array.isArray(content)) {
 			for (const part of content as Array<{ type?: string; text?: string }>) {
-				if (part?.type === "text" && part.text && !isCommentaryTextPart(part)) {
-					parts.push(part.text);
-				}
+				if (part?.type === "text" && part.text) parts.push(part.text);
 			}
 		}
 	}

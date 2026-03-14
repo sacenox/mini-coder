@@ -66,28 +66,6 @@ describe("extractAssistantText", () => {
 		];
 		expect(extractAssistantText(msgs)).toBe("Tests pass.");
 	});
-
-	test("ignores GPT commentary text parts", () => {
-		const msgs: CoreMessage[] = [
-			{
-				role: "assistant",
-				content: [
-					{
-						type: "text",
-						text: "to=functions.shell json{...}",
-						providerOptions: { openai: { phase: "commentary" } },
-					},
-					{
-						type: "text",
-						text: "Committed the fix.",
-						providerOptions: { openai: { phase: "final_answer" } },
-					},
-				],
-			},
-		] as unknown as CoreMessage[];
-
-		expect(extractAssistantText(msgs)).toBe("Committed the fix.");
-	});
 });
 
 // ─── makeInterruptMessage ─────────────────────────────────────────────────────
