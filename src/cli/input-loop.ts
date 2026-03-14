@@ -6,6 +6,7 @@ import { getContextWindow } from "../llm-api/providers.ts";
 import { getGitBranch, runShellPassthrough } from "./cli-helpers.ts";
 import { handleCommand } from "./commands.ts";
 import { resolveFileRefs } from "./file-refs.ts";
+import { createGitBranchCache } from "./git-branch-cache.ts";
 import { type InputResult, readline } from "./input.ts";
 import { tildePath } from "./output.ts";
 import { buildStatusBarSignature } from "./status-bar.ts";
@@ -23,9 +24,14 @@ export async function runInputLoop(opts: InputLoopOptions): Promise<void> {
 	const { cwd, reporter, cmdCtx, runner } = opts;
 
 	let lastStatusSignature: string | null = null;
+	const gitBranchCache = createGitBranchCache({
+		cwd,
+		fetchBranch: getGitBranch,
+	});
+	await gitBranchCache.refresh(true);
 
 	while (true) {
-		const branch = await getGitBranch(cwd);
+		const branch = gitBranchCache.get();
 		const status = runner.getStatusInfo();
 		const provider = status.model.split("/")[0] ?? "";
 		const modelShort = status.model.split("/").slice(1).join("/");
@@ -64,6 +70,7 @@ export async function runInputLoop(opts: InputLoopOptions): Promise<void> {
 				return;
 
 			case "interrupt":
+				gitBranchCache.refreshInBackground();
 				continue;
 
 			case "command": {
@@ -81,6 +88,7 @@ export async function runInputLoop(opts: InputLoopOptions): Promise<void> {
 						// Error already rendered by stream-render; continue the loop.
 					}
 				}
+				gitBranchCache.refreshInBackground();
 				continue;
 			}
 
@@ -89,6 +97,7 @@ export async function runInputLoop(opts: InputLoopOptions): Promise<void> {
 				if (out) {
 					runner.addShellContext(input.command, out);
 				}
+				gitBranchCache.refreshInBackground(true);
 				continue;
 			}
 
@@ -103,6 +112,7 @@ export async function runInputLoop(opts: InputLoopOptions): Promise<void> {
 				} catch {
 					// Error already rendered by stream-render; continue the loop.
 				}
+				gitBranchCache.refreshInBackground();
 				continue;
 			}
 		}
