@@ -401,8 +401,9 @@ export async function renderTurn(
 			case "context-pruned": {
 				flushAnyText();
 				spinner.stop();
+				const removedKb = (event.removedBytes / 1024).toFixed(1);
 				writeln(
-					`${G.info} ${c.dim(`context-pruned mode=${event.mode} removed_messages=${event.removedMessageCount} removed_bytes=${event.removedBytes} messages_before=${event.beforeMessageCount} messages_after=${event.afterMessageCount}`)}`,
+					`${G.info} ${c.dim("context pruned")}  ${c.dim(event.mode)}  ${c.dim(`–${event.removedMessageCount} messages`)}  ${c.dim(`–${removedKb} KB`)}`,
 				);
 				break;
 			}

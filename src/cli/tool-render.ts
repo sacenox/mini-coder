@@ -219,14 +219,17 @@ export function renderToolResult(
 			};
 		};
 		if (!r.skill) {
-			writeln(`    ${G.info} ${c.dim("skill-auto-load miss")}`);
+			writeln(`    ${G.info} ${c.dim("skill")}  ${c.dim("(not found)")}`);
 			return;
 		}
 		const name = r.skill.name ?? "(unknown)";
 		const source = r.skill.source ?? "unknown";
 		const description = r.skill.description?.trim();
+		const descPart = description
+			? `  ${c.dim("·")}  ${c.dim(description.length > 60 ? `${description.slice(0, 57)}…` : description)}`
+			: "";
 		writeln(
-			`    ${G.info} ${c.dim(`skill-auto-loaded name=${name} source=${source}${description ? ` description=${JSON.stringify(description)}` : ""}`)}`,
+			`    ${G.info} ${c.dim("skill")}  ${name}  ${c.dim("·")}  ${c.dim(source)}${descPart}`,
 		);
 		return;
 	}

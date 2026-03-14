@@ -68,6 +68,9 @@ export async function initAgent(opts: AgentOptions): Promise<{
 		cwd,
 		runSubagent,
 		onHook: (tool, path, ok) => opts.reporter.renderHook(tool, path, ok),
+		onBeforeHook: (toolName) =>
+			opts.reporter.renderSubState(`hook post-${toolName}`),
+		onShellOutput: (chunk) => opts.reporter.streamChunk(chunk),
 		availableAgents: subagentAgents(agents),
 		snapshotCallback: async (filePath) => {
 			if (currentRunner) {
@@ -75,6 +78,7 @@ export async function initAgent(opts: AgentOptions): Promise<{
 			}
 		},
 	});
+
 	const mcpTools: ToolDef[] = [];
 
 	async function connectAndAddMcp(name: string): Promise<void> {

@@ -1,3 +1,4 @@
+import * as c from "yoctocolors";
 import type {
 	AgentReporter,
 	StatusBarData,
@@ -13,6 +14,7 @@ import {
 	renderTurn,
 	restoreTerminal,
 	Spinner,
+	write,
 	writeln,
 } from "./output.ts";
 
@@ -43,12 +45,23 @@ export class CliReporter implements AgentReporter {
 		writeln(text);
 	}
 
+	streamChunk(text: string): void {
+		this.spinner.stop();
+		write(text);
+	}
+
 	startSpinner(label?: string): void {
 		this.spinner.start(label);
 	}
 
 	stopSpinner(): void {
 		this.spinner.stop();
+	}
+
+	renderSubState(label: string): void {
+		this.spinner.stop();
+		writeln(`    ${G.info} ${c.dim(label)}`);
+		this.spinner.start();
 	}
 
 	async renderTurn(

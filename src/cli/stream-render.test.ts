@@ -378,7 +378,7 @@ describe("renderTurn", () => {
 		);
 
 		expect(strip(stdout)).toContain(
-			"context-pruned mode=balanced removed_messages=30 removed_bytes=15000 messages_before=120 messages_after=90",
+			"· context pruned  balanced  –30 messages  –14.6 KB",
 		);
 	});
 
@@ -412,8 +412,6 @@ describe("renderTurn", () => {
 		);
 
 		const plain = strip(stdout);
-		expect(plain).toContain(
-			'skill-auto-loaded name=deploy source=local description="Deploy app"',
-		);
+		expect(plain).toContain("· skill  deploy  ·  local  ·  Deploy app");
 	});
 });

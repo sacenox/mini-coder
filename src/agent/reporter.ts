@@ -29,9 +29,14 @@ export interface AgentReporter {
 	error(msg: string | Error, hint?: string): void;
 	warn(msg: string): void;
 	writeText(text: string): void; // For raw text like passthrough shell output
+	/** Write a raw output chunk without adding a newline (e.g. streaming shell output). */
+	streamChunk(text: string): void;
 
 	startSpinner(label?: string): void;
 	stopSpinner(): void;
+	/** Print a persistent indented sub-state line (e.g. "snapshot", "hook post-create")
+	 *  while the tool is still running. The spinner resumes after. */
+	renderSubState(label: string): void;
 
 	renderTurn(
 		events: AsyncIterable<TurnEvent>,

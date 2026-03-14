@@ -20,8 +20,11 @@ export class HeadlessReporter implements AgentReporter {
 	error(_msg: string | Error, _hint?: string): void {}
 	warn(_msg: string): void {}
 	writeText(_text: string): void {}
+	streamChunk(_text: string): void {}
+
 	startSpinner(_label?: string): void {}
 	stopSpinner(): void {}
+	renderSubState(_label: string): void {}
 
 	async renderTurn(
 		events: AsyncIterable<TurnEvent>,

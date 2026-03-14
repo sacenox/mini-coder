@@ -65,6 +65,8 @@ export class SessionRunner {
 
 	public async snapshotCallback(filePath: string) {
 		if (this.currentTurn !== null && this.currentSnappedPaths !== null) {
+			this.reporter.renderSubState("snapshot");
+
 			await snapshotBeforeEdit(
 				this.cwd,
 				this.session.id,

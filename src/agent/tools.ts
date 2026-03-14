@@ -54,6 +54,26 @@ function withCwdDefault(
 	};
 }
 
+/**
+ * Inject an onOutput streaming callback into the shell tool's input.
+ */
+function withShellOutput(
+	tool: ToolDef,
+	onOutput: (chunk: string) => void,
+): ToolDef {
+	const originalExecute = tool.execute;
+	return {
+		...tool,
+		execute: async (input: unknown) => {
+			const patched = {
+				...(typeof input === "object" && input !== null ? input : {}),
+				onOutput,
+			} as Record<string, unknown>;
+			return originalExecute(patched);
+		},
+	};
+}
+
 type EnvBuilder<TInput, TOutput> = (
 	result: TOutput,
 	input: TInput,
@@ -67,7 +87,8 @@ type ResultFinalizer<TOutput, TFinalOutput> = (
  * Wrap a tool to fire its post-hook (if one exists) after each successful execute.
  * Hooks are looked up via the session-scoped cache — no filesystem access per call.
  * Errors are always swallowed. onHook is called with the result so the caller can
- * render a UI line.
+ * render a UI line. onBeforeHook is called just before the hook script runs so the
+ * UI can update the spinner label.
  */
 function withHooks<
 	TInput extends { cwd?: string },
@@ -80,6 +101,7 @@ function withHooks<
 	buildEnv: EnvBuilder<TInput, TOutput>,
 	onHook: (toolName: string, scriptPath: string, success: boolean) => void,
 	finalizeResult?: ResultFinalizer<TOutput, TFinalOutput>,
+	onBeforeHook?: (toolName: string, scriptPath: string) => void,
 ): ToolDef<TInput, TFinalOutput> {
 	const originalExecute = tool.execute;
 	return {
@@ -88,6 +110,7 @@ function withHooks<
 			const result = await originalExecute(input);
 			const hookScript = lookupHook(tool.name);
 			if (hookScript) {
+				onBeforeHook?.(tool.name, hookScript);
 				const env = buildEnv(result, input);
 				const success = await runHook(hookScript, env, cwd);
 				onHook(tool.name, hookScript, success);
@@ -118,10 +141,13 @@ export function buildToolSet(opts: {
 	) => Promise<SubagentOutput>;
 
 	onHook: (toolName: string, scriptPath: string, success: boolean) => void;
+	onBeforeHook?: (toolName: string, scriptPath: string) => void;
+	onShellOutput?: (chunk: string) => void;
 	availableAgents: ReadonlyMap<string, { description: string }>;
 	snapshotCallback?: (filePath: string) => Promise<void>;
 }): ToolDef[] {
-	const { cwd, onHook } = opts;
+	const { cwd, onHook, onBeforeHook, onShellOutput } = opts;
+
 	const lookupHook = createHookCache(HOOKABLE_TOOLS, cwd);
 
 	const tools: ToolDef[] = [
@@ -135,6 +161,8 @@ export function buildToolSet(opts: {
 			cwd,
 			(_, input) => hookEnvForRead(input, cwd),
 			onHook,
+			undefined,
+			onBeforeHook,
 		) as ToolDef,
 		withCwdDefault(listSkillsTool as ToolDef, cwd),
 		withCwdDefault(readSkillTool as ToolDef, cwd),
@@ -150,6 +178,7 @@ export function buildToolSet(opts: {
 			(result) => hookEnvForCreate(result, cwd),
 			onHook,
 			finalizeWriteResult,
+			onBeforeHook,
 		) as ToolDef,
 		withHooks(
 			withCwdDefault(
@@ -162,6 +191,7 @@ export function buildToolSet(opts: {
 			(result) => hookEnvForReplace(result, cwd),
 			onHook,
 			finalizeWriteResult,
+			onBeforeHook,
 		) as ToolDef,
 		withHooks(
 			withCwdDefault(
@@ -174,10 +204,16 @@ export function buildToolSet(opts: {
 			(result) => hookEnvForInsert(result, cwd),
 			onHook,
 			finalizeWriteResult,
+			onBeforeHook,
 		) as ToolDef,
 		// Shell and subagent
 		withHooks(
-			withCwdDefault(shellTool as ToolDef, cwd) as ToolDef<
+			(onShellOutput
+				? withShellOutput(
+						withCwdDefault(shellTool as ToolDef, cwd),
+						onShellOutput,
+					)
+				: withCwdDefault(shellTool as ToolDef, cwd)) as ToolDef<
 				{ cwd?: string; command: string },
 				ShellOutput
 			>,
@@ -185,7 +221,10 @@ export function buildToolSet(opts: {
 			cwd,
 			(result, input) => hookEnvForShell(result, input, cwd),
 			onHook,
+			undefined,
+			onBeforeHook,
 		) as ToolDef,
+
 		createSubagentTool(async (prompt, agentName) => {
 			const output = await opts.runSubagent(prompt, agentName, undefined);
 			return output;

@@ -18,7 +18,10 @@ const ShellSchema = z.object({
 		.describe("Additional environment variables to set"),
 });
 
-type ShellInput = z.infer<typeof ShellSchema> & { cwd?: string };
+type ShellInput = z.infer<typeof ShellSchema> & {
+	cwd?: string;
+	onOutput?: (chunk: string) => void;
+};
 
 export interface ShellOutput {
 	stdout: string;
@@ -78,21 +81,24 @@ export const shellTool: ToolDef<ShellInput, ShellOutput> = {
 			}
 		}, timeout);
 
-		// Collect output with size limit
+		// Collect output with size limit; forward each decoded chunk to onOutput.
 		async function collectStream(
 			stream: ReadableStream<Uint8Array>,
+			onChunk?: (text: string) => void,
 		): Promise<string> {
 			const reader = stream.getReader();
 			readers.push(reader);
 			const chunks: Uint8Array[] = [];
 			let totalBytes = 0;
 			let truncated = false;
+			const decoder = new TextDecoder();
 
 			while (true) {
 				try {
 					const { done, value } = await reader.read();
 					if (done) break;
 					if (value) {
+						onChunk?.(decoder.decode(value, { stream: true }));
 						if (totalBytes + value.length > MAX_OUTPUT_BYTES) {
 							chunks.push(value.slice(0, MAX_OUTPUT_BYTES - totalBytes));
 							truncated = true;
@@ -118,9 +124,10 @@ export const shellTool: ToolDef<ShellInput, ShellOutput> = {
 
 		try {
 			[stdout, stderr] = await Promise.all([
-				collectStream(proc.stdout),
-				collectStream(proc.stderr),
+				collectStream(proc.stdout, input.onOutput),
+				collectStream(proc.stderr, input.onOutput),
 			]);
+
 			exitCode = await proc.exited;
 		} finally {
 			clearTimeout(timer);
