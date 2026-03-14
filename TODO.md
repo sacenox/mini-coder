@@ -9,24 +9,12 @@
 
 ---
 
-## Lean and mean idea
-
-When mc is called with a prompt, make it exit after the loop. Like a one shot. ✅
-Drop glob and grep tools — done. ✅
-Cleanup pass — done. ✅
-
----
-
 ## UI Audit
 
 - We need to revise all of our output to ensure consistency, **performance** and correctness.
 - Ensure we have a good styled output that is clear to the user, refactor as needed.
 - Ensure we have propper hierchy in output, and the different types of output are clearly distinguishable for the user, using styles and whitespace.
 - Ensure proper spinner functionality, that follow up messages don't rended inline and that is doesn't break anything.
-
-## CLI vs headless mode
-
-- I need to understand this better tell me all about what is headless mode and what it does in our code.
 
 ---
 
@@ -44,3 +32,4 @@ We need to do research first, but maybe we can leverage the hooks feature to ach
 
 - model-info: in `resolveFromProviderRow`, when canonical capability exists but `contextWindow` is null, fall back to provider row context (`capability.contextWindow ?? row.contextWindow`).
 - subagent-runner: avoid unconditional full buffering of child `stdout`/`stderr` in `runSubagent`; capture diagnostics only on failure or via a bounded tail buffer to prevent latency/memory regressions.
+- Subagent and shell tools are very similar, shell could do what subagent does without changes. This could be leveraged to reduce code. Subagent process runner is used for /ralph and custom commands that fork context as well, there will need to be refactored.

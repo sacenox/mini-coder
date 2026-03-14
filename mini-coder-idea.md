@@ -1,6 +1,6 @@
 # mini-coder
 
-A coding agent via a augmented CLI, small and fast that doesn't get in the way
+A coding agent via a augmented shell prompt, small and fast that doesn't get in the way
 
 ## Inpirations:
 
@@ -25,8 +25,8 @@ conventions and not introduce more specs. (`.agents` / `AGENTS.md`, while also s
 - Seamless shell integration with `!` in prompt input.
 - Reference files and skills from the working directory and global configs with `@` in prompt input, plus autocomplete for files, skills, and agents.
 - Press `ESC` at any point during an assistant response to interrupt it: the partial response is preserved in history with an interrupt stub appended (so the LLM retains context), and the user is returned to the prompt silently. `ctrl+c` exits the app. `ctrl+d` (EOF) also exits.
-
-- `glob`, `grep`, `read`, `replace`,`insert`, `create`, `shell`, and `subagent` tools for LLMs
+- Feature parity with community configs like custom agents, skill and commands.
+- `read`, `replace`,`insert`, `create`, `shell`, and `subagent` tools for LLMs
 - Optional `webSearch` and `webContent` tools when `EXA_API_KEY` is set.
 - `subagent` tool spawns a fresh `mc` subprocess — full capability parity with the main agent, support for recursive subagents (up to 10 levels). Custom agents and custom commands from `.agents` and `.claude` are supported in subagents.
 - tool hooks support for supported built-in tools
@@ -36,7 +36,6 @@ conventions and not introduce more specs. (`.agents` / `AGENTS.md`, while also s
   - `/reasoning` toggles display of model reasoning output.
   - `/context` configures context pruning and tool-result caps.
   - `/review` reviews recent changes via a global command installed at app start (`~/.agents/commands/review.md`), and can be customized or shadowed locally.
-
   - `/plan` for a read-only mode (`/plan` again to turn off)
   - `/ralph` for a ralph loop mode (by Geoffrey Huntley, who described it simply: “Ralph is a Bash loop.”)
   - `/agent` sets or clears the active primary agent.
@@ -44,17 +43,18 @@ conventions and not introduce more specs. (`.agents` / `AGENTS.md`, while also s
   - `/new` starts a new session with clean context.
 - Connect to MCP servers over Streamable HTTP / SSE fallback or stdio.
 - Image support in prompt input, including pasted image data URLs and pasted image file paths.
+- Excellent auto complete for all commands, subtituitions. The user should also be able to reference files with autocomplete wihtout including them into the prompt like `@` does.
 
 ## UI/Output
 
 - Use the 16 ANSII colors so the coloring is allways inherited from the terminal theme (https://jvns.ca/blog/2024/10/01/terminal-colours/)
-- Use oh-my-pi and claude code as visual inspirations.
+- Use pi and claude code as visual inspirations.
 - history log (like a terminal output scrolls away, pushing the input prompt down)
-  - Read tools (glob, grep, read) show the tool call with args fomatted for output
+  - Read tool show the tool call with args fomatted for output
   - Edit tools show the diff applied
   - Shell tools show the command called and their output
 - status bar under prompt, with current model/provider/session/git branch/active agent/thinking effort/context usage/token input/token output
-- some prompt animation when a turn is processing.
+- some prompt colored animation when a turn is processing.
 
 ## Tech stack
 

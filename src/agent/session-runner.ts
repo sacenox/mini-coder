@@ -84,16 +84,29 @@ export class SessionRunner {
 	public lastContextTokens = 0;
 	// Cache the system prompt so the file-system reads in buildSystemPrompt
 	// (context files, skills index) are not repeated on every processUserInput call.
-	// Re-built only when extraSystemPrompt changes.
 	private _extraSystemPrompt: string | undefined;
 	private _systemPrompt: string | undefined;
 
 	public get extraSystemPrompt(): string | undefined {
 		return this._extraSystemPrompt;
 	}
+
 	public set extraSystemPrompt(value: string | undefined) {
 		this._extraSystemPrompt = value;
-		this._systemPrompt = undefined; // invalidate cache
+		this.rebuildSystemPrompt();
+	}
+
+	private rebuildSystemPrompt(): void {
+		if (!this.sessionTimeAnchor) {
+			this._systemPrompt = undefined;
+			return;
+		}
+		this._systemPrompt = buildSystemPrompt(
+			this.sessionTimeAnchor,
+			this.cwd,
+			this._extraSystemPrompt,
+			this.isSubagent,
+		);
 	}
 
 	private isSubagent: boolean | undefined;
@@ -112,9 +125,9 @@ export class SessionRunner {
 		this.promptCachingEnabled = opts.initialPromptCachingEnabled;
 		this.openaiPromptCacheRetention = opts.initialOpenAIPromptCacheRetention;
 		this.googleCachedContent = opts.initialGoogleCachedContent;
-		this.extraSystemPrompt = opts.extraSystemPrompt;
 		this.isSubagent = opts.isSubagent;
 		this.killSubprocesses = opts.killSubprocesses;
+		this.extraSystemPrompt = opts.extraSystemPrompt;
 		this.initSession(opts.sessionId);
 	}
 
@@ -142,6 +155,7 @@ export class SessionRunner {
 
 		this.sessionTimeAnchor = new Date(this.session.createdAt).toISOString();
 		this.coreHistory = [...this.session.messages];
+		this.rebuildSystemPrompt();
 	}
 
 	public startNewSession() {
@@ -153,7 +167,7 @@ export class SessionRunner {
 		this.totalOut = 0;
 		this.lastContextTokens = 0;
 		this.sessionTimeAnchor = new Date(this.session.createdAt).toISOString();
-		this._systemPrompt = undefined; // invalidate cached prompt (new session anchor)
+		this.rebuildSystemPrompt();
 		this.snapshotStack.length = 0;
 	}
 
@@ -199,15 +213,8 @@ export class SessionRunner {
 		this.coreHistory.push(userMsg);
 
 		const llm = resolveModel(this.currentModel);
-		// Use cached system prompt; rebuild only on first use or after
-		// extraSystemPrompt / sessionTimeAnchor change.
 		if (!this._systemPrompt) {
-			this._systemPrompt = buildSystemPrompt(
-				this.sessionTimeAnchor,
-				this.cwd,
-				this._extraSystemPrompt,
-				this.isSubagent,
-			);
+			this.rebuildSystemPrompt();
 		}
 		const systemPrompt = this._systemPrompt;
 
@@ -223,7 +230,7 @@ export class SessionRunner {
 				tools: this.planMode
 					? [...buildReadOnlyToolSet({ cwd: this.cwd }), ...this.mcpTools]
 					: this.tools,
-				systemPrompt,
+				...(systemPrompt ? { systemPrompt } : {}),
 				signal: abortController.signal,
 				pruningMode: this.pruningMode,
 				toolResultPayloadCapBytes: this.toolResultPayloadCapBytes,

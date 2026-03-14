@@ -2,9 +2,12 @@ import { renderError } from "../../cli/output.ts";
 import type { CoreMessage } from "../../llm-api/turn.ts";
 import { getDb } from "./connection.ts";
 
-// Hoist prepared statement to module-level lazy singleton to avoid re-compiling SQL each call.
+// Hoist prepared statements to module-level lazy singletons so hot-path calls
+// don't re-compile SQL every turn.
 type Stmt = ReturnType<ReturnType<typeof getDb>["prepare"]>;
 let _insertMsgStmt: Stmt | null = null;
+let _addPromptHistoryStmt: Stmt | null = null;
+let _getPromptHistoryStmt: Stmt | null = null;
 function getInsertMsgStmt(): Stmt {
 	if (!_insertMsgStmt) {
 		_insertMsgStmt = getDb().prepare(
@@ -13,6 +16,24 @@ function getInsertMsgStmt(): Stmt {
 		);
 	}
 	return _insertMsgStmt;
+}
+
+function getAddPromptHistoryStmt(): Stmt {
+	if (!_addPromptHistoryStmt) {
+		_addPromptHistoryStmt = getDb().prepare(
+			"INSERT INTO prompt_history (text, created_at) VALUES (?, ?)",
+		);
+	}
+	return _addPromptHistoryStmt;
+}
+
+function getPromptHistoryStmt(): Stmt {
+	if (!_getPromptHistoryStmt) {
+		_getPromptHistoryStmt = getDb().prepare(
+			"SELECT text FROM prompt_history ORDER BY id DESC LIMIT ?",
+		);
+	}
+	return _getPromptHistoryStmt;
 }
 
 export function saveMessages(
@@ -93,18 +114,12 @@ export function loadMessages(sessionId: string): CoreMessage[] {
 }
 
 export function addPromptHistory(text: string): void {
-	if (!text.trim()) return;
-	getDb().run("INSERT INTO prompt_history (text, created_at) VALUES (?, ?)", [
-		text.trim(),
-		Date.now(),
-	]);
+	const trimmed = text.trim();
+	if (!trimmed) return;
+	getAddPromptHistoryStmt().run(trimmed, Date.now());
 }
 
 export function getPromptHistory(limit = 200): string[] {
-	const rows = getDb()
-		.query<{ text: string }, [number]>(
-			"SELECT text FROM prompt_history ORDER BY id DESC LIMIT ?",
-		)
-		.all(limit);
+	const rows = getPromptHistoryStmt().all(limit) as Array<{ text: string }>;
 	return rows.map((r) => r.text).reverse();
 }
