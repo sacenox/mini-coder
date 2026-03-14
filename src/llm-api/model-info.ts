@@ -9,6 +9,15 @@ import {
 	setModelInfoState,
 } from "../session/db/model-info-repo.ts";
 import {
+	buildRuntimeCache,
+	emptyRuntimeCache,
+	type LiveModel,
+	type ModelInfo,
+	type RuntimeCache,
+	readLiveModelsFromCache,
+	resolveModelInfoInCache,
+} from "./model-info-cache.ts";
+import {
 	fetchModelsDevPayload,
 	fetchProviderCandidates,
 	type ProviderModelCandidate,
@@ -17,7 +26,6 @@ import {
 	buildModelMatchIndex,
 	type ModelMatchIndex,
 	matchCanonicalModelId,
-	normalizeModelId,
 	parseModelsDevCapabilities,
 } from "./model-info-normalize.ts";
 
@@ -33,6 +41,7 @@ export {
 	normalizeModelId,
 	parseModelsDevCapabilities,
 } from "./model-info-normalize.ts";
+export type { LiveModel };
 
 const REMOTE_PROVIDER_ENV_KEYS: ReadonlyArray<{
 	provider: string;
@@ -44,20 +53,6 @@ const REMOTE_PROVIDER_ENV_KEYS: ReadonlyArray<{
 	{ provider: "google", envKeys: ["GOOGLE_API_KEY", "GEMINI_API_KEY"] },
 ];
 
-interface ModelInfo {
-	canonicalModelId: string | null;
-	contextWindow: number | null;
-	reasoning: boolean;
-}
-
-export interface LiveModel {
-	id: string;
-	displayName: string;
-	provider: string;
-	context?: number | undefined;
-	free?: boolean | undefined;
-}
-
 export interface AvailableModelsSnapshot {
 	models: LiveModel[];
 	stale: boolean;
@@ -65,65 +60,9 @@ export interface AvailableModelsSnapshot {
 	lastSyncAt: number | null;
 }
 
-interface RuntimeCapability {
-	canonicalModelId: string;
-	contextWindow: number | null;
-	reasoning: boolean;
-	sourceProvider: string | null;
-}
-
-interface RuntimeProviderModel {
-	provider: string;
-	providerModelId: string;
-	displayName: string;
-	canonicalModelId: string | null;
-	contextWindow: number | null;
-	free: boolean;
-}
-
-interface RuntimeCache {
-	capabilitiesByCanonical: Map<string, RuntimeCapability>;
-	providerModelsByKey: Map<string, RuntimeProviderModel>;
-	providerModelUniqIndex: Map<string, string | null>;
-	matchIndex: ModelMatchIndex;
-	state: Map<string, string>;
-}
-
-interface ParsedModelString {
-	provider: string | null;
-	modelId: string;
-}
-
 let runtimeCache: RuntimeCache = emptyRuntimeCache();
 let loaded = false;
 let refreshInFlight: Promise<void> | null = null;
-
-function emptyRuntimeCache(): RuntimeCache {
-	return {
-		capabilitiesByCanonical: new Map<string, RuntimeCapability>(),
-		providerModelsByKey: new Map<string, RuntimeProviderModel>(),
-		providerModelUniqIndex: new Map<string, string | null>(),
-		matchIndex: {
-			exact: new Map<string, string>(),
-			alias: new Map<string, string | null>(),
-		},
-		state: new Map<string, string>(),
-	};
-}
-
-function parseModelStringLoose(modelString: string): ParsedModelString {
-	const slash = modelString.indexOf("/");
-	if (slash === -1) {
-		return { provider: null, modelId: modelString };
-	}
-	const provider = modelString.slice(0, slash).trim().toLowerCase();
-	const modelId = modelString.slice(slash + 1);
-	return { provider: provider || null, modelId };
-}
-
-function providerModelKey(provider: string, modelId: string): string {
-	return `${provider}/${modelId}`;
-}
 
 export function isStaleTimestamp(
 	timestamp: number | null,
@@ -132,63 +71,6 @@ export function isStaleTimestamp(
 ): boolean {
 	if (timestamp === null) return true;
 	return now - timestamp > ttlMs;
-}
-
-function buildRuntimeCache(
-	capabilityRows: ModelCapabilityRow[],
-	providerRows: ProviderModelRow[],
-	stateRows: Array<{ key: string; value: string }>,
-): RuntimeCache {
-	const capabilitiesByCanonical = new Map<string, RuntimeCapability>();
-	for (const row of capabilityRows) {
-		const canonical = normalizeModelId(row.canonical_model_id);
-		if (!canonical) continue;
-		capabilitiesByCanonical.set(canonical, {
-			canonicalModelId: canonical,
-			contextWindow: row.context_window,
-			reasoning: row.reasoning === 1,
-			sourceProvider: row.source_provider,
-		});
-	}
-
-	const providerModelsByKey = new Map<string, RuntimeProviderModel>();
-	const providerModelUniqIndex = new Map<string, string | null>();
-	for (const row of providerRows) {
-		const provider = row.provider.trim().toLowerCase();
-		const providerModelId = normalizeModelId(row.provider_model_id);
-		if (!provider || !providerModelId) continue;
-		const key = providerModelKey(provider, providerModelId);
-		providerModelsByKey.set(key, {
-			provider,
-			providerModelId,
-			displayName: row.display_name,
-			canonicalModelId: row.canonical_model_id
-				? normalizeModelId(row.canonical_model_id)
-				: null,
-			contextWindow: row.context_window,
-			free: row.free === 1,
-		});
-		const prev = providerModelUniqIndex.get(providerModelId);
-		if (prev === undefined) {
-			providerModelUniqIndex.set(providerModelId, key);
-		} else if (prev !== key) {
-			providerModelUniqIndex.set(providerModelId, null);
-		}
-	}
-
-	const matchIndex = buildModelMatchIndex(capabilitiesByCanonical.keys());
-	const state = new Map<string, string>();
-	for (const row of stateRows) {
-		state.set(row.key, row.value);
-	}
-
-	return {
-		capabilitiesByCanonical,
-		providerModelsByKey,
-		providerModelUniqIndex,
-		matchIndex,
-		state,
-	};
 }
 
 function loadCacheFromDb(): void {
@@ -355,66 +237,6 @@ function isModelInfoRefreshing(): boolean {
 	return refreshInFlight !== null;
 }
 
-function resolveFromProviderRow(
-	row: RuntimeProviderModel,
-	cache: RuntimeCache,
-): ModelInfo {
-	if (row.canonicalModelId) {
-		const capability = cache.capabilitiesByCanonical.get(row.canonicalModelId);
-		if (capability) {
-			return {
-				canonicalModelId: capability.canonicalModelId,
-				contextWindow: capability.contextWindow ?? row.contextWindow,
-				reasoning: capability.reasoning,
-			};
-		}
-	}
-	return {
-		canonicalModelId: row.canonicalModelId,
-		contextWindow: row.contextWindow,
-		reasoning: false,
-	};
-}
-
-function resolveModelInfoInCache(
-	modelString: string,
-	cache: RuntimeCache,
-): ModelInfo | null {
-	const parsed = parseModelStringLoose(modelString);
-	const normalizedModelId = normalizeModelId(parsed.modelId);
-	if (!normalizedModelId) return null;
-
-	if (parsed.provider) {
-		const providerRow = cache.providerModelsByKey.get(
-			providerModelKey(parsed.provider, normalizedModelId),
-		);
-		if (providerRow) return resolveFromProviderRow(providerRow, cache);
-	}
-
-	const canonical = matchCanonicalModelId(normalizedModelId, cache.matchIndex);
-	if (canonical) {
-		const capability = cache.capabilitiesByCanonical.get(canonical);
-		if (capability) {
-			return {
-				canonicalModelId: capability.canonicalModelId,
-				contextWindow: capability.contextWindow,
-				reasoning: capability.reasoning,
-			};
-		}
-	}
-
-	if (!parsed.provider) {
-		const uniqueProviderKey =
-			cache.providerModelUniqIndex.get(normalizedModelId);
-		if (uniqueProviderKey) {
-			const providerRow = cache.providerModelsByKey.get(uniqueProviderKey);
-			if (providerRow) return resolveFromProviderRow(providerRow, cache);
-		}
-	}
-
-	return null;
-}
-
 function resolveModelInfo(modelString: string): ModelInfo | null {
 	ensureLoaded();
 	return resolveModelInfoInCache(modelString, runtimeCache);
@@ -438,26 +260,6 @@ export function supportsThinking(modelString: string): boolean {
 	return resolveModelInfo(modelString)?.reasoning ?? false;
 }
 
-function readLiveModelsFromCache(): LiveModel[] {
-	const models: LiveModel[] = [];
-	const visibleProviders = getVisibleProvidersForSnapshotFromEnv(process.env);
-	for (const row of runtimeCache.providerModelsByKey.values()) {
-		if (!visibleProviders.has(row.provider)) continue;
-		const info = resolveFromProviderRow(row, runtimeCache);
-		models.push({
-			id: `${row.provider}/${row.providerModelId}`,
-			displayName: row.displayName,
-			provider: row.provider,
-			context: info.contextWindow ?? undefined,
-			free: row.free ? true : undefined,
-		});
-	}
-	models.sort(
-		(a, b) => a.provider.localeCompare(b.provider) || a.id.localeCompare(b.id),
-	);
-	return models;
-}
-
 export async function fetchAvailableModelsSnapshot(): Promise<AvailableModelsSnapshot> {
 	ensureLoaded();
 	if (isModelInfoStale() && !isModelInfoRefreshing()) {
@@ -468,7 +270,10 @@ export async function fetchAvailableModelsSnapshot(): Promise<AvailableModelsSna
 		}
 	}
 	return {
-		models: readLiveModelsFromCache(),
+		models: readLiveModelsFromCache(
+			runtimeCache,
+			getVisibleProvidersForSnapshotFromEnv(process.env),
+		),
 		stale: isModelInfoStale(),
 		refreshing: isModelInfoRefreshing(),
 		lastSyncAt: getLastSyncAt(),
