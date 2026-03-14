@@ -1,12 +1,7 @@
-import { join } from "node:path";
 import * as c from "yoctocolors";
 
 import { addPromptHistory, getPromptHistory } from "../session/db/index.ts";
-import {
-	type ImageAttachment,
-	isImageFilename,
-	loadImageFile,
-} from "./image-types.ts";
+import type { ImageAttachment } from "./image-types.ts";
 import {
 	buildPromptDisplay,
 	createPasteToken,
@@ -20,6 +15,7 @@ import {
 	getSubagentControlAction,
 	getTurnControlAction,
 } from "./input-control.ts";
+import { tryExtractImageFromPaste } from "./input-images.ts";
 import { terminal } from "./terminal-io.ts";
 
 // ─── ANSI escape sequences ────────────────────────────────────────────────────
@@ -70,54 +66,6 @@ export {
 	getSubagentControlAction,
 	getTurnControlAction,
 } from "./input-control.ts";
-
-// ─── Image detection ─────────────────────────────────────────────────────────
-
-/**
- * Parse a pasted chunk and extract image attachments if present.
- *
- * Handles two cases:
- *  1. The paste is a `data:image/...;base64,...` data URL.
- *  2. The paste is a file path pointing to an image on disk.
- *
- * Returns `{ attachment, label }` when an image is found so the caller can
- * replace the paste buffer with a placeholder label, or `null` when the paste
- * is plain text.
- */
-async function tryExtractImageFromPaste(
-	pasted: string,
-	cwd: string,
-): Promise<{ attachment: ImageAttachment; label: string } | null> {
-	const trimmed = pasted.trim();
-
-	// Case 1: base64 data URL — only accept if explicitly base64-encoded
-	// (non-base64 data URLs like data:image/svg+xml,<svg>... would be sent as
-	// garbled base64 to the model if we don't guard here)
-	if (trimmed.startsWith("data:image/")) {
-		const commaIdx = trimmed.indexOf(",");
-		if (commaIdx !== -1 && trimmed.slice(0, commaIdx).includes(";base64")) {
-			const header = trimmed.slice(0, commaIdx); // "data:image/png;base64"
-			const b64 = trimmed.slice(commaIdx + 1);
-			const mediaType = header.split(";")[0]?.slice(5) ?? "image/png"; // strip "data:"
-			return {
-				attachment: { data: b64, mediaType },
-				label: `[image: ${mediaType}]`,
-			};
-		}
-	}
-
-	// Case 2: file path to an image
-	if (!trimmed.includes(" ") && isImageFilename(trimmed)) {
-		const filePath = trimmed.startsWith("/") ? trimmed : join(cwd, trimmed);
-		const attachment = await loadImageFile(filePath);
-		if (attachment) {
-			const name = filePath.split("/").pop() ?? trimmed;
-			return { attachment, label: `[image: ${name}]` };
-		}
-	}
-
-	return null;
-}
 
 // ─── Singleton stdin reader (shared across readline() calls) ─────────────────
 // We create the ReadableStream once so that repeated readline() calls don't
