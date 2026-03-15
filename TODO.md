@@ -1,7 +1,5 @@
 # TODO
 
-- Gpt 5.4 shows reasoning correctly, but Gpt 5.3 codex does not. Is this a mini-coder issue?
-
 ---
 
 ## UI Audit
