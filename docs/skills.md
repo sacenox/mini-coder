@@ -34,15 +34,17 @@ If multiple skills share the same `name`, precedence is deterministic:
 
 `SKILL.md` frontmatter supports:
 
-- `name` (optional — defaults to the folder name)
-- `description` (optional — defaults to `"(no description)"`)
+- `name` (**required**)
+- `description` (**required**)
 
-`name` constraints (when provided):
+`name` constraints:
 
 - lowercase alphanumeric and hyphen format (`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
 - 1–64 characters
 
 Unknown frontmatter fields are allowed.
+
+If either `name` or `description` is missing, mini-coder skips the skill and prints a warning.
 
 
 ## Create a skill

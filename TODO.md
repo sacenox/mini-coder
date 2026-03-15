@@ -1,6 +1,6 @@
 # TODO
 
-- UI hangs for a short time before reasoning blocks. Reasoning blocks should use our colors library for italic styling.
+- Reasoning blocks should use our colors library for italic styling.
 - Assistant responses are no longer rendered with highlighted markdown syntax. It's just plain text with no coloring. Let's condider markdown rendering libraries and their performance costs and completly rethink our approach. We want to keep our fast output above all, even if that means no markdown rendering.
 
 ---
@@ -26,7 +26,5 @@ We need to do research first and find an approach that fits the current shell-fi
 
 ## Deferred fixes
 
-- model-info: in `resolveFromProviderRow`, when canonical capability exists but `contextWindow` is null, fall back to provider row context (`capability.contextWindow ?? row.contextWindow`).
-- subagent-runner: avoid unconditional full buffering of child `stdout`/`stderr` in `runSubagent`; capture diagnostics only on failure or via a bounded tail buffer to prevent latency/memory regressions.
 - Subagent and shell tools are very similar, shell could do what subagent does without changes. This could be leveraged to reduce code. Subagent process runner is used for custom commands that fork context as well, there will need to be refactored.
 - `/_debug` hidden command that snapshots recent logs/db and creates a report in the cwd. For dev mostly but available to all. Do not list it anywhere, only documented here and in the code itself.

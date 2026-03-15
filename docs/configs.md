@@ -4,6 +4,12 @@ mini-coder supports both its native `.agents` convention and `.claude` layouts f
 
 Only commands, skills, agents, and context files are loaded from these roots. Hook directories are ignored.
 
+Discovery is not identical for every config type:
+
+- **Commands** and **agents** are loaded from the current working directory and the home directory only.
+- **Skills** are loaded from the home directory plus local directories discovered by walking up from the current working directory to the git worktree root.
+- **Context files** are only loaded from the current working directory and the home directory.
+
 ## Supported config roots
 
 | Root | Purpose |
@@ -42,23 +48,23 @@ Filename becomes the command name (`review.md` => `/review`).
 
 Supported locations:
 
-- `./.agents/skills/<skill-name>/SKILL.md`
-- `~/.agents/skills/<skill-name>/SKILL.md`
-- `./.claude/skills/<skill-name>/SKILL.md`
-- `~/.claude/skills/<skill-name>/SKILL.md`
+- local: `./.agents/skills/<skill-name>/SKILL.md` and `./.claude/skills/<skill-name>/SKILL.md`
+- global: `~/.agents/skills/<skill-name>/SKILL.md` and `~/.claude/skills/<skill-name>/SKILL.md`
+
+For local skills, mini-coder searches not just the current working directory, but each ancestor directory up to the git worktree root.
 
 Format:
 
 ```md
 ---
-name: optional-skill-name
-description: Optional help text
+name: required-skill-name
+description: Required help text
 ---
 
 Skill instructions/content.
 ```
 
-If `name` is omitted, folder name is used.
+Both `name` and `description` are required. Invalid skills are skipped with a warning.
 
 ## Agents
 
@@ -107,5 +113,6 @@ Precedence rules for commands, skills, and agents:
 
 1. **Local overrides global**
 2. At the **same scope** (both local or both global), if `.agents` and `.claude` define the same name, **`.agents` wins**
+3. For **skills only**, when the same skill name exists in multiple local ancestor directories, the skill nearest to the current working directory wins
 
-When same-scope conflicts are detected for commands, skills, or agents, mini-coder prints a warning and uses the `.agents` version.
+When same-scope `.agents` / `.claude` conflicts are detected for commands, skills, or agents, mini-coder prints a warning and uses the `.agents` version.
