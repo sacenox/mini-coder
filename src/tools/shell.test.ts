@@ -6,7 +6,7 @@ function collectOutput(mockFn: ReturnType<typeof mock>): string {
 }
 
 async function expectStreamedOutput(command: string, expectedOutput: string) {
-	const onOutput = mock(() => {});
+	const onOutput = mock(() => true);
 	const result = await shellTool.execute({
 		command,
 		timeout: 30_000,

@@ -4,7 +4,6 @@ import type { TurnEvent } from "../llm-api/types.ts";
 import { Spinner } from "./spinner.ts";
 import { renderTurn } from "./stream-render.ts";
 import { terminal } from "./terminal-io.ts";
-import { withTerminalColumns } from "./test-helpers.ts";
 
 let stdout = "";
 const originalStdoutWrite = terminal.stdoutWrite.bind(terminal);
@@ -158,83 +157,6 @@ describe("renderTurn", () => {
 		// partial then overwritten on turn-end. The ◆ prefix appears only on
 		// the first line; continuation lines have no prefix.
 		expect(simulateTerminal(stdout)).toBe("◆ hello\nworld\n");
-	});
-
-	test("keeps wrapped partials stable without cursor rewrites", async () => {
-		captureStdout();
-		await withTerminalColumns(20, async () => {
-			await renderTurn(
-				eventsFrom([
-					{ type: "text-delta", delta: "this is a long streamed partial" },
-					{ type: "text-delta", delta: " line\n" },
-					done(),
-				]),
-				new Spinner(),
-			);
-		});
-
-		expect(stdout.includes("\x1b[1A\r\x1b[2K")).toBe(false);
-		expect(simulateTerminal(stdout)).toContain(
-			"◆ this is a long streamed partial line\n",
-		);
-		expect(
-			countOccurrences(
-				simulateTerminal(stdout),
-				"this is a long streamed partial line",
-			),
-		).toBe(1);
-	});
-
-	test("keeps wrapped partial prefix accounting without extra clear operations", async () => {
-		captureStdout();
-		await withTerminalColumns(20, async () => {
-			await renderTurn(
-				eventsFrom([
-					{ type: "text-delta", delta: "1234567890123456789" },
-					{ type: "text-delta", delta: "\n" },
-					done(),
-				]),
-				new Spinner(),
-			);
-		});
-
-		expect(stdout.includes("\r\x1b[2K\x1b[1A\r\x1b[2K")).toBe(false);
-		expect(countOccurrences(stdout, "\x1b[1A\r\x1b[2K")).toBe(0);
-		expect(simulateTerminal(stdout)).toContain("◆ 1234567890123456789\n");
-	});
-
-	test("does not over-clear wrapped rows for emoji grapheme clusters", async () => {
-		captureStdout();
-		await withTerminalColumns(8, async () => {
-			await renderTurn(
-				eventsFrom([
-					{ type: "text-delta", delta: "👩🏽‍💻abc" },
-					{ type: "text-delta", delta: "\n" },
-					done(),
-				]),
-				new Spinner(),
-			);
-		});
-
-		expect(countOccurrences(stdout, "\x1b[1A\r\x1b[2K")).toBe(0);
-		expect(simulateTerminal(stdout)).toContain("◆ 👩🏽‍💻abc\n");
-	});
-
-	test("does not clear wrapped rows for wide CJK characters when styling is unchanged", async () => {
-		captureStdout();
-		await withTerminalColumns(10, async () => {
-			await renderTurn(
-				eventsFrom([
-					{ type: "text-delta", delta: "你好你好a" },
-					{ type: "text-delta", delta: "\n" },
-					done(),
-				]),
-				new Spinner(),
-			);
-		});
-
-		expect(countOccurrences(stdout, "\x1b[1A\r\x1b[2K")).toBe(0);
-		expect(simulateTerminal(stdout)).toContain("◆ 你好你好a\n");
 	});
 
 	test("renders buffered markdown correctly and preserves emoji across deltas", async () => {

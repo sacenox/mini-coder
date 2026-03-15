@@ -21,7 +21,7 @@ const ShellSchema = z.object({
 
 type ShellInput = z.infer<typeof ShellSchema> & {
 	cwd?: string;
-	onOutput?: (chunk: string) => boolean | void;
+	onOutput?: (chunk: string) => boolean | undefined;
 };
 
 export interface ShellOutput {

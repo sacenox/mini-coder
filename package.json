@@ -28,7 +28,7 @@
 		"ai": "^6.0.127",
 		"diff": "^8.0.3",
 		"yoctocolors": "^2.1.2",
-		"yoctomarkdown": "0.0.2",
+		"yoctomarkdown": "^0.0.3",
 		"zod": "^4.3.6"
 	},
 	"devDependencies": {
@@ -39,7 +39,9 @@
 		"typescript": "^5.9.3"
 	},
 	"knip": {
-		"entry": ["src/mc-edit.ts"]
+		"entry": [
+			"src/mc-edit.ts"
+		]
 	},
 	"license": "MIT"
 }

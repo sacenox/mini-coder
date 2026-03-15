@@ -27,7 +27,7 @@ function withCwdDefault(tool: ToolDef, cwd: string): ToolDef {
  */
 function withShellOutput(
 	tool: ToolDef,
-	onOutput: (chunk: string) => boolean | void,
+	onOutput: (chunk: string) => boolean | undefined,
 ): ToolDef {
 	const originalExecute = tool.execute;
 	return {
@@ -49,7 +49,7 @@ export function buildToolSet(opts: {
 		agentName?: string,
 		modelOverride?: string,
 	) => Promise<SubagentOutput>;
-	onShellOutput?: (chunk: string) => boolean | void;
+	onShellOutput?: (chunk: string) => boolean | undefined;
 	availableAgents: ReadonlyMap<string, { description: string }>;
 }): ToolDef[] {
 	const { cwd, onShellOutput } = opts;
