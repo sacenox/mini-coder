@@ -114,6 +114,28 @@ function renderSubagentResult(result: unknown): boolean {
 	return true;
 }
 
+function buildSkillDescriptionPart(description: string | undefined): string {
+	const trimmed = description?.trim();
+	if (!trimmed) return "";
+	return `  ${c.dim("·")}  ${c.dim(trimmed.length > 60 ? `${trimmed.slice(0, 57)}…` : trimmed)}`;
+}
+
+function renderSkillSummaryLine(
+	skill: {
+		name?: string;
+		description?: string;
+		source?: "local" | "global";
+	},
+	label?: string,
+): void {
+	const name = skill.name ?? "(unknown)";
+	const source = skill.source ?? "unknown";
+	const labelPrefix = label ? `${c.dim(label)}  ` : "";
+	writeln(
+		`    ${G.info} ${labelPrefix}${name}  ${c.dim("·")}  ${c.dim(source)}${buildSkillDescriptionPart(skill.description)}`,
+	);
+}
+
 function renderListSkillsResult(result: unknown): boolean {
 	const r = result as {
 		skills?: Array<{
@@ -129,15 +151,7 @@ function renderListSkillsResult(result: unknown): boolean {
 	}
 
 	for (const skill of r.skills.slice(0, 6)) {
-		const name = skill.name ?? "(unknown)";
-		const source = skill.source ?? "unknown";
-		const description = skill.description?.trim();
-		const descPart = description
-			? `  ${c.dim("·")}  ${c.dim(description.length > 60 ? `${description.slice(0, 57)}…` : description)}`
-			: "";
-		writeln(
-			`    ${G.info} ${name}  ${c.dim("·")}  ${c.dim(source)}${descPart}`,
-		);
+		renderSkillSummaryLine(skill);
 	}
 
 	if (r.skills.length > 6) {
@@ -159,15 +173,7 @@ function renderReadSkillResult(result: unknown): boolean {
 		writeln(`    ${G.info} ${c.dim("skill")}  ${c.dim("(not found)")}`);
 		return true;
 	}
-	const name = r.skill.name ?? "(unknown)";
-	const source = r.skill.source ?? "unknown";
-	const description = r.skill.description?.trim();
-	const descPart = description
-		? `  ${c.dim("·")}  ${c.dim(description.length > 60 ? `${description.slice(0, 57)}…` : description)}`
-		: "";
-	writeln(
-		`    ${G.info} ${c.dim("skill")}  ${name}  ${c.dim("·")}  ${c.dim(source)}${descPart}`,
-	);
+	renderSkillSummaryLine(r.skill, "skill");
 	return true;
 }
 

@@ -1,7 +1,7 @@
 # TODO
 
 - UI hangs for a short time before reasoning blocks. Reasoning blocks should use our colors library for italic styling.
-- Assistant responses are no longer rendered with highlighted markdown syntax. It's just plain text with no coloring.
+- Assistant responses are no longer rendered with highlighted markdown syntax. It's just plain text with no coloring. Let's condider markdown rendering libraries and their performance costs and completly rethink our approach. We want to keep our fast output above all, even if that means no markdown rendering.
 
 ---
 
