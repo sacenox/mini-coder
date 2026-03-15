@@ -2,11 +2,16 @@
 description: Check the codebase for correctness acording to the original idea.
 ---
 
-All files are relative to the current working directory.
+Audit the implementation of ./mini-coder-idea.md
 
-As we developed the project over the last weeks, we experimented with adding and removing lot's
-of features. We need to make sure we are aligned with the idea and have completly removed all of our experiementation.
+Use the shell tool and `bun run dev` to do manual tests. One shot and interactive sessions. And to analyze the console output and ui from a users perspective.
 
-Use ./mini-coder-idea.md, ./TODO.md as the source of truth and perform an in depth audit of the codebase and docs for correctness acording to the idea file. Indentify gaps, additions, and inconsistencies. Assume the idea and todo files are correct.
+Employ the perspective of a senior application design architech and senior developer and simplify, organize and improve the code until it closer reflects the original idea. Avoid excessive abstraction layers, try/catch nesting and other common pitfalls. Employ YAGNI in your review.
 
-Create/Update/Refactor ./report.md with your findings. This is a analysis task only, no changes beyond the report file.
+Question design choices and refactor as needed while staying compliant with the original idea. This includes changing UI and console output as needed.
+
+Check TODO.md for know issues already tracked.
+
+If you think the codebase is now at a good place, check the recent commit for all changes and report the final status to the user.
+
+Review your findings with me before doing any changes.

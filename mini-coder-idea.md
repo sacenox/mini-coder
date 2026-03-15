@@ -68,7 +68,6 @@ conventions and not introduce more specs. (`.agents` / `AGENTS.md`, while also s
 - All things Bun.js, runtime, package manager. https://bun.com/docs
 - Multiprovider support via https://ai-sdk.dev/docs/introduction
 - Colored output with https://github.com/sindresorhus/yoctocolors limitted but fast!
-- Markdown syntax rendering support **without sacrificing speed and performance**
 
 ## Repo structure
 
