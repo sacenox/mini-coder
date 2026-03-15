@@ -112,7 +112,14 @@ export async function runInputLoop(opts: InputLoopOptions): Promise<void> {
 					command: input.command,
 					timeout: 30_000,
 					cwd,
-					onOutput: (chunk) => reporter.streamChunk(chunk),
+					...(cmdCtx.verboseOutput
+						? {
+								onOutput: (chunk) => {
+									reporter.streamChunk(chunk);
+									return true;
+								},
+							}
+						: {}),
 				});
 				renderToolResult("shell", result, false, {
 					verboseOutput: cmdCtx.verboseOutput,

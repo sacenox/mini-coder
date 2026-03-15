@@ -46,6 +46,19 @@ describe("shellTool", () => {
 		expect(result.stdout).toBe("ok");
 		expect(result.streamedOutput).toBe(false);
 	});
+
+	it("marks output as not streamed when output handler suppresses streaming", async () => {
+		const onOutput = mock(() => false);
+		const result = await shellTool.execute({
+			command: "printf ok",
+			timeout: 30_000,
+			onOutput,
+		});
+
+		expect(result.stdout).toBe("ok");
+		expect(result.streamedOutput).toBe(false);
+		expect(collectOutput(onOutput)).toBe("ok");
+	});
 });
 
 describe.skipIf(!process.stdin.isTTY)("shellTool raw mode", () => {

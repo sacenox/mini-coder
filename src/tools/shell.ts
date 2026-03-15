@@ -21,7 +21,7 @@ const ShellSchema = z.object({
 
 type ShellInput = z.infer<typeof ShellSchema> & {
 	cwd?: string;
-	onOutput?: (chunk: string) => void;
+	onOutput?: (chunk: string) => boolean | void;
 };
 
 export interface ShellOutput {
@@ -122,9 +122,10 @@ export async function runShellCommand(input: ShellInput): Promise<ShellOutput> {
 	let streamedEndsWithNewline = true;
 	const emitOutput = (chunk: string): void => {
 		if (!chunk || !hasOutputHandler) return;
+		const handled = onOutput(chunk);
+		if (handled === false) return;
 		streamedAnyOutput = true;
 		streamedEndsWithNewline = /[\r\n]$/.test(chunk);
-		onOutput(chunk);
 	};
 
 	try {

@@ -63,11 +63,16 @@ export async function initAgent(opts: AgentOptions): Promise<{
 		cwd,
 		() => currentModel,
 	);
+	let verboseOutputEnabled = opts.initialVerboseOutput;
 	const agents = loadAgents(cwd);
 	const tools: ToolDef[] = buildToolSet({
 		cwd,
 		runSubagent,
-		onShellOutput: (chunk) => opts.reporter.streamChunk(chunk),
+		onShellOutput: (chunk) => {
+			if (!verboseOutputEnabled) return false;
+			opts.reporter.streamChunk(chunk);
+			return true;
+		},
 		availableAgents: subagentAgents(agents),
 	});
 
@@ -162,6 +167,7 @@ export async function initAgent(opts: AgentOptions): Promise<{
 		},
 		setVerboseOutput: (verbose) => {
 			runner.verboseOutput = verbose;
+			verboseOutputEnabled = verbose;
 			setPreferredVerboseOutput(verbose);
 		},
 		get pruningMode() {
