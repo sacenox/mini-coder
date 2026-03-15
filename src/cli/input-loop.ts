@@ -3,14 +3,15 @@ import type { AgentReporter } from "../agent/reporter.ts";
 import type { SessionRunner } from "../agent/session-runner.ts";
 
 import { getContextWindow } from "../llm-api/providers.ts";
-import { getGitBranch, runShellPassthrough } from "./cli-helpers.ts";
+import { runShellCommand, type ShellOutput } from "../tools/shell.ts";
+import { getGitBranch } from "./cli-helpers.ts";
 import { handleCommand } from "./commands.ts";
 import { resolveFileRefs } from "./file-refs.ts";
 import { createGitBranchCache } from "./git-branch-cache.ts";
 import { type InputResult, readline } from "./input.ts";
 import { renderUserMessage, tildePath } from "./output.ts";
 import { buildStatusBarSignature } from "./status-bar.ts";
-import { buildToolCallLine } from "./tool-render.ts";
+import { buildToolCallLine, renderToolResult } from "./tool-render.ts";
 
 import type { CommandContext } from "./types.ts";
 
@@ -19,6 +20,15 @@ interface InputLoopOptions {
 	reporter: AgentReporter;
 	cmdCtx: CommandContext;
 	runner: SessionRunner;
+}
+
+function buildShellContext(result: ShellOutput): string {
+	const sections: string[] = [];
+	if (result.stdout) sections.push(result.stdout);
+	if (result.stderr) sections.push(`stderr:\n${result.stderr}`);
+	if (result.timedOut) sections.push("command timed out");
+	if (!result.success) sections.push(`exit code: ${result.exitCode}`);
+	return sections.join("\n\n").trim();
 }
 
 export async function runInputLoop(opts: InputLoopOptions): Promise<void> {
@@ -98,9 +108,16 @@ export async function runInputLoop(opts: InputLoopOptions): Promise<void> {
 				reporter.writeText(
 					`  ${buildToolCallLine("shell", { command: input.command })}`,
 				);
-				const out = await runShellPassthrough(input.command, cwd, reporter);
-				if (out) {
-					runner.addShellContext(input.command, out);
+				const result = await runShellCommand({
+					command: input.command,
+					timeout: 30_000,
+					cwd,
+					onOutput: (chunk) => reporter.streamChunk(chunk),
+				});
+				renderToolResult("shell", result, false);
+				const context = buildShellContext(result);
+				if (context) {
+					runner.addShellContext(input.command, context);
 				}
 				gitBranchCache.refreshInBackground(true);
 				continue;
