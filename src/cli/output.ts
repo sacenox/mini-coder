@@ -18,7 +18,6 @@ import { Spinner } from "./spinner.ts";
 import { renderStatusBar } from "./status-bar.ts";
 import { renderTurn } from "./stream-render.ts";
 import { terminal } from "./terminal-io.ts";
-import { renderHook } from "./tool-render.ts";
 
 const HOME = homedir();
 declare const __PACKAGE_VERSION__: string;
@@ -65,19 +64,14 @@ export function renderUserMessage(text: string): void {
 // All from the 16-color ANSI palette — inherits terminal theme.
 
 export const G = {
-	// role markers
-	prompt: c.green("›"), // user input marker in history
-	reply: c.cyan("◆"), // assistant reply start
-
-	// tool action glyphs (compact, one per line)
-	search: c.yellow("?"), // search (shell grep/glob)
-	read: c.dim("←"), // read file
-	write: c.green("✎"), // edit / create file
-	run: c.dim("$"), // shell
-	agent: c.cyan("⇢"), // subagent
-	mcp: c.yellow("⚙"), // mcp tools
-
-	// status
+	prompt: c.green("›"),
+	reply: c.cyan("◆"),
+	search: c.yellow("?"),
+	read: c.dim("←"),
+	write: c.green("✎"),
+	run: c.dim("$"),
+	agent: c.cyan("⇢"),
+	mcp: c.yellow("⚙"),
 	ok: c.green("✔"),
 	err: c.red("✖"),
 	warn: c.yellow("!"),
@@ -87,7 +81,6 @@ export const G = {
 	diff_hdr: c.cyan("@"),
 };
 
-// Re-export PREFIX alias for backward compat with other modules
 export const PREFIX = {
 	user: G.prompt,
 	assistant: G.reply,
@@ -99,10 +92,6 @@ export const PREFIX = {
 
 // ─── Error handling ───────────────────────────────────────────────────────────
 
-/**
- * Thrown after an error has already been rendered to the terminal.
- * Outer catch blocks can check for this to avoid re-displaying the same error.
- */
 export class RenderedError extends Error {
 	public readonly cause: unknown;
 	constructor(cause: unknown) {
@@ -123,7 +112,6 @@ export function renderError(err: unknown, context = "render"): void {
 
 // ─── Banner ───────────────────────────────────────────────────────────────────
 
-/** Discover which context/config files exist for display in the banner. */
 function discoverContextFiles(cwd: string): string[] {
 	const found: string[] = [];
 	const globalDir = join(HOME, ".agents");
@@ -151,7 +139,6 @@ export function renderBanner(model: string, cwd: string): void {
 		`  ${c.dim("/help for commands  ·  esc cancel  ·  ctrl+c/ctrl+d exit")}`,
 	);
 
-	// Show discovered configs and context
 	const items: string[] = [];
 	const contextFiles = discoverContextFiles(cwd);
 	if (contextFiles.length > 0) items.push(...contextFiles);
@@ -176,7 +163,6 @@ export function renderBanner(model: string, cwd: string): void {
 }
 
 // ─── CliReporter ──────────────────────────────────────────────────────────────
-// Interactive terminal reporter — wraps all output primitives for agent use.
 
 export class CliReporter implements AgentReporter {
 	private spinner = new Spinner();
@@ -228,12 +214,6 @@ export class CliReporter implements AgentReporter {
 		this.haltSpinner();
 	}
 
-	renderSubState(label: string): void {
-		this.haltSpinnerAndFlushLiveOutput();
-		writeln(`    ${G.info} ${c.dim(label)}`);
-		this.spinner.start();
-	}
-
 	async renderTurn(
 		events: AsyncIterable<TurnEvent>,
 		opts?: { showReasoning?: boolean },
@@ -245,11 +225,6 @@ export class CliReporter implements AgentReporter {
 	renderStatusBar(data: StatusBarData): void {
 		this.liveOutput.finish();
 		renderStatusBar(data);
-	}
-
-	renderHook(toolName: string, scriptPath: string, success: boolean): void {
-		this.haltSpinnerAndFlushLiveOutput();
-		renderHook(toolName, scriptPath, success);
 	}
 
 	restoreTerminal(): void {

@@ -54,11 +54,7 @@ function hasObjectToolCallInput(
 	);
 }
 
-const TOOL_RUNTIME_INPUT_KEYS = new Set([
-	"cwd",
-	"snapshotCallback",
-	"onOutput",
-]);
+const TOOL_RUNTIME_INPUT_KEYS = new Set(["cwd", "onOutput"]);
 
 export function stripToolRuntimeInputFields(
 	messages: CoreMessage[],

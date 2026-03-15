@@ -34,16 +34,12 @@ export interface AgentReporter {
 
 	startSpinner(label?: string): void;
 	stopSpinner(): void;
-	/** Print a persistent indented sub-state line (e.g. "snapshot", "hook post-create")
-	 *  while the tool is still running. The spinner resumes after. */
-	renderSubState(label: string): void;
 
 	renderTurn(
 		events: AsyncIterable<TurnEvent>,
 		opts?: { showReasoning?: boolean },
 	): Promise<TurnResult>;
 	renderStatusBar(data: StatusBarData): void;
-	renderHook(toolName: string, scriptPath: string, success: boolean): void;
 
 	restoreTerminal(): void;
 }

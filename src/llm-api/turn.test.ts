@@ -103,7 +103,6 @@ describe("stripToolRuntimeInputFields", () => {
 							path: "TODO.md",
 							line: 1,
 							cwd: "/tmp/project",
-							snapshotCallback: "ignore-me",
 							onOutput: "ignore-me-too",
 						},
 					},

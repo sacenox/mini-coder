@@ -62,7 +62,7 @@ Inside the interactive session, the following slash commands are available:
 :   Attach Google Gemini cached content.
 
 **/undo**
-:   Revert the last turn and restore files.
+:   Revert the last turn.
 
 **/new**
 :   Clear context and start a fresh session.
@@ -101,12 +101,13 @@ Inside the interactive session, the following slash commands are available:
 
 ## BUILT-IN TOOLS
 The agent has access to the following tools:
-*   **read**: Read file contents with line-range pagination support.
-*   **create**: Write a new file or completely overwrite an existing one.
-*   **shell**: Execute bash commands and capture output. Partial file edits are typically done here via `mc-edit`.
+*   **shell**: Execute bash commands and capture output. Repo inspection and targeted file edits are typically done here via `mc-edit`.
 *   **subagent**: Spawn a focused mini-agent with a prompt.
+*   **listSkills**: List discovered skills without loading full skill bodies.
+*   **readSkill**: Load one `SKILL.md` on demand.
 *   **webSearch**: Search the internet (requires EXA key).
 *   **webContent**: Fetch full page content from a URL (requires EXA key).
+*   **MCP tools**: Connected external tools attached dynamically from configured MCP servers.
 
 ## ENVIRONMENT
 **OPENCODE_API_KEY**
@@ -129,14 +130,13 @@ The agent has access to the following tools:
 
 ## FILES & DIRECTORIES
 **~/.config/mini-coder/**
-:   Application data directory. Contains `sessions.db` (SQLite database for session history, tool snapshots, MCP server configs, and model metadata), `api.log`, and `errors.log`.
+:   Application data directory. Contains `sessions.db` (SQLite database for session history, `/undo` data, MCP server configs, and model metadata), `api.log`, and `errors.log`.
 
 **.agents/ or .claude/ (Local or Global in ~/)**
 :   Configuration directories for advanced features:
     *   **commands/*.md**: Custom slash commands.
     *   **agents/*.md**: Custom behavioral wrappers or subagents.
     *   **skills/<name>/SKILL.md**: Isolated context/instruction snippets.
-    *   **hooks/post-<tool>**: Executable scripts triggered upon tool execution.
 
 **AGENTS.md / CLAUDE.md**
 :   Auto-loaded system context files for project-specific instructions.
@@ -147,6 +147,6 @@ The agent has access to the following tools:
 *   **Subagent Delegation**: Includes a tool to spawn parallel instances of itself to tackle independent subtasks simultaneously (up to 10 levels deep).
 *   **Model Context Protocol (MCP)**: Native support for connecting external tools via MCP servers over HTTP or stdio.
 *   **Prompt Caching**: Configurable caching behaviors for supported providers (OpenAI, Gemini).
-*   **Undo Functionality**: Roll back the last conversation turn, cleanly restoring previous file states and git history via snapshots.
+*   **Undo Functionality**: Roll back the last conversation turn and restore tracked local state.
 
 

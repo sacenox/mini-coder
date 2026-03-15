@@ -1,15 +1,8 @@
-import { homedir } from "node:os";
 import * as c from "yoctocolors";
 import { G, writeln } from "./output.ts";
 import { renderToolResultByName } from "./tool-result-renderers.ts";
 
-const HOME = homedir();
-
-// ─── Tool call line rendering ─────────────────────────────────────────────────
-
 function toolGlyph(name: string): string {
-	if (name === "read") return G.read;
-	if (name === "create") return G.write;
 	if (name === "shell") return G.run;
 	if (name === "subagent") return G.agent;
 	if (name.startsWith("mcp_")) return G.mcp;
@@ -29,20 +22,6 @@ export function buildToolCallLine(name: string, args: unknown): string {
 		return `${G.agent}${label} ${c.dim("—")} ${short}`;
 	}
 
-	if (name === "read") {
-		const line = Number.isFinite(a.line as number) ? Number(a.line) : null;
-		const count = Number.isFinite(a.count as number) ? Number(a.count) : null;
-		const range =
-			line || count ? c.dim(`:${line ?? 1}${count ? `+${count}` : ""}`) : "";
-		const path =
-			typeof a.path === "string" && a.path.length > 0 ? a.path : null;
-		return `${G.read} ${c.dim("read")}${path ? ` ${path}${range}` : ""}`;
-	}
-
-	if (name === "create") {
-		return `${G.write} ${c.dim("create")} ${c.bold(String(a.path ?? ""))}`;
-	}
-
 	if (name === "shell") {
 		const cmd = String(a.command ?? "").trim();
 		if (!cmd) return `${G.run} ${c.dim("shell")}`;
@@ -60,8 +39,6 @@ export function buildToolCallLine(name: string, args: unknown): string {
 export function renderToolCall(toolName: string, args: unknown): void {
 	writeln(`  ${buildToolCallLine(toolName, args)}`);
 }
-
-// ─── Tool result rendering ────────────────────────────────────────────────────
 
 function formatErrorBadge(result: unknown): string {
 	const msg =
@@ -90,21 +67,4 @@ export function renderToolResult(
 
 	const text = JSON.stringify(result);
 	writeln(`    ${c.dim(text.length > 120 ? `${text.slice(0, 117)}…` : text)}`);
-}
-
-// ─── Hook rendering ───────────────────────────────────────────────────────────
-
-export function renderHook(
-	toolName: string,
-	scriptPath: string,
-	success: boolean,
-): void {
-	const short = scriptPath.replace(HOME, "~");
-	if (success) {
-		writeln(`    ${G.ok} ${c.dim(`hook post-${toolName}`)}`);
-		return;
-	}
-	writeln(
-		`    ${G.err} ${c.red(`hook post-${toolName} failed`)} ${c.dim(short)}`,
-	);
 }

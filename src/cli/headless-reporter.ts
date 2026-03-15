@@ -24,7 +24,6 @@ export class HeadlessReporter implements AgentReporter {
 
 	startSpinner(_label?: string): void {}
 	stopSpinner(): void {}
-	renderSubState(_label: string): void {}
 
 	async renderTurn(
 		events: AsyncIterable<TurnEvent>,
@@ -78,6 +77,5 @@ export class HeadlessReporter implements AgentReporter {
 	}
 
 	renderStatusBar(_data: StatusBarData): void {}
-	renderHook(_toolName: string, _scriptPath: string, _success: boolean): void {}
 	restoreTerminal(): void {}
 }

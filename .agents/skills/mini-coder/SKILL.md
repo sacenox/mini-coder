@@ -103,6 +103,8 @@ Inside `mc`, the user can run slash commands such as:
 
 If the user starts a prompt with `!`, `mc` runs that shell command inline and can use the result in context.
 
+mini-coder itself is shell-first: repo inspection happens primarily through shell commands, and targeted edits are typically done via `mc-edit` invoked from shell.
+
 ### References with `@`
 
 `mc` supports `@` references in prompts for:
@@ -122,7 +124,6 @@ mini-coder supports both `.agents` and `.claude` config layouts.
 - `.agents/commands/*.md`
 - `.agents/agents/*.md`
 - `.agents/skills/<name>/SKILL.md`
-- `.agents/hooks/post-<tool>`
 
 ### Global config in the home directory
 
@@ -158,7 +159,7 @@ When answering questions about `mc`:
 
 ```sh
 mc
-mc "add tests for src/tools/replace.ts"
+mc "add tests for src/internal/file-edit/exact-text.ts"
 mc -c
 mc -l
 mc -m zen/claude-sonnet-4-6

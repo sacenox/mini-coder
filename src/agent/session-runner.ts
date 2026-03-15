@@ -17,7 +17,6 @@ import {
 	resumeSession,
 	touchActiveSession,
 } from "../session/manager.ts";
-import { snapshotBeforeEdit } from "../tools/snapshot.ts";
 import {
 	extractAssistantText,
 	makeInterruptMessage,
@@ -62,7 +61,6 @@ export class SessionRunner {
 	public readonly tools: ToolDef[];
 	public readonly mcpTools: ToolDef[];
 
-	// ─── Mutable settings (updated via cmdCtx) ────────────────────────────────
 	public currentModel: string;
 	public currentThinkingEffort: ThinkingEffort | null;
 	public showReasoning: boolean;
@@ -72,16 +70,12 @@ export class SessionRunner {
 	public openaiPromptCacheRetention: "in_memory" | "24h";
 	public googleCachedContent: string | null;
 
-	// ─── Session state ─────────────────────────────────────────────────────────
 	public session!: ActiveSession;
 
-	// ─── Internal state ────────────────────────────────────────────────────────
 	private sessionTimeAnchor!: string;
 	private coreHistory!: CoreMessage[];
 	private turnIndex = 1;
 	private snapshotStack: Array<number | null> = [];
-	private currentSnappedPaths: Set<string> | null = null;
-	private currentTurn: number | null = null;
 	private totalIn = 0;
 	private totalOut = 0;
 	private lastContextTokens = 0;
@@ -109,8 +103,6 @@ export class SessionRunner {
 		this.initSession(opts.sessionId);
 	}
 
-	// ─── Public accessors ──────────────────────────────────────────────────────
-
 	public get extraSystemPrompt(): string | undefined {
 		return this._extraSystemPrompt;
 	}
@@ -120,7 +112,6 @@ export class SessionRunner {
 		this.rebuildSystemPrompt();
 	}
 
-	/** Returns the data needed to render the status bar. */
 	public getStatusInfo(): RunnerStatusInfo {
 		return {
 			model: this.currentModel,
@@ -132,23 +123,6 @@ export class SessionRunner {
 			lastContextTokens: this.lastContextTokens,
 		};
 	}
-
-	// ─── Snapshot callback (used by tools) ────────────────────────────────────
-
-	public async snapshotCallback(filePath: string) {
-		if (this.currentTurn !== null && this.currentSnappedPaths !== null) {
-			this.reporter.renderSubState("snapshot");
-			await snapshotBeforeEdit(
-				this.cwd,
-				this.session.id,
-				this.currentTurn,
-				filePath,
-				this.currentSnappedPaths,
-			);
-		}
-	}
-
-	// ─── Session lifecycle ─────────────────────────────────────────────────────
 
 	public initSession(sessionId?: string) {
 		if (sessionId) {
@@ -167,10 +141,6 @@ export class SessionRunner {
 			this.session = newSession(this.currentModel, this.cwd);
 		}
 		this.turnIndex = getMaxTurnIndex(this.session.id) + 1;
-		// Persistence invariant: load this history via lossless JSON serialization only.
-		// Model-authored messages must remain byte-for-byte equivalent in structure
-		// (including providerOptions/providerMetadata thought-signature fields and
-		// part ordering); do not reconstruct tool-call history on resume.
 		this.sessionTimeAnchor = new Date(this.session.createdAt).toISOString();
 		this.coreHistory = [...this.session.messages];
 		this.rebuildSystemPrompt();
@@ -189,12 +159,6 @@ export class SessionRunner {
 		this.snapshotStack.length = 0;
 	}
 
-	// ─── Shell passthrough ─────────────────────────────────────────────────────
-
-	/**
-	 * Persist a shell command's output as a user message so the LLM has context.
-	 * Called by input-loop.ts after a `!cmd` passthrough.
-	 */
 	public addShellContext(command: string, output: string): void {
 		const thisTurn = this.turnIndex++;
 		const msg: CoreMessage = {
@@ -206,8 +170,6 @@ export class SessionRunner {
 		this.coreHistory.push(msg);
 		this.snapshotStack.push(null);
 	}
-
-	// ─── Undo ──────────────────────────────────────────────────────────────────
 
 	public async undoLastTurn(): Promise<boolean> {
 		return undoLastTurn({
@@ -222,8 +184,6 @@ export class SessionRunner {
 			reporter: this.reporter,
 		});
 	}
-
-	// ─── Main turn processing ──────────────────────────────────────────────────
 
 	public async processUserInput(
 		text: string,
@@ -240,9 +200,6 @@ export class SessionRunner {
 		}
 
 		const thisTurn = this.turnIndex++;
-		this.currentTurn = thisTurn;
-		this.currentSnappedPaths = new Set<string>();
-
 		const userMsg: CoreMessage =
 			pastedImages.length > 0
 				? {
@@ -317,14 +274,10 @@ export class SessionRunner {
 			saveMessages(this.session.id, [stubMsg], thisTurn);
 			throw err;
 		} finally {
-			this.currentTurn = null;
-			this.currentSnappedPaths = null;
 			stopWatcher();
 		}
 		return lastAssistantText;
 	}
-
-	// ─── Private helpers ───────────────────────────────────────────────────────
 
 	private rebuildSystemPrompt(): void {
 		if (!this.sessionTimeAnchor) {

@@ -86,7 +86,7 @@ export function buildSystemPrompt(
 	const localContext = loadLocalContextFile(cwd);
 	const cwdDisplay = tildePath(cwd);
 	let prompt = `You are mini-coder, a small and fast CLI coding agent.
-You have access to tools to read files, search code, create files, run shell commands, and spawn subagents.
+You have access to shell commands, skill-loading tools, subagents, connected MCP tools, and optional web tools.
 
 Current working directory: ${cwdDisplay}
 Current date/time: ${sessionTimeAnchor}
@@ -94,18 +94,17 @@ Current date/time: ${sessionTimeAnchor}
 Guidelines:
 - Be concise and precise. Avoid unnecessary preamble.
 - Prefer small, targeted edits over large rewrites.
-- Inspect files before editing them.
+- Inspect code and files primarily through shell commands.
 - Prefer shell for reading, searching, verification, and other general repo work.
-- For partial edits to existing files, prefer shell commands that invoke \`mc-edit\`.
-- Use \`create\` for new files or full-file rewrites.
-- Make parallel tool calls when reads/searches are independent — don't wait for one to start the next.
+- For file edits, use shell commands that invoke \`mc-edit\`.
+- Use the skill tools only when you need to inspect available community/project skills or load one skill body.
+- Make parallel tool calls when independent searches/lookups can happen concurrently.
 - Keep your context clean and focused on the user request.
 
 # Preferred file workflow
 - \`mc-edit\` is available inside shell commands.
 - \`mc-edit\` applies one exact-text edit and fails if the expected old text is missing or ambiguous.
-- For longer edits, write the old/new text to temp files and pass \`--old-file\` / \`--new-file\`.
-- If you use \`read\`, its \`line:hash|\` prefixes are metadata only — never copy them into file content.`;
+- Use shell for repo inspection, verification, temp-file orchestration, and any non-edit file operation.`;
 
 	prompt += AUTONOMY;
 	prompt += SAFETY;

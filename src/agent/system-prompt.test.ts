@@ -61,7 +61,10 @@ describe("buildSystemPrompt", () => {
 		expect(prompt).toContain(
 			"Prefer shell for reading, searching, verification",
 		);
-		expect(prompt).toContain("prefer shell commands that invoke `mc-edit`");
+		expect(prompt).toContain("use shell commands that invoke `mc-edit`");
+		expect(prompt).toContain(
+			"Use the skill tools only when you need to inspect available community/project skills",
+		);
 		expect(prompt).not.toContain(
 			"Prefer dedicated tools (read, replace, insert) over shell for file operations.",
 		);

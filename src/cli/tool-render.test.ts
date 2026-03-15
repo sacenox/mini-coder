@@ -31,17 +31,6 @@ describe("buildToolCallLine", () => {
 		expect(line).toContain("…");
 	});
 
-	test("formats read calls with line and count range", () => {
-		const line = buildToolCallLine("read", {
-			path: "src/index.ts",
-			line: 12,
-			count: 25,
-		});
-		expect(line).toContain("read");
-		expect(line).toContain("src/index.ts");
-		expect(line).toContain(":12+25");
-	});
-
 	test("formats subagent calls with agent label", () => {
 		const line = buildToolCallLine("subagent", {
 			agentName: "reviewer",
@@ -55,12 +44,6 @@ describe("buildToolCallLine", () => {
 		const line = buildToolCallLine("shell", {});
 		expect(line).toContain("$");
 		expect(line).toContain("shell");
-	});
-
-	test("formats read start events without path cleanly", () => {
-		const line = buildToolCallLine("read", {});
-		expect(line).toContain("read");
-		expect(line).not.toContain("undefined");
 	});
 });
 

@@ -31,13 +31,11 @@ type CommandResult =
 // ─── Command handlers ─────────────────────────────────────────────────────────
 
 async function handleUndo(ctx: CommandContext): Promise<void> {
-	ctx.startSpinner("restoring snapshot");
+	ctx.startSpinner("undoing last turn");
 	try {
 		const ok = await ctx.undoLastTurn();
 		if (ok) {
-			writeln(
-				`${PREFIX.success} ${c.dim("last turn undone — history and files restored")}`,
-			);
+			writeln(`${PREFIX.success} ${c.dim("last turn undone")}`);
 		} else {
 			writeln(`${PREFIX.info} ${c.dim("nothing to undo")}`);
 		}

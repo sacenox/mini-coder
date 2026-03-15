@@ -59,9 +59,9 @@ model: zen/claude-haiku-4-5
 
 Search the codebase for: $ARGUMENTS
 
-Use shell, read, and other tools to explore thoroughly. Report all
+Use shell and skill-loading tools as needed to explore thoroughly. Report all
 relevant files, key code snippets with line numbers, and a short summary.
-Be exhaustive but concise. No edits — read only.
+Be exhaustive but concise. No edits.
 ```
 
 ```

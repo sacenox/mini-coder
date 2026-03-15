@@ -1,35 +1,7 @@
 import * as c from "yoctocolors";
 import { G, writeln } from "./output.ts";
 
-// ─── Shared helpers ───────────────────────────────────────────────────────────
-
-const MAX_DIFF_PREVIEW_LINES = 24;
-
-function colorizeDiffLine(line: string): string {
-	if (line.startsWith("+++") || line.startsWith("---")) return c.dim(line);
-	if (line.startsWith("+")) return c.green(line);
-	if (line.startsWith("-")) return c.red(line);
-	if (line.startsWith("@@")) return c.cyan(line);
-	return c.dim(line);
-}
-
-function renderDiff(diff: string): void {
-	if (!diff || diff === "(no changes)") return;
-
-	const normalized = diff.replace(/[\r\n]+$/, "");
-	if (!normalized) return;
-
-	const lines = normalized.split("\n");
-	const shown = lines.slice(0, MAX_DIFF_PREVIEW_LINES);
-	for (const line of shown) {
-		writeln(`    ${colorizeDiffLine(line)}`);
-	}
-	if (lines.length > shown.length) {
-		writeln(
-			`    ${c.dim(`… +${lines.length - shown.length} more diff lines`)}`,
-		);
-	}
-}
+type ToolResultRenderer = (result: unknown, toolName?: string) => boolean;
 
 function writePreviewLines(opts: {
 	label: string;
@@ -52,41 +24,6 @@ function writePreviewLines(opts: {
 
 function truncateOneLine(value: string, max = 100): string {
 	return value.length > max ? `${value.slice(0, max - 1)}…` : value;
-}
-
-// ─── Tool result renderers ────────────────────────────────────────────────────
-
-type ToolResultRenderer = (result: unknown, toolName?: string) => boolean;
-
-function renderReadResult(result: unknown): boolean {
-	const r = result as {
-		path: string;
-		line: number;
-		totalLines: number;
-		truncated: boolean;
-		content?: string;
-	};
-	if (!r || typeof r.path !== "string") return false;
-
-	const linesReturned = r.content ? r.content.split("\n").length : 0;
-	const endLine = linesReturned > 0 ? r.line + linesReturned - 1 : r.line;
-	const range =
-		r.line === 1 && endLine === r.totalLines
-			? `${r.totalLines} lines`
-			: `lines ${r.line}–${endLine} of ${r.totalLines}`;
-	writeln(
-		`    ${G.info} ${c.dim(`${r.path}  ${range}${r.truncated ? "  (truncated)" : ""}`)}`,
-	);
-	return true;
-}
-
-function renderCreateResult(result: unknown): boolean {
-	const r = result as { path: string; diff: string; created: boolean };
-	if (!r || typeof r.path !== "string") return false;
-	const verb = r.created ? c.green("created") : c.dim("overwritten");
-	writeln(`    ${G.ok} ${verb} ${r.path}`);
-	renderDiff(r.diff);
-	return true;
 }
 
 function renderShellResult(result: unknown): boolean {
@@ -275,11 +212,7 @@ function renderMcpResult(result: unknown): boolean {
 	return true;
 }
 
-// ─── Registry ─────────────────────────────────────────────────────────────────
-
 const TOOL_RESULT_RENDERERS: Readonly<Record<string, ToolResultRenderer>> = {
-	read: renderReadResult,
-	create: renderCreateResult,
 	shell: renderShellResult,
 	subagent: renderSubagentResult,
 	readSkill: renderReadSkillResult,

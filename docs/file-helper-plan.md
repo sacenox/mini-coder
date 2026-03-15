@@ -1,259 +1,338 @@
-# File Helper and Tooling Refactor Plan
+# File Helper Refactor Plan
 
-## Summary
+## Status at a glance
 
-We are moving away from making the LLM directly operate the current hashline `read` / `replace` / `insert` protocol as the primary editing path.
+This refactor is mostly done.
 
-The root problem is not only stale anchors or poor recovery. The bigger issue is that the current model-facing edit API is too complex and stateful for reliable use:
+The branch has already moved mini-coder toward the intended shell-first model:
 
-- `read` returns decorated lines that must be translated back into plain text
-- edits require choosing between several write modes
-- writes are coupled to prior reads and exact anchors
-- models frequently produce valid-looking but bad edits, then enter reread / repair loops
-- shell becomes the escape hatch when structured edits break down
+- `mc-edit` exists as a dedicated helper binary
+- shared file-edit logic was extracted under `src/internal/file-edit/`
+- shell now exposes `mc-edit` as the preferred targeted edit path
+- the system prompt and tool surface were simplified around shell usage
+- model-facing local file tools have been removed or are in the process of being fully deleted from the old path
+- hook support has been removed as part of the same cleanup
 
-The new direction is:
+The main work still left is **undo**.
 
-- prefer **shell-driven workflows** for reading, searching, verification, and other general repo actions
-- provide a **dedicated helper CLI binary** for one thing only: safe, token-conscious file edits
-- keep shared logic in **internal packages**, with thin bin entrypoints
-- remove the old hashline-based edit tools and update prompts/tool guidance to reflect the new approach
+`/undo` is still implemented around the old tool-managed snapshot model, while real edits now happen through shell commands that invoke `mc-edit`. Until that is redesigned, the architecture is not fully aligned.
 
 ---
 
-## Decisions
+## Why this refactor exists
 
-### 1. Prefer shell + helper CLI over direct hashline editing
+The old hashline editing protocol (`read` + `replace` / `insert`) was too fragile for normal model use.
 
-The agent should primarily edit files via shell commands that call a purpose-built helper CLI, instead of directly using `replace` / `insert` for most code changes.
+Problems with the old approach:
 
-Why:
+- `read` returned decorated `line:hash|` output instead of plain file text
+- edits depended on exact protocol choreography across multiple tool calls
+- models had to carry stale anchors and hashes across turns
+- semantically correct edits often failed because the payload shape or anchor state was slightly wrong
+- failures regularly degraded into reread-and-repair loops
+- when that happened, shell was already the practical fallback
 
-- models are generally stronger with shell-shaped workflows
-- a helper CLI can still enforce safety and deterministic behavior
-- this reduces the protocol burden compared with multi-step anchor editing
-- it gives us a simpler model-facing interface without giving up control
+The point of this refactor is **not** to improve that protocol.
+The point is to replace it with a simpler contract that matches how models already work best:
 
-### 2. Use a separate helper binary, not `mc file ...`
+- inspect with shell
+- edit with a narrow helper
+- verify with shell
 
-We should expose a separate executable for file operations instead of overloading the main `mc` CLI.
-
-Why:
-
-- cleaner mental model:
-  - `mc` = agent CLI
-  - helper bin = deterministic file operations
-- lower command ambiguity for models
-- easier to evolve independently
-- easier to document as a narrow, machine-oriented interface
-
-Working name examples:
-
-- `mc-edit`
-
-Final naming can be decided later, but it should be a separate bin.
-
-### 3. Shared code should live in internal packages
-
-The helper bin and the main CLI must not share logic by importing each other’s entrypoints.
-
-Instead, shared implementation should be extracted into internal packages / internal modules.
-
-High-level principle:
-
-- bins are thin adapters
-- reusable logic lives below them
-- tests should target internal packages directly where possible
-- Consider migration to a typescript monorepo or just nested packages
+That is why `mc-edit` exists.
 
 ---
 
-## Proposed architecture
+## Target architecture
 
-## Binaries
+### Final model-facing tool surface
 
-- `mc`
-  - existing agent CLI
-- `mc-edit`
-  - single-purpose safe edit helper, intended to be invoked from shell
+The intended steady state is:
 
-## Internal packages / modules
+- connected **MCP tools**
+- **`shell`**
+- **`subagent`**
+- **`listSkills`**
+- **`readSkill`**
+- **`webSearch`** and **`webContent`** when Exa is configured
 
-Suggested initial layout:
+Removed local runtime tools:
 
-- `src/internal/file-edit/`
-  - path resolution
-  - edit planning and application
-  - stale-state checks
-  - result metadata
+- `read`
+- `create`
+- `replace`
+- `insert`
+- hook-related runtime tooling
 
-Exact layout can be refined during implementation. The important constraint is that the bin stays thin and the editing logic lives in shared internals.
+### Final file workflow
 
-A key simplification here is that we are **not** designing a broad file-operations CLI. Shell already covers reading, searching, moving files, and orchestration well enough. The helper only needs to solve one problem: safe partial file edits.
+The intended workflow is:
 
----
+1. inspect/search with shell
+2. mutate files with `mc-edit`
+3. verify with shell
 
-## Design goals
+`mc-edit` is intentionally narrow:
 
-The helper CLI should optimize for **model reliability**, **determinism**, **safety**, and **token efficiency**.
-
-### Reliability goals
-
-- one simple mental model for edits
-- avoid anchor bookkeeping entirely in the model-facing API
-- keep the operation narrow enough that the model can use it consistently
-- make stale state explicit and easy to recover from
-
-### Safety goals
-
-- apply targeted edits instead of defaulting to whole-file rewrites
-- fail clearly when the expected target no longer matches
-- avoid silent partial success
-
-### Token and performance goals
-
-- avoid full-file rewrites for ordinary edits
-- keep helper invocations and outputs compact
-- reduce reread / repair loops caused by bad accepted edits
-- preserve existing repo performance standards
+- exact-text edits only
+- deterministic failure on stale or ambiguous state
+- machine-friendly output
+- no broad file-management abstraction beyond the edit helper itself
 
 ---
 
-## Model-facing API direction
+## What has landed on this branch
 
-We should keep the helper CLI as small as possible.
+### 1. Shared file-edit internals were extracted
 
-The shell tool is already sufficient for:
+Implemented under:
+
+- `src/internal/file-edit/cli.ts`
+- `src/internal/file-edit/exact-text.ts`
+- `src/internal/file-edit/path.ts`
+- `src/internal/file-edit/command.ts`
+
+### 2. `mc-edit` was added as its own binary
+
+Implemented via:
+
+- `src/mc-edit.ts`
+- `package.json`
+- `scripts/build.ts`
+
+### 3. The agent was moved to a shell-first editing model
+
+Implemented via:
+
+- shell prelude injection in `src/tools/shell.ts`
+- prompt guidance in `src/agent/system-prompt.ts`
+- shell tests covering `mc-edit` wiring
+
+### 4. The old structured edit path was removed
+
+Implemented by removing the hashline edit flow built around `replace` and `insert`, and by collapsing the surrounding plumbing that only existed to support that protocol.
+
+### 5. The local tool surface was reduced
+
+The branch now targets a much smaller local runtime surface centered on:
+
+- `shell`
+- `subagent`
+- `listSkills`
+- `readSkill`
+- optional Exa tools
+
+That is the right direction and should remain the end state.
+
+### 6. Hook support was removed instead of redesigned
+
+This cleanup is part of the refactor because hooks were tied to the old, heavier local tool story and were not worth carrying forward in the middle of this architecture change.
+
+### 7. CLI and docs cleanup has started
+
+Prompt text, tool rendering, help text, and docs have already been pushed toward the shell-first model, but this part still needs a final consistency pass after undo is redesigned.
+
+---
+
+## Key decisions
+
+### 1. Shell is the primary interface for repo work
+
+Shell should be the default for:
 
 - reading files
-- searching code
-- inspecting directories
-- running tests and verification
-- composing temporary files when needed
+- searching
+- running tests/builds
+- git inspection
+- verification
+- invoking `mc-edit`
 
-We do not need to duplicate any of that functionality in the helper.
+We are no longer optimizing around a large local file-tool API.
 
-`mc-edit` should do one thing only: apply a safe partial edit to a file without requiring a whole-file overwrite.
+### 2. `mc-edit` is the safe path for targeted edits
 
-The exact invocation details can be finalized during implementation, but the shape should stay minimal:
+We want one narrow edit helper instead of several model-facing edit tools.
 
-- one binary
-- one edit operation
-- targeted file edits
-- clear failure when the expected target no longer matches
-- compact, machine-friendly output
+That keeps the contract simpler:
 
-The helper exists to make ordinary edits reliable and token-conscious. It should not grow into a general-purpose file command suite.
+- shell handles orchestration
+- `mc-edit` handles exact mutation
 
----
+### 3. `listSkills` and `readSkill` stay
 
-## Output principles
+These are not general-purpose file tools. They are support tools for community/project config and should remain available.
 
-The helper CLI should be machine-oriented first.
+### 4. `read` and `create` should not remain as compatibility tools
 
-Preferred traits:
+If file inspection is shell-driven and edits are shell + `mc-edit`, keeping old local file tools around only muddies the contract.
 
-- stable output format
-- minimal verbosity
-- easy success/failure detection
-- compact enough for shell use
+### 5. Hooks are out for this refactor
 
-Current leaning: keep the output as small and rigid as possible so the model can use it consistently.
+The correct choice here is deletion, not redesign.
 
----
+If hooks ever come back, that should happen as a separate effort with a clear use case.
 
-## Relationship to existing tools
+### 6. `/undo` must follow the real edit path
 
-- do not expand the current hashline protocol further
-- do not keep the old edit tools as a fallback path
-- once `mc-edit` is proven out, remove `replace` / `insert` / related hashline edit plumbing and clean up the associated prompting
-- any shared logic worth keeping should be extracted into the new internal package rather than preserved through compatibility layers
+The old snapshot model was built around tool-managed writes.
+That no longer matches reality.
 
-Important: the goal is simplification, not running two editing systems indefinitely.
+If `/undo` is kept, it should primarily guarantee restoration for edits that went through `mc-edit`, not arbitrary raw shell file operations.
+
+### 7. MCP descriptions matter more now
+
+With fewer local tools, MCP tools take up a larger share of the model-visible surface.
+Their names and descriptions should stay concise and easy to distinguish from shell work.
 
 ---
 
-## Migration strategy
+## What is left to do
 
-### Phase 1: Extract internals
+### 1. Redesign `/undo` around `mc-edit`
 
-- move reusable file-edit logic into an internal package
-- keep the extraction narrowly focused on safe partial edit application
-- add focused tests around success and failure behavior
+This is the main unfinished work.
 
-### Phase 2: Add `mc-edit`
+### Current state
 
-- add `mc-edit` as a separate binary
-- implement only the minimal safe-edit behavior
-- ensure the output contract is stable and compact
+Undo still depends on the old snapshot path:
 
-### Phase 3: Switch the agent path
+- `src/tools/snapshot.ts`
+- `src/agent/undo-snapshot.ts`
+- `src/agent/session-runner.ts`
+- `src/session/db/snapshot-repo.ts`
 
-- update agent guidance to prefer shell + `mc-edit`
-- stop steering the model toward hashline edits
-- monitor behavior in the session DB
+That design assumes the agent knows when file writes happen through local tools.
+But the new edit path is shell-driven, so that assumption is no longer valid.
 
-### Phase 4: Remove old edit tools
+### Recommended decision
 
-- delete the old hashline-based edit tools and their supporting code
-- remove obsolete tests, prompts, and documentation
-- keep only the new editing path
+Keep `/undo` and a conversation turn undo only. Remove snapshotting and file changes tracking. Reflect this in the repor documentation as well.
+
+### Done when
+
+- /undo doesn't manage filesystem changes
+- snapshotting is completly removed
 
 ---
 
-## Success criteria
+### 2. Finish the docs and help-text consistency pass
 
-This refactor is successful if we observe meaningful reduction in:
+The repo is already telling the new story in several places, but not yet from one consistent source of truth.
 
-- reread / edit loops on the same file
-- overlapping repair edits after a "successful" write
-- malformed but accepted edit payloads
-- need to abandon the safe edit path and fall back to raw shell rewrites
+### Sweep targets
 
-And improvement in:
+- `mini-coder-idea.md` Note: keep it focused and in the existing idea style.
+- `README.md`
+- `docs/mini-coder.1.md`
+- `docs/configs.md`
+- `docs/custom-commands.md`
+- `docs/custom-agents.md`
+- `docs/skills.md`
+- `.agents/commands/*`
+- `.agents/agents/*`
+- `.agents/skills/*`
 
-- task completion reliability
-- model confidence after edits
-- token efficiency of normal edits
-- maintainability of the editing stack
+### What to check
+
+- mini-coder is described as shell-first
+- `mc-edit` is clearly named as the targeted edit path
+- removed local file tools are not described as active runtime tools
+- removed hook support is not described anywhere
+- `/undo` wording matches the redesigned guarantee once that work lands
+
+### Done when
+
+- docs match implementation
+- examples reinforce shell + `mc-edit`
+- there are no stale references to removed tools or hooks
+
+---
+
+### 3. Final prompt, CLI, and rendering polish
+
+Most of this is already moving in the right direction, but it still needs a final pass once undo is settled.
+
+### Areas to review
+
+- `src/agent/system-prompt.ts`
+- `src/cli/tool-render.ts`
+- `src/cli/tool-result-renderers.ts`
+- `src/cli/commands-help.ts`
+- `src/mcp/client.ts`
+
+### What to improve
+
+- ensure the prompt matches the final tool surface exactly
+- keep shell guidance crisp and unambiguous
+- make MCP descriptions more context-efficient if needed
+- keep result previews compact and useful for shell and MCP output
+- remove any remaining wording tied to old snapshot behavior
+
+### Done when
+
+- prompt text exactly matches runtime behavior
+- CLI output reflects only the remaining architecture
+- MCP descriptions are concise and distinguishable
+
+---
+
+### 4. Verify the cleanup end-to-end
+
+Before this refactor is considered complete, we should do one final dead-code and behavior sweep.
+
+### Check for
+
+- no runtime registration of removed local file tools
+- no dead hashline or old edit-protocol code left behind
+- no hook runtime/UI/doc code left behind
+- tests aligned with the new tool surface
+- shell + `mc-edit` workflow working in practice
+
+### Repo verification command
+
+Run:
+
+```bash
+bun run jscpd && bun run knip && bun run typecheck && bun run format && bun run lint && bun run test
+```
+
+---
+
+## Completion checklist
+
+This refactor is complete when all of the following are true:
+
+- the model-visible tool surface is shell, subagent, listSkills, readSkill, connected MCP tools, and optional Exa tools
+- `mc-edit` is the clear targeted edit path
+- the old hashline edit path is fully gone
+- hooks are fully gone from runtime, UI, and docs
+- `/undo` is aligned with shell + `mc-edit`
+- prompt, CLI, and docs all describe the same architecture
+- bundled commands/skills/examples reinforce the shell-first workflow
 
 ---
 
 ## Non-goals
 
-For this effort, we are **not** trying to:
+This effort is not trying to:
 
-- perfect the existing hashline anchor format
-- add more anchor variants or richer line matching as the main strategy
-- turn the main `mc` CLI into a multi-purpose file helper interface
-- build a broad file-management helper that duplicates shell capabilities
-- add multiple helper subcommands or grow a larger command surface
-
-Those may still be useful in limited contexts, but they are not the primary direction.
+- improve the old hashline edit protocol
+- keep old local edit tools as fallback paths
+- redesign a new hook framework right now
+- guarantee undo for arbitrary raw shell file operations
+- turn `mc-edit` into a broad file-management CLI
 
 ---
 
-## Open questions for implementation
+## Practical conclusion
 
-These can be finalized during the implementation phase:
+Compared to `main`, the branch has already done the hard architectural shift: `mc-edit` exists, shell is the primary path, and the old local edit model has been largely dismantled.
 
-- final helper binary name and exact invocation shape -- `mc-edit`
-- the simplest safe matching strategy for partial edits
-- exact result format on success and failure
-- the cleanest removal sequence for the old edit tools and their prompt wiring
+What remains is mostly about making the new architecture complete and honest:
 
----
+- finish `/undo`
+- finish the docs/help/prompt consistency pass
+- do one final MCP/CLI polish sweep
+- verify no stale code or messaging remains
 
-## Implementation guidance for future work
-
-Implementation should stay scoped and incremental:
-
-1. extract internal file-edit primitives first
-2. add the separate helper bin second
-3. keep the command surface to a single edit behavior
-4. add focused tests before broad integration changes
-5. switch agent behavior and then remove the old tools
-
-Commit your progress each step.
-
-Do not begin by expanding the current hashline API. The point of this effort is to replace it with a much simpler editing contract, not add more protocol complexity.
+That is the real endgame for this refactor.

@@ -480,22 +480,28 @@ describe("renderTurn", () => {
 			eventsFrom([
 				{
 					type: "tool-call-start",
-					toolName: "read",
-					args: { path: "a.ts" },
+					toolName: "shell",
+					args: { command: "printf ok" },
 					toolCallId: "tool-dup",
 				},
 				{
 					type: "tool-call-start",
-					toolName: "read",
-					args: { path: "a.ts" },
+					toolName: "shell",
+					args: { command: "printf ok" },
 					toolCallId: "tool-dup",
 				},
 				{
 					type: "tool-result",
-					toolName: "read",
+					toolName: "shell",
 					toolCallId: "tool-dup",
 					isError: false,
-					result: "ok",
+					result: {
+						stdout: "ok",
+						stderr: "",
+						exitCode: 0,
+						success: true,
+						timedOut: false,
+					},
 				},
 				done(),
 			]),
@@ -503,6 +509,6 @@ describe("renderTurn", () => {
 		);
 
 		const plain = strip(stdout);
-		expect(countOccurrences(plain, "← read")).toBe(1);
+		expect(countOccurrences(plain, "$ printf ok")).toBe(1);
 	});
 });
