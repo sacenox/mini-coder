@@ -8,6 +8,7 @@ import type {
 export interface StructuredOutputWriter {
 	stdout: (text: string) => void;
 	stderr: (text: string) => void;
+	supportsColor?: boolean;
 }
 
 type FileEditCliSuccess = { ok: true } & ApplyExactTextEditResult;
@@ -51,9 +52,10 @@ export function renderUnifiedDiff(
 	filePath: string,
 	before: string,
 	after: string,
+	colorize = true,
 ): string {
 	if (before === after) {
-		return c.dim("(no changes)");
+		return colorize ? c.dim("(no changes)") : "(no changes)";
 	}
 
 	const patchText = createTwoFilesPatch(
@@ -71,6 +73,7 @@ export function renderUnifiedDiff(
 
 	return lines
 		.map((line) => {
+			if (!colorize) return line;
 			if (line.startsWith("+++ ") || line.startsWith("+")) {
 				return c.green(line);
 			}
@@ -110,7 +113,12 @@ export function writeFileEditResult(
 ): void {
 	if (result.ok) {
 		const sections = [
-			renderUnifiedDiff(result.path, result.before, result.after),
+			renderUnifiedDiff(
+				result.path,
+				result.before,
+				result.after,
+				io.supportsColor ?? process.stdout.isTTY === true,
+			),
 			renderMetadataBlock(result),
 		];
 		io.stdout(`${sections.join("\n\n")}\n`);

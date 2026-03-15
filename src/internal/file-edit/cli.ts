@@ -123,6 +123,7 @@ export async function runFileEditCli(
 	io: StructuredOutputWriter = {
 		stdout: (text) => process.stdout.write(text),
 		stderr: (text) => process.stderr.write(text),
+		supportsColor: process.stdout.isTTY === true,
 	},
 ): Promise<number> {
 	let parsed: FileEditCliArgs | null = null;

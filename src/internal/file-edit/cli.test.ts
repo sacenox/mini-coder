@@ -28,6 +28,7 @@ function createIo() {
 			stderr: (text: string) => {
 				stderr += text;
 			},
+			supportsColor: false,
 		},
 		getStdout: () => stdout,
 		getStderr: () => stderr,
@@ -61,6 +62,7 @@ describe("runFileEditCli", () => {
 
 		expect(exitCode).toBe(0);
 		expect(capture.getStderr()).toBe("");
+		expect(capture.getStdout()).not.toContain("\u001b[");
 		expect(stripAnsi(capture.getStdout())).toBe(
 			[
 				"--- f.txt",
