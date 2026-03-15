@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { CoreMessage } from "../llm-api/turn.ts";
-import { extractAssistantText, makeInterruptMessage } from "./agent-helpers.ts";
+import {
+	extractAssistantText,
+	makeInterruptMessage,
+	sanitizeModelAuthoredMessages,
+} from "./agent-helpers.ts";
 
 // ─── extractAssistantText ─────────────────────────────────────────────────────
 
@@ -54,7 +58,6 @@ describe("extractAssistantText", () => {
 	});
 
 	test("extracts text from array content when last part is a tool call", () => {
-		// Typical agentic pattern: text block followed by a trailing tool call
 		const msgs: CoreMessage[] = [
 			{
 				role: "assistant",
@@ -65,6 +68,82 @@ describe("extractAssistantText", () => {
 			},
 		];
 		expect(extractAssistantText(msgs)).toBe("Tests pass.");
+	});
+});
+
+describe("sanitizeModelAuthoredMessages", () => {
+	test("strips GPT commentary parts before messages are reused or persisted", () => {
+		const msgs: CoreMessage[] = [
+			{
+				role: "assistant",
+				content: [
+					{ type: "reasoning", text: "plan" },
+					{
+						type: "text",
+						text: "hidden commentary",
+						providerOptions: { openai: { phase: "commentary" } },
+					},
+					{
+						type: "text",
+						text: "final answer",
+						providerOptions: { openai: { phase: "final_answer" } },
+					},
+				],
+			} as unknown as CoreMessage,
+		];
+
+		expect(sanitizeModelAuthoredMessages(msgs, "openai/gpt-5.3-codex")).toEqual(
+			[
+				{
+					role: "assistant",
+					content: [
+						{ type: "reasoning", text: "plan" },
+						{
+							type: "text",
+							text: "final answer",
+							providerOptions: { openai: { phase: "final_answer" } },
+						},
+					],
+				},
+			],
+		);
+	});
+
+	test("strips runtime-only tool fields from persisted tool calls", () => {
+		const msgs: CoreMessage[] = [
+			{
+				role: "assistant",
+				content: [
+					{
+						type: "tool-call",
+						toolCallId: "1",
+						toolName: "read",
+						input: {
+							path: "TODO.md",
+							cwd: "/tmp/project",
+							snapshotCallback: "ignore",
+							onOutput: "ignore",
+						},
+					},
+				],
+			} as unknown as CoreMessage,
+		];
+
+		expect(
+			sanitizeModelAuthoredMessages(msgs, "anthropic/claude-sonnet-4-5"),
+		).toEqual([
+			{
+				role: "assistant",
+				content: [
+					{
+						type: "tool-call",
+						toolCallId: "1",
+						toolName: "read",
+						input: { path: "TODO.md" },
+					},
+				],
+			},
+		]);
 	});
 });
 

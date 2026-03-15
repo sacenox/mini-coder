@@ -1,3 +1,7 @@
+import {
+	stripOpenAIHistoryTransforms,
+	stripToolRuntimeInputFields,
+} from "../llm-api/history-transforms.ts";
 import type { CoreMessage } from "../llm-api/turn.ts";
 
 export function makeInterruptMessage(reason: "user" | "error"): CoreMessage {
@@ -25,6 +29,14 @@ export function buildAbortMessages(
 		: (stub.content as string);
 	const partialMsg: CoreMessage = { role: "assistant", content };
 	return [...partialMessages, partialMsg];
+}
+
+export function sanitizeModelAuthoredMessages(
+	newMessages: CoreMessage[],
+	modelString: string,
+): CoreMessage[] {
+	const strippedRuntimeFields = stripToolRuntimeInputFields(newMessages);
+	return stripOpenAIHistoryTransforms(strippedRuntimeFields, modelString);
 }
 
 export function extractAssistantText(newMessages: CoreMessage[]): string {

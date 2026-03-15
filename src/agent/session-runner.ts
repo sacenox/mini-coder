@@ -18,7 +18,11 @@ import {
 	touchActiveSession,
 } from "../session/manager.ts";
 import { snapshotBeforeEdit } from "../tools/snapshot.ts";
-import { extractAssistantText, makeInterruptMessage } from "./agent-helpers.ts";
+import {
+	extractAssistantText,
+	makeInterruptMessage,
+	sanitizeModelAuthoredMessages,
+} from "./agent-helpers.ts";
 import type { AgentReporter } from "./reporter.ts";
 import { buildSystemPrompt } from "./system-prompt.ts";
 import { undoLastTurn } from "./undo-snapshot.ts";
@@ -290,18 +294,18 @@ export class SessionRunner {
 				await this.reporter.renderTurn(events, {
 					showReasoning: this.showReasoning,
 				});
+			const historyMessages = sanitizeModelAuthoredMessages(
+				newMessages,
+				this.currentModel,
+			);
 
-			if (newMessages.length > 0) {
-				this.coreHistory.push(...newMessages);
-				this.session.messages.push(...newMessages);
-				// Persistence invariant: save model-authored messages with lossless JSON
-				// serialization and preserve exact shape/ordering (including
-				// providerOptions/providerMetadata thought-signature fields). Never
-				// reconstruct tool-call history during save/load.
-				saveMessages(this.session.id, newMessages, thisTurn);
+			if (historyMessages.length > 0) {
+				this.coreHistory.push(...historyMessages);
+				this.session.messages.push(...historyMessages);
+				saveMessages(this.session.id, historyMessages, thisTurn);
 			}
 
-			lastAssistantText = extractAssistantText(newMessages);
+			lastAssistantText = extractAssistantText(historyMessages);
 			this.totalIn += inputTokens;
 			this.totalOut += outputTokens;
 			this.lastContextTokens = contextTokens;
