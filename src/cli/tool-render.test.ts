@@ -123,7 +123,7 @@ describe("renderToolResult", () => {
 	test("truncates shell previews by keeping head and tail when verbose is off", () => {
 		captureStdout();
 		const stdoutLines = Array.from(
-			{ length: 8 },
+			{ length: 30 },
 			(_, i) => `line-${i + 1}`,
 		).join("\n");
 
@@ -142,10 +142,10 @@ describe("renderToolResult", () => {
 
 		const plain = stripAnsi(stdout);
 		expect(plain).toContain("│ line-1");
-		expect(plain).toContain("│ line-2");
-		expect(plain).toContain("… +4 lines");
-		expect(plain).toContain("│ line-7");
-		expect(plain).toContain("│ line-8");
+		expect(plain).toContain("│ line-10");
+		expect(plain).toContain("… +10 lines");
+		expect(plain).toContain("│ line-21");
+		expect(plain).toContain("│ line-30");
 	});
 
 	test("shows full shell previews when verbose is on", () => {

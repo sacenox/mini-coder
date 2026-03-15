@@ -165,7 +165,7 @@ function renderShellResult(
 		label: "stderr",
 		value: r.stderr,
 		lineColor: c.red,
-		maxLines: verboseOutput ? Number.POSITIVE_INFINITY : 6,
+		maxLines: verboseOutput ? Number.POSITIVE_INFINITY : 10,
 	});
 	if (
 		shouldPreviewShellStdout({
@@ -179,7 +179,7 @@ function renderShellResult(
 			label: "stdout",
 			value: r.stdout,
 			lineColor: c.dim,
-			maxLines: verboseOutput ? Number.POSITIVE_INFINITY : 4,
+			maxLines: verboseOutput ? Number.POSITIVE_INFINITY : 20,
 		});
 	}
 
