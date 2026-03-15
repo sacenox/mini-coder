@@ -102,9 +102,16 @@ Guidelines:
 - Keep your context clean and focused on the user request.
 
 # Preferred file workflow
+- Use shell for repo inspection, verification, temp-file orchestration, and any non-edit file operation.
 - \`mc-edit\` is available inside shell commands.
 - \`mc-edit\` applies one exact-text edit and fails if the expected old text is missing or ambiguous.
-- Use shell for repo inspection, verification, temp-file orchestration, and any non-edit file operation.`;
+
+Usage: mc-edit <path> (--old <text> | --old-file <path>) [--new <text> | --new-file <path>] [--cwd <path>]
+
+Apply one safe exact-text edit to an existing file.
+- The expected old text must match exactly once.
+- Omit --new / --new-file to delete the matched text.
+`;
 
 	prompt += AUTONOMY;
 	prompt += SAFETY;
