@@ -3,6 +3,7 @@ import {
 	normalizeOpenAICompatibleToolCallInputs,
 	sanitizeGeminiToolMessagesWithMetadata,
 	stripOpenAIHistoryTransforms,
+	stripToolRuntimeInputFields,
 } from "./history-transforms.ts";
 import { getCacheFamily } from "./provider-options.ts";
 import type { CoreMessage } from "./turn.ts";
@@ -51,9 +52,15 @@ export function prepareTurnMessages(input: {
 
 	const apiLogOn = isApiLogEnabled();
 
-	// 1. Provider-specific sanitisation
+	// 1. Strip runtime-only tool input fields before provider-specific sanitisation.
+	const strippedRuntimeToolFields = stripToolRuntimeInputFields(messages);
+	if (strippedRuntimeToolFields !== messages && apiLogOn) {
+		logApiEvent("runtime tool input fields stripped", { modelString });
+	}
+
+	// 2. Provider-specific sanitisation
 	const geminiResult = sanitizeGeminiToolMessagesWithMetadata(
-		messages,
+		strippedRuntimeToolFields,
 		modelString,
 		toolCount > 0,
 	);
@@ -83,7 +90,7 @@ export function prepareTurnMessages(input: {
 		logApiEvent("openai-compatible tool input normalized", { modelString });
 	}
 
-	// 2. Context pruning
+	// 3. Context pruning
 	const preStats = apiLogOn
 		? getMessageDiagnostics(normalised)
 		: getMessageStats(normalised);
@@ -96,7 +103,7 @@ export function prepareTurnMessages(input: {
 		: getMessageStats(pruned);
 	if (apiLogOn) logApiEvent("turn context post-prune", postStats);
 
-	// 3. Payload compaction
+	// 4. Payload compaction
 	const compacted = compactToolResultPayloads(
 		pruned,
 		toolResultPayloadCapBytes,
@@ -108,7 +115,7 @@ export function prepareTurnMessages(input: {
 		});
 	}
 
-	// 4. Anthropic prompt caching breakpoints
+	// 5. Anthropic prompt caching breakpoints
 	let finalMessages = compacted;
 	let finalSystemPrompt = systemPrompt;
 
@@ -120,8 +127,9 @@ export function prepareTurnMessages(input: {
 		);
 		finalMessages = annotated.messages;
 		finalSystemPrompt = annotated.systemPrompt;
-		if (apiLogOn)
+		if (apiLogOn) {
 			logApiEvent("Anthropic prompt caching", annotated.diagnostics);
+		}
 	}
 
 	const wasPruned =

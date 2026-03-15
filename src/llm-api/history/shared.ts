@@ -42,3 +42,61 @@ export function getPartProviderOptions(
 export function isToolCallPart(part: unknown): part is Record<string, unknown> {
 	return isRecord(part) && part.type === "tool-call";
 }
+
+function hasObjectToolCallInput(
+	part: unknown,
+): part is Record<string, unknown> & { input: Record<string, unknown> } {
+	return (
+		isToolCallPart(part) &&
+		"input" in part &&
+		isRecord(part.input) &&
+		!Array.isArray(part.input)
+	);
+}
+
+const TOOL_RUNTIME_INPUT_KEYS = new Set([
+	"cwd",
+	"snapshotCallback",
+	"onOutput",
+]);
+
+export function stripToolRuntimeInputFields(
+	messages: CoreMessage[],
+): CoreMessage[] {
+	let mutated = false;
+	const result = messages.map((message) => {
+		if (message.role !== "assistant" || !Array.isArray(message.content)) {
+			return message;
+		}
+
+		let contentMutated = false;
+		const nextContent = message.content.map((part) => {
+			if (!hasObjectToolCallInput(part)) {
+				return part;
+			}
+
+			let inputMutated = false;
+			const nextInput = { ...part.input };
+			for (const key of TOOL_RUNTIME_INPUT_KEYS) {
+				if (!(key in nextInput)) continue;
+				delete nextInput[key];
+				inputMutated = true;
+			}
+			if (!inputMutated) return part;
+			contentMutated = true;
+			return {
+				...part,
+				input: nextInput,
+			};
+		});
+
+		if (!contentMutated) return message;
+		mutated = true;
+		return {
+			...message,
+			content: nextContent as CoreMessage["content"],
+		} as CoreMessage;
+	});
+
+	return mutated ? result : messages;
+}

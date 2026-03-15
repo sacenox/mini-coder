@@ -11,3 +11,4 @@ export {
 	stripOpenAIItemIdsFromHistory,
 } from "./history/openai.ts";
 export { getReasoningDeltaFromStreamChunk } from "./history/reasoning.ts";
+export { stripToolRuntimeInputFields } from "./history/shared.ts";

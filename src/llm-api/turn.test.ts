@@ -6,6 +6,7 @@ import {
 	sanitizeGeminiToolMessages,
 	stripGPTCommentaryFromHistory,
 	stripOpenAIItemIdsFromHistory,
+	stripToolRuntimeInputFields,
 } from "./history-transforms.ts";
 import type { CoreMessage } from "./turn.ts";
 import {
@@ -85,6 +86,54 @@ describe("normalizeOpenAICompatibleToolCallInputs", () => {
 		expect(
 			normalizeOpenAICompatibleToolCallInputs(messages, "openai/gpt-4o"),
 		).toBe(messages);
+	});
+});
+
+describe("stripToolRuntimeInputFields", () => {
+	test("strips runtime-only tool fields from assistant tool-call inputs", () => {
+		const messages: CoreMessage[] = [
+			{
+				role: "assistant",
+				content: [
+					{
+						type: "tool-call",
+						toolCallId: "call_1",
+						toolName: "read",
+						input: {
+							path: "TODO.md",
+							line: 1,
+							cwd: "/tmp/project",
+							snapshotCallback: "ignore-me",
+							onOutput: "ignore-me-too",
+						},
+					},
+				],
+			} as unknown as CoreMessage,
+		];
+
+		const stripped = stripToolRuntimeInputFields(messages);
+		const part = (stripped[0] as { content: Array<Record<string, unknown>> })
+			.content[0];
+		expect(part?.input).toEqual({ path: "TODO.md", line: 1 });
+	});
+
+	test("leaves non-assistant messages and clean tool calls untouched", () => {
+		const messages: CoreMessage[] = [
+			{ role: "user", content: "hi" },
+			{
+				role: "assistant",
+				content: [
+					{
+						type: "tool-call",
+						toolCallId: "call_2",
+						toolName: "read",
+						input: { path: "TODO.md" },
+					},
+				],
+			} as unknown as CoreMessage,
+		];
+
+		expect(stripToolRuntimeInputFields(messages)).toBe(messages);
 	});
 });
 
