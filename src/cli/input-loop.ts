@@ -114,7 +114,9 @@ export async function runInputLoop(opts: InputLoopOptions): Promise<void> {
 					cwd,
 					onOutput: (chunk) => reporter.streamChunk(chunk),
 				});
-				renderToolResult("shell", result, false);
+				renderToolResult("shell", result, false, {
+					verboseOutput: cmdCtx.verboseOutput,
+				});
 				const context = buildShellContext(result);
 				if (context) {
 					runner.addShellContext(input.command, context);

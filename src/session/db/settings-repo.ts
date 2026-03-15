@@ -19,6 +19,21 @@ function setSetting(key: string, value: string): void {
 	);
 }
 
+export function parseBooleanSetting(
+	value: string | null,
+	fallback: boolean,
+): boolean {
+	if (value === null) return fallback;
+	const normalized = value.trim().toLowerCase();
+	if (normalized === "true" || normalized === "on" || normalized === "1") {
+		return true;
+	}
+	if (normalized === "false" || normalized === "off" || normalized === "0") {
+		return false;
+	}
+	return fallback;
+}
+
 export function getPreferredModel(): string | null {
 	return getSetting("preferred_model");
 }
@@ -44,9 +59,7 @@ export function setPreferredThinkingEffort(
 }
 
 export function getPreferredShowReasoning(): boolean {
-	const v = getSetting("preferred_show_reasoning");
-	if (v === null) return false;
-	return v !== "false";
+	return parseBooleanSetting(getSetting("preferred_show_reasoning"), false);
 }
 
 export function setPreferredShowReasoning(show: boolean): void {
@@ -54,9 +67,7 @@ export function setPreferredShowReasoning(show: boolean): void {
 }
 
 export function getPreferredVerboseOutput(): boolean {
-	const v = getSetting("preferred_verbose_output");
-	if (v === null) return false;
-	return v !== "false";
+	return parseBooleanSetting(getSetting("preferred_verbose_output"), false);
 }
 
 export function setPreferredVerboseOutput(verbose: boolean): void {
@@ -100,9 +111,10 @@ export function setPreferredActiveAgent(agent: string | null): void {
 	}
 }
 export function getPreferredPromptCachingEnabled(): boolean {
-	const v = getSetting("preferred_prompt_caching_enabled");
-	if (v === null) return true;
-	return v !== "false";
+	return parseBooleanSetting(
+		getSetting("preferred_prompt_caching_enabled"),
+		true,
+	);
 }
 
 export function setPreferredPromptCachingEnabled(enabled: boolean): void {
