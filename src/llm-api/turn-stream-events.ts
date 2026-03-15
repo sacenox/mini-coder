@@ -11,11 +11,11 @@ export function shouldLogStreamChunk(c: StreamChunk): boolean {
 	);
 }
 
-function extractToolArgs(c: StreamChunk): unknown {
+export function extractToolArgs(c: StreamChunk): unknown {
 	return c.input ?? c.args;
 }
 
-function hasRenderableToolArgs(args: unknown): boolean {
+export function hasRenderableToolArgs(args: unknown): boolean {
 	if (args === null || args === undefined) return false;
 	if (typeof args === "string") return args.trim().length > 0;
 	if (Array.isArray(args)) return args.length > 0;

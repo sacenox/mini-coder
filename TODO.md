@@ -13,6 +13,8 @@ This seems like an issue on how we are parsing stream events, and not recognzing
 neither pi or opencode have this bug with the same provider, and opencode uses the same sdks as we do
 use the `gh` tool to clone and inspect how they avoid this issue
 
+Expectation: Gpt models don't produce corrupted output and correctly display reasoning
+
 Relevant reasoning output:
 
 ```
@@ -114,6 +116,7 @@ with assistant metadata to=functions.shell from UI (not visible in message maybe
 ```
 
 - Models in general struggle with our read/write tools, use the db to investigate their behaviour with out tools and let's refactor them with the goal of reducintg errors.
+- UI hangs for a short time before reasoning blocks. Reasoning blocks lost their italic styling.
 
 ---
 

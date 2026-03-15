@@ -1,6 +1,8 @@
 import type { FlexibleSchema, StepResult } from "ai";
 import { dynamicTool, jsonSchema, type streamText } from "ai";
 import {
+	extractToolArgs,
+	hasRenderableToolArgs,
 	mapStreamChunkToTurnEvent,
 	shouldLogStreamChunk,
 } from "./turn-stream-events.ts";
@@ -114,7 +116,6 @@ interface StreamTextChunk {
 	[key: string]: unknown;
 }
 
-const TOOL_START_CHUNK_TYPES = new Set(["tool-input-start", "tool-call"]);
 const TOOL_RESULT_CHUNK_TYPES = new Set(["tool-result", "tool-error"]);
 
 function normalizeToolCallId(raw: unknown): string | null {
@@ -217,18 +218,45 @@ function mapCommentaryChunkToTurnEvent(
 class StreamToolCallTracker {
 	private syntheticCount = 0;
 	private pendingByTool = new Map<string, string[]>();
+	private deferredStartsByTool = new Map<string, number>();
 
-	assign(chunk: StreamToolChunk): StreamToolChunk {
+	prepare(chunk: StreamToolChunk): {
+		chunk: StreamToolChunk;
+		suppressTurnEvent: boolean;
+	} {
 		const type = chunk.type;
-		if (!type) return chunk;
+		if (!type) {
+			return { chunk, suppressTurnEvent: false };
+		}
 
-		if (TOOL_START_CHUNK_TYPES.has(type)) {
+		if (type === "tool-input-start") {
 			const toolName = normalizeToolName(chunk.toolName);
-			const toolCallId =
-				normalizeToolCallId(chunk.toolCallId) ?? this.nextSyntheticToolCallId();
-			this.trackStart(toolName, toolCallId);
-			if (toolCallId === chunk.toolCallId) return chunk;
-			return { ...chunk, toolCallId };
+			const toolCallId = normalizeToolCallId(chunk.toolCallId);
+			const args = extractToolArgs(chunk);
+			if (!hasRenderableToolArgs(args)) {
+				if (!toolCallId) {
+					this.trackDeferredStart(toolName);
+					return { chunk, suppressTurnEvent: true };
+				}
+				return { chunk, suppressTurnEvent: false };
+			}
+			return {
+				chunk: this.trackRenderableStart(chunk, toolName, toolCallId),
+				suppressTurnEvent: false,
+			};
+		}
+
+		if (type === "tool-call") {
+			const toolName = normalizeToolName(chunk.toolName);
+			this.consumeDeferredStart(toolName);
+			return {
+				chunk: this.trackRenderableStart(
+					chunk,
+					toolName,
+					normalizeToolCallId(chunk.toolCallId),
+				),
+				suppressTurnEvent: false,
+			};
 		}
 
 		if (TOOL_RESULT_CHUNK_TYPES.has(type)) {
@@ -236,14 +264,28 @@ class StreamToolCallTracker {
 			const existingToolCallId = normalizeToolCallId(chunk.toolCallId);
 			if (existingToolCallId) {
 				this.consumeTracked(toolName, existingToolCallId);
-				return chunk;
+				return { chunk, suppressTurnEvent: false };
 			}
-			const toolCallId =
+			const nextToolCallId =
 				this.consumeNextTracked(toolName) ?? this.nextSyntheticToolCallId();
-			return { ...chunk, toolCallId };
+			return {
+				chunk: { ...chunk, toolCallId: nextToolCallId },
+				suppressTurnEvent: false,
+			};
 		}
 
-		return chunk;
+		return { chunk, suppressTurnEvent: false };
+	}
+
+	private trackRenderableStart(
+		chunk: StreamToolChunk,
+		toolName: string,
+		existingToolCallId: string | null,
+	): StreamToolChunk {
+		const toolCallId = existingToolCallId ?? this.nextSyntheticToolCallId();
+		this.trackStart(toolName, toolCallId);
+		if (toolCallId === chunk.toolCallId) return chunk;
+		return { ...chunk, toolCallId };
 	}
 
 	private nextSyntheticToolCallId(): string {
@@ -255,6 +297,23 @@ class StreamToolCallTracker {
 		const pending = this.pendingByTool.get(toolName) ?? [];
 		pending.push(toolCallId);
 		this.pendingByTool.set(toolName, pending);
+	}
+
+	private trackDeferredStart(toolName: string): void {
+		this.deferredStartsByTool.set(
+			toolName,
+			(this.deferredStartsByTool.get(toolName) ?? 0) + 1,
+		);
+	}
+
+	private consumeDeferredStart(toolName: string): void {
+		const count = this.deferredStartsByTool.get(toolName) ?? 0;
+		if (count <= 0) return;
+		if (count === 1) {
+			this.deferredStartsByTool.delete(toolName);
+			return;
+		}
+		this.deferredStartsByTool.set(toolName, count - 1);
 	}
 
 	private consumeTracked(toolName: string, toolCallId: string): void {
@@ -284,12 +343,17 @@ export async function* mapFullStreamToTurnEvents(
 	const toolCallTracker = new StreamToolCallTracker();
 	const textPhaseTracker = new StreamTextPhaseTracker();
 	for await (const originalChunk of stream) {
-		const chunk = toolCallTracker.assign(originalChunk);
+		const prepared = toolCallTracker.prepare(originalChunk);
+		const chunk = prepared.chunk;
 		const route = textPhaseTracker.route(chunk);
-		if (route !== "skip" && shouldLogStreamChunk(chunk)) {
+		if (
+			!prepared.suppressTurnEvent &&
+			route !== "skip" &&
+			shouldLogStreamChunk(chunk)
+		) {
 			opts.onChunk?.(chunk);
 		}
-		if (route === "skip") continue;
+		if (prepared.suppressTurnEvent || route === "skip") continue;
 		const event =
 			route === "reasoning"
 				? mapCommentaryChunkToTurnEvent(chunk)

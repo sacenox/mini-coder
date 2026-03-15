@@ -90,6 +90,46 @@ describe("mapFullStreamToTurnEvents", () => {
 		});
 	});
 
+	test("suppresses placeholder tool-input-start chunks until the real tool call arrives", async () => {
+		const events = await collectEvents([
+			{ type: "tool-input-start", toolName: "shell", input: {} },
+			{
+				type: "tool-input-delta",
+				toolName: "shell",
+				delta: '{"command":"echo hi"}',
+			},
+			{ type: "tool-input-end", toolName: "shell" },
+			{
+				type: "tool-call",
+				toolCallId: "call-2b",
+				toolName: "shell",
+				input: { command: "echo hi" },
+			},
+			{
+				type: "tool-result",
+				toolCallId: "call-2b",
+				toolName: "shell",
+				output: "hi",
+			},
+		]);
+
+		expect(events).toEqual([
+			{
+				type: "tool-call-start",
+				toolCallId: "call-2b",
+				toolName: "shell",
+				args: { command: "echo hi" },
+			},
+			{
+				type: "tool-result",
+				toolCallId: "call-2b",
+				toolName: "shell",
+				result: "hi",
+				isError: false,
+			},
+		]);
+	});
+
 	test("routes openai commentary text deltas into reasoning events", async () => {
 		const events = await collectEvents([
 			{
