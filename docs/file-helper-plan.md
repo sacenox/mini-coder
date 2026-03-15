@@ -254,4 +254,6 @@ Implementation should stay scoped and incremental:
 4. add focused tests before broad integration changes
 5. switch agent behavior and then remove the old tools
 
+Commit your progress each step.
+
 Do not begin by expanding the current hashline API. The point of this effort is to replace it with a much simpler editing contract, not add more protocol complexity.
