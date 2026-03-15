@@ -103,9 +103,7 @@ Inside the interactive session, the following slash commands are available:
 The agent has access to the following tools:
 *   **read**: Read file contents with line-range pagination support.
 *   **create**: Write a new file or completely overwrite an existing one.
-*   **replace**: Replace or delete targeted lines using hashline anchors.
-*   **insert**: Insert new lines before/after an anchor without replacing existing content.
-*   **shell**: Execute bash commands and capture output.
+*   **shell**: Execute bash commands and capture output. Partial file edits are typically done here via `mc-edit`.
 *   **subagent**: Spawn a focused mini-agent with a prompt.
 *   **webSearch**: Search the internet (requires EXA key).
 *   **webContent**: Fetch full page content from a URL (requires EXA key).

@@ -5,18 +5,12 @@ import { webContentTool, webSearchTool } from "../tools/exa.ts";
 import {
 	createHookCache,
 	hookEnvForCreate,
-	hookEnvForInsert,
 	hookEnvForRead,
-	hookEnvForReplace,
 	hookEnvForShell,
 	runHook,
 } from "../tools/hooks.ts";
-import type { InsertToolOutput } from "../tools/insert.ts";
-import { insertTool } from "../tools/insert.ts";
 import type { ReadOutput } from "../tools/read.ts";
 import { readTool } from "../tools/read.ts";
-import type { ReplaceToolOutput } from "../tools/replace.ts";
-import { replaceTool } from "../tools/replace.ts";
 import type { ShellOutput } from "../tools/shell.ts";
 import { shellTool } from "../tools/shell.ts";
 import { listSkillsTool, readSkillTool } from "../tools/skills.ts";
@@ -130,7 +124,7 @@ function withHooks<
 // ─── Tool registry ────────────────────────────────────────────────────────────
 
 // Names of all local tools that support hooks (MCP tools are excluded).
-const HOOKABLE_TOOLS = ["read", "create", "replace", "insert", "shell"];
+const HOOKABLE_TOOLS = ["read", "create", "shell"];
 
 export function buildToolSet(opts: {
 	cwd: string;
@@ -166,7 +160,7 @@ export function buildToolSet(opts: {
 		) as ToolDef,
 		withCwdDefault(listSkillsTool as ToolDef, cwd),
 		withCwdDefault(readSkillTool as ToolDef, cwd),
-		// Write: create/overwrite, replace/delete, insert
+		// Write: create/overwrite only. Targeted edits go through shell + mc-edit.
 		withHooks(
 			withCwdDefault(
 				createTool as ToolDef,
@@ -176,32 +170,6 @@ export function buildToolSet(opts: {
 			lookupHook,
 			cwd,
 			(result) => hookEnvForCreate(result, cwd),
-			onHook,
-			finalizeWriteResult,
-			onBeforeHook,
-		) as ToolDef,
-		withHooks(
-			withCwdDefault(
-				replaceTool as ToolDef,
-				cwd,
-				opts.snapshotCallback,
-			) as ToolDef<{ cwd?: string }, ReplaceToolOutput>,
-			lookupHook,
-			cwd,
-			(result) => hookEnvForReplace(result, cwd),
-			onHook,
-			finalizeWriteResult,
-			onBeforeHook,
-		) as ToolDef,
-		withHooks(
-			withCwdDefault(
-				insertTool as ToolDef,
-				cwd,
-				opts.snapshotCallback,
-			) as ToolDef<{ cwd?: string }, InsertToolOutput>,
-			lookupHook,
-			cwd,
-			(result) => hookEnvForInsert(result, cwd),
 			onHook,
 			finalizeWriteResult,
 			onBeforeHook,

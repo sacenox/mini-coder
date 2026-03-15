@@ -41,11 +41,11 @@ describe("createHookCache", () => {
 	it("returns null when the hook file exists but is not executable", () => {
 		const hooksDir = join(tmpDir, ".agents", "hooks");
 		mkdirSync(hooksDir, { recursive: true });
-		writeFileSync(join(hooksDir, "post-replace"), "#!/bin/bash\necho hi", {
+		writeFileSync(join(hooksDir, "post-shell"), "#!/bin/bash\necho hi", {
 			mode: 0o644,
 		});
-		const lookup = createHookCache(["replace"], tmpDir);
-		expect(lookup("replace")).toBeNull();
+		const lookup = createHookCache(["shell"], tmpDir);
+		expect(lookup("shell")).toBeNull();
 	});
 
 	it("returns null for an unknown tool name not in the cache", () => {
@@ -73,8 +73,8 @@ describe("runHook", () => {
 	});
 
 	it("returns false when the script exits non-zero", async () => {
-		const script = makeHook(tmpDir, "post-replace", "#!/bin/bash\nexit 1");
-		await expect(runHook(script, { TOOL: "replace" }, tmpDir)).resolves.toBe(
+		const script = makeHook(tmpDir, "post-shell", "#!/bin/bash\nexit 1");
+		await expect(runHook(script, { TOOL: "shell" }, tmpDir)).resolves.toBe(
 			false,
 		);
 	});
@@ -88,7 +88,7 @@ describe("runHook", () => {
 		const outFile = join(tmpDir, "out.txt");
 		const script = makeHook(
 			tmpDir,
-			"post-insert",
+			"post-create",
 			`#!/bin/bash\necho "$FILEPATH" > "${outFile}"`,
 		);
 		await runHook(script, { FILEPATH: "src/foo.ts" }, tmpDir);

@@ -21,11 +21,11 @@ Local hooks take precedence over global ones. The filename must match `post-<too
 |---|---|
 | `read` | `post-read` |
 | `create` | `post-create` |
-| `replace` | `post-replace` |
-| `insert` | `post-insert` |
 | `shell` | `post-shell` |
 
 MCP tools are not hookable.
+
+For partial edits, the agent now prefers shell commands that invoke `mc-edit`, so those operations are observed through `post-shell`.
 
 ## Script requirements
 
@@ -50,21 +50,6 @@ Plus tool-specific variables:
 | `DIFF` | Unified diff of the change |
 | `CREATED` | `true` if the file was newly created, `false` if overwritten |
 
-### `post-replace`
-
-| Variable | Description |
-|---|---|
-| `FILEPATH` | Absolute path of the file modified |
-| `DIFF` | Unified diff of the change |
-| `DELETED` | `true` if lines were deleted (no replacement content), `false` otherwise |
-
-### `post-insert`
-
-| Variable | Description |
-|---|---|
-| `FILEPATH` | Absolute path of the file modified |
-| `DIFF` | Unified diff of the change |
-
 ### `post-shell`
 
 | Variable | Description |
@@ -83,7 +68,7 @@ Plus tool-specific variables:
 
 ## Examples
 
-### Auto-format on write
+### Auto-format on create/overwrite
 
 `.agents/hooks/post-create`:
 
@@ -96,8 +81,6 @@ bun run format -- "$FILEPATH"
 ```bash
 chmod +x .agents/hooks/post-create
 ```
-
-Pair with a matching `post-replace` and `post-insert` to cover all write tools.
 
 ### Log every shell command
 
@@ -113,14 +96,17 @@ echo "$(date -u +%FT%TZ)  exit=$EXIT_CODE  $COMMAND" >> ~/.config/mini-coder/she
 chmod +x ~/.agents/hooks/post-shell
 ```
 
-### Notify on file write
+### Notify on `mc-edit` usage
 
-`.agents/hooks/post-replace`:
+`.agents/hooks/post-shell`:
 
 ```bash
 #!/usr/bin/env bash
-# macOS notification when the agent edits a file.
-osascript -e "display notification \"$FILEPATH\" with title \"mini-coder wrote a file\""
+case "$COMMAND" in
+  *mc-edit*)
+    osascript -e "display notification \"$COMMAND\" with title \"mini-coder ran mc-edit\""
+    ;;
+esac
 ```
 
 ## Hook lookup

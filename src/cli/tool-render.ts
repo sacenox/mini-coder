@@ -9,8 +9,7 @@ const HOME = homedir();
 
 function toolGlyph(name: string): string {
 	if (name === "read") return G.read;
-	if (name === "create" || name === "replace" || name === "insert")
-		return G.write;
+	if (name === "create") return G.write;
 	if (name === "shell") return G.run;
 	if (name === "subagent") return G.agent;
 	if (name.startsWith("mcp_")) return G.mcp;
@@ -42,19 +41,6 @@ export function buildToolCallLine(name: string, args: unknown): string {
 
 	if (name === "create") {
 		return `${G.write} ${c.dim("create")} ${c.bold(String(a.path ?? ""))}`;
-	}
-
-	if (name === "replace") {
-		const range = a.endAnchor
-			? c.dim(` ${a.startAnchor}–${a.endAnchor}`)
-			: c.dim(` ${a.startAnchor}`);
-		const verb =
-			a.newContent === undefined || a.newContent === "" ? "delete" : "replace";
-		return `${G.write} ${c.dim(verb)} ${c.bold(String(a.path ?? ""))}${range}`;
-	}
-
-	if (name === "insert") {
-		return `${G.write} ${c.dim(`insert ${a.position ?? ""}`)} ${c.bold(String(a.path ?? ""))}${c.dim(` @ ${a.anchor}`)}`;
 	}
 
 	if (name === "shell") {

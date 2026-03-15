@@ -1,8 +1,8 @@
 /**
  * SQLite-based turn snapshots for /undo.
  *
- * Before an agent makes a file modification (create, replace, insert),
- * we hook in to snapshot the exact state of that file on disk.
+ * Before an agent makes a tool-managed file modification, we snapshot the
+ * exact state of that file on disk.
  *
  * On /undo, we restore those files from the DB and clean up the snapshot rows.
  */

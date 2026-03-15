@@ -89,19 +89,6 @@ function renderCreateResult(result: unknown): boolean {
 	return true;
 }
 
-function renderReplaceOrInsertResult(
-	toolName: string,
-	result: unknown,
-): boolean {
-	const r = result as { path: string; diff: string; deleted?: boolean };
-	if (!r || typeof r.path !== "string") return false;
-	const verb =
-		toolName === "insert" ? "inserted" : r.deleted ? "deleted" : "replaced";
-	writeln(`    ${G.ok} ${c.dim(verb)} ${r.path}`);
-	renderDiff(r.diff);
-	return true;
-}
-
 function renderShellResult(result: unknown): boolean {
 	const r = result as {
 		stdout: string;
@@ -293,8 +280,6 @@ function renderMcpResult(result: unknown): boolean {
 const TOOL_RESULT_RENDERERS: Readonly<Record<string, ToolResultRenderer>> = {
 	read: renderReadResult,
 	create: renderCreateResult,
-	replace: (result) => renderReplaceOrInsertResult("replace", result),
-	insert: (result) => renderReplaceOrInsertResult("insert", result),
 	shell: renderShellResult,
 	subagent: renderSubagentResult,
 	readSkill: renderReadSkillResult,

@@ -1,6 +1,7 @@
 import { accessSync, constants } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { resolvePath } from "../internal/file-edit/path.ts";
 import { generateDiff } from "./diff.ts";
 import type { WriteResultMeta } from "./write-result.ts";
 
@@ -72,7 +73,7 @@ export async function runHook(
 // ─── Env builders (one per tool) ─────────────────────────────────────────────
 
 // Accept WriteResultMeta so diff is computed here (only when a hook fires)
-// instead of being pre-computed and then discarded in applyFileEdit.
+// instead of being pre-computed and then discarded in the write tool.
 type WriteResult = WriteResultMeta & { path: string };
 
 export function hookEnvForCreate(
@@ -81,34 +82,9 @@ export function hookEnvForCreate(
 ): Record<string, string> {
 	return {
 		TOOL: "create",
-		FILEPATH: result.path,
+		FILEPATH: result._filePath,
 		DIFF: generateDiff(result.path, result._before, result._updated),
 		CREATED: String(result.created),
-		CWD: cwd,
-	};
-}
-
-export function hookEnvForReplace(
-	result: WriteResult & { deleted: boolean },
-	cwd: string,
-): Record<string, string> {
-	return {
-		TOOL: "replace",
-		FILEPATH: result.path,
-		DIFF: generateDiff(result.path, result._before, result._updated),
-		DELETED: String(result.deleted),
-		CWD: cwd,
-	};
-}
-
-export function hookEnvForInsert(
-	result: WriteResult,
-	cwd: string,
-): Record<string, string> {
-	return {
-		TOOL: "insert",
-		FILEPATH: result.path,
-		DIFF: generateDiff(result.path, result._before, result._updated),
 		CWD: cwd,
 	};
 }
@@ -140,7 +116,7 @@ export function hookEnvForRead(
 ): Record<string, string> {
 	return {
 		TOOL: "read",
-		FILEPATH: input.path,
+		FILEPATH: resolvePath(cwd, input.path).filePath,
 		CWD: cwd,
 	};
 }

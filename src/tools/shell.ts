@@ -39,7 +39,7 @@ export const shellTool: ToolDef<ShellInput, ShellOutput> = {
 	name: "shell",
 	description:
 		"Execute a shell command. Returns stdout, stderr, and exit code. " +
-		"Use this for running tests, builds, git commands, and other CLI operations. " +
+		"Use this for reading/searching code, running tests, builds, git commands, and invoking `mc-edit` for partial file edits. " +
 		"Prefer non-interactive commands. Avoid commands that run indefinitely.",
 	schema: ShellSchema,
 	execute: async (input) => {

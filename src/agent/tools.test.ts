@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { hashLine } from "../tools/hashline.ts";
 import { resolvePath } from "../tools/shared.ts";
 import { buildToolSet } from "./tools.ts";
 
@@ -52,45 +51,6 @@ describe("buildToolSet write hooks", () => {
 		expect((result as { diff: string }).diff).not.toContain("+draft");
 	});
 
-	test("replace returns a diff for hook-mutated file contents", async () => {
-		writeFileSync(join(cwd, "f.txt"), "a\nb\n");
-		makeHook(
-			"replace",
-			'#!/bin/bash\nprintf "a\\nB\\nformatted\\n" > "$FILEPATH"\n',
-		);
-
-		const result = await getTool("replace").execute({
-			path: "f.txt",
-			startAnchor: `2:${hashLine("b")}`,
-			newContent: "B",
-		});
-
-		expect(await Bun.file(join(cwd, "f.txt")).text()).toBe("a\nB\nformatted\n");
-		expect((result as { diff: string }).diff).toContain("+formatted");
-		expect((result as { diff: string }).diff).not.toBe("(no changes)");
-	});
-
-	test("insert returns a diff for hook-mutated file contents", async () => {
-		writeFileSync(join(cwd, "f.txt"), "a\nb\n");
-		makeHook(
-			"insert",
-			'#!/bin/bash\nprintf "a\\nnew\\nb\\nformatted\\n" > "$FILEPATH"\n',
-		);
-
-		const result = await getTool("insert").execute({
-			path: "f.txt",
-			anchor: `1:${hashLine("a")}`,
-			position: "after",
-			content: "new",
-		});
-
-		expect(await Bun.file(join(cwd, "f.txt")).text()).toBe(
-			"a\nnew\nb\nformatted\n",
-		);
-		expect((result as { diff: string }).diff).toContain("+formatted");
-		expect((result as { diff: string }).diff).not.toMatch(/^-b$/m);
-	});
-
 	test("write tools still return the expected diff when no hook exists", async () => {
 		const result = await getTool("create").execute({
 			path: "plain.txt",
@@ -103,7 +63,7 @@ describe("buildToolSet write hooks", () => {
 	});
 });
 
-describe("skills tools registration", () => {
+describe("tool set registration", () => {
 	test("includes listSkills and readSkill in full tool set", () => {
 		const names = buildToolSet({
 			cwd,
@@ -118,6 +78,8 @@ describe("skills tools registration", () => {
 
 		expect(names).toContain("listSkills");
 		expect(names).toContain("readSkill");
+		expect(names).not.toContain("replace");
+		expect(names).not.toContain("insert");
 	});
 });
 

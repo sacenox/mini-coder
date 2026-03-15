@@ -26,7 +26,7 @@ export const createTool: ToolDef<CreateInput, CreateToolOutput> = {
 	name: "create",
 	description:
 		"Write a file at the given path, creating it or fully replacing its content. " +
-		"**For targeted line edits on existing files use `replace` or `insert` — never `create`.**",
+		"**For partial edits to existing files, prefer the `shell` tool with `mc-edit` instead of `create`.**",
 	schema: CreateSchema,
 	execute: async (input) => {
 		const { filePath, relPath } = resolvePath(input.cwd, input.path);
