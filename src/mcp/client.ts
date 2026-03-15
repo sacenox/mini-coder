@@ -74,7 +74,7 @@ export async function connectMcpServer(
 
 	const tools: ToolDef[] = mcpTools.map((t) => ({
 		name: `mcp_${config.name}_${t.name}`,
-		description: `[MCP:${config.name}] ${t.description ?? t.name}`,
+		description: `MCP ${config.name}: ${t.description?.trim() || t.name}`,
 		// Use the server's declared JSON schema directly
 		schema: t.inputSchema,
 		execute: async (input: unknown) => {

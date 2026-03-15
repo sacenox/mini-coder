@@ -2,6 +2,8 @@
 
 mini-coder supports both its native `.agents` convention and `.claude` layouts for commands, skills, and agents.
 
+Only commands, skills, agents, and context files are loaded from these roots. Hook directories are ignored.
+
 ## Supported config roots
 
 | Root | Purpose |

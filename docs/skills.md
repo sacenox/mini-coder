@@ -2,6 +2,8 @@
 
 Skills are reusable instruction files discovered automatically from local and global directories.
 
+When a skill tells mini-coder how to work with files, prefer shell for inspection/search/verification and `mc-edit` from shell for targeted edits.
+
 - The model sees **skill metadata only** by default (name, description, source).
 - Full `SKILL.md` content is loaded **on demand**:
 	- when explicitly requested with the runtime skill tools (`listSkills` / `readSkill`), or

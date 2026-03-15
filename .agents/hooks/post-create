@@ -1,2 +1,0 @@
-#!/bin/bash
-bun run lint --write "$FILEPATH" 2>/dev/null || true

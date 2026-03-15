@@ -3,6 +3,8 @@
 A custom agent is a reusable system prompt with an optional model override.
 You can activate one with `/agent <name>`, and non-`primary` agents are also exposed to the `subagent` tool.
 
+mini-coder is shell-first, so custom agents should assume repo inspection and verification happen through shell, with targeted edits done via `mc-edit` invoked from shell.
+
 ## Where to put them
 
 | Location | Scope |

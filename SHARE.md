@@ -14,7 +14,7 @@ mc
 - **Subagents** — spawns parallel agents for independent subtasks
 - **Built-in web search** — enable Exa-backed `webSearch`/`webContent` with `EXA_API_KEY`
 - **MCP support** — connect external tools and servers
-- **Hooks** — auto-run scripts after supported built-in tool calls via `.agents/hooks/`
+- **Shell-first editing** — inspect with shell, make targeted edits with `mc-edit`, verify with shell
 - **16 ANSI colors** — inherits your terminal theme, always
 
 No telemetry. No cloud accounts. No bloat.

@@ -14,13 +14,13 @@
 
 ---
 
-## LSP Diagnostics (not very important, with tool-hooks and strong linting, this is not as necessary, but we should implement asap)
+## LSP Diagnostics (not very important, with strong linting this is not as necessary, but we should implement asap)
 
 We should have a closed loop feedback for LSP diagnostics on edits/reads.
 
 This could potentially be a very big slowdown, waiting for updated diagnostics every edit. This also has bias downsides, stale diagnostics confuse the LLM, and can cause negative distractions.
 
-We need to do research first, but maybe we can leverage the hooks feature to achieve a similar result without the performance penalties? Needs brainstorming
+We need to do research first and find an approach that fits the current shell-first architecture without the performance penalties. Needs brainstorming
 
 ---
 

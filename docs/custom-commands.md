@@ -2,6 +2,8 @@
 
 Custom commands let you define reusable prompts that run as `/command` in the mini-coder REPL.
 
+mini-coder is shell-first: when a command needs repo inspection or verification, tell it to use shell. When it needs a targeted file edit, tell it to invoke `mc-edit` from shell rather than relying on old local file-edit tools.
+
 ## Where to put them
 
 | Location | Scope |

@@ -45,6 +45,12 @@ describe("buildToolCallLine", () => {
 		expect(line).toContain("$");
 		expect(line).toContain("shell");
 	});
+
+	test("formats readSkill calls with the requested skill name", () => {
+		const line = buildToolCallLine("readSkill", { name: "deploy" });
+		expect(line).toContain("read skill");
+		expect(line).toContain("deploy");
+	});
 });
 
 describe("renderToolResult", () => {
@@ -68,5 +74,24 @@ describe("renderToolResult", () => {
 		expect(plain).toContain("error exit 1 · stdout 0L · stderr 1L · streamed");
 		expect(plain).not.toContain("stderr (1 lines)");
 		expect(plain).not.toContain("│ boom");
+	});
+
+	test("renders compact listSkills previews", () => {
+		captureStdout();
+
+		renderToolResult(
+			"listSkills",
+			{
+				skills: [
+					{ name: "deploy", description: "Deploy safely", source: "local" },
+					{ name: "release", description: "Ship releases", source: "global" },
+				],
+			},
+			false,
+		);
+
+		const plain = stripAnsi(stdout);
+		expect(plain).toContain("deploy  ·  local  ·  Deploy safely");
+		expect(plain).toContain("release  ·  global  ·  Ship releases");
 	});
 });

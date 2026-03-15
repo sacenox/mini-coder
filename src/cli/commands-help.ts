@@ -13,7 +13,7 @@ export function renderHelpCommand(
 
 	const cmds: [string, string][] = [
 		["/model [id]", "list or switch models (fetches live list)"],
-		["/undo", "remove the last conversation turn"],
+		["/undo", "remove the last conversation turn (no filesystem revert)"],
 		["/reasoning [on|off]", "toggle display of model reasoning output"],
 		["/context [prune|cap]", "configure context pruning and tool-result caps"],
 		[

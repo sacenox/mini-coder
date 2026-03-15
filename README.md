@@ -35,6 +35,8 @@ My toolkit is lean on purpose — every tool earns its spot, no passengers:
 | 🌐 `webSearch`  | Search the web when `EXA_API_KEY` is set                                   |
 | 📄 `webContent` | Fetch full page content from URLs when `EXA_API_KEY` is set                |
 
+mini-coder is intentionally **shell-first**: inspect with shell, edit with `mc-edit`, verify with shell.
+
 Need more firepower? I also connect to **MCP servers** over HTTP or stdio — attached MCP tools show up dynamically whenever the job calls for them.
 
 ---

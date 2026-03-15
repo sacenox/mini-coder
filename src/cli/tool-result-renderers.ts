@@ -114,6 +114,38 @@ function renderSubagentResult(result: unknown): boolean {
 	return true;
 }
 
+function renderListSkillsResult(result: unknown): boolean {
+	const r = result as {
+		skills?: Array<{
+			name?: string;
+			description?: string;
+			source?: "local" | "global";
+		}>;
+	};
+	if (!Array.isArray(r?.skills)) return false;
+	if (r.skills.length === 0) {
+		writeln(`    ${G.info} ${c.dim("no skills")}`);
+		return true;
+	}
+
+	for (const skill of r.skills.slice(0, 6)) {
+		const name = skill.name ?? "(unknown)";
+		const source = skill.source ?? "unknown";
+		const description = skill.description?.trim();
+		const descPart = description
+			? `  ${c.dim("·")}  ${c.dim(description.length > 60 ? `${description.slice(0, 57)}…` : description)}`
+			: "";
+		writeln(
+			`    ${G.info} ${name}  ${c.dim("·")}  ${c.dim(source)}${descPart}`,
+		);
+	}
+
+	if (r.skills.length > 6) {
+		writeln(`    ${c.dim(`+${r.skills.length - 6} more skills`)}`);
+	}
+	return true;
+}
+
 function renderReadSkillResult(result: unknown): boolean {
 	const r = result as {
 		skill?: {
@@ -215,6 +247,7 @@ function renderMcpResult(result: unknown): boolean {
 const TOOL_RESULT_RENDERERS: Readonly<Record<string, ToolResultRenderer>> = {
 	shell: renderShellResult,
 	subagent: renderSubagentResult,
+	listSkills: renderListSkillsResult,
 	readSkill: renderReadSkillResult,
 	webSearch: renderWebSearchResult,
 	webContent: renderWebContentResult,

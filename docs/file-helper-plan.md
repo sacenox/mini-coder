@@ -2,20 +2,19 @@
 
 ## Status at a glance
 
-This refactor is mostly done.
+This refactor is complete on this branch.
 
-The branch has already moved mini-coder toward the intended shell-first model:
+mini-coder now follows the intended shell-first model:
 
 - `mc-edit` exists as a dedicated helper binary
-- shared file-edit logic was extracted under `src/internal/file-edit/`
-- shell now exposes `mc-edit` as the preferred targeted edit path
-- the system prompt and tool surface were simplified around shell usage
-- model-facing local file tools have been removed or are in the process of being fully deleted from the old path
-- hook support has been removed as part of the same cleanup
+- shared file-edit logic lives under `src/internal/file-edit/`
+- shell exposes `mc-edit` as the targeted edit path
+- the system prompt and tool surface are simplified around shell usage
+- old model-facing local file tools are removed
+- hook support is removed
+- `/undo` is conversation-turn undo only
 
-The undo cleanup has now landed too.
-
-`/undo` is now a conversation-turn undo only. It no longer tries to restore filesystem state, which keeps the architecture honest with the real shell + `mc-edit` edit path.
+`/undo` no longer tries to restore filesystem state, which keeps the architecture honest with the real shell + `mc-edit` edit path.
 
 ---
 
@@ -32,8 +31,8 @@ Problems with the old approach:
 - failures regularly degraded into reread-and-repair loops
 - when that happened, shell was already the practical fallback
 
-The point of this refactor is **not** to improve that protocol.
-The point is to replace it with a simpler contract that matches how models already work best:
+The point of this refactor was **not** to improve that protocol.
+The point was to replace it with a simpler contract that matches how models already work best:
 
 - inspect with shell
 - edit with a narrow helper
@@ -47,7 +46,7 @@ That is why `mc-edit` exists.
 
 ### Final model-facing tool surface
 
-The intended steady state is:
+The steady state is:
 
 - connected **MCP tools**
 - **`shell`**
@@ -81,7 +80,7 @@ The intended workflow is:
 
 ---
 
-## What has landed on this branch
+## What landed on this branch
 
 ### 1. Shared file-edit internals were extracted
 
@@ -114,7 +113,7 @@ Implemented by removing the hashline edit flow built around `replace` and `inser
 
 ### 5. The local tool surface was reduced
 
-The branch now targets a much smaller local runtime surface centered on:
+The local runtime surface is now centered on:
 
 - `shell`
 - `subagent`
@@ -122,15 +121,13 @@ The branch now targets a much smaller local runtime surface centered on:
 - `readSkill`
 - optional Exa tools
 
-That is the right direction and should remain the end state.
-
 ### 6. Hook support was removed instead of redesigned
 
-This cleanup is part of the refactor because hooks were tied to the old, heavier local tool story and were not worth carrying forward in the middle of this architecture change.
+This cleanup was part of the refactor because hooks were tied to the old, heavier local tool story and were not worth carrying forward in the middle of this architecture change.
 
-### 7. CLI and docs cleanup has started
+### 7. CLI and docs cleanup was completed
 
-Prompt text, tool rendering, help text, and docs have already been pushed toward the shell-first model, but this part still needs a final consistency pass now that undo is settled.
+Prompt text, tool rendering, help text, and docs now consistently reflect the shell-first model and the conversation-only `/undo` behavior.
 
 ---
 
@@ -138,7 +135,7 @@ Prompt text, tool rendering, help text, and docs have already been pushed toward
 
 ### 1. Shell is the primary interface for repo work
 
-Shell should be the default for:
+Shell is the default for:
 
 - reading files
 - searching
@@ -186,13 +183,13 @@ Their names and descriptions should stay concise and easy to distinguish from sh
 
 ---
 
-## What is left to do
+## Completion status
 
 ### 1. Redesign `/undo`
 
 This work is done.
 
-### What changed
+#### What changed
 
 Undo no longer depends on the old snapshot path.
 The snapshot-specific pieces were removed, including:
@@ -204,7 +201,7 @@ The snapshot-specific pieces were removed, including:
 `/undo` now removes only the most recent conversation turn from session history.
 It does not try to infer or restore filesystem state from shell-driven edits.
 
-### Result
+#### Result
 
 - `/undo` doesn't manage filesystem changes
 - snapshotting is removed from runtime code and docs
@@ -213,32 +210,11 @@ It does not try to infer or restore filesystem state from shell-driven edits.
 
 ### 2. Finish the docs and help-text consistency pass
 
-This is partially done.
+This work is done.
 
-The repo is already telling the new story in several places, and the `/undo` wording has now been updated in the core help/manpage/README surfaces, but there is still not one fully consistent source of truth yet.
+README, config/docs pages, bundled commands/skills guidance, and `mini-coder-idea.md` consistently describe the shell-first model, name `mc-edit` as the targeted edit path, and keep `/undo` scoped to conversation history only.
 
-### Sweep targets
-
-- `mini-coder-idea.md` Note: keep it focused and in the existing idea style.
-- `README.md`
-- `docs/mini-coder.1.md`
-- `docs/configs.md`
-- `docs/custom-commands.md`
-- `docs/custom-agents.md`
-- `docs/skills.md`
-- `.agents/commands/*`
-- `.agents/agents/*`
-- `.agents/skills/*`
-
-### What to check
-
-- mini-coder is described as shell-first
-- `mc-edit` is clearly named as the targeted edit path
-- removed local file tools are not described as active runtime tools
-- removed hook support is not described anywhere
-- `/undo` wording matches the redesigned guarantee everywhere it is documented
-
-### Done when
+#### Done when
 
 - docs match implementation
 - examples reinforce shell + `mc-edit`
@@ -249,25 +225,11 @@ The repo is already telling the new story in several places, and the `/undo` wor
 
 ### 3. Final prompt, CLI, and rendering polish
 
-Most of this is already moving in the right direction, and the undo-specific wording cleanup is now done, but it still needs a final pass for overall consistency.
+This work is done.
 
-### Areas to review
+The system prompt names the final built-in tool surface explicitly, `/help` keeps `/undo` aligned with the conversation-only guarantee, MCP tool descriptions are tighter, and skill-tool call/result rendering is compact and readable.
 
-- `src/agent/system-prompt.ts`
-- `src/cli/tool-render.ts`
-- `src/cli/tool-result-renderers.ts`
-- `src/cli/commands-help.ts`
-- `src/mcp/client.ts`
-
-### What to improve
-
-- ensure the prompt matches the final tool surface exactly
-- keep shell guidance crisp and unambiguous
-- make MCP descriptions more context-efficient if needed
-- keep result previews compact and useful for shell and MCP output
-- remove any remaining wording tied to old snapshot behavior
-
-### Done when
+#### Done when
 
 - prompt text exactly matches runtime behavior
 - CLI output reflects only the remaining architecture
@@ -277,17 +239,11 @@ Most of this is already moving in the right direction, and the undo-specific wor
 
 ### 4. Verify the cleanup end-to-end
 
-Before this refactor is considered complete, we should do one final dead-code and behavior sweep.
+This work is done on this branch.
 
-### Check for
+The runtime tool set is reduced to the intended surface, the bundled hook example files were removed, and the full repo verification command passes.
 
-- no runtime registration of removed local file tools
-- no dead hashline or old edit-protocol code left behind
-- no hook runtime/UI/doc code left behind
-- tests aligned with the new tool surface
-- shell + `mc-edit` workflow working in practice
-
-### Repo verification command
+#### Repo verification command
 
 Run:
 
@@ -295,7 +251,7 @@ Run:
 bun run jscpd && bun run knip && bun run typecheck && bun run format && bun run lint && bun run test
 ```
 
-Status on this branch: this command passes after the undo cleanup.
+Status on this branch: this command passes after the full shell-first cleanup.
 
 ---
 
@@ -306,7 +262,7 @@ This refactor is complete when all of the following are true:
 - the model-visible tool surface is shell, subagent, listSkills, readSkill, connected MCP tools, and optional Exa tools
 - `mc-edit` is the clear targeted edit path
 - the old hashline edit path is fully gone
-- hooks are fully gone from runtime, UI, and docs
+- hooks are fully gone from runtime, UI, and docs/examples
 - `/undo` is aligned with the shell-first architecture by only undoing conversation history
 - prompt, CLI, and docs all describe the same architecture
 - bundled commands/skills/examples reinforce the shell-first workflow
@@ -327,12 +283,13 @@ This effort is not trying to:
 
 ## Practical conclusion
 
-Compared to `main`, the branch has already done the hard architectural shift: `mc-edit` exists, shell is the primary path, and the old local edit model has been largely dismantled.
+Compared to `main`, this branch completed the hard architectural shift: `mc-edit` exists, shell is the primary path, the old local edit model is gone, hooks are gone, and `/undo` is aligned with conversation history rather than filesystem restoration.
 
-What remains is mostly about making the new architecture complete and honest:
+At this point, the refactor is complete in the intended sense:
 
-- finish the remaining docs/help/prompt consistency pass
-- do one final MCP/CLI polish sweep
-- verify no stale code or messaging remains
+- the model-visible tool surface is small and shell-first
+- `mc-edit` is the clear targeted edit path
+- prompt, CLI, docs, and bundled examples describe the same architecture
+- verification passes on the branch
 
-That is the real endgame for this refactor.
+Future work can build on this baseline, but the file-helper refactor itself has reached its intended end state.

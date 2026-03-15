@@ -5,6 +5,8 @@ import { renderToolResultByName } from "./tool-result-renderers.ts";
 function toolGlyph(name: string): string {
 	if (name === "shell") return G.run;
 	if (name === "subagent") return G.agent;
+	if (name === "readSkill") return G.read;
+	if (name === "listSkills") return G.search;
 	if (name.startsWith("mcp_")) return G.mcp;
 	return G.info;
 }
@@ -27,6 +29,15 @@ export function buildToolCallLine(name: string, args: unknown): string {
 		if (!cmd) return `${G.run} ${c.dim("shell")}`;
 		const shortCmd = cmd.length > 72 ? `${cmd.slice(0, 69)}…` : cmd;
 		return `${G.run} ${shortCmd}`;
+	}
+
+	if (name === "listSkills") {
+		return `${G.search} ${c.dim("list skills")}`;
+	}
+
+	if (name === "readSkill") {
+		const skillName = typeof a.name === "string" ? a.name : "";
+		return `${G.read} ${c.dim("read skill")}${skillName ? ` ${skillName}` : ""}`;
 	}
 
 	if (name.startsWith("mcp_")) {

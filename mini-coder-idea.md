@@ -32,14 +32,14 @@ conventions and not introduce more specs. (`.agents` / `AGENTS.md`, while also s
 - Elegantly handles hitting max context size for the model. Also handles max tool calls, gracefully finishing the turn with an update from the agent
 - Support prompt caching via the used sdks.
 - Feature parity with community configs like custom agents, skill and commands.
-- `read`, `replace`,`insert`, `create`, `shell`, and `subagent` tools for LLMs. It's imperitive that these are easy to use and actually reduce the friction during these tasks for the LLMs
-- read/write tools are streamlined, easy to use and rely on hashline editting pattern.
+- Shell-first tool surface for LLMs: `shell`, `subagent`, `listSkills`, and `readSkill`, plus connected MCP tools. Keep the core surface small and easy to use so it actually reduces friction for the LLMs.
+- File work should follow a simple flow: inspect with shell, mutate with `mc-edit`, verify with shell.
+- `mc-edit` should stay narrow and reliable: exact-text edits only, deterministic failures on stale or ambiguous state, machine-friendly output.
 - Optional `webSearch` and `webContent` tools when `EXA_API_KEY` is set.
 - `subagent` tool spawns a fresh `mc` subprocess in one shot mode.
-- tool hooks support for supported built-in tools
 - Commands in CLI prompt:
   - `/model` (alias `/models`) command allows the user to pick a model from connected providers. As well as thinking effort for the model if supported. Selection persists accross sessions.
-  - `/undo` removes the last turn from conversation history.
+  - `/undo` removes the last turn from conversation history, it does not restore filesystem state.
   - `/reasoning` toggles display of model reasoning output.
   - `/context` configures context pruning and tool-result caps.
   - `/cache` toggles prompt caching globally; sub-commands configure provider-specific caching (`/cache openai <in_memory|24h>`, `/cache gemini <off|cachedContents/...>`).
@@ -57,9 +57,9 @@ conventions and not introduce more specs. (`.agents` / `AGENTS.md`, while also s
 - Use pi and claude code as visual inspirations.
 - Banner at app start, show found configs and context files
 - history log (like a terminal output scrolls away, pushing the input prompt down)
-  - Read tool show the tool call with args fomatted for output
-  - Edit tools show the diff applied
-  - Shell tools show the command called and their output
+  - Skill tools show compact metadata-oriented output
+  - Shell tool shows the command called and its output
+  - MCP tools stay clearly distinguishable from shell work
 - status bar like prompt, with current model/provider/session/git branch/active agent/thinking effort/context usage/token input/token output
 - some prompt colored animation when a turn is processing. Needs to be carefully done, so it shows correctly in wait times and with clear labels
 
@@ -80,6 +80,6 @@ Core modules:
 - `llm-api`: Provides the api to intereact with the provider and process the full conversation turn + tool calling.
 - `cli`: Output/UI, with logical separated subfolder: user input/output and ui/etc..
 - `agent`: Main agent implementation
-- `tools`: local filesystem, shell, subagent, and web/search helpers
+- `tools`: shell, subagent, skill, and web/search helpers
 - `session`: sqlite-backed sessions, settings, model info, and MCP server storage
 - `mcp`: handles connecting to mcp servers

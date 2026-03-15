@@ -86,7 +86,7 @@ export function buildSystemPrompt(
 	const localContext = loadLocalContextFile(cwd);
 	const cwdDisplay = tildePath(cwd);
 	let prompt = `You are mini-coder, a small and fast CLI coding agent.
-You have access to shell commands, skill-loading tools, subagents, connected MCP tools, and optional web tools.
+You have access to shell, subagent, listSkills, readSkill, connected MCP tools, and optional web tools.
 
 Current working directory: ${cwdDisplay}
 Current date/time: ${sessionTimeAnchor}
