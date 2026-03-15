@@ -109,6 +109,10 @@ The agent has access to the following tools:
 *   **webContent**: Fetch full page content from a URL (requires EXA key).
 *   **MCP tools**: Connected external tools attached dynamically from configured MCP servers.
 
+## FILE EDIT HELPER
+**mc-edit**
+:   Helper command used from shell for one exact-text edit on an existing file. On success it prints a human-readable colored unified diff to stdout followed by a short metadata block (`ok`, `path`, `changed`). If the edit is a no-op, it prints `(no changes)` plus the same metadata. Errors are written to stderr.
+
 ## ENVIRONMENT
 **OPENCODE_API_KEY**
 :   OpenCode Zen API key (Recommended provider).

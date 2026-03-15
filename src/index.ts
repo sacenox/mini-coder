@@ -21,6 +21,7 @@ import {
 	writeln,
 } from "./cli/output.ts";
 import { resolvePromptInput } from "./cli/stdin-prompt.ts";
+import { writeJsonLine } from "./cli/structured-output.ts";
 import { terminal } from "./cli/terminal-io.ts";
 import { initApiLog } from "./llm-api/api-log.ts";
 import {
@@ -146,13 +147,20 @@ async function main(): Promise<void> {
 			};
 
 			if (args.outputFd !== null && summary) {
-				const json = `${JSON.stringify(summary)}\n`;
-				writeSync(args.outputFd, Buffer.from(json));
+				const outputFd = args.outputFd;
+				writeJsonLine((text) => {
+					writeSync(outputFd, Buffer.from(text));
+				}, summary);
 			}
 		} catch (err) {
 			if (args.outputFd !== null) {
-				const json = `${JSON.stringify({ error: String(err) })}\n`;
-				writeSync(args.outputFd, Buffer.from(json));
+				const outputFd = args.outputFd;
+				writeJsonLine(
+					(text) => {
+						writeSync(outputFd, Buffer.from(text));
+					},
+					{ error: String(err) },
+				);
 			}
 			process.exit(1);
 		}

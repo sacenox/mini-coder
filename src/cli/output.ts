@@ -76,9 +76,6 @@ export const G = {
 	err: c.red("✖"),
 	warn: c.yellow("!"),
 	info: c.dim("·"),
-	diff_add: c.green("+"),
-	diff_del: c.red("-"),
-	diff_hdr: c.cyan("@"),
 };
 
 export const PREFIX = {

@@ -59,7 +59,12 @@ describe("applyExactTextEdit", () => {
 			newText: "B\n",
 		});
 
-		expect(result).toEqual({ path: "f.txt", changed: true });
+		expect(result).toEqual({
+			path: "f.txt",
+			changed: true,
+			before: "a\nb\nc\n",
+			after: "a\nB\nc\n",
+		});
 		expect(await Bun.file(join(cwd, "f.txt")).text()).toBe("a\nB\nc\n");
 	});
 
@@ -73,7 +78,12 @@ describe("applyExactTextEdit", () => {
 			newText: "same\n",
 		});
 
-		expect(result).toEqual({ path: "f.txt", changed: false });
+		expect(result).toEqual({
+			path: "f.txt",
+			changed: false,
+			before: "same\n",
+			after: "same\n",
+		});
 		expect(await Bun.file(join(cwd, "f.txt")).text()).toBe("same\n");
 	});
 

@@ -28,9 +28,11 @@ interface ApplyExactTextEditInput {
 	newText: string;
 }
 
-interface ApplyExactTextEditResult {
+export interface ApplyExactTextEditResult {
 	path: string;
 	changed: boolean;
+	before: string;
+	after: string;
 }
 
 function findExactMatchOffsets(source: string, target: string): number[] {
@@ -101,5 +103,7 @@ export async function applyExactTextEdit(
 	return {
 		path: relPath,
 		changed: plan.changed,
+		before: original,
+		after: plan.updated,
 	};
 }

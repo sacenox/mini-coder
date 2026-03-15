@@ -1,8 +1,9 @@
 import {
-	applyExactTextEdit,
-	FileEditError,
-	type FileEditErrorCode,
-} from "./exact-text.ts";
+	type FileEditCliFailure,
+	type StructuredOutputWriter,
+	writeFileEditResult,
+} from "../../cli/structured-output.ts";
+import { applyExactTextEdit, FileEditError } from "./exact-text.ts";
 
 interface FileEditCliArgs {
 	cwd: string;
@@ -11,30 +12,12 @@ interface FileEditCliArgs {
 	newText: string;
 }
 
-interface FileEditCliIo {
-	stdout: (text: string) => void;
-	stderr: (text: string) => void;
-}
-
-type FileEditCliSuccess = {
-	ok: true;
-	path: string;
-	changed: boolean;
-};
-
-type FileEditCliFailure = {
-	ok: false;
-	code: FileEditErrorCode | "invalid_args";
-	message: string;
-	path?: string;
-};
-
 const HELP = `Usage: mc-edit <path> (--old <text> | --old-file <path>) [--new <text> | --new-file <path>] [--cwd <path>]
 
 Apply one safe exact-text edit to an existing file.
 - The expected old text must match exactly once.
 - Omit --new / --new-file to delete the matched text.
-- Output is a single JSON object on stdout.`;
+- Success output is human-oriented: unified diff first, metadata second.`;
 
 async function readArgText(
 	flag: "--old-file" | "--new-file",
@@ -112,54 +95,50 @@ async function parseFileEditCliArgs(
 	};
 }
 
-function writeJson(
-	io: FileEditCliIo,
-	payload: FileEditCliSuccess | FileEditCliFailure,
-) {
-	io.stdout(`${JSON.stringify(payload)}\n`);
-}
-
-function normalizeCliError(error: unknown): FileEditCliFailure {
-	if (error instanceof FileEditError) {
-		return {
-			ok: false,
-			code: error.code,
-			message: error.message,
-		};
-	}
-	if (error instanceof Error) {
-		return {
-			ok: false,
-			code: "invalid_args",
-			message: error.message,
-		};
-	}
+function buildCliFailure(
+	code: FileEditCliFailure["code"],
+	message: string,
+	path?: string,
+): FileEditCliFailure {
 	return {
 		ok: false,
-		code: "invalid_args",
-		message: "Unknown error.",
+		code,
+		message,
+		...(path ? { path } : {}),
 	};
+}
+
+function normalizeCliError(error: unknown, path?: string): FileEditCliFailure {
+	if (error instanceof FileEditError) {
+		return buildCliFailure(error.code, error.message, path);
+	}
+	if (error instanceof Error) {
+		return buildCliFailure("invalid_args", error.message, path);
+	}
+	return buildCliFailure("invalid_args", "Unknown error.", path);
 }
 
 export async function runFileEditCli(
 	argv: string[],
-	io: FileEditCliIo = {
+	io: StructuredOutputWriter = {
 		stdout: (text) => process.stdout.write(text),
 		stderr: (text) => process.stderr.write(text),
 	},
 ): Promise<number> {
+	let parsed: FileEditCliArgs | null = null;
+
 	try {
-		const parsed = await parseFileEditCliArgs(argv);
+		parsed = await parseFileEditCliArgs(argv);
 		if (parsed === null) {
 			io.stderr(`${HELP}\n`);
 			return 0;
 		}
 
 		const result = await applyExactTextEdit(parsed);
-		writeJson(io, { ok: true, ...result });
+		writeFileEditResult(io, { ok: true, ...result });
 		return 0;
 	} catch (error) {
-		writeJson(io, normalizeCliError(error));
+		writeFileEditResult(io, normalizeCliError(error, parsed?.path));
 		return 1;
 	}
 }

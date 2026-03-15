@@ -34,7 +34,7 @@ conventions and not introduce more specs. (`.agents` / `AGENTS.md`, while also s
 - Feature parity with community configs like custom agents, skill and commands.
 - Shell-first tool surface for LLMs: `shell`, `subagent`, `listSkills`, and `readSkill`, plus connected MCP tools. Keep the core surface small and easy to use so it actually reduces friction for the LLMs.
 - File work should follow a simple flow: inspect with shell, mutate with `mc-edit`, verify with shell.
-- `mc-edit` should stay narrow and reliable: exact-text edits only, deterministic failures on stale or ambiguous state, machine-friendly output.
+- `mc-edit` should stay narrow and reliable: exact-text edits only, deterministic failures on stale or ambiguous state, diff and machine-friendly output while staying human readable.
 - Optional `webSearch` and `webContent` tools when `EXA_API_KEY` is set.
 - `subagent` tool spawns a fresh `mc` subprocess in one shot mode.
 - Commands in CLI prompt:
