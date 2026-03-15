@@ -1,3 +1,7 @@
+import {
+	createHighlighter,
+	type Highlighter,
+} from "yoctomarkdown/src/index.ts";
 import { G, write, writeln } from "./output.ts";
 import type { Spinner } from "./spinner.ts";
 
@@ -5,6 +9,7 @@ export class StreamRenderContent {
 	private inText = false;
 	private accumulatedText = "";
 	private accumulatedReasoning = "";
+	private highlighter: Highlighter | undefined;
 
 	constructor(private readonly spinner: Spinner) {}
 
@@ -31,10 +36,14 @@ export class StreamRenderContent {
 			if (renderedVisibleOutput) writeln();
 			write(`${G.reply} `);
 			this.inText = true;
+			this.highlighter = createHighlighter();
 		}
 		this.accumulatedText += text;
 		this.spinner.stop();
-		write(text);
+		if (this.highlighter) {
+			const colored = this.highlighter.write(text);
+			if (colored) write(colored);
+		}
 	}
 
 	appendReasoningDelta(delta: string | undefined): string {
@@ -54,6 +63,10 @@ export class StreamRenderContent {
 
 	flushOpenContent(): void {
 		if (!this.inText) return;
+		if (this.highlighter) {
+			const finalColored = this.highlighter.end();
+			if (finalColored) write(finalColored);
+		}
 		writeln();
 		this.inText = false;
 	}

@@ -252,7 +252,6 @@ describe("renderTurn", () => {
 		// Streaming now prioritizes immediate output stability over end-of-line markdown
 		// rewrite, so raw markdown markers are preserved in partial lines.
 		expect(simulateTerminal(stdout)).toBe("◆ **bold** 👩🏽‍💻\n");
-		expect(hasAnsi(stdout, "[1m")).toBe(false);
 	});
 
 	test("leaves fenced markdown plain across streamed lines", async () => {
@@ -268,8 +267,6 @@ describe("renderTurn", () => {
 		);
 
 		expect(strip(stdout)).toBe("◆ ```ts\nconst emoji = '👩🏽‍💻';\n```\n\n");
-		expect(hasAnsi(stdout, "[2m")).toBe(false);
-		expect(hasAnsi(stdout, "[33m")).toBe(false);
 	});
 	test("can hide reasoning output while still accumulating reasoning text", async () => {
 		captureStdout();
