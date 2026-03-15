@@ -92,20 +92,6 @@ const SCHEMA = `
     key                TEXT PRIMARY KEY,
     value              TEXT NOT NULL
   );
-
-
-
-  CREATE TABLE IF NOT EXISTS snapshots (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    session_id  TEXT    NOT NULL,
-    turn_index  INTEGER NOT NULL,
-    path        TEXT    NOT NULL,
-    content     BLOB,
-    existed     INTEGER NOT NULL
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_snapshots_turn
-    ON snapshots(session_id, turn_index);
 `;
 
 let _db: Database | null = null;
@@ -162,7 +148,7 @@ export function getDb(): Database {
 	return _db;
 }
 
-/** Keep only this many most-recent sessions (messages/snapshots cascade). */
+/** Keep only this many most-recent sessions. */
 const MAX_SESSIONS = 100;
 /** Keep only this many most-recent prompt_history entries. */
 const MAX_PROMPT_HISTORY = 500;

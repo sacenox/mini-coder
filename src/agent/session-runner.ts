@@ -6,11 +6,7 @@ import { resolveModel } from "../llm-api/providers.ts";
 import type { ContextPruningMode, CoreMessage } from "../llm-api/turn.ts";
 import { runTurn } from "../llm-api/turn.ts";
 import type { ToolDef } from "../llm-api/types.ts";
-import {
-	deleteAllSnapshots,
-	getMaxTurnIndex,
-	saveMessages,
-} from "../session/db/index.ts";
+import { getMaxTurnIndex, saveMessages } from "../session/db/index.ts";
 import type { ActiveSession } from "../session/manager.ts";
 import {
 	newSession,
@@ -24,7 +20,7 @@ import {
 } from "./agent-helpers.ts";
 import type { AgentReporter } from "./reporter.ts";
 import { buildSystemPrompt } from "./system-prompt.ts";
-import { undoLastTurn } from "./undo-snapshot.ts";
+import { undoLastTurn } from "./undo-turn.ts";
 
 interface SessionRunnerOptions {
 	cwd: string;
@@ -75,7 +71,6 @@ export class SessionRunner {
 	private sessionTimeAnchor!: string;
 	private coreHistory!: CoreMessage[];
 	private turnIndex = 1;
-	private snapshotStack: Array<number | null> = [];
 	private totalIn = 0;
 	private totalOut = 0;
 	private lastContextTokens = 0;
@@ -133,7 +128,6 @@ export class SessionRunner {
 			}
 			this.session = resumed;
 			this.currentModel = this.session.model;
-			deleteAllSnapshots(this.session.id);
 			this.reporter.info(
 				`Resumed session ${this.session.id} (${c.cyan(this.currentModel)})`,
 			);
@@ -147,7 +141,6 @@ export class SessionRunner {
 	}
 
 	public startNewSession() {
-		deleteAllSnapshots(this.session.id);
 		this.session = newSession(this.currentModel, this.cwd);
 		this.coreHistory.length = 0;
 		this.turnIndex = 1;
@@ -156,7 +149,6 @@ export class SessionRunner {
 		this.lastContextTokens = 0;
 		this.sessionTimeAnchor = new Date(this.session.createdAt).toISOString();
 		this.rebuildSystemPrompt();
-		this.snapshotStack.length = 0;
 	}
 
 	public addShellContext(command: string, output: string): void {
@@ -168,20 +160,15 @@ export class SessionRunner {
 		this.session.messages.push(msg);
 		saveMessages(this.session.id, [msg], thisTurn);
 		this.coreHistory.push(msg);
-		this.snapshotStack.push(null);
 	}
 
 	public async undoLastTurn(): Promise<boolean> {
 		return undoLastTurn({
 			session: this.session,
 			coreHistory: this.coreHistory,
-			snapshotStack: this.snapshotStack,
-			getTurnIndex: () => this.turnIndex,
 			setTurnIndex: (idx) => {
 				this.turnIndex = idx;
 			},
-			cwd: this.cwd,
-			reporter: this.reporter,
 		});
 	}
 
@@ -228,7 +215,6 @@ export class SessionRunner {
 		let lastAssistantText = "";
 
 		try {
-			this.snapshotStack.push(thisTurn);
 			this.reporter.startSpinner("thinking");
 			const events = runTurn({
 				model: llm,

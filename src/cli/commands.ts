@@ -31,11 +31,11 @@ type CommandResult =
 // ─── Command handlers ─────────────────────────────────────────────────────────
 
 async function handleUndo(ctx: CommandContext): Promise<void> {
-	ctx.startSpinner("undoing last turn");
+	ctx.startSpinner("removing last turn");
 	try {
 		const ok = await ctx.undoLastTurn();
 		if (ok) {
-			writeln(`${PREFIX.success} ${c.dim("last turn undone")}`);
+			writeln(`${PREFIX.success} ${c.dim("last conversation turn removed")}`);
 		} else {
 			writeln(`${PREFIX.info} ${c.dim("nothing to undo")}`);
 		}

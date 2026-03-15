@@ -62,7 +62,7 @@ Inside the interactive session, the following slash commands are available:
 :   Attach Google Gemini cached content.
 
 **/undo**
-:   Revert the last turn.
+:   Remove the last conversation turn. This does not revert filesystem changes.
 
 **/new**
 :   Clear context and start a fresh session.
@@ -130,7 +130,7 @@ The agent has access to the following tools:
 
 ## FILES & DIRECTORIES
 **~/.config/mini-coder/**
-:   Application data directory. Contains `sessions.db` (SQLite database for session history, `/undo` data, MCP server configs, and model metadata), `api.log`, and `errors.log`.
+:   Application data directory. Contains `sessions.db` (SQLite database for session history, MCP server configs, and model metadata), `api.log`, and `errors.log`.
 
 **.agents/ or .claude/ (Local or Global in ~/)**
 :   Configuration directories for advanced features:
@@ -147,6 +147,6 @@ The agent has access to the following tools:
 *   **Subagent Delegation**: Includes a tool to spawn parallel instances of itself to tackle independent subtasks simultaneously (up to 10 levels deep).
 *   **Model Context Protocol (MCP)**: Native support for connecting external tools via MCP servers over HTTP or stdio.
 *   **Prompt Caching**: Configurable caching behaviors for supported providers (OpenAI, Gemini).
-*   **Undo Functionality**: Roll back the last conversation turn and restore tracked local state.
+*   **Undo Functionality**: Remove the last conversation turn from the current session history. It does not restore filesystem changes.
 
 

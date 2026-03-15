@@ -88,7 +88,7 @@ Inside `mc`, the user can run slash commands such as:
 - `/context prune <off|balanced|aggressive>` — set pruning strategy
 - `/context cap <off|bytes|kb>` — cap tool payload size
 - `/cache <on|off>` — toggle prompt caching
-- `/undo` — revert the last turn
+- `/undo` — remove the last conversation turn (does not revert filesystem changes)
 - `/new` — start a fresh session
 - `/mcp list` — list configured MCP servers
 - `/mcp add <name> http <url>` — add an HTTP MCP server
@@ -141,7 +141,7 @@ mini-coder stores app data in:
 ~/.config/mini-coder/
 ```
 
-This includes session history and related local state.
+This includes session history, MCP server config, and related local metadata.
 
 ## How to help users effectively
 

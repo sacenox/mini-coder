@@ -13,9 +13,9 @@ The branch has already moved mini-coder toward the intended shell-first model:
 - model-facing local file tools have been removed or are in the process of being fully deleted from the old path
 - hook support has been removed as part of the same cleanup
 
-The main work still left is **undo**.
+The undo cleanup has now landed too.
 
-`/undo` is still implemented around the old tool-managed snapshot model, while real edits now happen through shell commands that invoke `mc-edit`. Until that is redesigned, the architecture is not fully aligned.
+`/undo` is now a conversation-turn undo only. It no longer tries to restore filesystem state, which keeps the architecture honest with the real shell + `mc-edit` edit path.
 
 ---
 
@@ -130,7 +130,7 @@ This cleanup is part of the refactor because hooks were tied to the old, heavier
 
 ### 7. CLI and docs cleanup has started
 
-Prompt text, tool rendering, help text, and docs have already been pushed toward the shell-first model, but this part still needs a final consistency pass after undo is redesigned.
+Prompt text, tool rendering, help text, and docs have already been pushed toward the shell-first model, but this part still needs a final consistency pass now that undo is settled.
 
 ---
 
@@ -172,12 +172,12 @@ The correct choice here is deletion, not redesign.
 
 If hooks ever come back, that should happen as a separate effort with a clear use case.
 
-### 6. `/undo` must follow the real edit path
+### 6. `/undo` should stay aligned with the real edit path
 
 The old snapshot model was built around tool-managed writes.
 That no longer matches reality.
 
-If `/undo` is kept, it should primarily guarantee restoration for edits that went through `mc-edit`, not arbitrary raw shell file operations.
+The correct result for this refactor is to keep `/undo` as conversation history undo only, not a filesystem restoration feature for shell-driven edits.
 
 ### 7. MCP descriptions matter more now
 
@@ -188,36 +188,34 @@ Their names and descriptions should stay concise and easy to distinguish from sh
 
 ## What is left to do
 
-### 1. Redesign `/undo` around `mc-edit`
+### 1. Redesign `/undo`
 
-This is the main unfinished work.
+This work is done.
 
-### Current state
+### What changed
 
-Undo still depends on the old snapshot path:
+Undo no longer depends on the old snapshot path.
+The snapshot-specific pieces were removed, including:
 
 - `src/tools/snapshot.ts`
 - `src/agent/undo-snapshot.ts`
-- `src/agent/session-runner.ts`
 - `src/session/db/snapshot-repo.ts`
 
-That design assumes the agent knows when file writes happen through local tools.
-But the new edit path is shell-driven, so that assumption is no longer valid.
+`/undo` now removes only the most recent conversation turn from session history.
+It does not try to infer or restore filesystem state from shell-driven edits.
 
-### Recommended decision
+### Result
 
-Keep `/undo` and a conversation turn undo only. Remove snapshotting and file changes tracking. Reflect this in the repor documentation as well.
-
-### Done when
-
-- /undo doesn't manage filesystem changes
-- snapshotting is completly removed
+- `/undo` doesn't manage filesystem changes
+- snapshotting is removed from runtime code and docs
 
 ---
 
 ### 2. Finish the docs and help-text consistency pass
 
-The repo is already telling the new story in several places, but not yet from one consistent source of truth.
+This is partially done.
+
+The repo is already telling the new story in several places, and the `/undo` wording has now been updated in the core help/manpage/README surfaces, but there is still not one fully consistent source of truth yet.
 
 ### Sweep targets
 
@@ -238,19 +236,20 @@ The repo is already telling the new story in several places, but not yet from on
 - `mc-edit` is clearly named as the targeted edit path
 - removed local file tools are not described as active runtime tools
 - removed hook support is not described anywhere
-- `/undo` wording matches the redesigned guarantee once that work lands
+- `/undo` wording matches the redesigned guarantee everywhere it is documented
 
 ### Done when
 
 - docs match implementation
 - examples reinforce shell + `mc-edit`
 - there are no stale references to removed tools or hooks
+- `/undo` is consistently described as conversation-history undo only
 
 ---
 
 ### 3. Final prompt, CLI, and rendering polish
 
-Most of this is already moving in the right direction, but it still needs a final pass once undo is settled.
+Most of this is already moving in the right direction, and the undo-specific wording cleanup is now done, but it still needs a final pass for overall consistency.
 
 ### Areas to review
 
@@ -296,6 +295,8 @@ Run:
 bun run jscpd && bun run knip && bun run typecheck && bun run format && bun run lint && bun run test
 ```
 
+Status on this branch: this command passes after the undo cleanup.
+
 ---
 
 ## Completion checklist
@@ -306,7 +307,7 @@ This refactor is complete when all of the following are true:
 - `mc-edit` is the clear targeted edit path
 - the old hashline edit path is fully gone
 - hooks are fully gone from runtime, UI, and docs
-- `/undo` is aligned with shell + `mc-edit`
+- `/undo` is aligned with the shell-first architecture by only undoing conversation history
 - prompt, CLI, and docs all describe the same architecture
 - bundled commands/skills/examples reinforce the shell-first workflow
 
@@ -330,8 +331,7 @@ Compared to `main`, the branch has already done the hard architectural shift: `m
 
 What remains is mostly about making the new architecture complete and honest:
 
-- finish `/undo`
-- finish the docs/help/prompt consistency pass
+- finish the remaining docs/help/prompt consistency pass
 - do one final MCP/CLI polish sweep
 - verify no stale code or messaging remains
 

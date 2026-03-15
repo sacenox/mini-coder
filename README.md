@@ -45,7 +45,7 @@ Need more firepower? I also connect to **MCP servers** over HTTP or stdio — at
 - **Built-in web search** — set `EXA_API_KEY` and I expose `webSearch` + `webContent` tools.
 - **Session memory** — conversations are saved in a local SQLite database. Resume where you left off with `-c` or pick a specific session with `-r <id>`.
 - **Shell integration** — prefix with `!` to run shell commands inline. Use `@` to reference files in your prompt (with Tab completion).
-- **Slash commands** — `/model` or `/models` to list/switch models, `/model effort <low|medium|high|xhigh|off>` for reasoning effort, `/reasoning [on|off]` to toggle reasoning display, `/context` to inspect or tune pruning/tool-result caps, `/cache` to configure prompt caching, `/review` for a code review (global custom command, auto-created at `~/.agents/commands/review.md`), `/agent [name]` to set or clear an active primary agent, `/undo` to roll back a turn, `/new` for a clean session, `/mcp list|add|remove` to manage MCP servers, and `/exit` (`/quit`, `/q`) to leave. See all with `/help`.
+- **Slash commands** — `/model` or `/models` to list/switch models, `/model effort <low|medium|high|xhigh|off>` for reasoning effort, `/reasoning [on|off]` to toggle reasoning display, `/context` to inspect or tune pruning/tool-result caps, `/cache` to configure prompt caching, `/review` for a code review (global custom command, auto-created at `~/.agents/commands/review.md`), `/agent [name]` to set or clear an active primary agent, `/undo` to remove the last conversation turn (it does not revert filesystem changes), `/new` for a clean session, `/mcp list|add|remove` to manage MCP servers, and `/exit` (`/quit`, `/q`) to leave. See all with `/help`.
 
 - **Custom commands** — drop a `.md` file in `.agents/commands/` and it becomes a `/command`. Claude-compatible `.claude/commands/` works too. Supports argument placeholders (`$ARGUMENTS`, `$1`…`$9`) and shell interpolation (`` !`cmd` ``). Global commands live in `~/.agents/commands/` and `~/.claude/commands/`. Custom commands take precedence over built-ins. → [docs/custom-commands.md](docs/custom-commands.md)
 - **Custom agents** — drop a `.md` file in `.agents/agents/` or `.claude/agents/` (or `~/.agents/agents/` / `~/.claude/agents/` globally) and activate it with `/agent [name]`. Agent definitions are also exposed to subagent delegation unless `mode: primary`. → [docs/custom-agents.md](docs/custom-agents.md)
@@ -136,7 +136,7 @@ mc -h                           # show help
 
 Everything I remember lives in `~/.config/mini-coder/` — here's what I'm holding onto:
 
-- `sessions.db` — your full session history, `/undo` data, MCP server config, and model metadata, all in one tidy SQLite file
+- `sessions.db` — your full session history, MCP server config, and model metadata, all in one tidy SQLite file
 - `api.log` — a request/response log for every provider call this run, if you want to peek under the hood
 - `errors.log` — anything that went sideways, caught and written down so you can actually debug it
 
@@ -160,7 +160,7 @@ src/
   cli/              # Input, output, slash commands, markdown rendering
   llm-api/          # Provider factory + streaming turn logic
   tools/            # shell, subagent, skill tools
-                    #   + webSearch, webContent, undo support
+                    #   + webSearch, webContent
   internal/         # shared internals, including the mc-edit helper implementation
   mcp/              # MCP server connections
   session/          # SQLite-backed session & history management
