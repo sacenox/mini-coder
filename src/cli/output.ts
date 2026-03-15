@@ -131,7 +131,7 @@ export function renderBanner(model: string, cwd: string): void {
 		? `mini-coder · v${PACKAGE_VERSION}`
 		: "mini-coder";
 	writeln(`  ${c.cyan("mc")}  ${c.dim(title)}`);
-	writeln(`  ${c.dim(model)}  ${c.dim("·")}  ${c.dim(cwd)}`);
+	writeln(`  ${c.dim(model)}  ${c.dim("·")}  ${c.dim(tildePath(cwd))}`);
 	writeln(
 		`  ${c.dim("/help for commands  ·  esc cancel  ·  ctrl+c/ctrl+d exit")}`,
 	);

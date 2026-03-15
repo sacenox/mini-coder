@@ -52,6 +52,41 @@ initModelInfoCache();
 pruneOldData();
 void refreshModelInfoInBackground().catch(() => {});
 
+type AgentInitOptions = Parameters<typeof initAgent>[0];
+
+function buildAgentOptions(opts: {
+	model: string;
+	cwd: string;
+	reporter: AgentInitOptions["reporter"];
+	sessionId?: string | undefined;
+	headless?: boolean;
+	agentSystemPrompt?: string | undefined;
+}): AgentInitOptions {
+	return {
+		model: opts.model,
+		cwd: opts.cwd,
+		initialThinkingEffort: getPreferredThinkingEffort(),
+		initialShowReasoning: getPreferredShowReasoning(),
+		initialPruningMode: getPreferredContextPruningMode(),
+		initialToolResultPayloadCapBytes: getPreferredToolResultPayloadCapBytes(),
+		initialPromptCachingEnabled: getPreferredPromptCachingEnabled(),
+		initialOpenAIPromptCacheRetention: getPreferredOpenAIPromptCacheRetention(),
+		initialGoogleCachedContent: getPreferredGoogleCachedContent(),
+		reporter: opts.reporter,
+		...(opts.sessionId ? { sessionId: opts.sessionId } : {}),
+		...(opts.headless ? { headless: true } : {}),
+		...(opts.agentSystemPrompt
+			? { agentSystemPrompt: opts.agentSystemPrompt }
+			: {}),
+	};
+}
+
+function writeStructuredResult(outputFd: number, payload: unknown): void {
+	writeJsonLine((text) => {
+		writeSync(outputFd, Buffer.from(text));
+	}, payload);
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
@@ -117,22 +152,15 @@ async function main(): Promise<void> {
 		}
 
 		try {
-			const { runner } = await initAgent({
-				model: modelOverride,
-				cwd: parentCwd,
-				initialThinkingEffort: getPreferredThinkingEffort(),
-				initialShowReasoning: getPreferredShowReasoning(),
-				initialPruningMode: getPreferredContextPruningMode(),
-				initialToolResultPayloadCapBytes:
-					getPreferredToolResultPayloadCapBytes(),
-				initialPromptCachingEnabled: getPreferredPromptCachingEnabled(),
-				initialOpenAIPromptCacheRetention:
-					getPreferredOpenAIPromptCacheRetention(),
-				initialGoogleCachedContent: getPreferredGoogleCachedContent(),
-				reporter: new HeadlessReporter(),
-				headless: true,
-				...(agentSystemPrompt ? { agentSystemPrompt } : {}),
-			});
+			const { runner } = await initAgent(
+				buildAgentOptions({
+					model: modelOverride,
+					cwd: parentCwd,
+					reporter: new HeadlessReporter(),
+					headless: true,
+					agentSystemPrompt,
+				}),
+			);
 
 			const { text: resolvedText, images: refImages } = await resolveFileRefs(
 				prompt ?? "",
@@ -146,21 +174,12 @@ async function main(): Promise<void> {
 				outputTokens: status.totalOut,
 			};
 
-			if (args.outputFd !== null && summary) {
-				const outputFd = args.outputFd;
-				writeJsonLine((text) => {
-					writeSync(outputFd, Buffer.from(text));
-				}, summary);
+			if (args.outputFd !== null) {
+				writeStructuredResult(args.outputFd, summary);
 			}
 		} catch (err) {
 			if (args.outputFd !== null) {
-				const outputFd = args.outputFd;
-				writeJsonLine(
-					(text) => {
-						writeSync(outputFd, Buffer.from(text));
-					},
-					{ error: String(err) },
-				);
+				writeStructuredResult(args.outputFd, { error: String(err) });
 			}
 			process.exit(1);
 		}
@@ -173,20 +192,12 @@ async function main(): Promise<void> {
 	}
 
 	try {
-		const agentOpts: Parameters<typeof initAgent>[0] = {
+		const agentOpts = buildAgentOptions({
 			model,
 			cwd: args.cwd,
-			initialThinkingEffort: getPreferredThinkingEffort(),
-			initialShowReasoning: getPreferredShowReasoning(),
-			initialPruningMode: getPreferredContextPruningMode(),
-			initialToolResultPayloadCapBytes: getPreferredToolResultPayloadCapBytes(),
-			initialPromptCachingEnabled: getPreferredPromptCachingEnabled(),
-			initialOpenAIPromptCacheRetention:
-				getPreferredOpenAIPromptCacheRetention(),
-			initialGoogleCachedContent: getPreferredGoogleCachedContent(),
 			reporter: new CliReporter(),
-		};
-		if (sessionId) agentOpts.sessionId = sessionId;
+			sessionId,
+		});
 
 		const { runner, cmdCtx } = await initAgent(agentOpts);
 

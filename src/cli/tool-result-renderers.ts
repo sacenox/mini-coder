@@ -2,7 +2,6 @@ import * as c from "yoctocolors";
 import { G, writeln } from "./output.ts";
 
 type ToolResultRenderer = (result: unknown, toolName?: string) => boolean;
-
 function writePreviewLines(opts: {
 	label: string;
 	value: string;
@@ -26,6 +25,72 @@ function truncateOneLine(value: string, max = 100): string {
 	return value.length > max ? `${value.slice(0, max - 1)}…` : value;
 }
 
+function normalizeShellText(value: string): string {
+	return value.replace(/[\r\n]+$/, "");
+}
+
+function countShellLines(value: string): number {
+	const normalized = normalizeShellText(value);
+	return normalized ? normalized.split(/\r?\n/).length : 0;
+}
+
+function getSingleShellLine(value: string): string | null {
+	const normalized = normalizeShellText(value);
+	if (!normalized) return null;
+	const lines = normalized.split(/\r?\n/);
+	return lines.length === 1 ? (lines[0] ?? "") : null;
+}
+
+function buildShellSummaryParts(opts: {
+	exitCode: number;
+	stdoutLines: number;
+	stderrLines: number;
+	stdoutSingleLine: string | null;
+	streamedOutput: boolean;
+}): string[] {
+	const parts = [`exit ${opts.exitCode}`];
+	if (opts.streamedOutput) {
+		if (opts.stdoutLines === 0 && opts.stderrLines === 0) {
+			parts.push("no output");
+		}
+		if (opts.stderrLines > 0) {
+			parts.push(`stderr ${opts.stderrLines}L`);
+		}
+		return parts;
+	}
+
+	if (
+		opts.stderrLines === 0 &&
+		opts.stdoutSingleLine !== null &&
+		opts.stdoutSingleLine.length > 0
+	) {
+		parts.push(`out: ${truncateOneLine(opts.stdoutSingleLine)}`);
+		return parts;
+	}
+
+	if (opts.stdoutLines > 0) {
+		parts.push(`stdout ${opts.stdoutLines}L`);
+	}
+	if (opts.stderrLines > 0) {
+		parts.push(`stderr ${opts.stderrLines}L`);
+	}
+	if (opts.stdoutLines === 0 && opts.stderrLines === 0) {
+		parts.push("no output");
+	}
+	return parts;
+}
+
+function shouldPreviewShellStdout(opts: {
+	success: boolean;
+	stdoutLines: number;
+	stderrLines: number;
+	stdoutSingleLine: string | null;
+}): boolean {
+	if (opts.stdoutLines === 0) return false;
+	if (!opts.success || opts.stderrLines > 0) return true;
+	return opts.stdoutSingleLine === null;
+}
+
 function renderShellResult(result: unknown): boolean {
 	const r = result as {
 		stdout: string;
@@ -39,49 +104,26 @@ function renderShellResult(result: unknown): boolean {
 		return false;
 	}
 
+	const streamedOutput = r.streamedOutput === true;
+	const stdoutLines = countShellLines(r.stdout);
+	const stderrLines = countShellLines(r.stderr);
+	const stdoutSingleLine = getSingleShellLine(r.stdout);
 	const badge = r.timedOut
 		? c.yellow("timeout")
 		: r.success
-			? c.green("success")
+			? c.green("done")
 			: c.red("error");
-
-	const stdoutNormalized = r.stdout.replace(/[\r\n]+$/, "");
-	const stderrNormalized = r.stderr.replace(/[\r\n]+$/, "");
-	const stdoutLines = stdoutNormalized
-		? stdoutNormalized.split(/\r?\n/).length
-		: 0;
-	const stderrLines = stderrNormalized
-		? stderrNormalized.split(/\r?\n/).length
-		: 0;
-	const stdoutSingleLine =
-		stdoutLines === 1 ? (stdoutNormalized.split(/\r?\n/)[0] ?? "") : null;
-
-	const parts = [
-		`exit ${r.exitCode}`,
-		`stdout ${stdoutLines}L`,
-		`stderr ${stderrLines}L`,
-	];
-
-	if (
-		r.success &&
-		!r.timedOut &&
-		!r.streamedOutput &&
-		stderrLines === 0 &&
-		stdoutSingleLine !== null &&
-		stdoutSingleLine.length > 0
-	) {
-		parts.push(`out: ${truncateOneLine(stdoutSingleLine)}`);
-	}
-	if (r.streamedOutput) {
-		parts.push("streamed");
-	}
+	const parts = buildShellSummaryParts({
+		exitCode: r.exitCode,
+		stdoutLines,
+		stderrLines,
+		stdoutSingleLine,
+		streamedOutput,
+	});
 
 	writeln(`    ${badge} ${c.dim(parts.join(" · "))}`);
 
-	if (r.success && !r.timedOut) {
-		return true;
-	}
-	if (r.streamedOutput) {
+	if (streamedOutput) {
 		return true;
 	}
 
@@ -91,16 +133,24 @@ function renderShellResult(result: unknown): boolean {
 		lineColor: c.red,
 		maxLines: 6,
 	});
-	writePreviewLines({
-		label: "stdout",
-		value: r.stdout,
-		lineColor: c.dim,
-		maxLines: 4,
-	});
+	if (
+		shouldPreviewShellStdout({
+			success: r.success && !r.timedOut,
+			stdoutLines,
+			stderrLines,
+			stdoutSingleLine,
+		})
+	) {
+		writePreviewLines({
+			label: "stdout",
+			value: r.stdout,
+			lineColor: c.dim,
+			maxLines: 4,
+		});
+	}
 
 	return true;
 }
-
 function renderSubagentResult(result: unknown): boolean {
 	const r = result as {
 		inputTokens?: number;

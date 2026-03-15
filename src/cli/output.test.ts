@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { CliReporter, renderUserMessage } from "./output.ts";
+import { CliReporter, renderBanner, renderUserMessage } from "./output.ts";
 import { terminal } from "./terminal-io.ts";
 
 let stdout = "";
@@ -36,6 +36,16 @@ describe("renderUserMessage", () => {
 		renderUserMessage("plan\nstep 1\n\nstep 2");
 
 		expect(stripAnsi(stdout)).toBe("› plan\n  step 1\n  \n  step 2\n");
+	});
+});
+
+describe("renderBanner", () => {
+	test("uses a tilde path in the header", () => {
+		captureStdout();
+
+		renderBanner("zen/gpt-5.4", `${process.env.HOME}/src/mini-coder`);
+
+		expect(stripAnsi(stdout)).toContain("zen/gpt-5.4  ·  ~/src/mini-coder");
 	});
 });
 

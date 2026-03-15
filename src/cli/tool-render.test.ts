@@ -71,7 +71,7 @@ describe("renderToolResult", () => {
 		);
 
 		const plain = stripAnsi(stdout);
-		expect(plain).toContain("error exit 1 · stdout 0L · stderr 1L · streamed");
+		expect(plain).toContain("error exit 1 · stderr 1L");
 		expect(plain).not.toContain("stderr (1 lines)");
 		expect(plain).not.toContain("│ boom");
 	});
@@ -93,10 +93,31 @@ describe("renderToolResult", () => {
 		);
 
 		const plain = stripAnsi(stdout);
-		expect(plain).toContain(
-			"success exit 0 · stdout 1L · stderr 0L · streamed",
-		);
+		expect(plain).toContain("done exit 0");
 		expect(plain).not.toContain("out: done");
+	});
+
+	test("shows stdout previews for non-streamed successful multi-line commands", () => {
+		captureStdout();
+
+		renderToolResult(
+			"shell",
+			{
+				stdout: "hello\nworld",
+				stderr: "",
+				exitCode: 0,
+				success: true,
+				timedOut: false,
+				streamedOutput: false,
+			},
+			false,
+		);
+
+		const plain = stripAnsi(stdout);
+		expect(plain).toContain("done exit 0 · stdout 2L");
+		expect(plain).toContain("stdout (2 lines)");
+		expect(plain).toContain("│ hello");
+		expect(plain).toContain("│ world");
 	});
 
 	test("renders compact listSkills previews", () => {
