@@ -15,7 +15,6 @@ import {
 	loadCustomCommands,
 } from "./custom-commands.ts";
 import { watchForCancel } from "./input.ts";
-import { renderMarkdown } from "./markdown.ts";
 import { PREFIX, renderBanner, write, writeln } from "./output.ts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -89,7 +88,7 @@ async function handleCustomCommand(
 			cmd.model,
 			abortController.signal,
 		);
-		write(renderMarkdown(output.result));
+		write(output.result);
 		writeln();
 
 		return {

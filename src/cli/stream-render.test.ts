@@ -255,7 +255,7 @@ describe("renderTurn", () => {
 		expect(hasAnsi(stdout, "[1m")).toBe(false);
 	});
 
-	test("preserves fenced-code state across streamed lines", async () => {
+	test("leaves fenced markdown plain across streamed lines", async () => {
 		captureStdout();
 
 		await renderTurn(
@@ -267,11 +267,9 @@ describe("renderTurn", () => {
 			new Spinner(),
 		);
 
-		const lines = stdout.split("\n");
 		expect(strip(stdout)).toBe("◆ ```ts\nconst emoji = '👩🏽‍💻';\n```\n\n");
-		expect(hasAnsi(lines[0] ?? "", "[2m")).toBe(true);
-		expect(hasAnsi(lines[1] ?? "", "[33m")).toBe(true);
-		expect(hasAnsi(lines[2] ?? "", "[2m")).toBe(true);
+		expect(hasAnsi(stdout, "[2m")).toBe(false);
+		expect(hasAnsi(stdout, "[33m")).toBe(false);
 	});
 	test("can hide reasoning output while still accumulating reasoning text", async () => {
 		captureStdout();
