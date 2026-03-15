@@ -1,33 +1,6 @@
-import { homedir } from "node:os";
-import { join, relative } from "node:path";
+import { resolvePath } from "../internal/file-edit/path.ts";
 
-function stripMatchingQuotes(value: string): string {
-	if (value.length < 2) return value;
-	const first = value[0];
-	const last = value[value.length - 1];
-	if ((first === '"' || first === "'") && first === last) {
-		return value.slice(1, -1);
-	}
-	return value;
-}
-
-function normalizePathInput(pathInput: string): string {
-	return stripMatchingQuotes(pathInput.trim());
-}
-
-export function resolvePath(cwdInput: string | undefined, pathInput: string) {
-	const cwd = cwdInput ?? process.cwd();
-	const normalizedInput = normalizePathInput(pathInput);
-	const expanded = normalizedInput.startsWith("~/")
-		? join(homedir(), normalizedInput.slice(2))
-		: normalizedInput === "~"
-			? homedir()
-			: normalizedInput;
-	const filePath = expanded.startsWith("/") ? expanded : join(cwd, expanded);
-
-	const relPath = relative(cwd, filePath);
-	return { cwd, filePath, relPath };
-}
+export { resolvePath };
 
 export async function resolveExistingFile(
 	cwdInput: string | undefined,
