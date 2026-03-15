@@ -20,11 +20,15 @@ export class StreamRenderContent {
 		return this.inText;
 	}
 
-	appendTextDelta(delta: string | undefined): void {
+	appendTextDelta(
+		delta: string | undefined,
+		renderedVisibleOutput: boolean,
+	): void {
 		const text = delta ?? "";
 		if (!text) return;
 		if (!this.inText) {
 			this.spinner.stop();
+			if (renderedVisibleOutput) writeln();
 			write(`${G.reply} `);
 			this.inText = true;
 		}

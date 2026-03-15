@@ -15,12 +15,20 @@ export class Spinner {
 		terminal.stderrWrite("\x1B[?25l");
 		this._tick();
 		this.timer = setInterval(() => this._tick(), 80);
+		terminal.setBeforeWriteCallback(() => {
+			this.clear();
+		});
+	}
+
+	private clear(): void {
+		terminal.stderrWrite("\r\x1B[2K");
 	}
 
 	stop(): void {
 		if (!this.timer) return;
 		clearInterval(this.timer);
 		this.timer = null;
+		terminal.setBeforeWriteCallback(null);
 		terminal.stderrWrite("\r\x1B[2K\x1B[?25h");
 	}
 

@@ -6,11 +6,37 @@ class TerminalIO {
 		this.interruptHandler = handler;
 	}
 
+	private beforeWriteCallback: (() => void) | null = null;
+
+	setBeforeWriteCallback(cb: (() => void) | null): void {
+		this.beforeWriteCallback = cb;
+	}
+
+	private skipCallback = false;
+
 	stdoutWrite(text: string): void {
+		if (text && this.beforeWriteCallback && !this.skipCallback) {
+			this.skipCallback = true;
+			this.beforeWriteCallback();
+			this.skipCallback = false;
+		}
+		this.doStdoutWrite(text);
+	}
+
+	doStdoutWrite(text: string): void {
 		process.stdout.write(text);
 	}
 
 	stderrWrite(text: string): void {
+		if (text && this.beforeWriteCallback && !this.skipCallback) {
+			this.skipCallback = true;
+			this.beforeWriteCallback();
+			this.skipCallback = false;
+		}
+		this.doStderrWrite(text);
+	}
+
+	doStderrWrite(text: string): void {
 		process.stderr.write(text);
 	}
 

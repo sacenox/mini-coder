@@ -19,6 +19,10 @@ export class LiveReasoningBlock {
 		}
 	}
 
+	isOpen(): boolean {
+		return this.blockOpen;
+	}
+
 	finish(): void {
 		if (!this.blockOpen) return;
 		if (this.lineOpen) writeln();

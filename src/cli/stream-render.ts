@@ -48,7 +48,7 @@ export async function renderTurn(
 		switch (event.type) {
 			case "text-delta": {
 				liveReasoning.finish();
-				content.appendTextDelta(event.delta);
+				content.appendTextDelta(event.delta, renderedVisibleOutput);
 				if (event.delta) renderedVisibleOutput = true;
 				break;
 			}
@@ -60,6 +60,7 @@ export async function renderTurn(
 				reasoningComputed = false;
 				if (showReasoning && delta) {
 					spinner.stop();
+					if (renderedVisibleOutput && !liveReasoning.isOpen()) writeln();
 					liveReasoning.append(delta);
 					renderedVisibleOutput = true;
 				}
@@ -74,6 +75,7 @@ export async function renderTurn(
 				liveReasoning.finish();
 				content.flushOpenContent();
 				spinner.stop();
+				if (renderedVisibleOutput) writeln();
 				renderToolCall(event.toolName, event.args);
 				renderedVisibleOutput = true;
 

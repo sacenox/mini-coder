@@ -15,7 +15,7 @@ afterEach(() => {
 });
 
 function captureStdout(): void {
-	terminal.stdoutWrite = (text: string) => {
+	terminal.doStdoutWrite = (text: string) => {
 		stdout += text;
 	};
 }
@@ -350,7 +350,7 @@ describe("renderTurn", () => {
 			new Spinner(),
 		);
 
-		expect(simulateTerminal(stdout)).toBe("· reasoning\n  step\n◆ answer\n");
+		expect(simulateTerminal(stdout)).toBe("· reasoning\n  step\n\n◆ answer\n");
 	});
 
 	test("starts a new reasoning block after tool activity", async () => {
