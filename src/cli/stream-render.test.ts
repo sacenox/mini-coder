@@ -390,6 +390,32 @@ describe("renderTurn", () => {
 		expect(plain).toContain("· skill  deploy  ·  local  ·  Deploy app");
 	});
 
+	test("non-TTY stdout: writes raw text without escape sequences", async () => {
+		const originalIsTTY = process.stdout.isTTY;
+		try {
+			// biome-ignore lint/suspicious/noExplicitAny: test-only TTY override
+			(process.stdout as any).isTTY = false;
+			captureStdout();
+
+			await renderTurn(
+				eventsFrom([
+					{ type: "text-delta", delta: "hello " },
+					{ type: "text-delta", delta: "world" },
+					done(),
+				]),
+				new Spinner(),
+			);
+		} finally {
+			// biome-ignore lint/suspicious/noExplicitAny: test-only TTY override
+			(process.stdout as any).isTTY = originalIsTTY;
+		}
+
+		// No erase-line or carriage-return sequences in output
+		expect(stdout.includes("\x1b[2K")).toBe(false);
+		expect(stdout.includes("\r")).toBe(false);
+		expect(strip(stdout)).toBe("◆ hello world\n");
+	});
+
 	test("deduplicates repeated tool-call-start events for the same toolCallId", async () => {
 		captureStdout();
 

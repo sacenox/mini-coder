@@ -1,6 +1,7 @@
 import { createHighlighter, type Highlighter } from "yoctomarkdown";
 import { G, write, writeln } from "./output.ts";
 import type { Spinner } from "./spinner.ts";
+import { terminal } from "./terminal-io.ts";
 
 export class StreamRenderContent {
 	private inText = false;
@@ -33,7 +34,7 @@ export class StreamRenderContent {
 			if (renderedVisibleOutput) writeln();
 			write(`${G.reply} `);
 			this.inText = true;
-			this.highlighter = createHighlighter();
+			if (terminal.isStdoutTTY) this.highlighter = createHighlighter();
 		}
 		const isFirstLine = !this.accumulatedText.includes("\n");
 		this.accumulatedText += text;
@@ -46,6 +47,8 @@ export class StreamRenderContent {
 				}
 				write(colored);
 			}
+		} else {
+			write(text);
 		}
 	}
 
