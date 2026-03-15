@@ -1,7 +1,8 @@
 # TODO
 
-- Reasoning blocks should use our colors library for italic styling.
 - Assistant responses are no longer rendered with highlighted markdown syntax. It's just plain text with no coloring. Let's condider markdown rendering libraries and their performance costs and completly rethink our approach. We want to keep our fast output above all, even if that means no markdown rendering.
+- Investigate using tmux to allow agents to use mc from a users perspective
+- Follow up on the recent CLI simplification pass: interactive `!cmd` now logs the command first, streamed shell results no longer duplicate stdout in summaries, and the status bar prioritizes session identity over cwd. Keep pushing this direction across the remaining UI surface.
 
 ---
 

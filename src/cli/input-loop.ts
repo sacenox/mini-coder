@@ -10,6 +10,7 @@ import { createGitBranchCache } from "./git-branch-cache.ts";
 import { type InputResult, readline } from "./input.ts";
 import { renderUserMessage, tildePath } from "./output.ts";
 import { buildStatusBarSignature } from "./status-bar.ts";
+import { buildToolCallLine } from "./tool-render.ts";
 
 import type { CommandContext } from "./types.ts";
 
@@ -94,6 +95,9 @@ export async function runInputLoop(opts: InputLoopOptions): Promise<void> {
 			}
 
 			case "shell": {
+				reporter.writeText(
+					`  ${buildToolCallLine("shell", { command: input.command })}`,
+				);
 				const out = await runShellPassthrough(input.command, cwd, reporter);
 				if (out) {
 					runner.addShellContext(input.command, out);

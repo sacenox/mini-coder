@@ -76,6 +76,29 @@ describe("renderToolResult", () => {
 		expect(plain).not.toContain("│ boom");
 	});
 
+	test("does not repeat successful single-line stdout when it was streamed live", () => {
+		captureStdout();
+
+		renderToolResult(
+			"shell",
+			{
+				stdout: "done",
+				stderr: "",
+				exitCode: 0,
+				success: true,
+				timedOut: false,
+				streamedOutput: true,
+			},
+			false,
+		);
+
+		const plain = stripAnsi(stdout);
+		expect(plain).toContain(
+			"success exit 0 · stdout 1L · stderr 0L · streamed",
+		);
+		expect(plain).not.toContain("out: done");
+	});
+
 	test("renders compact listSkills previews", () => {
 		captureStdout();
 

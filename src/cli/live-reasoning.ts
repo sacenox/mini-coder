@@ -1,11 +1,8 @@
 import * as c from "yoctocolors";
 import { G, write, writeln } from "./output.ts";
 
-const ITALIC_ON = "\x1b[3m";
-const ITALIC_OFF = "\x1b[23m";
-
 function styleReasoningText(text: string): string {
-	return `${ITALIC_ON}${c.dim(text)}${ITALIC_OFF}`;
+	return c.italic(c.dim(text));
 }
 
 export class LiveReasoningBlock {

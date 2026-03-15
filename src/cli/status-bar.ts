@@ -92,14 +92,17 @@ function fitStatusSegments(
 
 export function renderStatusBar(opts: StatusBarData): void {
 	const cols = Math.max(20, terminal.stdoutColumns || 80);
-	const required = [c.cyan(opts.model), c.dim(opts.cwd)];
+	const required = [
+		c.cyan(opts.model),
+		c.dim(`#${opts.sessionId.slice(0, 8)}`),
+	];
 	const optional: string[] = [];
 
-	if (opts.activeAgent) optional.push(c.green(`@${opts.activeAgent}`));
-	if (opts.thinkingEffort) optional.push(c.dim(`✦ ${opts.thinkingEffort}`));
 	if (opts.provider && opts.provider !== "zen") {
 		optional.push(c.dim(opts.provider));
 	}
+	if (opts.activeAgent) optional.push(c.green(`@${opts.activeAgent}`));
+	if (opts.thinkingEffort) optional.push(c.dim(`✦ ${opts.thinkingEffort}`));
 	if (opts.gitBranch) optional.push(c.dim(`⎇ ${opts.gitBranch}`));
 
 	if (opts.inputTokens > 0 || opts.outputTokens > 0) {
@@ -116,7 +119,7 @@ export function renderStatusBar(opts: StatusBarData): void {
 	});
 	if (contextSegment) optional.push(contextSegment);
 
-	optional.push(c.dim(`#${opts.sessionId.slice(0, 8)}`));
+	optional.push(c.dim(opts.cwd));
 
 	const out = fitStatusSegments(required, optional, cols);
 	terminal.stdoutWrite(`${out}\n`);

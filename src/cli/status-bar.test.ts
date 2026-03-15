@@ -41,10 +41,11 @@ describe("renderStatusBar", () => {
 
 		const line = stripAnsi(stdout).trim();
 		expect(line).toContain("gpt-5.3-codex");
-		expect(line).toContain("~/src/mini-coder");
+		expect(line).toContain("#12345678");
 		expect(line).toContain("@general");
 		expect(line).toContain("tok 1.2k/3.4k");
 		expect(line).toContain("ctx 8.0k/128.0k");
+		expect(line).toContain("~/src/mini-coder");
 		expect(line).not.toContain("reasoning");
 	});
 
@@ -72,8 +73,8 @@ describe("renderStatusBar", () => {
 
 		const line = stripAnsi(stdout).trim();
 		expect(line).toContain("gpt-5.3-codex");
-		expect(line).toContain("~/src/");
-		expect(line).not.toContain("#abcdef12");
+		expect(line).toContain("#abcdef12");
+		expect(line).not.toContain("~/src/");
 		expect(line).not.toContain("ctx 72.0k");
 	});
 

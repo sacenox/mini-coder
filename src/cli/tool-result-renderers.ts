@@ -65,6 +65,7 @@ function renderShellResult(result: unknown): boolean {
 	if (
 		r.success &&
 		!r.timedOut &&
+		!r.streamedOutput &&
 		stderrLines === 0 &&
 		stdoutSingleLine !== null &&
 		stdoutSingleLine.length > 0
