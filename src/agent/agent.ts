@@ -17,6 +17,7 @@ import {
 	setPreferredShowReasoning,
 	setPreferredThinkingEffort,
 	setPreferredToolResultPayloadCapBytes,
+	setPreferredVerboseOutput,
 } from "../session/db/index.ts";
 import type { AgentReporter } from "./reporter.ts";
 import { SessionRunner } from "./session-runner.ts";
@@ -28,6 +29,7 @@ interface AgentOptions {
 	cwd: string;
 	initialThinkingEffort: ThinkingEffort | null;
 	initialShowReasoning: boolean;
+	initialVerboseOutput: boolean;
 	initialPruningMode: ContextPruningMode;
 	initialToolResultPayloadCapBytes: number;
 	initialPromptCachingEnabled: boolean;
@@ -105,6 +107,7 @@ export async function initAgent(opts: AgentOptions): Promise<{
 		initialModel: currentModel,
 		initialThinkingEffort: opts.initialThinkingEffort,
 		initialShowReasoning: opts.initialShowReasoning,
+		initialVerboseOutput: opts.initialVerboseOutput,
 		initialPruningMode: opts.initialPruningMode,
 		initialToolResultPayloadCapBytes: opts.initialToolResultPayloadCapBytes,
 		initialPromptCachingEnabled: opts.initialPromptCachingEnabled,
@@ -153,6 +156,13 @@ export async function initAgent(opts: AgentOptions): Promise<{
 		setShowReasoning: (show) => {
 			runner.showReasoning = show;
 			setPreferredShowReasoning(show);
+		},
+		get verboseOutput() {
+			return runner.verboseOutput;
+		},
+		setVerboseOutput: (verbose) => {
+			runner.verboseOutput = verbose;
+			setPreferredVerboseOutput(verbose);
 		},
 		get pruningMode() {
 			return runner.pruningMode;

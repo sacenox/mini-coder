@@ -5,6 +5,7 @@ import {
 	handleCacheCommand,
 	handleContextCommand,
 	handleReasoningCommand,
+	handleVerboseCommand,
 } from "./commands-config.ts";
 import { renderHelpCommand } from "./commands-help.ts";
 import { handleMcpCommand } from "./commands-mcp.ts";
@@ -133,6 +134,10 @@ export async function handleCommand(
 
 		case "reasoning":
 			handleReasoningCommand(ctx, args);
+			return { type: "handled" };
+
+		case "verbose":
+			handleVerboseCommand(ctx, args);
 			return { type: "handled" };
 
 		case "context":

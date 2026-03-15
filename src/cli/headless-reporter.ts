@@ -27,7 +27,7 @@ export class HeadlessReporter implements AgentReporter {
 
 	async renderTurn(
 		events: AsyncIterable<TurnEvent>,
-		_opts?: { showReasoning?: boolean },
+		_opts?: { showReasoning?: boolean; verboseOutput?: boolean },
 	): Promise<TurnResult> {
 		let inputTokens = 0;
 		let outputTokens = 0;

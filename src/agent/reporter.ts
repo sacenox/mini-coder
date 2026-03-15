@@ -37,7 +37,7 @@ export interface AgentReporter {
 
 	renderTurn(
 		events: AsyncIterable<TurnEvent>,
-		opts?: { showReasoning?: boolean },
+		opts?: { showReasoning?: boolean; verboseOutput?: boolean },
 	): Promise<TurnResult>;
 	renderStatusBar(data: StatusBarData): void;
 

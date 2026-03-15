@@ -3,6 +3,7 @@ import {
 	handleCacheCommand,
 	handleContextCommand,
 	handleReasoningCommand,
+	handleVerboseCommand,
 } from "./commands-config.ts";
 import type { CommandContext } from "./types.ts";
 
@@ -14,6 +15,8 @@ function createContext(overrides?: Partial<CommandContext>): CommandContext {
 		setThinkingEffort: () => {},
 		showReasoning: true,
 		setShowReasoning: () => {},
+		verboseOutput: false,
+		setVerboseOutput: () => {},
 		pruningMode: "balanced",
 		setPruningMode: () => {},
 		toolResultPayloadCapBytes: 0,
@@ -70,5 +73,17 @@ describe("commands-config", () => {
 		});
 		handleReasoningCommand(ctx, "");
 		expect(reasoningVisible).toBe(false);
+	});
+
+	test("/verbose toggles when no arg is provided", () => {
+		let verboseOutput = false;
+		const ctx = createContext({
+			verboseOutput,
+			setVerboseOutput: (value) => {
+				verboseOutput = value;
+			},
+		});
+		handleVerboseCommand(ctx, "");
+		expect(verboseOutput).toBe(true);
 	});
 });

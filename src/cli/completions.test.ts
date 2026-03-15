@@ -38,6 +38,12 @@ describe("getCommandCompletions", () => {
 		expect(results).toContain("/reasoning off");
 	});
 
+	test("completes /verbose params", () => {
+		const results = getCommandCompletions("/verbose o", cwd);
+		expect(results).toContain("/verbose on");
+		expect(results).toContain("/verbose off");
+	});
+
 	test("completes /context subcommands", () => {
 		const results = getCommandCompletions("/context p", cwd);
 		expect(results).toContain("/context prune");
@@ -78,11 +84,11 @@ describe("getCommandCompletions", () => {
 		expect(results).toEqual(["/undo"]);
 	});
 
-	test("/ alone lists all commands", () => {
+	test("/ alone lists top commands", () => {
 		const results = getCommandCompletions("/", cwd);
-		expect(results.length).toBeGreaterThan(5);
+		expect(results.length).toBe(10);
 		expect(results).toContain("/model");
-		expect(results).toContain("/help");
+		expect(results).toContain("/verbose");
 	});
 
 	test("returns empty for fourth token", () => {

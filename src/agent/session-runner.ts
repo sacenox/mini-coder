@@ -30,6 +30,7 @@ interface SessionRunnerOptions {
 	initialModel: string;
 	initialThinkingEffort: ThinkingEffort | null;
 	initialShowReasoning: boolean;
+	initialVerboseOutput: boolean;
 	initialPruningMode: ContextPruningMode;
 	initialToolResultPayloadCapBytes: number;
 	initialPromptCachingEnabled: boolean;
@@ -60,6 +61,7 @@ export class SessionRunner {
 	public currentModel: string;
 	public currentThinkingEffort: ThinkingEffort | null;
 	public showReasoning: boolean;
+	public verboseOutput: boolean;
 	public pruningMode: ContextPruningMode;
 	public toolResultPayloadCapBytes: number;
 	public promptCachingEnabled: boolean;
@@ -87,6 +89,7 @@ export class SessionRunner {
 		this.currentModel = opts.initialModel;
 		this.currentThinkingEffort = opts.initialThinkingEffort;
 		this.showReasoning = opts.initialShowReasoning;
+		this.verboseOutput = opts.initialVerboseOutput;
 		this.pruningMode = opts.initialPruningMode;
 		this.toolResultPayloadCapBytes = opts.initialToolResultPayloadCapBytes;
 		this.promptCachingEnabled = opts.initialPromptCachingEnabled;
@@ -236,6 +239,7 @@ export class SessionRunner {
 			const { inputTokens, outputTokens, contextTokens, newMessages } =
 				await this.reporter.renderTurn(events, {
 					showReasoning: this.showReasoning,
+					verboseOutput: this.verboseOutput,
 				});
 			const historyMessages = sanitizeModelAuthoredMessages(
 				newMessages,

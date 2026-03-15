@@ -120,6 +120,61 @@ describe("renderToolResult", () => {
 		expect(plain).toContain("│ world");
 	});
 
+	test("truncates shell previews by keeping head and tail when verbose is off", () => {
+		captureStdout();
+		const stdoutLines = Array.from(
+			{ length: 8 },
+			(_, i) => `line-${i + 1}`,
+		).join("\n");
+
+		renderToolResult(
+			"shell",
+			{
+				stdout: stdoutLines,
+				stderr: "",
+				exitCode: 0,
+				success: true,
+				timedOut: false,
+				streamedOutput: false,
+			},
+			false,
+		);
+
+		const plain = stripAnsi(stdout);
+		expect(plain).toContain("│ line-1");
+		expect(plain).toContain("│ line-2");
+		expect(plain).toContain("… +4 lines");
+		expect(plain).toContain("│ line-7");
+		expect(plain).toContain("│ line-8");
+	});
+
+	test("shows full shell previews when verbose is on", () => {
+		captureStdout();
+		const stdoutLines = Array.from(
+			{ length: 8 },
+			(_, i) => `line-${i + 1}`,
+		).join("\n");
+
+		renderToolResult(
+			"shell",
+			{
+				stdout: stdoutLines,
+				stderr: "",
+				exitCode: 0,
+				success: true,
+				timedOut: false,
+				streamedOutput: false,
+			},
+			false,
+			{ verboseOutput: true },
+		);
+
+		const plain = stripAnsi(stdout);
+		expect(plain).toContain("│ line-1");
+		expect(plain).toContain("│ line-8");
+		expect(plain).not.toContain("… +");
+	});
+
 	test("renders compact listSkills previews", () => {
 		captureStdout();
 

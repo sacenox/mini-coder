@@ -53,6 +53,16 @@ export function setPreferredShowReasoning(show: boolean): void {
 	setSetting("preferred_show_reasoning", show ? "true" : "false");
 }
 
+export function getPreferredVerboseOutput(): boolean {
+	const v = getSetting("preferred_verbose_output");
+	if (v === null) return false;
+	return v !== "false";
+}
+
+export function setPreferredVerboseOutput(verbose: boolean): void {
+	setSetting("preferred_verbose_output", verbose ? "true" : "false");
+}
+
 export function getPreferredContextPruningMode(): ContextPruningMode {
 	const v = getSetting("preferred_context_pruning_mode");
 	if (v === "off" || v === "balanced" || v === "aggressive") return v;

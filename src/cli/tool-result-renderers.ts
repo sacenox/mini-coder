@@ -1,7 +1,15 @@
 import * as c from "yoctocolors";
 import { G, writeln } from "./output.ts";
 
-type ToolResultRenderer = (result: unknown, toolName?: string) => boolean;
+interface ToolResultRenderOptions {
+	verboseOutput?: boolean;
+}
+
+type ToolResultRenderer = (
+	result: unknown,
+	opts?: ToolResultRenderOptions,
+	toolName?: string,
+) => boolean;
 function writePreviewLines(opts: {
 	label: string;
 	value: string;
@@ -11,17 +19,35 @@ function writePreviewLines(opts: {
 	if (!opts.value.trim()) return;
 	const lines = opts.value.split("\n");
 	writeln(`    ${c.dim(opts.label)} ${c.dim(`(${lines.length} lines)`)}`);
-	for (const line of lines.slice(0, opts.maxLines)) {
+	if (!Number.isFinite(opts.maxLines) || lines.length <= opts.maxLines) {
+		for (const line of lines) {
+			writeln(`    ${opts.lineColor("│")} ${line}`);
+		}
+		return;
+	}
+
+	const headCount = Math.max(1, Math.ceil(opts.maxLines / 2));
+	const tailCount = Math.max(0, Math.floor(opts.maxLines / 2));
+	for (const line of lines.slice(0, headCount)) {
 		writeln(`    ${opts.lineColor("│")} ${line}`);
 	}
-	if (lines.length > opts.maxLines) {
-		writeln(
-			`    ${opts.lineColor("│")} ${c.dim(`… +${lines.length - opts.maxLines} lines`)}`,
-		);
+	const hiddenLines = Math.max(0, lines.length - (headCount + tailCount));
+	if (hiddenLines > 0) {
+		writeln(`    ${opts.lineColor("│")} ${c.dim(`… +${hiddenLines} lines`)}`);
+	}
+	if (tailCount > 0) {
+		for (const line of lines.slice(-tailCount)) {
+			writeln(`    ${opts.lineColor("│")} ${line}`);
+		}
 	}
 }
 
-function truncateOneLine(value: string, max = 100): string {
+function truncateOneLine(
+	value: string,
+	max = 100,
+	verboseOutput = false,
+): string {
+	if (verboseOutput) return value;
 	return value.length > max ? `${value.slice(0, max - 1)}…` : value;
 }
 
@@ -47,6 +73,7 @@ function buildShellSummaryParts(opts: {
 	stderrLines: number;
 	stdoutSingleLine: string | null;
 	streamedOutput: boolean;
+	verboseOutput: boolean;
 }): string[] {
 	const parts = [`exit ${opts.exitCode}`];
 	if (opts.streamedOutput) {
@@ -64,7 +91,9 @@ function buildShellSummaryParts(opts: {
 		opts.stdoutSingleLine !== null &&
 		opts.stdoutSingleLine.length > 0
 	) {
-		parts.push(`out: ${truncateOneLine(opts.stdoutSingleLine)}`);
+		parts.push(
+			`out: ${truncateOneLine(opts.stdoutSingleLine, 100, opts.verboseOutput)}`,
+		);
 		return parts;
 	}
 
@@ -91,7 +120,10 @@ function shouldPreviewShellStdout(opts: {
 	return opts.stdoutSingleLine === null;
 }
 
-function renderShellResult(result: unknown): boolean {
+function renderShellResult(
+	result: unknown,
+	opts?: ToolResultRenderOptions,
+): boolean {
 	const r = result as {
 		stdout: string;
 		stderr: string;
@@ -105,6 +137,7 @@ function renderShellResult(result: unknown): boolean {
 	}
 
 	const streamedOutput = r.streamedOutput === true;
+	const verboseOutput = opts?.verboseOutput === true;
 	const stdoutLines = countShellLines(r.stdout);
 	const stderrLines = countShellLines(r.stderr);
 	const stdoutSingleLine = getSingleShellLine(r.stdout);
@@ -119,6 +152,7 @@ function renderShellResult(result: unknown): boolean {
 		stderrLines,
 		stdoutSingleLine,
 		streamedOutput,
+		verboseOutput,
 	});
 
 	writeln(`    ${badge} ${c.dim(parts.join(" · "))}`);
@@ -131,7 +165,7 @@ function renderShellResult(result: unknown): boolean {
 		label: "stderr",
 		value: r.stderr,
 		lineColor: c.red,
-		maxLines: 6,
+		maxLines: verboseOutput ? Number.POSITIVE_INFINITY : 6,
 	});
 	if (
 		shouldPreviewShellStdout({
@@ -145,13 +179,16 @@ function renderShellResult(result: unknown): boolean {
 			label: "stdout",
 			value: r.stdout,
 			lineColor: c.dim,
-			maxLines: 4,
+			maxLines: verboseOutput ? Number.POSITIVE_INFINITY : 4,
 		});
 	}
 
 	return true;
 }
-function renderSubagentResult(result: unknown): boolean {
+function renderSubagentResult(
+	result: unknown,
+	_opts?: ToolResultRenderOptions,
+): boolean {
 	const r = result as {
 		inputTokens?: number;
 		outputTokens?: number;
@@ -165,9 +202,13 @@ function renderSubagentResult(result: unknown): boolean {
 	return true;
 }
 
-function buildSkillDescriptionPart(description: string | undefined): string {
+function buildSkillDescriptionPart(
+	description: string | undefined,
+	verboseOutput = false,
+): string {
 	const trimmed = description?.trim();
 	if (!trimmed) return "";
+	if (verboseOutput) return `  ${c.dim("·")}  ${c.dim(trimmed)}`;
 	return `  ${c.dim("·")}  ${c.dim(trimmed.length > 60 ? `${trimmed.slice(0, 57)}…` : trimmed)}`;
 }
 
@@ -177,17 +218,20 @@ function renderSkillSummaryLine(
 		description?: string;
 		source?: "local" | "global";
 	},
-	label?: string,
+	opts?: { label?: string; verboseOutput?: boolean },
 ): void {
 	const name = skill.name ?? "(unknown)";
 	const source = skill.source ?? "unknown";
-	const labelPrefix = label ? `${c.dim(label)}  ` : "";
+	const labelPrefix = opts?.label ? `${c.dim(opts.label)}  ` : "";
 	writeln(
-		`    ${G.info} ${labelPrefix}${name}  ${c.dim("·")}  ${c.dim(source)}${buildSkillDescriptionPart(skill.description)}`,
+		`    ${G.info} ${labelPrefix}${name}  ${c.dim("·")}  ${c.dim(source)}${buildSkillDescriptionPart(skill.description, opts?.verboseOutput === true)}`,
 	);
 }
 
-function renderListSkillsResult(result: unknown): boolean {
+function renderListSkillsResult(
+	result: unknown,
+	opts?: ToolResultRenderOptions,
+): boolean {
 	const r = result as {
 		skills?: Array<{
 			name?: string;
@@ -201,17 +245,23 @@ function renderListSkillsResult(result: unknown): boolean {
 		return true;
 	}
 
-	for (const skill of r.skills.slice(0, 6)) {
-		renderSkillSummaryLine(skill);
+	const maxSkills = opts?.verboseOutput ? r.skills.length : 6;
+	for (const skill of r.skills.slice(0, maxSkills)) {
+		renderSkillSummaryLine(skill, {
+			verboseOutput: opts?.verboseOutput === true,
+		});
 	}
 
-	if (r.skills.length > 6) {
-		writeln(`    ${c.dim(`+${r.skills.length - 6} more skills`)}`);
+	if (r.skills.length > maxSkills) {
+		writeln(`    ${c.dim(`+${r.skills.length - maxSkills} more skills`)}`);
 	}
 	return true;
 }
 
-function renderReadSkillResult(result: unknown): boolean {
+function renderReadSkillResult(
+	result: unknown,
+	_opts?: ToolResultRenderOptions,
+): boolean {
 	const r = result as {
 		skill?: {
 			name?: string;
@@ -224,11 +274,17 @@ function renderReadSkillResult(result: unknown): boolean {
 		writeln(`    ${G.info} ${c.dim("skill")}  ${c.dim("(not found)")}`);
 		return true;
 	}
-	renderSkillSummaryLine(r.skill, "skill");
+	renderSkillSummaryLine(r.skill, {
+		label: "skill",
+		verboseOutput: _opts?.verboseOutput === true,
+	});
 	return true;
 }
 
-function renderWebSearchResult(result: unknown): boolean {
+function renderWebSearchResult(
+	result: unknown,
+	opts?: ToolResultRenderOptions,
+): boolean {
 	const r = result as {
 		results?: Array<{ title?: string; url?: string; score?: number }>;
 	};
@@ -238,7 +294,8 @@ function renderWebSearchResult(result: unknown): boolean {
 		return true;
 	}
 
-	for (const item of r.results.slice(0, 5)) {
+	const maxResults = opts?.verboseOutput ? r.results.length : 5;
+	for (const item of r.results.slice(0, maxResults)) {
 		const title = (item.title?.trim() || item.url || "(untitled)").replace(
 			/\s+/g,
 			" ",
@@ -251,13 +308,16 @@ function renderWebSearchResult(result: unknown): boolean {
 		if (item.url) writeln(`      ${c.dim(item.url)}`);
 	}
 
-	if (r.results.length > 5) {
-		writeln(`    ${c.dim(`  +${r.results.length - 5} more`)}`);
+	if (r.results.length > maxResults) {
+		writeln(`    ${c.dim(`  +${r.results.length - maxResults} more`)}`);
 	}
 	return true;
 }
 
-function renderWebContentResult(result: unknown): boolean {
+function renderWebContentResult(
+	result: unknown,
+	opts?: ToolResultRenderOptions,
+): boolean {
 	const r = result as {
 		results?: Array<{ url?: string; title?: string; text?: string }>;
 	};
@@ -267,7 +327,8 @@ function renderWebContentResult(result: unknown): boolean {
 		return true;
 	}
 
-	for (const item of r.results.slice(0, 3)) {
+	const maxPages = opts?.verboseOutput ? r.results.length : 3;
+	for (const item of r.results.slice(0, maxPages)) {
 		const title = (item.title?.trim() || item.url || "(untitled)").replace(
 			/\s+/g,
 			" ",
@@ -277,24 +338,31 @@ function renderWebContentResult(result: unknown): boolean {
 		const preview = (item.text ?? "").replace(/\s+/g, " ").trim();
 		if (preview) {
 			const trimmed =
-				preview.length > 220 ? `${preview.slice(0, 217)}…` : preview;
+				opts?.verboseOutput || preview.length <= 220
+					? preview
+					: `${preview.slice(0, 217)}…`;
 			writeln(`      ${c.dim(trimmed)}`);
 		}
 	}
 
-	if (r.results.length > 3) {
-		writeln(`    ${c.dim(`  +${r.results.length - 3} more`)}`);
+	if (r.results.length > maxPages) {
+		writeln(`    ${c.dim(`  +${r.results.length - maxPages} more`)}`);
 	}
 	return true;
 }
 
-function renderMcpResult(result: unknown): boolean {
+function renderMcpResult(
+	result: unknown,
+	opts?: ToolResultRenderOptions,
+): boolean {
 	const content = Array.isArray(result) ? result : [result];
+	const maxBlocks = opts?.verboseOutput ? content.length : 5;
 	for (const block of (
 		content as Array<{ type?: string; text?: string }>
-	).slice(0, 5)) {
+	).slice(0, maxBlocks)) {
 		if (block?.type === "text" && block.text) {
-			const lines = block.text.split("\n").slice(0, 6);
+			const maxLines = opts?.verboseOutput ? Number.POSITIVE_INFINITY : 6;
+			const lines = block.text.split("\n").slice(0, maxLines);
 			for (const line of lines) writeln(`    ${c.dim("│")} ${line}`);
 		}
 	}
@@ -313,12 +381,13 @@ const TOOL_RESULT_RENDERERS: Readonly<Record<string, ToolResultRenderer>> = {
 export function renderToolResultByName(
 	toolName: string,
 	result: unknown,
+	opts?: ToolResultRenderOptions,
 ): boolean {
 	if (toolName.startsWith("mcp_")) {
-		return renderMcpResult(result);
+		return renderMcpResult(result, opts);
 	}
 
 	const renderer = TOOL_RESULT_RENDERERS[toolName];
 	if (!renderer) return false;
-	return renderer(result, toolName);
+	return renderer(result, opts, toolName);
 }

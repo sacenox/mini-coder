@@ -9,6 +9,8 @@ export interface CommandContext {
 	setThinkingEffort: (effort: ThinkingEffort | null) => void;
 	showReasoning: boolean;
 	setShowReasoning: (show: boolean) => void;
+	verboseOutput: boolean;
+	setVerboseOutput: (verbose: boolean) => void;
 	pruningMode: ContextPruningMode;
 	setPruningMode: (mode: ContextPruningMode) => void;
 	toolResultPayloadCapBytes: number;

@@ -39,6 +39,7 @@ import {
 	getPreferredShowReasoning,
 	getPreferredThinkingEffort,
 	getPreferredToolResultPayloadCapBytes,
+	getPreferredVerboseOutput,
 	pruneOldData,
 } from "./session/db/index.ts";
 import { getMostRecentSession, printSessionList } from "./session/manager.ts";
@@ -67,6 +68,7 @@ function buildAgentOptions(opts: {
 		cwd: opts.cwd,
 		initialThinkingEffort: getPreferredThinkingEffort(),
 		initialShowReasoning: getPreferredShowReasoning(),
+		initialVerboseOutput: getPreferredVerboseOutput(),
 		initialPruningMode: getPreferredContextPruningMode(),
 		initialToolResultPayloadCapBytes: getPreferredToolResultPayloadCapBytes(),
 		initialPromptCachingEnabled: getPreferredPromptCachingEnabled(),

@@ -213,7 +213,7 @@ export class CliReporter implements AgentReporter {
 
 	async renderTurn(
 		events: AsyncIterable<TurnEvent>,
-		opts?: { showReasoning?: boolean },
+		opts?: { showReasoning?: boolean; verboseOutput?: boolean },
 	): Promise<TurnResult> {
 		this.liveOutput.finish();
 		return renderTurn(events, this.spinner, opts);

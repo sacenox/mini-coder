@@ -41,6 +41,7 @@ conventions and not introduce more specs. (`.agents` / `AGENTS.md`, while also s
   - `/model` (alias `/models`) command allows the user to pick a model from connected providers. As well as thinking effort for the model if supported. Selection persists accross sessions.
   - `/undo` removes the last turn from conversation history, it does not restore filesystem state.
   - `/reasoning` toggles display of model reasoning output.
+  - `/verbose` toggles output truncation. Tuncates large outputs keeping start and end sections and truncating the rest when verbose is off.
   - `/context` configures context pruning and tool-result caps.
   - `/cache` toggles prompt caching globally; sub-commands configure provider-specific caching (`/cache openai <in_memory|24h>`, `/cache gemini <off|cachedContents/...>`).
   - `/review` reviews recent changes via a global custom command installed at app start (`~/.agents/commands/review.md`), and can be customized or shadowed locally.

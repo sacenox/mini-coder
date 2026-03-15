@@ -62,20 +62,29 @@ function formatErrorBadge(result: unknown): string {
 	return `${G.err} ${c.red(oneLiner)}`;
 }
 
+interface ToolResultRenderOptions {
+	verboseOutput?: boolean;
+}
+
 export function renderToolResult(
 	toolName: string,
 	result: unknown,
 	isError: boolean,
+	opts?: ToolResultRenderOptions,
 ): void {
 	if (isError) {
 		writeln(`    ${formatErrorBadge(result)}`);
 		return;
 	}
 
-	if (renderToolResultByName(toolName, result)) {
+	if (renderToolResultByName(toolName, result, opts)) {
 		return;
 	}
 
 	const text = JSON.stringify(result);
-	writeln(`    ${c.dim(text.length > 120 ? `${text.slice(0, 117)}…` : text)}`);
+	if (opts?.verboseOutput || text.length <= 120) {
+		writeln(`    ${c.dim(text)}`);
+		return;
+	}
+	writeln(`    ${c.dim(`${text.slice(0, 117)}…`)}`);
 }

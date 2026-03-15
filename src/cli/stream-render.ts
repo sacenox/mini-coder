@@ -15,7 +15,7 @@ import { renderToolCall, renderToolResult } from "./tool-render.ts";
 export async function renderTurn(
 	events: AsyncIterable<TurnEvent>,
 	spinner: Spinner,
-	opts?: { showReasoning?: boolean },
+	opts?: { showReasoning?: boolean; verboseOutput?: boolean },
 ): Promise<{
 	inputTokens: number;
 	outputTokens: number;
@@ -24,6 +24,7 @@ export async function renderTurn(
 	reasoningText: string;
 }> {
 	const showReasoning = opts?.showReasoning ?? true;
+	const verboseOutput = opts?.verboseOutput ?? false;
 	const content = new StreamRenderContent(spinner);
 	const liveReasoning = new LiveReasoningBlock();
 
@@ -87,7 +88,9 @@ export async function renderTurn(
 				startedToolCalls.delete(event.toolCallId);
 				liveReasoning.finish();
 				spinner.stop();
-				renderToolResult(event.toolName, event.result, event.isError);
+				renderToolResult(event.toolName, event.result, event.isError, {
+					verboseOutput,
+				});
 				renderedVisibleOutput = true;
 
 				spinner.start("thinking");

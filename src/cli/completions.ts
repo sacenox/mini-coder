@@ -10,6 +10,7 @@ const BUILTIN_COMMANDS = [
 	"models",
 	"undo",
 	"reasoning",
+	"verbose",
 	"context",
 	"cache",
 	"agent",
@@ -25,6 +26,7 @@ const BUILTIN_COMMANDS = [
 const COMMAND_PARAMS: Record<string, string[] | ((cwd: string) => string[])> = {
 	model: ["effort"],
 	reasoning: ["on", "off"],
+	verbose: ["on", "off"],
 	context: ["prune", "cap"],
 	cache: ["on", "off", "openai", "gemini"],
 	mcp: ["list", "add", "remove", "rm"],
