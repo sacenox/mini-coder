@@ -28,16 +28,10 @@ function createIo() {
 			stderr: (text: string) => {
 				stderr += text;
 			},
-			supportsColor: false,
 		},
 		getStdout: () => stdout,
 		getStderr: () => stderr,
 	};
-}
-
-function stripAnsi(text: string): string {
-	const esc = String.fromCharCode(0x1b);
-	return text.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "");
 }
 
 describe("runFileEditCli", () => {
@@ -62,8 +56,7 @@ describe("runFileEditCli", () => {
 
 		expect(exitCode).toBe(0);
 		expect(capture.getStderr()).toBe("");
-		expect(capture.getStdout()).not.toContain("\u001b[");
-		expect(stripAnsi(capture.getStdout())).toBe(
+		expect(capture.getStdout()).toBe(
 			[
 				"--- f.txt",
 				"+++ f.txt",
@@ -95,7 +88,7 @@ describe("runFileEditCli", () => {
 
 		expect(exitCode).toBe(0);
 		expect(capture.getStderr()).toBe("");
-		expect(stripAnsi(capture.getStdout())).toBe(
+		expect(capture.getStdout()).toBe(
 			[
 				"(no changes)",
 				"",
@@ -117,7 +110,7 @@ describe("runFileEditCli", () => {
 
 		expect(exitCode).toBe(1);
 		expect(capture.getStdout()).toBe("");
-		expect(stripAnsi(capture.getStderr())).toBe(
+		expect(capture.getStderr()).toBe(
 			[
 				"ok: false",
 				"code: invalid_args",

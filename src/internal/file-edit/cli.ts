@@ -17,7 +17,7 @@ const HELP = `Usage: mc-edit <path> (--old <text> | --old-file <path>) [--new <t
 Apply one safe exact-text edit to an existing file.
 - The expected old text must match exactly once.
 - Omit --new / --new-file to delete the matched text.
-- Success output is human-oriented: unified diff first, metadata second.`;
+- Success output is human-oriented: plain unified diff first, metadata second.`;
 
 async function readArgText(
 	flag: "--old-file" | "--new-file",
@@ -123,7 +123,6 @@ export async function runFileEditCli(
 	io: StructuredOutputWriter = {
 		stdout: (text) => process.stdout.write(text),
 		stderr: (text) => process.stderr.write(text),
-		supportsColor: process.stdout.isTTY === true,
 	},
 ): Promise<number> {
 	let parsed: FileEditCliArgs | null = null;

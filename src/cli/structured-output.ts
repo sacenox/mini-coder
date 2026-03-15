@@ -1,5 +1,4 @@
 import { createTwoFilesPatch } from "diff";
-import * as c from "yoctocolors";
 import type {
 	ApplyExactTextEditResult,
 	FileEditErrorCode,
@@ -8,7 +7,6 @@ import type {
 export interface StructuredOutputWriter {
 	stdout: (text: string) => void;
 	stderr: (text: string) => void;
-	supportsColor?: boolean;
 }
 
 type FileEditCliSuccess = { ok: true } & ApplyExactTextEditResult;
@@ -52,10 +50,9 @@ export function renderUnifiedDiff(
 	filePath: string,
 	before: string,
 	after: string,
-	colorize = true,
 ): string {
 	if (before === after) {
-		return colorize ? c.dim("(no changes)") : "(no changes)";
+		return "(no changes)";
 	}
 
 	const patchText = createTwoFilesPatch(
@@ -69,26 +66,7 @@ export function renderUnifiedDiff(
 			context: 3,
 		},
 	);
-	const lines = normalizePatchLines(patchText);
-
-	return lines
-		.map((line) => {
-			if (!colorize) return line;
-			if (line.startsWith("+++ ") || line.startsWith("+")) {
-				return c.green(line);
-			}
-			if (line.startsWith("--- ") || line.startsWith("-")) {
-				return c.red(line);
-			}
-			if (line.startsWith("@@ ")) {
-				return c.cyan(line);
-			}
-			if (line.startsWith("\\")) {
-				return c.dim(line);
-			}
-			return line;
-		})
-		.join("\n");
+	return normalizePatchLines(patchText).join("\n");
 }
 
 function renderMetadataBlock(
@@ -113,12 +91,7 @@ export function writeFileEditResult(
 ): void {
 	if (result.ok) {
 		const sections = [
-			renderUnifiedDiff(
-				result.path,
-				result.before,
-				result.after,
-				io.supportsColor ?? process.stdout.isTTY === true,
-			),
+			renderUnifiedDiff(result.path, result.before, result.after),
 			renderMetadataBlock(result),
 		];
 		io.stdout(`${sections.join("\n\n")}\n`);

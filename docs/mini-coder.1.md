@@ -111,7 +111,7 @@ The agent has access to the following tools:
 
 ## FILE EDIT HELPER
 **mc-edit**
-:   Helper command used from shell for one exact-text edit on an existing file. On success it prints a human-readable colored unified diff to stdout followed by a short metadata block (`ok`, `path`, `changed`). If the edit is a no-op, it prints `(no changes)` plus the same metadata. Errors are written to stderr.
+:   Helper command used from shell for one exact-text edit on an existing file. On success it prints a human-readable plain unified diff to stdout followed by a short metadata block (`ok`, `path`, `changed`). If the edit is a no-op, it prints `(no changes)` plus the same metadata. Errors are written to stderr.
 
 ## ENVIRONMENT
 **OPENCODE_API_KEY**

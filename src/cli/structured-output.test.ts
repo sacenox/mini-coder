@@ -1,16 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { renderUnifiedDiff, writeJsonLine } from "./structured-output.ts";
 
-function stripAnsi(text: string): string {
-	const esc = String.fromCharCode(0x1b);
-	return text.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "");
-}
-
 describe("renderUnifiedDiff", () => {
-	test("renders a colored unified diff without legacy index headers", () => {
+	test("renders a plain unified diff without legacy index headers", () => {
 		const output = renderUnifiedDiff("f.txt", "a\nb\nc\n", "a\nB\nc\n");
 
-		expect(stripAnsi(output)).toBe(
+		expect(output).toBe(
 			[
 				"--- f.txt",
 				"+++ f.txt",
@@ -26,7 +21,7 @@ describe("renderUnifiedDiff", () => {
 	test("renders valid hunk headers when deleting all file contents", () => {
 		const output = renderUnifiedDiff("f.txt", "x\n", "");
 
-		expect(stripAnsi(output)).toBe(
+		expect(output).toBe(
 			["--- f.txt", "+++ f.txt", "@@ -1,1 +0,0 @@", "-x"].join("\n"),
 		);
 	});
@@ -34,7 +29,7 @@ describe("renderUnifiedDiff", () => {
 	test("renders valid hunk headers when inserting at the start of a file", () => {
 		const output = renderUnifiedDiff("f.txt", "", "x\n");
 
-		expect(stripAnsi(output)).toBe(
+		expect(output).toBe(
 			["--- f.txt", "+++ f.txt", "@@ -0,0 +1,1 @@", "+x"].join("\n"),
 		);
 	});
