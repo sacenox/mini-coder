@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { restoreTerminal } from "../cli/output.ts";
+import { buildFileEditShellPrelude } from "../internal/file-edit/command.ts";
 import type { ToolDef } from "../llm-api/types.ts";
 
 const ShellSchema = z.object({
@@ -55,12 +56,15 @@ export const shellTool: ToolDef<ShellInput, ShellOutput> = {
 
 		const wasRaw = process.stdin.isTTY ? process.stdin.isRaw : false;
 
-		const proc = Bun.spawn(["bash", "-c", input.command], {
-			cwd,
-			env,
-			stdout: "pipe",
-			stderr: "pipe",
-		});
+		const proc = Bun.spawn(
+			["bash", "-c", `${buildFileEditShellPrelude()}\n${input.command}`],
+			{
+				cwd,
+				env,
+				stdout: "pipe",
+				stderr: "pipe",
+			},
+		);
 
 		// Set up timeout
 		const timer = setTimeout(() => {

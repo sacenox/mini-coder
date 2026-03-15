@@ -1,3 +1,4 @@
+import { resolveProcessScriptPath } from "../internal/runtime/script.ts";
 import type { SubagentOutput, SubagentSummary } from "../tools/subagent.ts";
 
 /**
@@ -10,13 +11,8 @@ export function resolveMcCommand(
 	mainModule: string | undefined,
 	argv1: string | undefined,
 ): string[] {
-	const script =
-		mainModule &&
-		!mainModule.endsWith("/[eval]") &&
-		!mainModule.endsWith("\\[eval]")
-			? mainModule
-			: argv1;
-	if (script && /\.(?:[cm]?[jt]s)$/.test(script)) {
+	const script = resolveProcessScriptPath(mainModule, argv1);
+	if (script) {
 		return [execPath, script];
 	}
 	return [execPath];

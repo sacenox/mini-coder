@@ -58,6 +58,13 @@ describe("buildSystemPrompt", () => {
 		expect(prompt).toContain("# Workspace guardrails");
 		expect(prompt).toContain("# Progress communication");
 		expect(prompt).toContain("# Final response style");
+		expect(prompt).toContain(
+			"Prefer shell for reading, searching, verification",
+		);
+		expect(prompt).toContain("prefer shell commands that invoke `mc-edit`");
+		expect(prompt).not.toContain(
+			"Prefer dedicated tools (read, replace, insert) over shell for file operations.",
+		);
 		expect(prompt).toContain("Do not guess unknown facts");
 	});
 

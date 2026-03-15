@@ -27,6 +27,16 @@ describe("shellTool", () => {
 		await expectStreamedOutput("printf 'ok\\n'", "ok\n");
 	});
 
+	it("injects mc-edit into shell commands", async () => {
+		const result = await shellTool.execute({
+			command: "mc-edit --help >/dev/null",
+			timeout: 30_000,
+		});
+
+		expect(result.success).toBe(true);
+		expect(result.exitCode).toBe(0);
+	});
+
 	it("marks output as not streamed when no onOutput handler is provided", async () => {
 		const result = await shellTool.execute({
 			command: "printf ok",
