@@ -101,14 +101,14 @@ describe("mapStreamChunkToTurnEvent", () => {
 			mapStreamChunkToTurnEvent({
 				type: "tool-error",
 				toolCallId: "id-3",
-				toolName: "replace",
-				error: "bad anchor",
+				toolName: "shell",
+				error: "command failed",
 			}),
 		).toEqual({
 			type: "tool-result",
 			toolCallId: "id-3",
-			toolName: "replace",
-			result: "bad anchor",
+			toolName: "shell",
+			result: "command failed",
 			isError: true,
 		});
 	});

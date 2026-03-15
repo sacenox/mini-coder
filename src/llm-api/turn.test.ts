@@ -209,7 +209,7 @@ describe("sanitizeGeminiToolMessages", () => {
 					{
 						type: "tool-call",
 						toolCallId,
-						toolName: "replace",
+						toolName: "shell",
 						input: {},
 					},
 				],
@@ -220,7 +220,7 @@ describe("sanitizeGeminiToolMessages", () => {
 					{
 						type: "tool-result",
 						toolCallId,
-						toolName: "replace",
+						toolName: "shell",
 						output: { type: "json", value: { ok: false } },
 					},
 				],
@@ -265,7 +265,7 @@ describe("sanitizeGeminiToolMessages", () => {
 					{
 						type: "tool-call",
 						toolCallId: "unsigned-followup",
-						toolName: "replace",
+						toolName: "shell",
 						input: {},
 					},
 				],
@@ -366,7 +366,7 @@ describe("sanitizeGeminiToolMessages", () => {
 					{
 						type: "tool-call",
 						toolCallId: "turn2-broken",
-						toolName: "replace",
+						toolName: "shell",
 						input: {},
 					},
 				],
@@ -434,7 +434,7 @@ describe("sanitizeGeminiToolMessages", () => {
 					{
 						type: "tool-call",
 						toolCallId: "older-broken",
-						toolName: "replace",
+						toolName: "shell",
 						input: {},
 					},
 				],
@@ -445,7 +445,7 @@ describe("sanitizeGeminiToolMessages", () => {
 					{
 						type: "tool-result",
 						toolCallId: "older-broken",
-						toolName: "replace",
+						toolName: "shell",
 						output: { type: "json", value: { stale: true } },
 					},
 				],
