@@ -318,6 +318,7 @@ describe("renderTurn", () => {
 
 		expect(simulateTerminal(stdout)).toBe("· reasoning\n  thinking\n");
 		expect(hasAnsi(stdout, "[2m")).toBe(true);
+		expect(hasAnsi(stdout, "[3m")).toBe(true);
 		expect(result.reasoningText).toBe("thinking");
 	});
 

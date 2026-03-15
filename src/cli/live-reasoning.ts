@@ -1,24 +1,32 @@
 import * as c from "yoctocolors";
-import { G, writeln } from "./output.ts";
+import { G, write, writeln } from "./output.ts";
+
+const ITALIC_ON = "\x1b[3m";
+const ITALIC_OFF = "\x1b[23m";
+
+function styleReasoningText(text: string): string {
+	return `${ITALIC_ON}${c.dim(text)}${ITALIC_OFF}`;
+}
 
 export class LiveReasoningBlock {
 	private blockOpen = false;
-	private pending = "";
+	private lineOpen = false;
 
 	append(delta: string): void {
 		if (!delta) return;
 		this.openBlock();
-		this.pending += delta;
-		this.flushCompleteLines();
+		const lines = delta.split("\n");
+		for (const [index, line] of lines.entries()) {
+			if (line) this.writeText(line);
+			if (index < lines.length - 1) this.endLine();
+		}
 	}
 
 	finish(): void {
 		if (!this.blockOpen) return;
-		if (this.pending.length > 0) {
-			this.writeLine(this.pending);
-			this.pending = "";
-		}
+		if (this.lineOpen) writeln();
 		this.blockOpen = false;
+		this.lineOpen = false;
 	}
 
 	private openBlock(): void {
@@ -27,16 +35,17 @@ export class LiveReasoningBlock {
 		this.blockOpen = true;
 	}
 
-	private flushCompleteLines(): void {
-		let boundary = this.pending.indexOf("\n");
-		while (boundary !== -1) {
-			this.writeLine(this.pending.slice(0, boundary));
-			this.pending = this.pending.slice(boundary + 1);
-			boundary = this.pending.indexOf("\n");
+	private writeText(text: string): void {
+		if (!this.lineOpen) {
+			write("  ");
+			this.lineOpen = true;
 		}
+		write(styleReasoningText(text));
 	}
 
-	private writeLine(line: string): void {
-		writeln(`  ${c.dim(line)}`);
+	private endLine(): void {
+		if (!this.lineOpen) write("  ");
+		writeln();
+		this.lineOpen = false;
 	}
 }
