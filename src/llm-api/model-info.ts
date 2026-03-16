@@ -1,3 +1,4 @@
+import { isLoggedIn } from "../oauth/auth-storage.ts";
 import {
 	listModelCapabilities,
 	listModelInfoState,
@@ -111,9 +112,16 @@ function hasAnyEnvKey(
 export function getRemoteProvidersFromEnv(
 	env: Record<string, string | undefined>,
 ): string[] {
-	return REMOTE_PROVIDER_ENV_KEYS.filter((entry) =>
+	const providers = REMOTE_PROVIDER_ENV_KEYS.filter((entry) =>
 		hasAnyEnvKey(env, entry.envKeys),
 	).map((entry) => entry.provider);
+
+	// Include providers with OAuth login even without env keys
+	if (!providers.includes("anthropic") && isLoggedIn("anthropic")) {
+		providers.push("anthropic");
+	}
+
+	return providers;
 }
 
 export function getProvidersToRefreshFromEnv(
@@ -260,10 +268,30 @@ export function supportsThinking(modelString: string): boolean {
 	return resolveModelInfo(modelString)?.reasoning ?? false;
 }
 
+function hasCachedModelsForAllVisibleProviders(): boolean {
+	const visible = getVisibleProvidersForSnapshotFromEnv(process.env);
+	for (const provider of visible) {
+		let found = false;
+		for (const row of runtimeCache.providerModelsByKey.values()) {
+			if (row.provider === provider) {
+				found = true;
+				break;
+			}
+		}
+		if (!found) return false;
+	}
+	return true;
+}
+
 export async function fetchAvailableModelsSnapshot(): Promise<AvailableModelsSnapshot> {
 	ensureLoaded();
 	if (isModelInfoStale() && !isModelInfoRefreshing()) {
-		if (runtimeCache.providerModelsByKey.size === 0) {
+		// Block when the cache is empty or a visible provider has no cached models
+		// (e.g. user just logged in via OAuth). Otherwise refresh in background.
+		if (
+			runtimeCache.providerModelsByKey.size === 0 ||
+			!hasCachedModelsForAllVisibleProviders()
+		) {
 			await refreshModelInfoInBackground({ force: true });
 		} else {
 			void refreshModelInfoInBackground();
