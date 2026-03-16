@@ -1,25 +1,15 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { terminal } from "./terminal-io.ts";
+import {
+	captureStdout,
+	getCapturedStdout,
+	restoreStdout,
+	stripAnsi,
+} from "./test-helpers.ts";
 import { buildToolCallLine, renderToolResult } from "./tool-render.ts";
 
-let stdout = "";
-const originalStdoutWrite = terminal.stdoutWrite.bind(terminal);
-
 afterEach(() => {
-	stdout = "";
-	terminal.stdoutWrite = originalStdoutWrite;
+	restoreStdout();
 });
-
-function captureStdout(): void {
-	terminal.stdoutWrite = (text: string) => {
-		stdout += text;
-	};
-}
-
-function stripAnsi(text: string): string {
-	const esc = String.fromCharCode(0x1b);
-	return text.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "");
-}
 
 describe("buildToolCallLine", () => {
 	test("formats shell calls with truncated command previews", () => {
@@ -69,7 +59,7 @@ describe("renderToolResult", () => {
 			false,
 		);
 
-		const plain = stripAnsi(stdout);
+		const plain = stripAnsi(getCapturedStdout());
 		expect(plain).toContain("error exit 1 · stderr 1L");
 		expect(plain).toContain("│ boom");
 	});
@@ -89,7 +79,7 @@ describe("renderToolResult", () => {
 			false,
 		);
 
-		const plain = stripAnsi(stdout);
+		const plain = stripAnsi(getCapturedStdout());
 		expect(plain).toContain("done exit 0 · stdout 2L");
 		expect(plain).toContain("stdout (2 lines)");
 		expect(plain).toContain("│ hello");
@@ -115,7 +105,7 @@ describe("renderToolResult", () => {
 			false,
 		);
 
-		const plain = stripAnsi(stdout);
+		const plain = stripAnsi(getCapturedStdout());
 		expect(plain).toContain("│ line-1");
 		expect(plain).toContain("│ line-10");
 		expect(plain).toContain("… +10 lines");
@@ -143,7 +133,7 @@ describe("renderToolResult", () => {
 			{ verboseOutput: true },
 		);
 
-		const plain = stripAnsi(stdout);
+		const plain = stripAnsi(getCapturedStdout());
 		expect(plain).toContain("│ line-1");
 		expect(plain).toContain("│ line-8");
 		expect(plain).not.toContain("… +");
@@ -163,7 +153,7 @@ describe("renderToolResult", () => {
 			false,
 		);
 
-		const plain = stripAnsi(stdout);
+		const plain = stripAnsi(getCapturedStdout());
 		expect(plain).toContain("deploy  ·  local  ·  Deploy safely");
 		expect(plain).toContain("release  ·  global  ·  Ship releases");
 	});

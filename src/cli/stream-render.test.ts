@@ -3,21 +3,17 @@ import type { CoreMessage } from "../llm-api/turn.ts";
 import type { TurnEvent } from "../llm-api/types.ts";
 import { Spinner } from "./spinner.ts";
 import { renderTurn } from "./stream-render.ts";
-import { terminal } from "./terminal-io.ts";
-
-let stdout = "";
-const originalStdoutWrite = terminal.stdoutWrite.bind(terminal);
+import {
+	captureStdout,
+	getCapturedStdout,
+	restoreStdout,
+	simulateTerminal,
+	stripAnsi,
+} from "./test-helpers.ts";
 
 afterEach(() => {
-	stdout = "";
-	terminal.stdoutWrite = originalStdoutWrite;
+	restoreStdout();
 });
-
-function captureStdout(): void {
-	terminal.doStdoutWrite = (text: string) => {
-		stdout += text;
-	};
-}
 
 function eventsFrom(events: TurnEvent[]): AsyncIterable<TurnEvent> {
 	return (async function* () {
@@ -35,71 +31,6 @@ function done(messages: CoreMessage[] = []): TurnEvent {
 		contextTokens: 3,
 		messages,
 	};
-}
-
-function strip(s: string): string {
-	const esc = String.fromCharCode(0x1b);
-	return s.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "");
-}
-
-/**
- * Simulate terminal rendering for key cursor-control sequences used by the
- * stream renderer: `\r`, `\n`, `\x1b[2K` (erase line), and `\x1b[1A` (cursor up).
- */
-function simulateTerminal(raw: string): string {
-	const esc = String.fromCharCode(0x1b);
-	// Strip ANSI SGR color/style codes first so we can compare plain text.
-	const noColor = raw.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "");
-	const lines: string[] = [""];
-	let row = 0;
-	let col = 0;
-	let i = 0;
-
-	const ensureRow = (idx: number): void => {
-		while (lines.length <= idx) lines.push("");
-	};
-
-	while (i < noColor.length) {
-		const ch = noColor[i];
-		if (ch === "\n") {
-			row++;
-			ensureRow(row);
-			col = 0;
-			i++;
-			continue;
-		}
-		if (ch === "\r") {
-			col = 0;
-			i++;
-			continue;
-		}
-		if (ch === esc && noColor[i + 1] === "[") {
-			if (noColor[i + 2] === "2" && noColor[i + 3] === "K") {
-				lines[row] = "";
-				col = 0;
-				i += 4;
-				continue;
-			}
-			if (noColor[i + 2] === "1" && noColor[i + 3] === "A") {
-				row = Math.max(0, row - 1);
-				col = Math.min(col, lines[row]?.length ?? 0);
-				i += 4;
-				continue;
-			}
-		}
-
-		ensureRow(row);
-		const line = lines[row] ?? "";
-		if (col >= line.length) {
-			lines[row] = line + ch;
-		} else {
-			lines[row] = `${line.slice(0, col)}${ch}${line.slice(col + 1)}`;
-		}
-		col++;
-		i++;
-	}
-
-	return lines.join("\n");
 }
 
 function hasAnsi(s: string, code: string): boolean {
@@ -123,7 +54,9 @@ describe("renderTurn", () => {
 			new Spinner(),
 		);
 
-		expect(simulateTerminal(stdout)).toBe("◆ first line\nsecond line\n");
+		expect(simulateTerminal(getCapturedStdout())).toBe(
+			"◆ first line\nsecond line\n",
+		);
 		expect(result).toEqual({
 			inputTokens: 1,
 			outputTokens: 2,
@@ -141,8 +74,8 @@ describe("renderTurn", () => {
 			new Spinner(),
 		);
 
-		expect(stdout.includes("\r\x1b[2K")).toBe(false);
-		expect(simulateTerminal(stdout)).toBe("◆ plain text\n");
+		expect(getCapturedStdout().includes("\r\x1b[2K")).toBe(false);
+		expect(simulateTerminal(getCapturedStdout())).toBe("◆ plain text\n");
 	});
 
 	test("preserves reply glyph on partial-line overwrite after a complete line in same delta", async () => {
@@ -156,7 +89,7 @@ describe("renderTurn", () => {
 		// "hello\n" is flushed as a complete line. "world" is streamed as a
 		// partial then overwritten on turn-end. The ◆ prefix appears only on
 		// the first line; continuation lines have no prefix.
-		expect(simulateTerminal(stdout)).toBe("◆ hello\nworld\n");
+		expect(simulateTerminal(getCapturedStdout())).toBe("◆ hello\nworld\n");
 	});
 
 	test("renders buffered markdown correctly and preserves emoji across deltas", async () => {
@@ -173,7 +106,7 @@ describe("renderTurn", () => {
 
 		// Streaming now prioritizes immediate output stability over end-of-line markdown
 		// rewrite, so raw markdown markers are preserved in partial lines.
-		expect(simulateTerminal(stdout)).toBe("◆ **bold** 👩🏽‍💻\n");
+		expect(simulateTerminal(getCapturedStdout())).toBe("◆ **bold** 👩🏽‍💻\n");
 	});
 
 	test("leaves fenced markdown plain across streamed lines", async () => {
@@ -188,7 +121,9 @@ describe("renderTurn", () => {
 			new Spinner(),
 		);
 
-		expect(strip(stdout)).toBe("◆ ```ts\nconst emoji = '👩🏽‍💻';\n```\n\n");
+		expect(stripAnsi(getCapturedStdout())).toBe(
+			"◆ ```ts\nconst emoji = '👩🏽‍💻';\n```\n\n",
+		);
 	});
 	test("can hide reasoning output while still accumulating reasoning text", async () => {
 		captureStdout();
@@ -203,7 +138,7 @@ describe("renderTurn", () => {
 			{ showReasoning: false },
 		);
 
-		expect(simulateTerminal(stdout)).toBe("◆ final\n");
+		expect(simulateTerminal(getCapturedStdout())).toBe("◆ final\n");
 		expect(result.reasoningText).toBe("step 1\nstep 2");
 	});
 
@@ -233,9 +168,11 @@ describe("renderTurn", () => {
 			new Spinner(),
 		);
 
-		expect(simulateTerminal(stdout)).toBe("· reasoning\n  thinking\n");
-		expect(hasAnsi(stdout, "[2m")).toBe(true);
-		expect(hasAnsi(stdout, "[3m")).toBe(true);
+		expect(simulateTerminal(getCapturedStdout())).toBe(
+			"· reasoning\n  thinking\n",
+		);
+		expect(hasAnsi(getCapturedStdout(), "[2m")).toBe(true);
+		expect(hasAnsi(getCapturedStdout(), "[3m")).toBe(true);
 		expect(result.reasoningText).toBe("thinking");
 	});
 
@@ -251,7 +188,7 @@ describe("renderTurn", () => {
 			new Spinner(),
 		);
 
-		expect(simulateTerminal(stdout)).toBe(
+		expect(simulateTerminal(getCapturedStdout())).toBe(
 			"· reasoning\n  **Planning**\n  **Confirming**\n",
 		);
 		expect(result.reasoningText).toBe("**Planning**\n**Confirming**");
@@ -269,7 +206,9 @@ describe("renderTurn", () => {
 			new Spinner(),
 		);
 
-		expect(simulateTerminal(stdout)).toBe("· reasoning\n  step\n\n◆ answer\n");
+		expect(simulateTerminal(getCapturedStdout())).toBe(
+			"· reasoning\n  step\n\n◆ answer\n",
+		);
 	});
 
 	test("starts a new reasoning block after tool activity", async () => {
@@ -303,7 +242,7 @@ describe("renderTurn", () => {
 			new Spinner(),
 		);
 
-		const plain = strip(stdout);
+		const plain = stripAnsi(getCapturedStdout());
 		expect(countOccurrences(plain, "· reasoning")).toBe(2);
 		expect(plain).toContain("plan");
 		expect(plain).toContain("$ echo hi");
@@ -327,7 +266,7 @@ describe("renderTurn", () => {
 			spinner,
 		);
 
-		expect(strip(stdout)).toBe("◆ line 1\nline 2\n\n");
+		expect(stripAnsi(getCapturedStdout())).toBe("◆ line 1\nline 2\n\n");
 		expect(stopCalls).toBeGreaterThanOrEqual(2);
 	});
 
@@ -351,7 +290,7 @@ describe("renderTurn", () => {
 			new Spinner(),
 		);
 
-		expect(strip(stdout)).toContain(
+		expect(stripAnsi(getCapturedStdout())).toContain(
 			"· context pruned  balanced  –30 messages  –14.6 KB",
 		);
 	});
@@ -385,7 +324,7 @@ describe("renderTurn", () => {
 			new Spinner(),
 		);
 
-		const plain = strip(stdout);
+		const plain = stripAnsi(getCapturedStdout());
 		expect(plain).toContain("· skill  deploy  ·  local  ·  Deploy app");
 	});
 
@@ -410,9 +349,9 @@ describe("renderTurn", () => {
 		}
 
 		// No erase-line or carriage-return sequences in output
-		expect(stdout.includes("\x1b[2K")).toBe(false);
-		expect(stdout.includes("\r")).toBe(false);
-		expect(strip(stdout)).toBe("◆ hello world\n");
+		expect(getCapturedStdout().includes("\x1b[2K")).toBe(false);
+		expect(getCapturedStdout().includes("\r")).toBe(false);
+		expect(stripAnsi(getCapturedStdout())).toBe("◆ hello world\n");
 	});
 
 	test("strips leading whitespace from the first text delta", async () => {
@@ -423,7 +362,7 @@ describe("renderTurn", () => {
 			new Spinner(),
 		);
 
-		expect(simulateTerminal(stdout)).toBe("◆ hello\n");
+		expect(simulateTerminal(getCapturedStdout())).toBe("◆ hello\n");
 	});
 
 	test("skips whitespace-only deltas before actual text content", async () => {
@@ -439,7 +378,7 @@ describe("renderTurn", () => {
 			new Spinner(),
 		);
 
-		expect(simulateTerminal(stdout)).toBe("◆ hello\n");
+		expect(simulateTerminal(getCapturedStdout())).toBe("◆ hello\n");
 	});
 
 	test("deduplicates repeated tool-call-start events for the same toolCallId", async () => {
@@ -477,7 +416,7 @@ describe("renderTurn", () => {
 			new Spinner(),
 		);
 
-		const plain = strip(stdout);
+		const plain = stripAnsi(getCapturedStdout());
 		expect(countOccurrences(plain, "$ printf ok")).toBe(1);
 	});
 });

@@ -2,7 +2,7 @@
 
 ## Bugs:
 
-- ~~Session history break~~ Fixed: removed `@anthropic-ai/sdk` bypass (`turn-anthropic-oauth.ts`). The raw SDK path manually converted thinking blocks after Vercel AI SDK pruning, producing invalid blocks. Now all Anthropic OAuth requests flow through `@ai-sdk/anthropic` which handles thinking blocks natively.
+- None
 
 ---
 
