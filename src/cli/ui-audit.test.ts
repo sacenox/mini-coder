@@ -786,6 +786,42 @@ describe("UI audit: consistent indentation depths", () => {
 		}
 	});
 
+	test("single-line failing shell does not duplicate stdout", () => {
+		captureStdout();
+		renderToolResult(
+			"shell",
+			shellResult({
+				stdout: "error TS2322: Type mismatch",
+				exitCode: 1,
+				success: false,
+			}),
+			false,
+		);
+		const plain = stripAnsi(getCapturedStdout());
+		// Summary line should inline the single stdout line
+		expect(plain).toContain("out: error TS2322");
+		// Should NOT also show a separate stdout preview block
+		expect(plain).not.toContain("stdout (1 lines)");
+		expect(plain.match(/error TS2322/g)?.length).toBe(1);
+	});
+
+	test("multi-line failing shell still shows stdout preview", () => {
+		captureStdout();
+		renderToolResult(
+			"shell",
+			shellResult({
+				stdout: "line1\nline2\nline3",
+				exitCode: 1,
+				success: false,
+			}),
+			false,
+		);
+		const plain = stripAnsi(getCapturedStdout());
+		expect(plain).toContain("stdout 3L");
+		expect(plain).toContain("stdout (3 lines)");
+		expect(plain).toContain("│ line1");
+	});
+
 	test("all tool result types start at 4-space indent", () => {
 		const results: Array<{ name: string; result: unknown }> = [
 			{ name: "shell", result: shellResult({ stdout: "ok" }) },

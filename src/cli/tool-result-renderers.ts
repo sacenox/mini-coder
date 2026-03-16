@@ -106,6 +106,8 @@ function shouldPreviewShellStdout(opts: {
 	stdoutSingleLine: string | null;
 }): boolean {
 	if (opts.stdoutLines === 0) return false;
+	// Single-line stdout with no stderr is already inlined in the summary badge
+	if (opts.stdoutSingleLine !== null && opts.stderrLines === 0) return false;
 	if (!opts.success || opts.stderrLines > 0) return true;
 	return opts.stdoutSingleLine === null;
 }

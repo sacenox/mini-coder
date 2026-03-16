@@ -35,7 +35,7 @@ We're on branch `refactor/ui-audit` doing the UI Audit from TODO.md.
 - [x] Manual one-shot script (scripts/ui-oneshot.ts, 14 scenarios) — run: bun run ui-oneshot
 - [x] Identify inconsistencies and issues from one-shot output
 - [x] Refactor rendering for consistency
-- [x] Verify all tests pass
+- [x] Verify all tests pass (33 UI audit tests + 392 total)
 
 ## Issues found and fixed
 
@@ -49,3 +49,8 @@ We're on branch `refactor/ui-audit` doing the UI Audit from TODO.md.
 
 3. **Missing one-shot scenarios** — added scenarios 15-17 for webSearch, webContent, and
    listSkills to ensure visual coverage of all tool types.
+
+4. **Duplicate stdout for single-line failing shell commands** — when a shell command failed
+   with exactly 1 line of stdout and no stderr, the stdout was shown both inline in the
+   summary badge (`out: <line>`) AND as a separate `stdout (1 lines)` preview block.
+   Fixed by skipping the preview when stdout is already inlined in the summary.
