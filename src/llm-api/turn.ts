@@ -1,5 +1,6 @@
 import { streamText } from "ai";
 import { isApiLogEnabled, logApiEvent } from "./api-log.ts";
+import { normalizeUnknownError } from "./error-utils.ts";
 import type { ThinkingEffort } from "./provider-options.ts";
 import {
 	type ContextPruningMode,
@@ -165,10 +166,11 @@ export async function* runTurn(options: {
 		};
 	} catch (err) {
 		const finalState = stepTracker.getState();
-		logApiEvent("turn error", err);
+		const normalizedError = normalizeUnknownError(err);
+		logApiEvent("turn error", normalizedError);
 		yield {
 			type: "turn-error",
-			error: err instanceof Error ? err : new Error(String(err)),
+			error: normalizedError,
 			partialMessages: finalState.partialMessages,
 		};
 	}

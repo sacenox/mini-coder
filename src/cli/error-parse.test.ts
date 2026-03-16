@@ -149,6 +149,14 @@ test("parseAppError - ECONNRESET code", () => {
 	});
 });
 
+test("parseAppError - empty message Error with ECONNRESET code", () => {
+	const err = Object.assign(new Error(""), { code: "ECONNRESET" });
+	expect(parseAppError(err)).toEqual({
+		headline: "Connection lost",
+		hint: "The server closed the connection — retry or switch model with /model",
+	});
+});
+
 test("parseAppError - socket closed unexpectedly message", () => {
 	const err = new Error(
 		"The socket connection was closed unexpectedly. For more information, pass `verbose: true`",
@@ -166,12 +174,27 @@ test("parseAppError - fallback", () => {
 	});
 });
 
-test("parseAppError - nested error object (SSE stream error payload)", () => {
+test("parseAppError - object payload prefers nested error message", () => {
 	const err = { type: "error", error: { message: "model_not_found" } };
 	expect(parseAppError(err)).toEqual({ headline: "model_not_found" });
 });
 
-test("parseAppError - nested error object with empty message falls back", () => {
+test("parseAppError - nested error object with empty message falls back to payload", () => {
 	const err = { type: "error", error: { message: "" } };
-	expect(parseAppError(err)).toEqual({ headline: "[object Object]" });
+	expect(parseAppError(err)).toEqual({
+		headline: '{"type":"error","error":{"message":""}}',
+	});
+});
+
+test("parseAppError - nested errors array falls back to payload", () => {
+	const err = { errors: [{ detail: "token expired" }] };
+	expect(parseAppError(err)).toEqual({
+		headline: '{"errors":[{"detail":"token expired"}]}',
+	});
+});
+
+test("parseAppError - circular object fallback", () => {
+	const circular: Record<string, unknown> = {};
+	circular.self = circular;
+	expect(parseAppError(circular)).toEqual({ headline: "Unknown error" });
 });

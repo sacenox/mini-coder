@@ -1,5 +1,6 @@
 import type { FlexibleSchema, StepResult } from "ai";
 import { dynamicTool, jsonSchema, type streamText } from "ai";
+import { normalizeUnknownError } from "./error-utils.ts";
 import {
 	extractToolArgs,
 	hasRenderableToolArgs,
@@ -46,7 +47,7 @@ function toCoreTool(def: ToolDef): ReturnType<typeof dynamicTool> {
 			try {
 				return await def.execute(input);
 			} catch (err) {
-				throw err instanceof Error ? err : new Error(String(err));
+				throw normalizeUnknownError(err);
 			}
 		},
 	});

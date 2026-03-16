@@ -1,3 +1,4 @@
+import { normalizeUnknownError } from "./error-utils.ts";
 import { getReasoningDeltaFromStreamChunk } from "./history-transforms.ts";
 import type { TurnEvent } from "./types.ts";
 
@@ -79,8 +80,7 @@ export function mapStreamChunkToTurnEvent(c: StreamChunk): TurnEvent | null {
 				isError: true,
 			};
 		case "error": {
-			const err = c.error;
-			throw err instanceof Error ? err : new Error(String(err));
+			throw normalizeUnknownError(c.error);
 		}
 		default:
 			return null;

@@ -1,5 +1,7 @@
 # TODO
 
+- Chat completions endpoint models sometimes print empty assistant messages.
+
 ---
 
 ## UI Audit

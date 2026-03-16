@@ -6,6 +6,63 @@ import {
 	RetryError,
 } from "ai";
 
+function safeStringifyErrorObject(value: object): string {
+	try {
+		const json = JSON.stringify(value);
+		if (!json || json === "{}") {
+			return "Unknown error";
+		}
+		const maxLen = 240;
+		return json.length > maxLen ? `${json.slice(0, maxLen - 1)}…` : json;
+	} catch {
+		return "Unknown error";
+	}
+}
+
+function extractObjectMessage(err: object): string | null {
+	const record = err as Record<string, unknown>;
+	const direct = record.message;
+	if (typeof direct === "string" && direct.trim()) return direct.trim();
+
+	const nested = record.error;
+	if (typeof nested === "object" && nested !== null) {
+		const nestedMessage = (nested as Record<string, unknown>).message;
+		if (typeof nestedMessage === "string" && nestedMessage.trim()) {
+			return nestedMessage.trim();
+		}
+	}
+
+	return null;
+}
+
+function toUserErrorMessage(err: unknown): string {
+	if (err instanceof Error) {
+		const msg = err.message.trim();
+		if (msg) return msg;
+	}
+
+	if (typeof err === "string") {
+		const msg = err.trim();
+		if (msg) return msg;
+	}
+
+	if (
+		typeof err === "number" ||
+		typeof err === "boolean" ||
+		typeof err === "bigint"
+	) {
+		return String(err);
+	}
+
+	if (typeof err === "object" && err !== null) {
+		const objectMessage = extractObjectMessage(err);
+		if (objectMessage) return objectMessage;
+		return safeStringifyErrorObject(err);
+	}
+
+	return "Unknown error";
+}
+
 export function parseAppError(err: unknown): {
 	headline: string;
 	hint?: string;
@@ -76,22 +133,7 @@ export function parseAppError(err: unknown): {
 
 	const isObj = typeof err === "object" && err !== null;
 	const code = isObj && "code" in err ? String(err.code) : undefined;
-
-	// Handle streaming API error events, e.g. { type: "error", error: { message: "..." } }
-	// from the OpenAI responses API or similar SSE error payloads.
-	if (
-		isObj &&
-		"error" in err &&
-		typeof (err as { error: unknown }).error === "object" &&
-		(err as { error: unknown }).error !== null
-	) {
-		const inner = (err as { error: { message?: unknown } }).error;
-		if (typeof inner.message === "string" && inner.message) {
-			return { headline: inner.message };
-		}
-	}
-
-	const message = isObj && "message" in err ? String(err.message) : String(err);
+	const message = toUserErrorMessage(err);
 
 	if (code === "ECONNREFUSED" || message.includes("ECONNREFUSED")) {
 		return {

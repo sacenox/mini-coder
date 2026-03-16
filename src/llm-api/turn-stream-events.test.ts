@@ -118,4 +118,13 @@ describe("mapStreamChunkToTurnEvent", () => {
 			mapStreamChunkToTurnEvent({ type: "error", error: new Error("boom") }),
 		).toThrow("boom");
 	});
+
+	test("throws nested provider message for object error chunks", () => {
+		expect(() =>
+			mapStreamChunkToTurnEvent({
+				type: "error",
+				error: { error: { message: "model_not_found" } },
+			}),
+		).toThrow("model_not_found");
+	});
 });
