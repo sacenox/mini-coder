@@ -78,6 +78,8 @@ export async function renderTurn(
 				if (startedToolCalls.has(event.toolCallId)) {
 					break;
 				}
+				const isConsecutiveToolCall =
+					startedToolCalls.size > 0 && toolCallInfo.size > 0;
 				startedToolCalls.add(event.toolCallId);
 				toolCallInfo.set(event.toolCallId, {
 					toolName: event.toolName,
@@ -89,7 +91,7 @@ export async function renderTurn(
 				liveReasoning.finish();
 				content.flushOpenContent();
 				spinner.stop();
-				if (renderedVisibleOutput) writeln();
+				if (renderedVisibleOutput && !isConsecutiveToolCall) writeln();
 				renderToolCall(event.toolName, event.args);
 				renderedVisibleOutput = true;
 

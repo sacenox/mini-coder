@@ -499,7 +499,7 @@ describe("UI audit: parallel tool calls", () => {
 		expect(plain).toMatch(/^ {4}·/m);
 	});
 
-	test("parallel calls: blank line separates second call from first call", async () => {
+	test("parallel calls: no blank line between consecutive tool calls in a batch", async () => {
 		captureStdout();
 
 		await renderTurn(
@@ -538,13 +538,10 @@ describe("UI audit: parallel tool calls", () => {
 		const plain = simulateTerminal(getCapturedStdout());
 		const lines = plain.split("\n");
 
-		// There should be a blank line between the two tool call lines
+		// Consecutive parallel tool calls should be adjacent (no blank line)
 		const idx1 = lines.findIndex((l) => l.includes("$ echo one"));
 		const idx2 = lines.findIndex((l) => l.includes("$ echo two"));
-		expect(idx2).toBeGreaterThan(idx1);
-		// At least one blank line between them
-		const between = lines.slice(idx1 + 1, idx2);
-		expect(between.some((l) => l.trim() === "")).toBe(true);
+		expect(idx2).toBe(idx1 + 1);
 	});
 
 	test("parallel calls with one error and one success", async () => {

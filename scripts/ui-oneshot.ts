@@ -443,6 +443,110 @@ async function main() {
 		new Spinner(),
 	);
 
+	// ── Web search ──────────────────────────────────────────
+	separator("15. Web search results");
+	await renderTurn(
+		eventsFrom([
+			{
+				type: "tool-call-start",
+				toolName: "webSearch",
+				toolCallId: "ws1",
+				args: { query: "bun test runner docs" },
+			},
+			{
+				type: "tool-result",
+				toolName: "webSearch",
+				toolCallId: "ws1",
+				isError: false,
+				result: {
+					results: [
+						{
+							title: "Bun Test Runner Documentation",
+							url: "https://bun.sh/docs/cli/test",
+							score: 0.95,
+						},
+						{
+							title: "Testing with Bun - Getting Started",
+							url: "https://bun.sh/guides/test/getting-started",
+							score: 0.87,
+						},
+					],
+				},
+			},
+			{
+				type: "text-delta",
+				delta: "Found the relevant documentation.",
+			},
+			done(),
+		]),
+		new Spinner(),
+	);
+
+	// ── Web content ─────────────────────────────────────────
+	separator("16. Web content fetch");
+	await renderTurn(
+		eventsFrom([
+			{
+				type: "tool-call-start",
+				toolName: "webContent",
+				toolCallId: "wc1",
+				args: { urls: ["https://bun.sh/docs/cli/test"] },
+			},
+			{
+				type: "tool-result",
+				toolName: "webContent",
+				toolCallId: "wc1",
+				isError: false,
+				result: {
+					results: [
+						{
+							title: "Bun Test Runner Documentation",
+							url: "https://bun.sh/docs/cli/test",
+							text: "Bun ships with a fast built-in test runner. Tests are written in TypeScript or JavaScript using a familiar Jest-like API.",
+						},
+					],
+				},
+			},
+			{
+				type: "text-delta",
+				delta: "The docs confirm Bun uses a Jest-like API.",
+			},
+			done(),
+		]),
+		new Spinner(),
+	);
+
+	// ── List skills ─────────────────────────────────────────
+	separator("17. List skills");
+	await renderTurn(
+		eventsFrom([
+			{
+				type: "tool-call-start",
+				toolName: "listSkills",
+				toolCallId: "ls1",
+				args: {},
+			},
+			{
+				type: "tool-result",
+				toolName: "listSkills",
+				toolCallId: "ls1",
+				isError: false,
+				result: {
+					skills: [
+						{ name: "mini-coder", description: "How to use the mc CLI coding agent", source: "local" },
+						{ name: "deploy", description: "Deployment guidelines", source: "global" },
+					],
+				},
+			},
+			{
+				type: "text-delta",
+				delta: "Found 2 available skills.",
+			},
+			done(),
+		]),
+		new Spinner(),
+	);
+
 	writeln("");
 }
 

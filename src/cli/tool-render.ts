@@ -7,6 +7,8 @@ function toolGlyph(name: string): string {
 	if (name === "subagent") return G.agent;
 	if (name === "readSkill") return G.read;
 	if (name === "listSkills") return G.search;
+	if (name === "webSearch") return G.search;
+	if (name === "webContent") return G.read;
 	if (name.startsWith("mcp_")) return G.mcp;
 	return G.info;
 }
@@ -38,6 +40,22 @@ export function buildToolCallLine(name: string, args: unknown): string {
 	if (name === "readSkill") {
 		const skillName = typeof a.name === "string" ? a.name : "";
 		return `${G.read} ${c.dim("read skill")}${skillName ? ` ${skillName}` : ""}`;
+	}
+
+	if (name === "webSearch") {
+		const query = typeof a.query === "string" ? a.query : "";
+		const short = query.length > 60 ? `${query.slice(0, 57)}…` : query;
+		return `${G.search} ${c.dim("search")}${short ? ` ${short}` : ""}`;
+	}
+
+	if (name === "webContent") {
+		const urls = Array.isArray(a.urls) ? a.urls : [];
+		const label =
+			urls.length === 1
+				? String(urls[0])
+				: `${urls.length} url${urls.length !== 1 ? "s" : ""}`;
+		const short = label.length > 60 ? `${label.slice(0, 57)}…` : label;
+		return `${G.read} ${c.dim("fetch")} ${short}`;
 	}
 
 	if (name.startsWith("mcp_")) {
