@@ -50,7 +50,7 @@ export async function renderTurn(
 			case "text-delta": {
 				liveReasoning.finish();
 				content.appendTextDelta(event.delta, renderedVisibleOutput);
-				if (event.delta) renderedVisibleOutput = true;
+				if (content.hasOpenContent()) renderedVisibleOutput = true;
 				break;
 			}
 			case "reasoning-delta": {

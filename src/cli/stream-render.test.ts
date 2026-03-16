@@ -415,6 +415,33 @@ describe("renderTurn", () => {
 		expect(strip(stdout)).toBe("◆ hello world\n");
 	});
 
+	test("strips leading whitespace from the first text delta", async () => {
+		captureStdout();
+
+		await renderTurn(
+			eventsFrom([{ type: "text-delta", delta: "\n\n  hello" }, done()]),
+			new Spinner(),
+		);
+
+		expect(simulateTerminal(stdout)).toBe("◆ hello\n");
+	});
+
+	test("skips whitespace-only deltas before actual text content", async () => {
+		captureStdout();
+
+		await renderTurn(
+			eventsFrom([
+				{ type: "text-delta", delta: "\n\n" },
+				{ type: "text-delta", delta: "  " },
+				{ type: "text-delta", delta: "\nhello" },
+				done(),
+			]),
+			new Spinner(),
+		);
+
+		expect(simulateTerminal(stdout)).toBe("◆ hello\n");
+	});
+
 	test("deduplicates repeated tool-call-start events for the same toolCallId", async () => {
 		captureStdout();
 

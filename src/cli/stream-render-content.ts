@@ -27,9 +27,11 @@ export class StreamRenderContent {
 		delta: string | undefined,
 		renderedVisibleOutput: boolean,
 	): void {
-		const text = delta ?? "";
+		let text = delta ?? "";
 		if (!text) return;
 		if (!this.inText) {
+			text = text.trimStart();
+			if (!text) return;
 			this.spinner.stop();
 			if (renderedVisibleOutput) writeln();
 			write(`${G.reply} `);
