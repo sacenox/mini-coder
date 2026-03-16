@@ -1,8 +1,18 @@
 # TODO
 
+## Bugs:
+
 - Chat completions endpoint models sometimes print empty assistant messages.
+- Are we doing any buffering when rendering assistant responses? It feels slower to render. The library we use is very fast and can render well, maybe it's something from before we adopted it?
 
 ---
+
+## Colored shell output
+
+We could look into coloring the most used shell commands.
+
+- Check the db for most used commands.
+- Use yoctocolors for the coloring.
 
 ## UI Audit
 
