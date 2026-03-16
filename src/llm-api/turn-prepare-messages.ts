@@ -5,7 +5,9 @@ import {
 	stripOpenAIHistoryTransforms,
 	stripToolRuntimeInputFields,
 } from "./history-transforms.ts";
+import { isAnthropicModelFamily } from "./model-routing.ts";
 import { getCacheFamily } from "./provider-options.ts";
+import { isAnthropicOAuth } from "./providers.ts";
 import type { CoreMessage } from "./turn.ts";
 import {
 	annotateAnthropicCacheBreakpoints,
@@ -129,6 +131,22 @@ export function prepareTurnMessages(input: {
 		finalSystemPrompt = annotated.systemPrompt;
 		if (apiLogOn) {
 			logApiEvent("Anthropic prompt caching", annotated.diagnostics);
+		}
+	}
+
+	// 6. OAuth identity: Anthropic OAuth requires Claude Code system prompt prefix
+	if (isAnthropicModelFamily(modelString) && isAnthropicOAuth()) {
+		const prefix =
+			"You are Claude Code, Anthropic's official CLI for Claude.\n";
+		if (finalSystemPrompt) {
+			finalSystemPrompt = prefix + finalSystemPrompt;
+		} else {
+			// System prompt was inlined into messages by cache breakpoint annotation
+			const sysMsg = finalMessages.find((m) => m.role === "system");
+			if (sysMsg && typeof sysMsg.content === "string") {
+				const idx = finalMessages.indexOf(sysMsg);
+				finalMessages[idx] = { ...sysMsg, content: prefix + sysMsg.content };
+			}
 		}
 	}
 

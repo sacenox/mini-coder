@@ -24,6 +24,7 @@
 		"@ai-sdk/google": "^3.0.51",
 		"@ai-sdk/openai": "^3.0.45",
 		"@ai-sdk/openai-compatible": "^2.0.36",
+		"@anthropic-ai/sdk": "^0.79.0",
 		"@modelcontextprotocol/sdk": "^1.27.1",
 		"ai": "^6.0.127",
 		"diff": "^8.0.3",

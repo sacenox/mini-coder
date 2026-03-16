@@ -65,6 +65,7 @@ export function buildStreamTextRequest(
 ): StreamTextOptions {
 	return {
 		model: input.model,
+		maxOutputTokens: 16384,
 		messages: input.prepared.messages,
 		tools: input.toolSet,
 		stopWhen: stepCountIs(input.maxSteps),
