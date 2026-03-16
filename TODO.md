@@ -13,14 +13,6 @@ We could look into coloring the most used shell commands.
 - Check the db for most used commands.
 - Use yoctocolors for the coloring.
 
-## UI Audit
-
-- We need to revise all of our output to ensure consistency, **performance** and correctness.
-- Ensure we have a good styled output that is clear to the user, refactor as needed.
-- Ensure we have propper hierchy in output, and the different types of output are clearly distinguishable for the user, using styles and whitespace.
-- Ensure proper spinner functionality, that follow up messages don't rended inline and that is doesn't break anything.
-- Ensure conversation log is logical, and that user, assistant, assistant reasoning, and tools and tool calls and responses are clearly labelled and associated for readability
-
 ---
 
 ## Deferred fixes
