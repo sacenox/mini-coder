@@ -29,7 +29,10 @@ We're on branch `refactor/ui-audit` doing the UI Audit from TODO.md.
 
 ## Status
 
-- [ ] Baseline tests for current output
-- [ ] Identify inconsistencies and issues
+- [x] Baseline tests for current output (24 tests in ui-audit.test.ts)
+- [x] Shared test helpers in test-helpers.ts (captureStdout, simulateTerminal, eventsFrom, etc.)
+- [x] Parallel tool call tests (5 tests)
+- [x] Manual one-shot script (scripts/ui-oneshot.ts, 14 scenarios) — run: bun run ui-oneshot
+- [ ] Identify inconsistencies and issues from one-shot output
 - [ ] Refactor rendering for consistency
 - [ ] Verify all tests pass
