@@ -2,7 +2,7 @@
 
 ## Bugs:
 
-- models sometimes print empty assistant messages. Or excessive leading whitespace. Seems like something is wrong.
+- ~~Session history break~~ Fixed: removed `@anthropic-ai/sdk` bypass (`turn-anthropic-oauth.ts`). The raw SDK path manually converted thinking blocks after Vercel AI SDK pruning, producing invalid blocks. Now all Anthropic OAuth requests flow through `@ai-sdk/anthropic` which handles thinking blocks natively.
 
 ---
 

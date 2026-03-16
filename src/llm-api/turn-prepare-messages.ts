@@ -134,18 +134,35 @@ export function prepareTurnMessages(input: {
 		}
 	}
 
-	// 6. OAuth identity: Anthropic OAuth requires Claude Code system prompt prefix
+	// 6. OAuth identity: Anthropic OAuth requires the Claude Code identity as
+	//    a separate first system block so the API recognises the client.
 	if (isAnthropicModelFamily(modelString) && isAnthropicOAuth()) {
-		const prefix =
-			"You are Claude Code, Anthropic's official CLI for Claude.\n";
+		const ccIdentity =
+			"You are Claude Code, Anthropic's official CLI for Claude.";
+		const ccSystemMsg = {
+			role: "system",
+			content: ccIdentity,
+			providerOptions: {
+				anthropic: { cacheControl: { type: "ephemeral" } },
+			},
+		} as CoreMessage;
+
 		if (finalSystemPrompt) {
-			finalSystemPrompt = prefix + finalSystemPrompt;
+			// System prompt hasn't been inlined — prepend identity as separate
+			// system message so the AI SDK sends two blocks.
+			finalMessages = [ccSystemMsg, ...finalMessages];
 		} else {
-			// System prompt was inlined into messages by cache breakpoint annotation
-			const sysMsg = finalMessages.find((m) => m.role === "system");
-			if (sysMsg && typeof sysMsg.content === "string") {
-				const idx = finalMessages.indexOf(sysMsg);
-				finalMessages[idx] = { ...sysMsg, content: prefix + sysMsg.content };
+			// System prompt was inlined into messages by cache breakpoint annotation.
+			// Insert the identity block before the existing system message.
+			const sysIdx = finalMessages.findIndex((m) => m.role === "system");
+			if (sysIdx >= 0) {
+				finalMessages = [
+					...finalMessages.slice(0, sysIdx),
+					ccSystemMsg,
+					...finalMessages.slice(sysIdx),
+				];
+			} else {
+				finalMessages = [ccSystemMsg, ...finalMessages];
 			}
 		}
 	}

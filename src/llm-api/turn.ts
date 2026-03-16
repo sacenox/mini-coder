@@ -1,9 +1,8 @@
 import { streamText } from "ai";
-import { getAccessToken, isLoggedIn } from "../oauth/auth-storage.ts";
 import { isApiLogEnabled, logApiEvent } from "./api-log.ts";
 import { normalizeUnknownError } from "./error-utils.ts";
 import type { ThinkingEffort } from "./provider-options.ts";
-import { runTurnAnthropicOAuth } from "./turn-anthropic-oauth.ts";
+
 import {
 	type ContextPruningMode,
 	DEFAULT_TOOL_RESULT_PAYLOAD_CAP_BYTES,
@@ -51,15 +50,6 @@ export async function* runTurn(options: {
 	openaiPromptCacheRetention?: "in_memory" | "24h";
 	googleCachedContent?: string | null;
 }): AsyncGenerator<TurnEvent> {
-	// Use the official Anthropic SDK for direct Anthropic OAuth requests only
-	if (options.modelString.startsWith("anthropic/") && isLoggedIn("anthropic")) {
-		const token = await getAccessToken("anthropic");
-		if (token) {
-			yield* runTurnAnthropicOAuth({ ...options, token });
-			return;
-		}
-	}
-
 	const {
 		model,
 		modelString,
