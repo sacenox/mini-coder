@@ -33,6 +33,19 @@ We're on branch `refactor/ui-audit` doing the UI Audit from TODO.md.
 - [x] Shared test helpers in test-helpers.ts (captureStdout, simulateTerminal, eventsFrom, etc.)
 - [x] Parallel tool call tests (5 tests)
 - [x] Manual one-shot script (scripts/ui-oneshot.ts, 14 scenarios) — run: bun run ui-oneshot
-- [ ] Identify inconsistencies and issues from one-shot output
-- [ ] Refactor rendering for consistency
-- [ ] Verify all tests pass
+- [x] Identify inconsistencies and issues from one-shot output
+- [x] Refactor rendering for consistency
+- [x] Verify all tests pass
+
+## Issues found and fixed
+
+1. **Parallel tool calls had blank lines between them** — consecutive tool-call-start events
+   in a batch each triggered a blank line separator, making parallel calls look disconnected.
+   Fixed by detecting consecutive tool calls and skipping the blank line within a batch.
+
+2. **Web tools used generic glyph/label** — `webSearch` and `webContent` fell through to the
+   generic `· toolName` renderer. Added dedicated rendering: `? search <query>` and
+   `← fetch <url>` with proper glyphs.
+
+3. **Missing one-shot scenarios** — added scenarios 15-17 for webSearch, webContent, and
+   listSkills to ensure visual coverage of all tool types.
