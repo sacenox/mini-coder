@@ -4,6 +4,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { LanguageModel } from "ai";
 
+import { getAccessToken, isLoggedIn } from "../oauth/auth-storage.ts";
 import { logApiEvent } from "./api-log.ts";
 import {
 	type AvailableModelsSnapshot,
@@ -169,20 +170,52 @@ function resolveOpenAIModel(modelId: string): LanguageModel {
 		: directProviders.openai()(modelId);
 }
 
-const PROVIDER_MODEL_RESOLVERS: Readonly<Record<ProviderName, ModelResolver>> =
-	{
-		zen: resolveZenModel,
-		anthropic: (modelId) => directProviders.anthropic()(modelId),
-		openai: resolveOpenAIModel,
-		google: (modelId) => directProviders.google()(modelId),
-		ollama: (modelId) => directProviders.ollama().chatModel(modelId),
-	};
+type AsyncModelResolver = (
+	modelId: string,
+) => LanguageModel | Promise<LanguageModel>;
+
+/** Cache the OAuth-backed Anthropic provider keyed by access token. */
+let oauthAnthropicCache: { token: string; provider: AnthropicProvider } | null =
+	null;
+
+async function resolveAnthropicModel(modelId: string): Promise<LanguageModel> {
+	// OAuth token takes priority over env var
+	if (isLoggedIn("anthropic")) {
+		const token = await getAccessToken("anthropic");
+		if (token) {
+			if (!oauthAnthropicCache || oauthAnthropicCache.token !== token) {
+				oauthAnthropicCache = {
+					token,
+					provider: createAnthropic({
+						fetch: fetchWithLogging,
+						authToken: token,
+					}),
+				};
+			}
+			return oauthAnthropicCache.provider(modelId);
+		}
+	}
+	// Fallback to ANTHROPIC_API_KEY env var
+	return directProviders.anthropic()(modelId);
+}
+
+const PROVIDER_MODEL_RESOLVERS: Readonly<
+	Record<ProviderName, AsyncModelResolver>
+> = {
+	zen: resolveZenModel,
+	anthropic: resolveAnthropicModel,
+	openai: resolveOpenAIModel,
+	google: (modelId) => directProviders.google()(modelId),
+	ollama: (modelId) => directProviders.ollama().chatModel(modelId),
+};
 
 function isProviderName(provider: string): provider is ProviderName {
 	return SUPPORTED_PROVIDERS.includes(provider as ProviderName);
 }
 
-export function resolveModel(modelString: string): LanguageModel {
+export async function resolveModel(
+	modelString: string,
+): Promise<LanguageModel> {
 	const slashIdx = modelString.indexOf("/");
 	if (slashIdx === -1) {
 		throw new Error(
@@ -204,7 +237,7 @@ export function resolveModel(modelString: string): LanguageModel {
 
 export function autoDiscoverModel(): string {
 	if (process.env.OPENCODE_API_KEY) return "zen/claude-sonnet-4-6";
-	if (process.env.ANTHROPIC_API_KEY)
+	if (process.env.ANTHROPIC_API_KEY || isLoggedIn("anthropic"))
 		return "anthropic/claude-sonnet-4-5-20250929";
 	if (process.env.OPENAI_API_KEY) return "openai/gpt-4o";
 	if (process.env.GOOGLE_API_KEY ?? process.env.GEMINI_API_KEY)

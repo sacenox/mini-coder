@@ -13,7 +13,7 @@ function getDbPath(): string {
 	return join(dir, "sessions.db");
 }
 
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 const SCHEMA = `
   CREATE TABLE IF NOT EXISTS sessions (
@@ -91,6 +91,14 @@ const SCHEMA = `
   CREATE TABLE IF NOT EXISTS model_info_state (
     key                TEXT PRIMARY KEY,
     value              TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS oauth_tokens (
+    provider       TEXT PRIMARY KEY,
+    access_token   TEXT NOT NULL,
+    refresh_token  TEXT NOT NULL,
+    expires_at     INTEGER NOT NULL,
+    updated_at     INTEGER NOT NULL
   );
 `;
 

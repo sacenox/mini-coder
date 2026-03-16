@@ -25,14 +25,14 @@ afterEach(() => {
 });
 
 describe("resolveModel", () => {
-	test("rejects model strings without provider prefix", () => {
-		expect(() => resolveModel("gpt-4o")).toThrow(
+	test("rejects model strings without provider prefix", async () => {
+		await expect(resolveModel("gpt-4o")).rejects.toThrow(
 			'Invalid model string "gpt-4o". Expected format: "<provider>/<model-id>"',
 		);
 	});
 
-	test("rejects unsupported providers", () => {
-		expect(() => resolveModel("foo/bar")).toThrow(
+	test("rejects unsupported providers", async () => {
+		await expect(resolveModel("foo/bar")).rejects.toThrow(
 			'Unknown provider "foo". Supported: zen, anthropic, openai, google, ollama',
 		);
 	});

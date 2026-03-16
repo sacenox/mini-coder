@@ -1,3 +1,5 @@
+import { getAccessToken, isLoggedIn } from "../oauth/auth-storage.ts";
+
 const ZEN_BASE = "https://opencode.ai/zen/v1";
 const OPENAI_BASE = "https://api.openai.com";
 const ANTHROPIC_BASE = "https://api.anthropic.com";
@@ -146,19 +148,28 @@ async function fetchOpenAIModels(): Promise<ProviderModelCandidate[] | null> {
 	);
 }
 
+async function getAnthropicOAuthToken(): Promise<string | null> {
+	if (!isLoggedIn("anthropic")) return null;
+	return getAccessToken("anthropic");
+}
+
 async function fetchAnthropicModels(): Promise<
 	ProviderModelCandidate[] | null
 > {
-	const key = process.env.ANTHROPIC_API_KEY;
-	if (!key) return null;
+	const envKey = process.env.ANTHROPIC_API_KEY;
+	const oauthToken = !envKey ? await getAnthropicOAuthToken() : null;
+	if (!envKey && !oauthToken) return null;
+
+	const headers: Record<string, string> = {
+		"anthropic-version": "2023-06-01",
+		...(oauthToken
+			? { Authorization: `Bearer ${oauthToken}` }
+			: { "x-api-key": envKey as string }),
+	};
+
 	const payload = await fetchJson(
 		`${ANTHROPIC_BASE}/v1/models`,
-		{
-			headers: {
-				"x-api-key": key,
-				"anthropic-version": "2023-06-01",
-			},
-		},
+		{ headers },
 		6_000,
 	);
 	return processModelsList(payload, "data", "id", (item, modelId) => {

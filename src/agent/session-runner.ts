@@ -209,7 +209,7 @@ export class SessionRunner {
 		saveMessages(this.session.id, [userMsg], thisTurn);
 		this.coreHistory.push(userMsg);
 
-		const llm = resolveModel(this.currentModel);
+		const llm = await resolveModel(this.currentModel);
 		if (!this._systemPrompt) {
 			this.rebuildSystemPrompt();
 		}

@@ -8,6 +8,7 @@ import {
 	handleVerboseCommand,
 } from "./commands-config.ts";
 import { renderHelpCommand } from "./commands-help.ts";
+import { handleLoginCommand, handleLogoutCommand } from "./commands-login.ts";
 import { handleMcpCommand } from "./commands-mcp.ts";
 import { handleModelCommand } from "./commands-model.ts";
 import {
@@ -153,6 +154,14 @@ export async function handleCommand(
 
 		case "mcp":
 			await handleMcpCommand(ctx, args);
+			return { type: "handled" };
+
+		case "login":
+			await handleLoginCommand(ctx, args);
+			return { type: "handled" };
+
+		case "logout":
+			handleLogoutCommand(ctx, args);
 			return { type: "handled" };
 
 		case "new":
