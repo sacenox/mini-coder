@@ -188,7 +188,7 @@ async function resolveAnthropicModel(modelId: string): Promise<LanguageModel> {
 					token,
 					provider: createAnthropic({
 						fetch: fetchWithLogging,
-						authToken: token,
+						apiKey: token,
 					}),
 				};
 			}
