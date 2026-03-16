@@ -178,15 +178,6 @@ type AsyncModelResolver = (
 let oauthAnthropicCache: { token: string; provider: AnthropicProvider } | null =
 	null;
 
-/**
- * Strip the trailing -YYYYMMDD date suffix from Anthropic model IDs.
- * OAuth inference accepts short aliases (e.g. "claude-sonnet-4-6")
- * but the /v1/models listing returns dated IDs (e.g. "claude-sonnet-4-6-20250725").
- */
-function stripDateSuffix(modelId: string): string {
-	return modelId.replace(/-\d{8}$/, "");
-}
-
 async function resolveAnthropicModel(modelId: string): Promise<LanguageModel> {
 	// OAuth token takes priority over env var
 	if (isLoggedIn("anthropic")) {
@@ -204,7 +195,7 @@ async function resolveAnthropicModel(modelId: string): Promise<LanguageModel> {
 					}),
 				};
 			}
-			return oauthAnthropicCache.provider(stripDateSuffix(modelId));
+			return oauthAnthropicCache.provider(modelId);
 		}
 	}
 	// Fallback to ANTHROPIC_API_KEY env var

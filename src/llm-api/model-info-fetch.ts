@@ -155,24 +155,11 @@ async function getAnthropicApiKey(): Promise<string | null> {
 	return null;
 }
 
-/**
- * Strip the trailing date suffix from an Anthropic model ID to produce the
- * short alias that the OAuth / Claude Code inference endpoint expects.
- * e.g. "claude-sonnet-4-6-20250725" → "claude-sonnet-4-6"
- *      "claude-opus-4-0-20250514"  → "claude-opus-4-0"
- * Returns null if the ID has no date suffix.
- */
-function stripAnthropicDateSuffix(modelId: string): string | null {
-	const match = modelId.match(/^(.+)-(\d{8})$/);
-	return match?.[1] ?? null;
-}
-
 async function fetchAnthropicModels(): Promise<
 	ProviderModelCandidate[] | null
 > {
 	const key = await getAnthropicApiKey();
 	if (!key) return null;
-	const usingOAuth = !process.env.ANTHROPIC_API_KEY;
 
 	const payload = await fetchJson(
 		`${ANTHROPIC_BASE}/v1/models`,
@@ -190,12 +177,8 @@ async function fetchAnthropicModels(): Promise<
 			item.display_name.trim().length > 0
 				? item.display_name
 				: modelId;
-		// OAuth inference requires short aliases (no date suffix).
-		const effectiveId = usingOAuth
-			? (stripAnthropicDateSuffix(modelId) ?? modelId)
-			: modelId;
 		return {
-			providerModelId: effectiveId,
+			providerModelId: modelId,
 			displayName,
 			contextWindow: null,
 			free: false,
