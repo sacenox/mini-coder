@@ -340,6 +340,7 @@ function renderMcpResult(
 ): boolean {
 	const content = Array.isArray(result) ? result : [result];
 	const maxBlocks = opts?.verboseOutput ? content.length : 5;
+	let rendered = false;
 	for (const block of (
 		content as Array<{ type?: string; text?: string }>
 	).slice(0, maxBlocks)) {
@@ -347,9 +348,10 @@ function renderMcpResult(
 			const maxLines = opts?.verboseOutput ? Number.POSITIVE_INFINITY : 6;
 			const lines = block.text.split("\n").slice(0, maxLines);
 			for (const line of lines) writeln(`    ${c.dim("│")} ${line}`);
+			rendered = true;
 		}
 	}
-	return true;
+	return rendered;
 }
 
 const TOOL_RESULT_RENDERERS: Readonly<Record<string, ToolResultRenderer>> = {

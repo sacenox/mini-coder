@@ -10,7 +10,11 @@ import {
 } from "./reasoning.ts";
 import type { Spinner } from "./spinner.ts";
 import { StreamRenderContent } from "./stream-render-content.ts";
-import { renderToolCall, renderToolResult } from "./tool-render.ts";
+import {
+	buildToolCallLine,
+	renderToolCall,
+	renderToolResult,
+} from "./tool-render.ts";
 
 export async function renderTurn(
 	events: AsyncIterable<TurnEvent>,
@@ -33,6 +37,8 @@ export async function renderTurn(
 	let contextTokens = 0;
 	let newMessages: CoreMessage[] = [];
 	const startedToolCalls = new Set<string>();
+	const toolCallInfo = new Map<string, { toolName: string; label: string }>();
+	let parallelCallCount = 0;
 	let renderedVisibleOutput = false;
 
 	let reasoningComputed = false;
@@ -73,6 +79,13 @@ export async function renderTurn(
 					break;
 				}
 				startedToolCalls.add(event.toolCallId);
+				toolCallInfo.set(event.toolCallId, {
+					toolName: event.toolName,
+					label: buildToolCallLine(event.toolName, event.args),
+				});
+				if (toolCallInfo.size > 1) {
+					parallelCallCount = toolCallInfo.size;
+				}
 				liveReasoning.finish();
 				content.flushOpenContent();
 				spinner.stop();
@@ -86,8 +99,14 @@ export async function renderTurn(
 
 			case "tool-result": {
 				startedToolCalls.delete(event.toolCallId);
+				const callInfo = toolCallInfo.get(event.toolCallId);
+				toolCallInfo.delete(event.toolCallId);
 				liveReasoning.finish();
 				spinner.stop();
+				if (parallelCallCount > 1 && callInfo) {
+					writeln(`    ${c.dim("↳")} ${callInfo.label}`);
+				}
+				if (toolCallInfo.size === 0) parallelCallCount = 0;
 				renderToolResult(event.toolName, event.result, event.isError, {
 					verboseOutput,
 				});

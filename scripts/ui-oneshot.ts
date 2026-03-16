@@ -327,7 +327,7 @@ async function main() {
 	separator("12. Error messages");
 	renderError("API rate limit exceeded. Retrying in 30s...");
 	writeln("");
-	renderError("Connection timed out after 60s", "Check your network connection and try again.");
+	renderError("Connection timed out after 60s");
 
 	// ── MCP tool ───────────────────────────────────────────
 	separator("13. MCP tool call");

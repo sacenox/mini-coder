@@ -592,6 +592,88 @@ describe("UI audit: parallel tool calls", () => {
 		expect(plain).toContain("◆ Partial failure.");
 	});
 
+	test("parallel results show ↳ label to identify which call each belongs to", async () => {
+		captureStdout();
+
+		await renderTurn(
+			eventsFrom([
+				{
+					type: "tool-call-start",
+					toolName: "shell",
+					toolCallId: "lbl1",
+					args: { command: "echo first" },
+				},
+				{
+					type: "tool-call-start",
+					toolName: "shell",
+					toolCallId: "lbl2",
+					args: { command: "echo second" },
+				},
+				{
+					type: "tool-result",
+					toolName: "shell",
+					toolCallId: "lbl1",
+					isError: false,
+					result: shellResult({ stdout: "first" }),
+				},
+				{
+					type: "tool-result",
+					toolName: "shell",
+					toolCallId: "lbl2",
+					isError: false,
+					result: shellResult({ stdout: "second" }),
+				},
+				turnDone(),
+			]),
+			new Spinner(),
+		);
+
+		const plain = simulateTerminal(getCapturedStdout());
+		// Both results get ↳ labels
+		expect(plain).toContain("↳ $ echo first");
+		expect(plain).toContain("↳ $ echo second");
+	});
+
+	test("sequential tool results do NOT show ↳ labels", async () => {
+		captureStdout();
+
+		await renderTurn(
+			eventsFrom([
+				{
+					type: "tool-call-start",
+					toolName: "shell",
+					toolCallId: "seq1",
+					args: { command: "echo one" },
+				},
+				{
+					type: "tool-result",
+					toolName: "shell",
+					toolCallId: "seq1",
+					isError: false,
+					result: shellResult({ stdout: "one" }),
+				},
+				{
+					type: "tool-call-start",
+					toolName: "shell",
+					toolCallId: "seq2",
+					args: { command: "echo two" },
+				},
+				{
+					type: "tool-result",
+					toolName: "shell",
+					toolCallId: "seq2",
+					isError: false,
+					result: shellResult({ stdout: "two" }),
+				},
+				turnDone(),
+			]),
+			new Spinner(),
+		);
+
+		const plain = simulateTerminal(getCapturedStdout());
+		expect(plain).not.toContain("↳");
+	});
+
 	test("reasoning → parallel calls → reasoning → reply", async () => {
 		captureStdout();
 
