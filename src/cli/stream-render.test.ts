@@ -1,36 +1,23 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import type { CoreMessage } from "../llm-api/turn.ts";
-import type { TurnEvent } from "../llm-api/types.ts";
 import { Spinner } from "./spinner.ts";
 import { renderTurn } from "./stream-render.ts";
 import {
 	captureStdout,
+	eventsFrom,
 	getCapturedStdout,
 	restoreStdout,
 	simulateTerminal,
 	stripAnsi,
+	turnDone,
 } from "./test-helpers.ts";
 
 afterEach(() => {
 	restoreStdout();
 });
 
-function eventsFrom(events: TurnEvent[]): AsyncIterable<TurnEvent> {
-	return (async function* () {
-		for (const event of events) {
-			yield event;
-		}
-	})();
-}
-
-function done(messages: CoreMessage[] = []): TurnEvent {
-	return {
-		type: "turn-complete",
-		inputTokens: 1,
-		outputTokens: 2,
-		contextTokens: 3,
-		messages,
-	};
+function done(messages: CoreMessage[] = []) {
+	return turnDone(messages);
 }
 
 function hasAnsi(s: string, code: string): boolean {

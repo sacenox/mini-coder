@@ -17,7 +17,8 @@
 		"knip": "knip",
 		"test": "bun test --only-failures",
 		"test:verbose": "bun test",
-		"jscpd": "jscpd src"
+		"jscpd": "jscpd src",
+		"ui-oneshot": "bun scripts/ui-oneshot.ts"
 	},
 	"dependencies": {
 		"@ai-sdk/anthropic": "^3.0.60",

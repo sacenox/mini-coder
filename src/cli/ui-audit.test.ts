@@ -1,53 +1,22 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import type { TurnEvent } from "../llm-api/types.ts";
 import { renderError, renderUserMessage } from "./output.ts";
 import { Spinner } from "./spinner.ts";
 import { renderTurn } from "./stream-render.ts";
 import {
 	captureStdout,
+	eventsFrom,
 	getCapturedStdout,
 	restoreStdout,
+	shellResult,
 	simulateTerminal,
 	stripAnsi,
+	turnDone,
 } from "./test-helpers.ts";
 import { renderToolCall, renderToolResult } from "./tool-render.ts";
 
 afterEach(() => {
 	restoreStdout();
 });
-
-function eventsFrom(events: TurnEvent[]): AsyncIterable<TurnEvent> {
-	return (async function* () {
-		for (const event of events) {
-			yield event;
-		}
-	})();
-}
-
-function done(): TurnEvent {
-	return {
-		type: "turn-complete",
-		inputTokens: 10,
-		outputTokens: 20,
-		contextTokens: 100,
-		messages: [],
-	};
-}
-
-function shellResult(opts: {
-	stdout?: string;
-	stderr?: string;
-	exitCode?: number;
-	success?: boolean;
-}) {
-	return {
-		stdout: opts.stdout ?? "",
-		stderr: opts.stderr ?? "",
-		exitCode: opts.exitCode ?? 0,
-		success: opts.success ?? true,
-		timedOut: false,
-	};
-}
 
 // ─── Visual hierarchy documentation ───────────────────────────────────────────
 //
@@ -199,7 +168,7 @@ describe("UI audit: full turn scenarios", () => {
 			eventsFrom([
 				{ type: "reasoning-delta", delta: "Let me think" },
 				{ type: "text-delta", delta: "Here is the answer." },
-				done(),
+				turnDone(),
 			]),
 			new Spinner(),
 		);
@@ -229,21 +198,18 @@ describe("UI audit: full turn scenarios", () => {
 					result: shellResult({ stdout: "file.txt" }),
 				},
 				{ type: "text-delta", delta: "Found file.txt" },
-				done(),
+				turnDone(),
 			]),
 			new Spinner(),
 		);
 
 		const plain = simulateTerminal(getCapturedStdout());
-		// Tool call at 2-space indent
 		expect(plain).toContain("  $ ls");
-		// Tool result at 4-space indent
 		expect(plain).toMatch(/^ {4}done/m);
-		// Reply at 0-indent with blank line before
 		expect(plain).toContain("\n\n◆ Found file.txt");
 	});
 
-	test("multiple tools: each tool-call/result pair is visually grouped", async () => {
+	test("multiple sequential tools: blank line between result and next call", async () => {
 		captureStdout();
 
 		await renderTurn(
@@ -274,16 +240,12 @@ describe("UI audit: full turn scenarios", () => {
 					isError: false,
 					result: shellResult({ stdout: "world" }),
 				},
-				done(),
+				turnDone(),
 			]),
 			new Spinner(),
 		);
 
 		const plain = simulateTerminal(getCapturedStdout());
-		// Both tool calls present
-		expect(plain).toContain("  $ cat a.txt");
-		expect(plain).toContain("  $ cat b.txt");
-		// Blank line between first result and second call
 		const lines = plain.split("\n");
 		const firstResultIdx = lines.findIndex((l) =>
 			l.match(/^ {4}done.*out: hello/),
@@ -291,7 +253,6 @@ describe("UI audit: full turn scenarios", () => {
 		const secondCallIdx = lines.findIndex((l) => l.includes("$ cat b.txt"));
 		expect(firstResultIdx).toBeGreaterThan(-1);
 		expect(secondCallIdx).toBeGreaterThan(firstResultIdx);
-		// There should be a blank line between the first result and second tool call
 		const between = lines.slice(firstResultIdx + 1, secondCallIdx);
 		expect(between.some((l) => l.trim() === "")).toBe(true);
 	});
@@ -317,13 +278,12 @@ describe("UI audit: full turn scenarios", () => {
 				},
 				{ type: "reasoning-delta", delta: "plan B" },
 				{ type: "text-delta", delta: "done" },
-				done(),
+				turnDone(),
 			]),
 			new Spinner(),
 		);
 
 		const plain = simulateTerminal(getCapturedStdout());
-		// Two separate reasoning blocks
 		const reasoningCount = (plain.match(/· reasoning/g) ?? []).length;
 		expect(reasoningCount).toBe(2);
 		expect(plain).toContain("plan A");
@@ -346,7 +306,7 @@ describe("UI audit: full turn scenarios", () => {
 					removedBytes: 10000,
 				},
 				{ type: "text-delta", delta: "continuing" },
-				done(),
+				turnDone(),
 			]),
 			new Spinner(),
 		);
@@ -361,7 +321,7 @@ describe("UI audit: full turn scenarios", () => {
 		captureStdout();
 
 		await renderTurn(
-			eventsFrom([{ type: "text-delta", delta: "Hello!" }, done()]),
+			eventsFrom([{ type: "text-delta", delta: "Hello!" }, turnDone()]),
 			new Spinner(),
 		);
 
@@ -387,7 +347,7 @@ describe("UI audit: full turn scenarios", () => {
 					isError: true,
 					result: "command not found",
 				},
-				done(),
+				turnDone(),
 			]),
 			new Spinner(),
 		);
@@ -400,14 +360,298 @@ describe("UI audit: full turn scenarios", () => {
 	test("empty turn (no text, no tools) still outputs a newline", async () => {
 		captureStdout();
 
-		await renderTurn(eventsFrom([done()]), new Spinner());
+		await renderTurn(eventsFrom([turnDone()]), new Spinner());
 
 		const raw = getCapturedStdout();
 		expect(raw).toContain("\n");
 	});
 });
 
-describe("UI audit: spinner does not leak into output", () => {
+describe("UI audit: parallel tool calls", () => {
+	test("two parallel shell calls render both calls before any results", async () => {
+		captureStdout();
+
+		await renderTurn(
+			eventsFrom([
+				{
+					type: "tool-call-start",
+					toolName: "shell",
+					toolCallId: "p1",
+					args: { command: "echo alpha" },
+				},
+				{
+					type: "tool-call-start",
+					toolName: "shell",
+					toolCallId: "p2",
+					args: { command: "echo bravo" },
+				},
+				{
+					type: "tool-result",
+					toolName: "shell",
+					toolCallId: "p1",
+					isError: false,
+					result: shellResult({ stdout: "alpha" }),
+				},
+				{
+					type: "tool-result",
+					toolName: "shell",
+					toolCallId: "p2",
+					isError: false,
+					result: shellResult({ stdout: "bravo" }),
+				},
+				{ type: "text-delta", delta: "Both done." },
+				turnDone(),
+			]),
+			new Spinner(),
+		);
+
+		const plain = simulateTerminal(getCapturedStdout());
+		const lines = plain.split("\n");
+
+		// Both tool calls appear before the first result
+		const call1 = lines.findIndex((l) => l.includes("$ echo alpha"));
+		const call2 = lines.findIndex((l) => l.includes("$ echo bravo"));
+		const result1 = lines.findIndex((l) => l.match(/^ {4}done.*alpha/));
+		const result2 = lines.findIndex((l) => l.match(/^ {4}done.*bravo/));
+
+		expect(call1).toBeGreaterThan(-1);
+		expect(call2).toBeGreaterThan(-1);
+		expect(result1).toBeGreaterThan(-1);
+		expect(result2).toBeGreaterThan(-1);
+
+		// Calls come before results
+		expect(call1).toBeLessThan(result1);
+		expect(call2).toBeLessThan(result2);
+
+		// Both calls appear before first result
+		expect(call2).toBeLessThan(result1);
+
+		// Reply follows
+		expect(plain).toContain("◆ Both done.");
+	});
+
+	test("three parallel mixed tools: shell + subagent + readSkill", async () => {
+		captureStdout();
+
+		await renderTurn(
+			eventsFrom([
+				{
+					type: "tool-call-start",
+					toolName: "shell",
+					toolCallId: "m1",
+					args: { command: "ls src" },
+				},
+				{
+					type: "tool-call-start",
+					toolName: "subagent",
+					toolCallId: "m2",
+					args: { prompt: "Analyze code" },
+				},
+				{
+					type: "tool-call-start",
+					toolName: "readSkill",
+					toolCallId: "m3",
+					args: { name: "deploy" },
+				},
+				{
+					type: "tool-result",
+					toolName: "shell",
+					toolCallId: "m1",
+					isError: false,
+					result: shellResult({ stdout: "index.ts" }),
+				},
+				{
+					type: "tool-result",
+					toolName: "subagent",
+					toolCallId: "m2",
+					isError: false,
+					result: { inputTokens: 50, outputTokens: 30 },
+				},
+				{
+					type: "tool-result",
+					toolName: "readSkill",
+					toolCallId: "m3",
+					isError: false,
+					result: {
+						skill: {
+							name: "deploy",
+							description: "Deploy stuff",
+							source: "local",
+						},
+					},
+				},
+				turnDone(),
+			]),
+			new Spinner(),
+		);
+
+		const plain = simulateTerminal(getCapturedStdout());
+
+		// All three calls rendered
+		expect(plain).toContain("  $ ls src");
+		expect(plain).toMatch(/^ {2}⇢/m);
+		expect(plain).toMatch(/^ {2}←/m);
+
+		// All three results at 4-space indent
+		expect(plain).toMatch(/^ {4}done.*index\.ts/m);
+		expect(plain).toMatch(/^ {4}⇢/m);
+		// readSkill result uses · (info) glyph
+		expect(plain).toMatch(/^ {4}·/m);
+	});
+
+	test("parallel calls: blank line separates second call from first call", async () => {
+		captureStdout();
+
+		await renderTurn(
+			eventsFrom([
+				{
+					type: "tool-call-start",
+					toolName: "shell",
+					toolCallId: "s1",
+					args: { command: "echo one" },
+				},
+				{
+					type: "tool-call-start",
+					toolName: "shell",
+					toolCallId: "s2",
+					args: { command: "echo two" },
+				},
+				{
+					type: "tool-result",
+					toolName: "shell",
+					toolCallId: "s1",
+					isError: false,
+					result: shellResult({ stdout: "one" }),
+				},
+				{
+					type: "tool-result",
+					toolName: "shell",
+					toolCallId: "s2",
+					isError: false,
+					result: shellResult({ stdout: "two" }),
+				},
+				turnDone(),
+			]),
+			new Spinner(),
+		);
+
+		const plain = simulateTerminal(getCapturedStdout());
+		const lines = plain.split("\n");
+
+		// There should be a blank line between the two tool call lines
+		const idx1 = lines.findIndex((l) => l.includes("$ echo one"));
+		const idx2 = lines.findIndex((l) => l.includes("$ echo two"));
+		expect(idx2).toBeGreaterThan(idx1);
+		// At least one blank line between them
+		const between = lines.slice(idx1 + 1, idx2);
+		expect(between.some((l) => l.trim() === "")).toBe(true);
+	});
+
+	test("parallel calls with one error and one success", async () => {
+		captureStdout();
+
+		await renderTurn(
+			eventsFrom([
+				{
+					type: "tool-call-start",
+					toolName: "shell",
+					toolCallId: "e1",
+					args: { command: "good-cmd" },
+				},
+				{
+					type: "tool-call-start",
+					toolName: "shell",
+					toolCallId: "e2",
+					args: { command: "bad-cmd" },
+				},
+				{
+					type: "tool-result",
+					toolName: "shell",
+					toolCallId: "e1",
+					isError: false,
+					result: shellResult({ stdout: "ok" }),
+				},
+				{
+					type: "tool-result",
+					toolName: "shell",
+					toolCallId: "e2",
+					isError: true,
+					result: "permission denied",
+				},
+				{ type: "text-delta", delta: "Partial failure." },
+				turnDone(),
+			]),
+			new Spinner(),
+		);
+
+		const plain = simulateTerminal(getCapturedStdout());
+		expect(plain).toContain("  $ good-cmd");
+		expect(plain).toContain("  $ bad-cmd");
+		expect(plain).toMatch(/^ {4}done/m);
+		expect(plain).toMatch(/^ {4}✖ permission denied/m);
+		expect(plain).toContain("◆ Partial failure.");
+	});
+
+	test("reasoning → parallel calls → reasoning → reply", async () => {
+		captureStdout();
+
+		await renderTurn(
+			eventsFrom([
+				{ type: "reasoning-delta", delta: "I'll check two files" },
+				{
+					type: "tool-call-start",
+					toolName: "shell",
+					toolCallId: "r1",
+					args: { command: "cat a.ts" },
+				},
+				{
+					type: "tool-call-start",
+					toolName: "shell",
+					toolCallId: "r2",
+					args: { command: "cat b.ts" },
+				},
+				{
+					type: "tool-result",
+					toolName: "shell",
+					toolCallId: "r1",
+					isError: false,
+					result: shellResult({ stdout: "content A" }),
+				},
+				{
+					type: "tool-result",
+					toolName: "shell",
+					toolCallId: "r2",
+					isError: false,
+					result: shellResult({ stdout: "content B" }),
+				},
+				{ type: "reasoning-delta", delta: "Now I understand" },
+				{ type: "text-delta", delta: "Here's my analysis." },
+				turnDone(),
+			]),
+			new Spinner(),
+		);
+
+		const plain = simulateTerminal(getCapturedStdout());
+
+		// Reasoning block before tools
+		expect(plain).toContain("· reasoning");
+		expect(plain).toContain("I'll check two files");
+
+		// Both parallel calls
+		expect(plain).toContain("$ cat a.ts");
+		expect(plain).toContain("$ cat b.ts");
+
+		// Second reasoning block
+		const reasoningCount = (plain.match(/· reasoning/g) ?? []).length;
+		expect(reasoningCount).toBe(2);
+		expect(plain).toContain("Now I understand");
+
+		// Final reply
+		expect(plain).toContain("◆ Here's my analysis.");
+	});
+});
+
+describe("UI audit: spinner", () => {
 	test("spinner stop is called before every rendered line", async () => {
 		captureStdout();
 		const spinner = new Spinner();
@@ -435,13 +679,11 @@ describe("UI audit: spinner does not leak into output", () => {
 					result: shellResult({ stdout: "hi" }),
 				},
 				{ type: "text-delta", delta: "answer" },
-				done(),
+				turnDone(),
 			]),
 			spinner,
 		);
 
-		// Spinner should have been stopped at least once for each visible block:
-		// reasoning, tool-call, tool-result, text
 		expect(stopCalls).toBeGreaterThanOrEqual(4);
 	});
 });

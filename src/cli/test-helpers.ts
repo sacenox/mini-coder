@@ -1,3 +1,5 @@
+import type { CoreMessage } from "../llm-api/turn.ts";
+import type { TurnEvent } from "../llm-api/types.ts";
 import { terminal } from "./terminal-io.ts";
 
 /** Temporarily set process.stdout.columns for terminal tests. */
@@ -110,4 +112,40 @@ export function simulateTerminal(raw: string): string {
 	}
 
 	return lines.join("\n");
+}
+
+/** Convert an array of TurnEvents into an AsyncIterable for renderTurn. */
+export function eventsFrom(events: TurnEvent[]): AsyncIterable<TurnEvent> {
+	return (async function* () {
+		for (const event of events) {
+			yield event;
+		}
+	})();
+}
+
+/** Create a turn-complete event with sensible defaults. */
+export function turnDone(messages: CoreMessage[] = []): TurnEvent {
+	return {
+		type: "turn-complete",
+		inputTokens: 1,
+		outputTokens: 2,
+		contextTokens: 3,
+		messages,
+	};
+}
+
+/** Shorthand for a shell result object. */
+export function shellResult(opts: {
+	stdout?: string;
+	stderr?: string;
+	exitCode?: number;
+	success?: boolean;
+}) {
+	return {
+		stdout: opts.stdout ?? "",
+		stderr: opts.stderr ?? "",
+		exitCode: opts.exitCode ?? 0,
+		success: opts.success ?? true,
+		timedOut: false,
+	};
 }
