@@ -190,7 +190,7 @@ async function resolveAnthropicModel(modelId: string): Promise<LanguageModel> {
 						fetch: fetchWithLogging,
 						authToken: token,
 						headers: {
-							"anthropic-beta": "oauth-2025-04-20",
+							"anthropic-beta": "claude-code-20250219,oauth-2025-04-20",
 						},
 					}),
 				};
