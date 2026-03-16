@@ -1,156 +1,275 @@
 # MINI-CODER(1)
 
 ## NAME
-**mini-coder** (executable: `mc`) - A small, fast CLI coding agent built for developers.
+
+**mini-coder** — a small, fast CLI coding agent (executable: `mc`)
 
 ## SYNOPSIS
-`mc [options] [prompt]`
+
+`mc` \[*options*\] \[*prompt*\]
 
 ## DESCRIPTION
-**mini-coder** is a developer-focused CLI coding agent. It prioritizes developer flow with no slow startup, no clunky GUI, and no vendor lock-in. It uses a minimalist terminal UI restricted to 16 ANSI colors to inherit the user's terminal theme, and is built entirely on Bun.js for maximum performance.
+
+Developer-focused CLI coding agent. Prioritizes dev flow — no slow startup, no GUI, no vendor lock-in. Uses 16 ANSI colors to inherit terminal theme. Built on Bun.js.
 
 ## OPTIONS
-**-m, --model <id>**
-:   Specify the model to use (e.g., `zen/claude-sonnet-4-6`).
 
-**-c, --continue**
-:   Continue the most recent session.
+`-m`, `--model` *id*
+: Model to use (e.g. `zen/claude-sonnet-4-6`).
 
-**-r, --resume <id>**
-:   Resume a specific session by its ID.
+`-c`, `--continue`
+: Continue most recent session.
 
-**-l, --list**
-:   List recent sessions.
+`-r`, `--resume` *id*
+: Resume a specific session.
 
-**--cwd <path>**
-:   Set the working directory (defaults to current directory).
+`-l`, `--list`
+: List recent sessions.
 
-**-h, --help**
-:   Display help information.
+`--cwd` *path*
+: Set working directory.
 
-**[prompt]**
-:   Optional one-shot prompt text. Runs once, then exits.
+`-h`, `--help`
+: Display help.
+
+*prompt*
+: Optional one-shot prompt. Runs once then exits.
 
 ## INTERACTIVE COMMANDS
-Inside the interactive session, the following slash commands are available:
 
-**/model**
-:   List all available models, indicating free models and context sizes.
+`/model`
+: List all available models.
 
-**/model <id>**
-:   Switch to a specific model.
+`/model` *id*
+: Switch model.
 
-**/model effort <low|medium|high|xhigh|off>**
-:   Configure reasoning effort levels for models that support it.
+`/model effort` *low|medium|high|xhigh|off*
+: Set reasoning effort.
 
-**/reasoning [on|off]**
-:   Toggle the display of the model's reasoning/thought process.
+`/reasoning` \[*on|off*\]
+: Toggle reasoning display.
 
-**/context prune <off|balanced|aggressive>**
-:   Configure context window pruning strategies.
+`/context prune` *off|balanced|aggressive*
+: Pruning strategy.
 
-**/context cap <off|bytes|kb>**
-:   Set a hard payload cap size for tool results to avoid blowing out context.
+`/context cap` *off|bytes|kb*
+: Tool result payload cap.
 
-**/cache <on|off>**
-:   Toggle prompt caching globally.
+`/cache` *on|off*
+: Toggle prompt caching globally.
 
-**/cache openai <in_memory|24h>**
-:   Set OpenAI prompt cache retention policies.
+`/cache openai` *in_memory|24h*
+: OpenAI cache retention.
 
-**/cache gemini <off|cachedContents/...>**
-:   Attach Google Gemini cached content.
+`/cache gemini` *off|cachedContents/...*
+: Gemini cached content.
 
-**/undo**
-:   Remove the last conversation turn. This does not revert filesystem changes.
+`/undo`
+: Remove last turn (does NOT revert filesystem).
 
-**/new**
-:   Clear context and start a fresh session.
+`/new`
+: Start a fresh session.
 
-**/mcp list**
-:   List configured MCP servers.
+`/verbose`
+: Toggle output truncation.
 
-**/mcp add <name> http <url>**
-:   Add an MCP server over HTTP.
+`/mcp list`
+: List MCP servers.
 
-**/mcp add <name> stdio <cmd> [args...]**
-:   Add an MCP server over stdio.
+`/mcp add` *name* `http` *url*
+: Add HTTP MCP server.
 
-**/mcp remove <name>** (or **rm**)
-:   Remove an MCP server.
+`/mcp add` *name* `stdio` *cmd* \[*args...*\]
+: Add stdio MCP server.
 
-**/agent [name]**
-:   Set or clear an active primary custom agent.
+`/mcp remove` *name*
+: Remove MCP server.
 
-**/review**
-:   Custom command that reviews the current session's changes (defined via `.agents/commands/`).
+`/agent` \[*name*\]
+: Set or clear active primary agent.
 
+`/review`
+: Review changes (custom command, auto-created globally).
 
-**/help**
-:   Display command help.
+`/login`
+: Show OAuth login status.
 
-**/exit, /quit, /q**
-:   Leave the session.
+`/login` *provider*
+: Login via OAuth (opens browser for device flow). Currently supports `anthropic`.
+
+`/logout` *provider*
+: Clear saved OAuth tokens.
+
+`/help`
+: Command help.
+
+`/exit`, `/quit`, `/q`
+: Leave session.
 
 ## INLINE FEATURES
-**Shell Integration**
-:   Prefix user prompts with `!` to run shell commands inline directly into the context.
 
-**File & Skill Referencing**
-:   Prefix words with `@` to reference files or skills within prompts (supports tab completion).
+`!` prefix
+: Runs shell commands inline.
+
+`@` prefix
+: References files or skills (with tab completion).
 
 ## BUILT-IN TOOLS
-The agent has access to the following tools:
-*   **shell**: Execute bash commands and capture output. Repo inspection and targeted file edits are typically done here via `mc-edit`.
-*   **subagent**: Spawn a focused mini-agent with a prompt.
-*   **listSkills**: List discovered skills without loading full skill bodies.
-*   **readSkill**: Load one `SKILL.md` on demand.
-*   **webSearch**: Search the internet (requires EXA key).
-*   **webContent**: Fetch full page content from a URL (requires EXA key).
-*   **MCP tools**: Connected external tools attached dynamically from configured MCP servers.
 
-## FILE EDIT HELPER
-**mc-edit**
-:   Helper command used from shell for one exact-text edit on an existing file. On success it prints a human-readable plain unified diff to stdout followed by a short metadata block (`ok`, `path`, `changed`). If the edit is a no-op, it prints `(no changes)` plus the same metadata. Errors are written to stderr.
+**shell**
+: Execute bash commands; repo inspection and `mc-edit` edits happen here.
+
+**subagent**
+: Spawn a focused mini-agent for parallel subtasks.
+
+**listSkills**
+: List discovered skills (metadata only).
+
+**readSkill**
+: Load one SKILL.md on demand.
+
+**webSearch**
+: Search the web (requires `EXA_API_KEY`).
+
+**webContent**
+: Fetch page content (requires `EXA_API_KEY`).
+
+MCP tools are connected dynamically from configured MCP servers.
+
+## FILE EDITING — mc-edit
+
+`mc-edit` is the helper for targeted file edits, invoked from **shell**.
+
+```
+mc-edit <path> (--old <text> | --old-file <path>) [--new <text> | --new-file <path>] [--cwd <path>]
+```
+
+- Applies one exact-text edit to an existing file.
+- The old text must match exactly once.
+- Omit `--new`/`--new-file` to delete the matched text.
+- Success: prints unified diff + metadata (`ok`, `path`, `changed`).
+- No-op: prints `(no changes)` + metadata.
+- Errors go to stderr.
+
+Workflow: inspect with **shell** → edit with **mc-edit** → verify with **shell**.
+
+## CUSTOM COMMANDS
+
+Drop a `.md` file in `.agents/commands/` (local) or `~/.agents/commands/` (global) and it becomes a `/command`. Filename equals command name (`standup.md` → `/standup`).
+
+`.claude/commands/*.md` is also supported.
+
+**Frontmatter fields:**
+
+`description`
+: Shown in `/help`.
+
+`model`
+: Override model (only with `context: fork`).
+
+`context`
+: `fork` to run as isolated subagent; default is inline.
+
+`subtask`
+: `true` forces subagent (OpenCode-compatible alias).
+
+`agent`
+: Run under named agent's system prompt (only with `context: fork`).
+
+**Argument substitution:**
+
+`$ARGUMENTS` expands to the full argument string; `$1`–`$9` expand to positional tokens.
+
+**Shell interpolation:**
+
+`` !`cmd` `` injects shell output at expansion time (10 s timeout).
+
+**Precedence:** custom commands shadow built-ins. Local overrides global.
+
+## CUSTOM AGENTS
+
+Drop a `.md` file in `.agents/agents/` (local) or `~/.agents/agents/` (global). Filename equals agent name. Activate with `/agent <name>`.
+
+`.claude/agents/*.md` is also supported.
+
+**Frontmatter fields:**
+
+`description`
+: Shown in `/help`.
+
+`model`
+: Override active model.
+
+`mode`
+: `primary` excludes from subagent tool; `subagent`/`all`/omitted keeps it available.
+
+Body is the agent system prompt. Non-primary agents are exposed to the **subagent** tool for delegation.
+
+## SKILLS
+
+Skills are reusable instruction files at `.agents/skills/<name>/SKILL.md`.
+
+`.claude/skills/<name>/SKILL.md` is also supported.
+
+**Frontmatter (both required):**
+
+`name`
+: Lowercase alphanumeric + hyphens, 1–64 chars.
+
+`description`
+: Help text.
+
+Skills are never auto-loaded. Load explicitly:
+
+- `@skill-name` in prompts (injects body wrapped in `<skill>` XML).
+- **listSkills** / **readSkill** tools at runtime.
+
+Local discovery walks up from cwd to the git worktree root.
+
+## CONFIGURATION
+
+Supports `.agents` and `.claude` layouts for commands, skills, agents, and context.
+
+Config roots: `.agents/`, `.claude/` — local (repo) or global (`~/`).
+
+**Context files** (one global + one local loaded):
+
+- Global: `~/.agents/AGENTS.md` → `~/.agents/CLAUDE.md`
+- Local: `./.agents/AGENTS.md` → `./CLAUDE.md` → `./AGENTS.md`
+
+**Precedence:**
+
+1. Local overrides global.
+2. Same scope: `.agents` wins over `.claude`.
+3. Skills: nearest ancestor directory wins.
 
 ## ENVIRONMENT
-**OPENCODE_API_KEY**
-:   OpenCode Zen API key (Recommended provider).
 
-**ANTHROPIC_API_KEY**
-:   Direct Anthropic API key.
+`OPENCODE_API_KEY`
+: OpenCode Zen (recommended).
 
-**OPENAI_API_KEY**
-:   Direct OpenAI API key.
+`ANTHROPIC_API_KEY`
+: Direct Anthropic.
 
-**GOOGLE_API_KEY** (or **GEMINI_API_KEY**)
-:   Direct Google Gemini API key.
+`OPENAI_API_KEY`
+: Direct OpenAI.
 
-**OLLAMA_BASE_URL**
-:   Ollama local base URL (Defaults to `http://localhost:11434`).
+`GOOGLE_API_KEY` / `GEMINI_API_KEY`
+: Direct Gemini.
 
-**EXA_API_KEY**
-:   Enables built-in `webSearch` and `webContent` tools.
+`OLLAMA_BASE_URL`
+: Ollama local (defaults to `http://localhost:11434`).
 
-## FILES & DIRECTORIES
-**~/.config/mini-coder/**
-:   Application data directory. Contains `sessions.db` (SQLite database for session history, MCP server configs, and model metadata), `api.log`, and `errors.log`.
+`EXA_API_KEY`
+: Enables **webSearch** / **webContent**.
 
-**.agents/ or .claude/ (Local or Global in ~/)**
-:   Configuration directories for advanced features:
-    *   **commands/*.md**: Custom slash commands.
-    *   **agents/*.md**: Custom behavioral wrappers or subagents.
-    *   **skills/<name>/SKILL.md**: Isolated context/instruction snippets.
+## FILES
 
-**AGENTS.md / CLAUDE.md**
-:   Auto-loaded system context files for project-specific instructions.
+`~/.config/mini-coder/`
+: App data directory (sessions.db, api.log, errors.log).
 
-## CORE FEATURES & ARCHITECTURE
-*   **Multi-Provider LLM Routing**: Automatically discovers API keys to route to OpenCode (Zen), Anthropic, OpenAI, Google/Gemini, or local Ollama instances.
-*   **Session Memory**: Persists conversation history in a local SQLite database, allowing users to resume past sessions effortlessly.
-*   **Subagent Delegation**: Includes a tool to spawn parallel instances of itself to tackle independent subtasks simultaneously (up to 10 levels deep).
-*   **Model Context Protocol (MCP)**: Native support for connecting external tools via MCP servers over HTTP or stdio.
-*   **Prompt Caching**: Configurable caching behaviors for supported providers (OpenAI, Gemini).
-*   **Undo Functionality**: Remove the last conversation turn from the current session history. It does not restore filesystem changes.
+`.agents/` or `.claude/`
+: Config directories for commands, agents, skills.
 
-
+`AGENTS.md` / `CLAUDE.md`
+: Project context files.

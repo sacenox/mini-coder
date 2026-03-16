@@ -47,6 +47,7 @@ conventions and not introduce more specs. (`.agents` / `AGENTS.md`, while also s
   - `/review` reviews recent changes via a global custom command installed at app start (`~/.agents/commands/review.md`), and can be customized or shadowed locally.
   - `/agent` sets or clears the active primary agent.
   - `/mcp` list/add/remove mcp servers. servers are stored in sqlite
+  - `/login` shows OAuth login status. `/login <provider>` starts browser-based OAuth login. `/logout <provider>` clears saved tokens. Currently supports Anthropic.
   - `/new` starts a new session with clean context. Clean UI and fresh session display
 - Connect to MCP servers over Streamable HTTP / SSE fallback or stdio.
 - Image support in prompt input, including pasted image data URLs and pasted image file paths.
@@ -72,7 +73,7 @@ conventions and not introduce more specs. (`.agents` / `AGENTS.md`, while also s
 
 ## Repo structure
 
-Clean separation of concerns, use modules to organize the app. Group logical features together for best browsability and readability of the code.
+Clean separation of concerns, use modules to organize the app. Group logical features together for best browsability and readability of the code. Use subdirectories to group files logically.
 No mocked/offline-servers type of tests. Focused tests on _our_ logic. Do not test our dependencies.
 
 Core modules:

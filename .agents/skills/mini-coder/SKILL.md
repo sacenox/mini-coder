@@ -95,6 +95,9 @@ Inside `mc`, the user can run slash commands such as:
 - `/mcp add <name> stdio <cmd> [args...]` — add a stdio MCP server
 - `/mcp remove <name>` — remove an MCP server
 - `/agent [name]` — set or clear an active primary custom agent
+- `/login` — show OAuth login status
+- `/login <provider>` — login via OAuth (opens browser). Currently supports `anthropic`
+- `/logout <provider>` — clear saved OAuth tokens
 - `/exit`, `/quit`, `/q` — leave the session
 
 ## Prompt input features
@@ -114,6 +117,44 @@ mini-coder itself is shell-first: repo inspection happens primarily through shel
 - skills
 
 This helps users quickly pull relevant context into a prompt.
+
+## File editing with mc-edit
+
+`mc` is shell-first. The preferred workflow for file edits is: inspect with shell → edit with `mc-edit` → verify with shell.
+
+`mc-edit` is a helper command invoked from the shell tool for targeted, exact-text file edits:
+
+```sh
+mc-edit <path> (--old <text> | --old-file <path>) [--new <text> | --new-file <path>] [--cwd <path>]
+```
+
+- Applies one exact-text replacement to an existing file
+- The old text must match exactly once (fails on zero or multiple matches)
+- Omit `--new`/`--new-file` to delete the matched text
+- On success: prints a unified diff + metadata (`ok`, `path`, `changed`)
+- On no-op: prints `(no changes)` + metadata
+- Errors go to stderr
+
+### Examples
+
+Replace a function signature:
+
+```sh
+mc-edit src/auth.ts --old "function login(user)" --new "async function login(user)"
+```
+
+Delete a block:
+
+```sh
+mc-edit src/config.ts --old "// TODO: remove this
+const DEBUG = true;"
+```
+
+Use temp files for large edits:
+
+```sh
+mc-edit src/big-file.ts --old-file /tmp/old.txt --new-file /tmp/new.txt
+```
 
 ## Config locations
 
