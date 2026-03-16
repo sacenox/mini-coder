@@ -121,7 +121,6 @@ describe("sanitizeModelAuthoredMessages", () => {
 						input: {
 							path: "TODO.md",
 							cwd: "/tmp/project",
-							onOutput: "ignore",
 						},
 					},
 				],

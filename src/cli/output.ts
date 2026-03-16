@@ -12,7 +12,6 @@ import { loadAgents } from "./agents.ts";
 import { loadCustomCommands } from "./custom-commands.ts";
 import { logError } from "./error-log.ts";
 import { parseAppError } from "./error-parse.ts";
-import { LiveOutputBlock } from "./live-output.ts";
 import { loadSkillsIndex } from "./skills.ts";
 import { Spinner } from "./spinner.ts";
 import { renderStatusBar } from "./status-bar.ts";
@@ -163,24 +162,14 @@ export function renderBanner(model: string, cwd: string): void {
 
 export class CliReporter implements AgentReporter {
 	private spinner = new Spinner();
-	private liveOutput = new LiveOutputBlock();
-
-	private haltSpinner(): void {
-		this.spinner.stop();
-	}
-
-	private haltSpinnerAndFlushLiveOutput(): void {
-		this.spinner.stop();
-		this.liveOutput.finish();
-	}
 
 	info(msg: string): void {
-		this.haltSpinnerAndFlushLiveOutput();
+		this.spinner.stop();
 		writeln(`${G.info} ${c.dim(msg)}`);
 	}
 
 	error(msg: string | Error, hint?: string): void {
-		this.haltSpinnerAndFlushLiveOutput();
+		this.spinner.stop();
 		if (typeof msg === "string") {
 			renderError(msg, hint);
 		} else {
@@ -189,18 +178,13 @@ export class CliReporter implements AgentReporter {
 	}
 
 	warn(msg: string): void {
-		this.haltSpinnerAndFlushLiveOutput();
+		this.spinner.stop();
 		writeln(`${G.warn} ${msg}`);
 	}
 
 	writeText(text: string): void {
-		this.haltSpinnerAndFlushLiveOutput();
+		this.spinner.stop();
 		writeln(text);
-	}
-
-	streamChunk(text: string): void {
-		this.haltSpinner();
-		this.liveOutput.append(text);
 	}
 
 	startSpinner(label?: string): void {
@@ -208,19 +192,17 @@ export class CliReporter implements AgentReporter {
 	}
 
 	stopSpinner(): void {
-		this.haltSpinner();
+		this.spinner.stop();
 	}
 
 	async renderTurn(
 		events: AsyncIterable<TurnEvent>,
 		opts?: { showReasoning?: boolean; verboseOutput?: boolean },
 	): Promise<TurnResult> {
-		this.liveOutput.finish();
 		return renderTurn(events, this.spinner, opts);
 	}
 
 	renderStatusBar(data: StatusBarData): void {
-		this.liveOutput.finish();
 		renderStatusBar(data);
 	}
 

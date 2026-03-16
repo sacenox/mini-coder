@@ -2,8 +2,7 @@
 
 ## Bugs:
 
-- Chat completions endpoint models sometimes print empty assistant messages.
-- Are we doing any buffering when rendering assistant responses? It feels slower to render. The library we use is very fast and can render well, maybe it's something from before we adopted it?
+- models sometimes print empty assistant messages. Or excessive leading whitespace. Seems like something is wrong.
 
 ---
 
@@ -20,6 +19,7 @@ We could look into coloring the most used shell commands.
 - Ensure we have a good styled output that is clear to the user, refactor as needed.
 - Ensure we have propper hierchy in output, and the different types of output are clearly distinguishable for the user, using styles and whitespace.
 - Ensure proper spinner functionality, that follow up messages don't rended inline and that is doesn't break anything.
+- Ensure conversation log is logical, and that user, assistant, assistant reasoning, and tools and tool calls and responses are clearly labelled and associated for readability
 
 ---
 

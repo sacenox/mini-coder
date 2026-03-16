@@ -295,7 +295,6 @@ describe("renderTurn", () => {
 						exitCode: 0,
 						success: true,
 						timedOut: false,
-						streamedOutput: false,
 					},
 				},
 				{ type: "reasoning-delta", delta: "done" },

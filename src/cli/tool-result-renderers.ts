@@ -72,19 +72,9 @@ function buildShellSummaryParts(opts: {
 	stdoutLines: number;
 	stderrLines: number;
 	stdoutSingleLine: string | null;
-	streamedOutput: boolean;
 	verboseOutput: boolean;
 }): string[] {
 	const parts = [`exit ${opts.exitCode}`];
-	if (opts.streamedOutput) {
-		if (opts.stdoutLines === 0 && opts.stderrLines === 0) {
-			parts.push("no output");
-		}
-		if (opts.stderrLines > 0) {
-			parts.push(`stderr ${opts.stderrLines}L`);
-		}
-		return parts;
-	}
 
 	if (
 		opts.stderrLines === 0 &&
@@ -130,13 +120,11 @@ function renderShellResult(
 		exitCode: number;
 		success: boolean;
 		timedOut: boolean;
-		streamedOutput?: boolean;
 	};
 	if (!r || typeof r.stdout !== "string" || typeof r.stderr !== "string") {
 		return false;
 	}
 
-	const streamedOutput = r.streamedOutput === true;
 	const verboseOutput = opts?.verboseOutput === true;
 	const stdoutLines = countShellLines(r.stdout);
 	const stderrLines = countShellLines(r.stderr);
@@ -151,15 +139,10 @@ function renderShellResult(
 		stdoutLines,
 		stderrLines,
 		stdoutSingleLine,
-		streamedOutput,
 		verboseOutput,
 	});
 
 	writeln(`    ${badge} ${c.dim(parts.join(" · "))}`);
-
-	if (streamedOutput) {
-		return true;
-	}
 
 	writePreviewLines({
 		label: "stderr",

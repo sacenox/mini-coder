@@ -54,7 +54,7 @@ describe("buildToolCallLine", () => {
 });
 
 describe("renderToolResult", () => {
-	test("does not duplicate streamed shell output previews", () => {
+	test("shows stderr preview for failed commands", () => {
 		captureStdout();
 
 		renderToolResult(
@@ -65,39 +65,16 @@ describe("renderToolResult", () => {
 				exitCode: 1,
 				success: false,
 				timedOut: false,
-				streamedOutput: true,
 			},
 			false,
 		);
 
 		const plain = stripAnsi(stdout);
 		expect(plain).toContain("error exit 1 · stderr 1L");
-		expect(plain).not.toContain("stderr (1 lines)");
-		expect(plain).not.toContain("│ boom");
+		expect(plain).toContain("│ boom");
 	});
 
-	test("does not repeat successful single-line stdout when it was streamed live", () => {
-		captureStdout();
-
-		renderToolResult(
-			"shell",
-			{
-				stdout: "done",
-				stderr: "",
-				exitCode: 0,
-				success: true,
-				timedOut: false,
-				streamedOutput: true,
-			},
-			false,
-		);
-
-		const plain = stripAnsi(stdout);
-		expect(plain).toContain("done exit 0");
-		expect(plain).not.toContain("out: done");
-	});
-
-	test("shows stdout previews for non-streamed successful multi-line commands", () => {
+	test("shows stdout previews for successful multi-line commands", () => {
 		captureStdout();
 
 		renderToolResult(
@@ -108,7 +85,6 @@ describe("renderToolResult", () => {
 				exitCode: 0,
 				success: true,
 				timedOut: false,
-				streamedOutput: false,
 			},
 			false,
 		);
@@ -135,7 +111,6 @@ describe("renderToolResult", () => {
 				exitCode: 0,
 				success: true,
 				timedOut: false,
-				streamedOutput: false,
 			},
 			false,
 		);
@@ -163,7 +138,6 @@ describe("renderToolResult", () => {
 				exitCode: 0,
 				success: true,
 				timedOut: false,
-				streamedOutput: false,
 			},
 			false,
 			{ verboseOutput: true },

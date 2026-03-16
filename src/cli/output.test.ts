@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { CliReporter, renderBanner, renderUserMessage } from "./output.ts";
+import { renderBanner, renderUserMessage } from "./output.ts";
 import { terminal } from "./terminal-io.ts";
 
 let stdout = "";
@@ -46,28 +46,5 @@ describe("renderBanner", () => {
 		renderBanner("zen/gpt-5.4", `${process.env.HOME}/src/mini-coder`);
 
 		expect(stripAnsi(stdout)).toContain("zen/gpt-5.4  ·  ~/src/mini-coder");
-	});
-});
-
-describe("CliReporter live output", () => {
-	test("groups streamed chunks into an indented output block", () => {
-		captureStdout();
-		const reporter = new CliReporter();
-
-		reporter.streamChunk("hello");
-		reporter.streamChunk("\nworld\n");
-		reporter.info("done");
-
-		expect(stripAnsi(stdout)).toBe("    │ hello\n    │ world\n· done\n");
-	});
-
-	test("flushes an unterminated streamed line before the next log line", () => {
-		captureStdout();
-		const reporter = new CliReporter();
-
-		reporter.streamChunk("partial line");
-		reporter.warn("next");
-
-		expect(stripAnsi(stdout)).toBe("    │ partial line\n! next\n");
 	});
 });

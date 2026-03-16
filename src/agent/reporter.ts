@@ -28,9 +28,7 @@ export interface AgentReporter {
 	info(msg: string): void;
 	error(msg: string | Error, hint?: string): void;
 	warn(msg: string): void;
-	writeText(text: string): void; // For raw text like passthrough shell output
-	/** Write a raw output chunk without adding a newline (e.g. streaming shell output). */
-	streamChunk(text: string): void;
+	writeText(text: string): void;
 
 	startSpinner(label?: string): void;
 	stopSpinner(): void;

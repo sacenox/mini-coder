@@ -22,26 +22,6 @@ function withCwdDefault(tool: ToolDef, cwd: string): ToolDef {
 	};
 }
 
-/**
- * Inject an onOutput streaming callback into the shell tool's input.
- */
-function withShellOutput(
-	tool: ToolDef,
-	onOutput: (chunk: string) => boolean | undefined,
-): ToolDef {
-	const originalExecute = tool.execute;
-	return {
-		...tool,
-		execute: async (input: unknown) => {
-			const patched = {
-				...(typeof input === "object" && input !== null ? input : {}),
-				onOutput,
-			} as Record<string, unknown>;
-			return originalExecute(patched);
-		},
-	};
-}
-
 export function buildToolSet(opts: {
 	cwd: string;
 	runSubagent: (
@@ -49,19 +29,14 @@ export function buildToolSet(opts: {
 		agentName?: string,
 		modelOverride?: string,
 	) => Promise<SubagentOutput>;
-	onShellOutput?: (chunk: string) => boolean | undefined;
 	availableAgents: ReadonlyMap<string, { description: string }>;
 }): ToolDef[] {
-	const { cwd, onShellOutput } = opts;
+	const { cwd } = opts;
 
-	const shell = (
-		onShellOutput
-			? withShellOutput(
-					withCwdDefault(shellTool as ToolDef, cwd),
-					onShellOutput,
-				)
-			: withCwdDefault(shellTool as ToolDef, cwd)
-	) as ToolDef<{ cwd?: string; command: string }, ShellOutput>;
+	const shell = withCwdDefault(shellTool as ToolDef, cwd) as ToolDef<
+		{ cwd?: string; command: string },
+		ShellOutput
+	>;
 
 	const tools: ToolDef[] = [
 		shell as ToolDef,

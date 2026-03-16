@@ -21,7 +21,6 @@ const ShellSchema = z.object({
 
 type ShellInput = z.infer<typeof ShellSchema> & {
 	cwd?: string;
-	onOutput?: (chunk: string) => boolean | undefined;
 };
 
 export interface ShellOutput {
@@ -30,7 +29,6 @@ export interface ShellOutput {
 	exitCode: number;
 	success: boolean;
 	timedOut: boolean;
-	streamedOutput: boolean;
 }
 
 const MAX_OUTPUT_BYTES = 10_000; // 10KB per stream
@@ -79,14 +77,12 @@ export async function runShellCommand(input: ShellInput): Promise<ShellOutput> {
 
 	async function collectStream(
 		stream: ReadableStream<Uint8Array>,
-		onChunk?: (text: string) => void,
 	): Promise<string> {
 		const reader = stream.getReader();
 		readers.push(reader);
 		const chunks: Uint8Array[] = [];
 		let totalBytes = 0;
 		let truncated = false;
-		const decoder = new TextDecoder();
 
 		while (true) {
 			try {
@@ -94,7 +90,6 @@ export async function runShellCommand(input: ShellInput): Promise<ShellOutput> {
 				if (done) break;
 				if (!value) continue;
 
-				onChunk?.(decoder.decode(value, { stream: true }));
 				if (totalBytes + value.length > MAX_OUTPUT_BYTES) {
 					chunks.push(value.slice(0, MAX_OUTPUT_BYTES - totalBytes));
 					truncated = true;
@@ -116,26 +111,12 @@ export async function runShellCommand(input: ShellInput): Promise<ShellOutput> {
 	let stdout = "";
 	let stderr = "";
 	let exitCode = 1;
-	const onOutput = input.onOutput;
-	const hasOutputHandler = typeof onOutput === "function";
-	let streamedAnyOutput = false;
-	let streamedEndsWithNewline = true;
-	const emitOutput = (chunk: string): void => {
-		if (!chunk || !hasOutputHandler) return;
-		const handled = onOutput(chunk);
-		if (handled === false) return;
-		streamedAnyOutput = true;
-		streamedEndsWithNewline = /[\r\n]$/.test(chunk);
-	};
 
 	try {
 		[stdout, stderr] = await Promise.all([
-			collectStream(proc.stdout, hasOutputHandler ? emitOutput : undefined),
-			collectStream(proc.stderr, hasOutputHandler ? emitOutput : undefined),
+			collectStream(proc.stdout),
+			collectStream(proc.stderr),
 		]);
-		if (streamedAnyOutput && !streamedEndsWithNewline) {
-			emitOutput("\n");
-		}
 		exitCode = await proc.exited;
 	} finally {
 		clearTimeout(timer);
@@ -155,7 +136,6 @@ export async function runShellCommand(input: ShellInput): Promise<ShellOutput> {
 		exitCode,
 		success: exitCode === 0,
 		timedOut,
-		streamedOutput: streamedAnyOutput,
 	};
 }
 
