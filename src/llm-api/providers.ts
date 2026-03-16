@@ -178,6 +178,15 @@ type AsyncModelResolver = (
 let oauthAnthropicCache: { token: string; provider: AnthropicProvider } | null =
 	null;
 
+/**
+ * Strip the trailing -YYYYMMDD date suffix from Anthropic model IDs.
+ * OAuth inference accepts short aliases (e.g. "claude-sonnet-4-6")
+ * but the /v1/models listing returns dated IDs (e.g. "claude-sonnet-4-6-20250725").
+ */
+function stripDateSuffix(modelId: string): string {
+	return modelId.replace(/-\d{8}$/, "");
+}
+
 async function resolveAnthropicModel(modelId: string): Promise<LanguageModel> {
 	// OAuth token takes priority over env var
 	if (isLoggedIn("anthropic")) {
@@ -195,7 +204,7 @@ async function resolveAnthropicModel(modelId: string): Promise<LanguageModel> {
 					}),
 				};
 			}
-			return oauthAnthropicCache.provider(modelId);
+			return oauthAnthropicCache.provider(stripDateSuffix(modelId));
 		}
 	}
 	// Fallback to ANTHROPIC_API_KEY env var
@@ -241,10 +250,10 @@ export async function resolveModel(
 export function autoDiscoverModel(): string {
 	if (process.env.OPENCODE_API_KEY) return "zen/claude-sonnet-4-6";
 	if (process.env.ANTHROPIC_API_KEY || isLoggedIn("anthropic"))
-		return "anthropic/claude-sonnet-4-5-20250929";
-	if (process.env.OPENAI_API_KEY) return "openai/gpt-4o";
+		return "anthropic/claude-sonnet-4-6";
+	if (process.env.OPENAI_API_KEY) return "openai/gpt-5.4";
 	if (process.env.GOOGLE_API_KEY ?? process.env.GEMINI_API_KEY)
-		return "google/gemini-2.0-flash";
+		return "google/gemini-3.1-pro";
 	return "ollama/llama3.2";
 }
 
