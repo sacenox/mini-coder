@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { isLoggedIn } from "../oauth/auth-storage.ts";
 import {
 	buildModelMatchIndex,
 	getProvidersToRefreshFromEnv,
@@ -12,21 +13,27 @@ import {
 	resolveModelInfoFromRows,
 } from "./model-info.ts";
 
+const anthropicOAuth = isLoggedIn("anthropic");
+
 describe("provider sync policy", () => {
 	test("freshness providers exclude ollama", () => {
+		const expected = ["openai", "google"];
+		if (anthropicOAuth) expected.push("anthropic");
 		expect(
 			getRemoteProvidersFromEnv({
 				OPENAI_API_KEY: "x",
 				GOOGLE_API_KEY: "y",
 			}),
-		).toEqual(["openai", "google"]);
+		).toEqual(expected);
 	});
 
 	test("refresh providers include ollama", () => {
-		expect(getProvidersToRefreshFromEnv({ OPENAI_API_KEY: "x" })).toEqual([
-			"openai",
-			"ollama",
-		]);
+		const expected = ["openai"];
+		if (anthropicOAuth) expected.push("anthropic");
+		expected.push("ollama");
+		expect(getProvidersToRefreshFromEnv({ OPENAI_API_KEY: "x" })).toEqual(
+			expected,
+		);
 	});
 
 	test("snapshot visibility tracks configured providers", () => {

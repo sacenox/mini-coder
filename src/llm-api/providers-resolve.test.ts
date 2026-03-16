@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { isLoggedIn } from "../oauth/auth-storage.ts";
 import { autoDiscoverModel, resolveModel } from "./providers.ts";
+
+const anthropicOAuth = isLoggedIn("anthropic");
 
 const ENV_KEYS = [
 	"OPENCODE_API_KEY",
@@ -46,16 +49,23 @@ describe("autoDiscoverModel", () => {
 		delete process.env.GOOGLE_API_KEY;
 		delete process.env.GEMINI_API_KEY;
 
-		expect(autoDiscoverModel()).toBe("ollama/llama3.2");
+		// With OAuth login, anthropic is discovered even without env key
+		expect(autoDiscoverModel()).toBe(
+			anthropicOAuth ? "anthropic/claude-sonnet-4-6" : "ollama/llama3.2",
+		);
 
 		process.env.GEMINI_API_KEY = "gem";
-		expect(autoDiscoverModel()).toBe("google/gemini-2.0-flash");
+		expect(autoDiscoverModel()).toBe(
+			anthropicOAuth ? "anthropic/claude-sonnet-4-6" : "google/gemini-3.1-pro",
+		);
 
 		process.env.OPENAI_API_KEY = "openai";
-		expect(autoDiscoverModel()).toBe("openai/gpt-4o");
+		expect(autoDiscoverModel()).toBe(
+			anthropicOAuth ? "anthropic/claude-sonnet-4-6" : "openai/gpt-5.4",
+		);
 
 		process.env.ANTHROPIC_API_KEY = "anthropic";
-		expect(autoDiscoverModel()).toBe("anthropic/claude-sonnet-4-5-20250929");
+		expect(autoDiscoverModel()).toBe("anthropic/claude-sonnet-4-6");
 
 		process.env.OPENCODE_API_KEY = "zen";
 		expect(autoDiscoverModel()).toBe("zen/claude-sonnet-4-6");
