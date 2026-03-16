@@ -34,6 +34,20 @@ type GoogleProvider = ReturnType<typeof createGoogleGenerativeAI>;
 type OpenAICompatProvider = ReturnType<typeof createOpenAICompatible>;
 type ModelResolver = (modelId: string) => LanguageModel;
 
+const REDACTED_HEADERS = new Set(["authorization"]);
+
+function redactHeaders(
+	headers: RequestInit["headers"],
+): Record<string, string> | undefined {
+	if (!headers) return undefined;
+	const h = new Headers(headers as ConstructorParameters<typeof Headers>[0]);
+	const out: Record<string, string> = {};
+	h.forEach((v, k) => {
+		out[k] = REDACTED_HEADERS.has(k) ? "[REDACTED]" : v;
+	});
+	return out;
+}
+
 function createFetchWithLogging(): ProviderFetch {
 	const customFetch = async (
 		input: Parameters<ProviderFetch>[0],
@@ -46,14 +60,14 @@ function createFetchWithLogging(): ProviderFetch {
 				logApiEvent("Provider Request", {
 					url: input.toString(),
 					method: init.method,
-					headers: init.headers,
+					headers: redactHeaders(init.headers),
 					body: bodyJson,
 				});
 			} catch {
 				logApiEvent("Provider Request", {
 					url: input.toString(),
 					method: init.method,
-					headers: init.headers,
+					headers: redactHeaders(init.headers),
 					body: init.body,
 				});
 			}
@@ -190,7 +204,7 @@ async function resolveAnthropicModel(modelId: string): Promise<LanguageModel> {
 						fetch: fetchWithLogging,
 						authToken: token,
 						headers: {
-							"anthropic-beta": "claude-code-20250219,oauth-2025-04-20",
+							"anthropic-beta": "oauth-2025-04-20",
 						},
 					}),
 				};
