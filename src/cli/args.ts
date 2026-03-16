@@ -4,7 +4,7 @@ import { writeln } from "./output.ts";
 interface CliArgs {
 	model: string | null;
 	sessionId: string | null;
-	listSessions: boolean;
+	list: boolean;
 	resumeLast: boolean;
 	prompt: string | null;
 	cwd: string;
@@ -18,7 +18,7 @@ export function parseArgs(argv: string[]): CliArgs {
 	const args: CliArgs = {
 		model: null,
 		sessionId: null,
-		listSessions: false,
+		list: false,
 		resumeLast: false,
 		prompt: null,
 		cwd: process.cwd(),
@@ -47,7 +47,7 @@ export function parseArgs(argv: string[]): CliArgs {
 				break;
 			case "--list":
 			case "-l":
-				args.listSessions = true;
+				args.list = true;
 				break;
 			case "--cwd":
 				args.cwd = argv[++i] ?? process.cwd();

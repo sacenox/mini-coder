@@ -100,7 +100,7 @@ async function main(): Promise<void> {
 		process.exit(0);
 	}
 
-	if (args.listSessions) {
+	if (args.list) {
 		printSessionList();
 		process.exit(0);
 	}
