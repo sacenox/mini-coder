@@ -10,6 +10,11 @@ const MAX_ENTRY_BYTES = 8 * 1024;
 
 export function initApiLog(): void {
 	if (writer) return;
+	// Subagent processes must not truncate/write the shared log file — the parent
+	// process already owns the writer and a second truncation creates a sparse
+	// null-byte hole when the parent resumes writing at its old file offset.
+	if (process.env.MC_SUBAGENT_DEPTH && process.env.MC_SUBAGENT_DEPTH !== "0")
+		return;
 
 	const dirPath = join(homedir(), ".config", "mini-coder");
 	const logPath = join(dirPath, "api.log");

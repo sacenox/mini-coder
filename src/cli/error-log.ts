@@ -6,6 +6,10 @@ let writer: ReturnType<ReturnType<typeof Bun.file>["writer"]> | null = null;
 
 export function initErrorLog(): void {
 	if (writer) return;
+	// Subagent processes must not truncate/write the shared log file (same
+	// sparse-hole issue as api-log.ts — see comment there for details).
+	if (process.env.MC_SUBAGENT_DEPTH && process.env.MC_SUBAGENT_DEPTH !== "0")
+		return;
 
 	const dirPath = join(homedir(), ".config", "mini-coder");
 	const logPath = join(dirPath, "errors.log");
