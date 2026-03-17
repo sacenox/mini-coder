@@ -10,10 +10,13 @@
             --fg: #c9d1d9;
             --accent: #58a6ff;
             --keyword: #ff7b72;
+            --dim: #8b949e;
+            --surface: #161b22;
+            --border: #30363d;
             --font: 'Fira Code', 'JetBrains Mono', 'Courier New', monospace;
         }
         body {
-            background-color: var(--bg);
+            background: var(--bg);
             color: var(--fg);
             font-family: var(--font);
             line-height: 1.6;
@@ -30,8 +33,8 @@
             margin-top: 2.5rem;
         }
         h1 { font-size: 2rem; border-bottom: 2px solid var(--accent); padding-bottom: 0.5rem; }
-        h2 { font-size: 1.4rem; border-bottom: 1px solid #30363d; padding-bottom: 0.3rem; }
-        strong { color: var(--keyword); }
+        h2 { font-size: 1.4rem; border-bottom: 1px solid var(--border); padding-bottom: 0.3rem; }
+        strong, b { color: var(--keyword); }
         code {
             background: rgba(255,255,255,0.1);
             padding: 0.2em 0.4em;
@@ -39,18 +42,28 @@
             font-family: inherit;
         }
         pre {
-            background: #161b22;
+            background: var(--surface);
             padding: 1rem;
             border-radius: 6px;
             overflow-x: auto;
             border-left: 3px solid var(--accent);
         }
         pre code { background: none; padding: 0; }
-        ul { list-style-type: square; }
+        ul, ol { list-style-type: square; }
+        ol { list-style-type: decimal; }
         a { color: var(--accent); text-decoration: none; }
         a:hover { text-decoration: underline; }
-        .man-header { display: flex; justify-content: space-between; border-bottom: 1px solid #30363d; padding-bottom: 1rem; margin-bottom: 2rem; font-weight: bold; }
-        .man-footer { display: flex; justify-content: space-between; border-top: 1px solid #30363d; padding-top: 1rem; margin-top: 3rem; font-size: 0.9em; opacity: 0.8; }
+        dl dt { color: var(--keyword); margin-top: 0.8em; }
+        dl dd { margin-left: 1.5em; margin-bottom: 0.3em; }
+        .man-header, .man-footer {
+            display: flex;
+            justify-content: space-between;
+            font-weight: bold;
+        }
+        .man-header { border-bottom: 1px solid var(--border); padding-bottom: 1rem; margin-bottom: 2rem; }
+        .man-footer { border-top: 1px solid var(--border); padding-top: 1rem; margin-top: 3rem; font-size: 0.9em; opacity: 0.8; }
+        #loading { color: var(--dim); text-align: center; padding: 4rem 0; }
+        #error { color: var(--keyword); text-align: center; padding: 2rem 0; display: none; }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
@@ -60,178 +73,30 @@
         <span>User Manuals</span>
         <span>MINI-CODER(1)</span>
     </div>
-    
+
+    <div id="loading">loading manual…</div>
+    <div id="error">failed to load manual — <a href="https://github.com/sacenox/mini-coder/blob/main/docs/mini-coder.1.md">view on GitHub</a></div>
     <div id="content"></div>
 
     <div class="man-footer">
         <span>mini-coder</span>
-        <span>2024-03-12</span>
+        <span><a href="https://github.com/sacenox/mini-coder">github.com/sacenox/mini-coder</a></span>
         <span>MINI-CODER(1)</span>
     </div>
 
-    <script id="markdown-content" type="text/markdown">
-# NAME
-**mini-coder** (executable: `mc`) - A small, fast CLI coding agent built for developers.
-
-## SYNOPSIS
-`mc [options] [prompt]`
-
-## DESCRIPTION
-**mini-coder** is a developer-focused CLI coding agent. It prioritizes developer flow with no slow startup, no clunky GUI, and no vendor lock-in. It uses a minimalist terminal UI restricted to 16 ANSI colors to inherit the user's terminal theme, and is built entirely on Bun.js for maximum performance.
-
-## OPTIONS
-**-m, --model &lt;id&gt;**
-:   Specify the model to use (e.g., `zen/claude-sonnet-4-6`).
-
-**-c, --continue**
-:   Continue the most recent session.
-
-**-r, --resume &lt;id&gt;**
-:   Resume a specific session by its ID.
-
-**-l, --list**
-:   List recent sessions.
-
-**--cwd &lt;path&gt;**
-:   Set the working directory (defaults to current directory).
-
-**-h, --help**
-:   Display help information.
-
-**[prompt]**
-:   Optional one-shot prompt text before entering interactive mode.
-
-## INTERACTIVE COMMANDS
-Inside the interactive session, the following slash commands are available:
-
-**/model**
-:   List all available models, indicating free models and context sizes.
-
-**/model &lt;id&gt;**
-:   Switch to a specific model.
-
-**/model effort &lt;low|medium|high|xhigh|off&gt;**
-:   Configure reasoning effort levels for models that support it.
-
-**/reasoning [on|off]**
-:   Toggle the display of the model's reasoning/thought process.
-
-**/context prune &lt;off|balanced|aggressive&gt;**
-:   Configure context window pruning strategies.
-
-**/context cap &lt;off|bytes|kb&gt;**
-:   Set a hard payload cap size for tool results to avoid blowing out context.
-
-**/cache &lt;on|off&gt;**
-:   Toggle prompt caching globally.
-
-**/cache openai &lt;in_memory|24h&gt;**
-:   Set OpenAI prompt cache retention policies.
-
-**/cache gemini &lt;off|cachedContents/...&gt;**
-:   Attach Google Gemini cached content.
-
-**/plan**
-:   Toggle read-only planning mode.
-
-**/ralph**
-:   Toggle autonomous execution looping.
-
-**/undo**
-:   Revert the last turn and restore files.
-
-**/new**
-:   Clear context and start a fresh session.
-
-**/mcp list**
-:   List configured MCP servers.
-
-**/mcp add &lt;name&gt; http &lt;url&gt;**
-:   Add an MCP server over HTTP.
-
-**/mcp add &lt;name&gt; stdio &lt;cmd&gt; [args...]**
-:   Add an MCP server over stdio.
-
-**/mcp remove &lt;name&gt;** (or **rm**)
-:   Remove an MCP server.
-
-**/agent [name]**
-:   Set or clear an active primary custom agent.
-
-**/help**
-:   Display command help.
-
-**/exit, /quit, /q**
-:   Leave the session.
-
-## INLINE FEATURES
-**Shell Integration**
-:   Prefix user prompts with `!` to run shell commands inline directly into the context.
-
-**File & Agent Referencing**
-:   Prefix words with `@` to reference files, custom agents, or skills within prompts (supports tab completion).
-
-## BUILT-IN TOOLS
-The agent has access to the following tools:
-*   **glob**: Discover files by glob pattern across the project.
-*   **grep**: Search file contents using regular expressions.
-*   **read**: Read file contents with line-range pagination support.
-*   **create**: Write a new file or completely overwrite an existing one.
-*   **replace**: Replace or delete targeted lines using hashline anchors.
-*   **insert**: Insert new lines before/after an anchor without replacing existing content.
-*   **shell**: Execute bash commands and capture output.
-*   **subagent**: Spawn a focused mini-agent with a prompt.
-*   **webSearch**: Search the internet (requires EXA key).
-*   **webContent**: Fetch full page content from a URL (requires EXA key).
-
-## ENVIRONMENT
-**OPENCODE_API_KEY**
-:   OpenCode Zen API key (Recommended provider).
-
-**ANTHROPIC_API_KEY**
-:   Direct Anthropic API key.
-
-**OPENAI_API_KEY**
-:   Direct OpenAI API key.
-
-**GOOGLE_API_KEY** (or **GEMINI_API_KEY**)
-:   Direct Google Gemini API key.
-
-**OLLAMA_BASE_URL**
-:   Ollama local base URL (Defaults to `http://localhost:11434`).
-
-**EXA_API_KEY**
-:   Enables built-in `webSearch` and `webContent` tools.
-
-## FILES & DIRECTORIES
-**~/.config/mini-coder/**
-:   Application data directory. Contains `sessions.db` (SQLite database for session history, tool snapshots, MCP server configs, and model metadata), `api.log`, and `errors.log`.
-
-**.agents/ or .claude/ (Local or Global in ~/)**
-:   Configuration directories for advanced features:
-    *   **commands/*.md**: Custom slash commands.
-    *   **agents/*.md**: Custom behavioral wrappers or subagents.
-    *   **skills/&lt;name&gt;/SKILL.md**: Isolated context/instruction snippets.
-    *   **hooks/post-&lt;tool&gt;**: Executable scripts triggered upon tool execution.
-
-**AGENTS.md / CLAUDE.md**
-:   Auto-loaded system context files for project-specific instructions.
-
-## CORE FEATURES & ARCHITECTURE
-*   **Multi-Provider LLM Routing**: Automatically discovers API keys to route to OpenCode (Zen), Anthropic, OpenAI, Google/Gemini, or local Ollama instances.
-*   **Session Memory**: Persists conversation history in a local SQLite database, allowing users to resume past sessions effortlessly.
-*   **Subagent Delegation**: Includes a tool to spawn parallel instances of itself to tackle independent subtasks simultaneously (up to 10 levels deep).
-*   **Autonomous Mode (Ralph)**: An autonomous looping mode that runs tasks in an isolated context loop (up to 20 iterations) until completion.
-*   **Plan Mode**: A read-only thinking mode utilizing read tools + MCP, safely analyzing code without making mutations or executing shell commands.
-*   **Model Context Protocol (MCP)**: Native support for connecting external tools via MCP servers over HTTP or stdio.
-*   **Prompt Caching**: Configurable caching behaviors for supported providers (OpenAI, Gemini).
-*   **Undo Functionality**: Roll back the last conversation turn, cleanly restoring previous file states and git history via snapshots.
-    </script>
     <script>
-        let md = document.getElementById('markdown-content').textContent;
-        // Basic hack for definition lists in markdown
-        md = md.replace(/\n\*\*([^\*]+)\*\*\n:\s+(.+)/g, '\n\n**$1**\n<br>  $2\n');
-        document.getElementById('content').innerHTML = marked.parse(md);
+        const RAW = 'https://raw.githubusercontent.com/sacenox/mini-coder/main/docs/mini-coder.1.md';
+
+        fetch(RAW)
+            .then(r => { if (!r.ok) throw new Error(r.status); return r.text(); })
+            .then(md => {
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('content').innerHTML = marked.parse(md);
+            })
+            .catch(() => {
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('error').style.display = 'block';
+            });
     </script>
 </body>
 </html>
