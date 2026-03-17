@@ -2,7 +2,7 @@
 
 ## Bugs:
 
-- None
+- On a new user experience, using /login works but no models are listed from anthropic. Setting the model blindly with /model anthropic/claude-opus-4-6 works. Seems to be an issue fetching the list of available models. Let's audit how it's implemented and understand why the listing is inaccurate.
 
 ---
 
