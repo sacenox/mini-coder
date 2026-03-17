@@ -10,6 +10,7 @@ import { initErrorLog } from "./cli/error-log.ts";
 import { resolveFileRefs } from "./cli/file-refs.ts";
 import { HeadlessReporter } from "./cli/headless-reporter.ts";
 import { runInputLoop } from "./cli/input-loop.ts";
+import { cleanStaleLogs } from "./cli/log-paths.ts";
 import {
 	CliReporter,
 	G,
@@ -49,6 +50,11 @@ import { getMostRecentSession, printSessionList } from "./session/manager.ts";
 registerTerminalCleanup();
 initErrorLog();
 initApiLog();
+// Only clean stale logs from the top-level process to avoid races
+// between sibling subagents and unnecessary overhead in short-lived subprocesses.
+if (!process.env.MC_SUBAGENT_DEPTH || process.env.MC_SUBAGENT_DEPTH === "0") {
+	cleanStaleLogs();
+}
 initModelInfoCache();
 pruneOldData();
 void refreshModelInfoInBackground().catch(() => {});

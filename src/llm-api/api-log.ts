@@ -1,6 +1,6 @@
-import { mkdirSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { writeFileSync } from "node:fs";
+
+import { pidLogPath } from "../cli/log-paths.ts";
 
 let writer: ReturnType<ReturnType<typeof Bun.file>["writer"]> | null = null;
 
@@ -10,18 +10,10 @@ const MAX_ENTRY_BYTES = 8 * 1024;
 
 export function initApiLog(): void {
 	if (writer) return;
-	// Subagent processes must not truncate/write the shared log file — the parent
-	// process already owns the writer and a second truncation creates a sparse
-	// null-byte hole when the parent resumes writing at its old file offset.
-	if (process.env.MC_SUBAGENT_DEPTH && process.env.MC_SUBAGENT_DEPTH !== "0")
-		return;
 
-	const dirPath = join(homedir(), ".config", "mini-coder");
-	const logPath = join(dirPath, "api.log");
+	const logPath = pidLogPath("api");
 
-	mkdirSync(dirPath, { recursive: true });
-
-	// Truncate on open so it doesn't grow forever between sessions
+	// Truncate on open so each session starts fresh
 	writeFileSync(logPath, "");
 	writer = Bun.file(logPath).writer();
 }
