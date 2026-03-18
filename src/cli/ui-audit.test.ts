@@ -8,7 +8,6 @@ import {
 	getCapturedStdout,
 	restoreStdout,
 	shellResult,
-	simulateTerminal,
 	stripAnsi,
 	turnDone,
 } from "./test-helpers.ts";
@@ -133,7 +132,7 @@ describe("UI audit: full turn scenarios", () => {
 			new Spinner(),
 		);
 
-		const plain = simulateTerminal(getCapturedStdout());
+		const plain = stripAnsi(getCapturedStdout());
 		expect(plain).toBe(
 			"· reasoning\n  Let me think\n\n◆ Here is the answer.\n",
 		);
@@ -163,7 +162,7 @@ describe("UI audit: full turn scenarios", () => {
 			new Spinner(),
 		);
 
-		const plain = simulateTerminal(getCapturedStdout());
+		const plain = stripAnsi(getCapturedStdout());
 		expect(plain).toContain("  ← ls");
 		expect(plain).toMatch(/^ {4}done/m);
 		expect(plain).toContain("\n\n◆ Found file.txt");
@@ -205,7 +204,7 @@ describe("UI audit: full turn scenarios", () => {
 			new Spinner(),
 		);
 
-		const plain = simulateTerminal(getCapturedStdout());
+		const plain = stripAnsi(getCapturedStdout());
 		const lines = plain.split("\n");
 		const firstResultIdx = lines.findIndex((l) =>
 			l.match(/^ {4}done.*out: hello/),
@@ -243,7 +242,7 @@ describe("UI audit: full turn scenarios", () => {
 			new Spinner(),
 		);
 
-		const plain = simulateTerminal(getCapturedStdout());
+		const plain = stripAnsi(getCapturedStdout());
 		const reasoningCount = (plain.match(/· reasoning/g) ?? []).length;
 		expect(reasoningCount).toBe(2);
 		expect(plain).toContain("plan A");
@@ -271,7 +270,7 @@ describe("UI audit: full turn scenarios", () => {
 			new Spinner(),
 		);
 
-		const plain = simulateTerminal(getCapturedStdout());
+		const plain = stripAnsi(getCapturedStdout());
 		expect(plain).toContain("· context pruned");
 		expect(plain).toContain("balanced");
 		expect(plain).toContain("–20 messages");
@@ -285,7 +284,7 @@ describe("UI audit: full turn scenarios", () => {
 			new Spinner(),
 		);
 
-		const plain = simulateTerminal(getCapturedStdout());
+		const plain = stripAnsi(getCapturedStdout());
 		expect(plain).toBe("◆ Hello!\n");
 	});
 
@@ -312,7 +311,7 @@ describe("UI audit: full turn scenarios", () => {
 			new Spinner(),
 		);
 
-		const plain = simulateTerminal(getCapturedStdout());
+		const plain = stripAnsi(getCapturedStdout());
 		expect(plain).toContain("  $ bad-cmd");
 		expect(plain).toMatch(/^ {4}✖ command not found/m);
 	});
@@ -365,7 +364,7 @@ describe("UI audit: parallel tool calls", () => {
 			new Spinner(),
 		);
 
-		const plain = simulateTerminal(getCapturedStdout());
+		const plain = stripAnsi(getCapturedStdout());
 		const lines = plain.split("\n");
 
 		// Both tool calls appear before the first result
@@ -432,7 +431,7 @@ describe("UI audit: parallel tool calls", () => {
 			new Spinner(),
 		);
 
-		const plain = simulateTerminal(getCapturedStdout());
+		const plain = stripAnsi(getCapturedStdout());
 
 		// Both calls rendered
 		expect(plain).toContain("  ← ls src");
@@ -480,7 +479,7 @@ describe("UI audit: parallel tool calls", () => {
 			new Spinner(),
 		);
 
-		const plain = simulateTerminal(getCapturedStdout());
+		const plain = stripAnsi(getCapturedStdout());
 		const lines = plain.split("\n");
 
 		// Consecutive parallel tool calls should be adjacent (no blank line)
@@ -526,7 +525,7 @@ describe("UI audit: parallel tool calls", () => {
 			new Spinner(),
 		);
 
-		const plain = simulateTerminal(getCapturedStdout());
+		const plain = stripAnsi(getCapturedStdout());
 		expect(plain).toContain("  $ good-cmd");
 		expect(plain).toContain("  $ bad-cmd");
 		expect(plain).toMatch(/^ {4}done/m);
@@ -570,7 +569,7 @@ describe("UI audit: parallel tool calls", () => {
 			new Spinner(),
 		);
 
-		const plain = simulateTerminal(getCapturedStdout());
+		const plain = stripAnsi(getCapturedStdout());
 		// Both results get ↳ labels
 		expect(plain).toContain("↳ $ echo first");
 		expect(plain).toContain("↳ $ echo second");
@@ -612,7 +611,7 @@ describe("UI audit: parallel tool calls", () => {
 			new Spinner(),
 		);
 
-		const plain = simulateTerminal(getCapturedStdout());
+		const plain = stripAnsi(getCapturedStdout());
 		expect(plain).not.toContain("↳");
 	});
 
@@ -655,7 +654,7 @@ describe("UI audit: parallel tool calls", () => {
 			new Spinner(),
 		);
 
-		const plain = simulateTerminal(getCapturedStdout());
+		const plain = stripAnsi(getCapturedStdout());
 
 		// Reasoning block before tools
 		expect(plain).toContain("· reasoning");

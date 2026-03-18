@@ -52,66 +52,6 @@ export function restoreStdout(): void {
 
 export { stripAnsi };
 
-/**
- * Simulate terminal rendering for cursor-control sequences:
- * `\r`, `\n`, `\x1b[2K` (erase line), `\x1b[1A` (cursor up).
- * Strips ANSI SGR codes so the result is plain text.
- */
-export function simulateTerminal(raw: string): string {
-	const esc = "\x1b";
-	const noColor = stripAnsi(raw);
-	const lines: string[] = [""];
-	let row = 0;
-	let col = 0;
-	let i = 0;
-
-	const ensureRow = (idx: number): void => {
-		while (lines.length <= idx) lines.push("");
-	};
-
-	while (i < noColor.length) {
-		const ch = noColor[i];
-		if (ch === "\n") {
-			row++;
-			ensureRow(row);
-			col = 0;
-			i++;
-			continue;
-		}
-		if (ch === "\r") {
-			col = 0;
-			i++;
-			continue;
-		}
-		if (ch === esc && noColor[i + 1] === "[") {
-			if (noColor[i + 2] === "2" && noColor[i + 3] === "K") {
-				lines[row] = "";
-				col = 0;
-				i += 4;
-				continue;
-			}
-			if (noColor[i + 2] === "1" && noColor[i + 3] === "A") {
-				row = Math.max(0, row - 1);
-				col = Math.min(col, lines[row]?.length ?? 0);
-				i += 4;
-				continue;
-			}
-		}
-
-		ensureRow(row);
-		const line = lines[row] ?? "";
-		if (col >= line.length) {
-			lines[row] = line + ch;
-		} else {
-			lines[row] = `${line.slice(0, col)}${ch}${line.slice(col + 1)}`;
-		}
-		col++;
-		i++;
-	}
-
-	return lines.join("\n");
-}
-
 /** Convert an array of TurnEvents into an AsyncIterable for renderTurn. */
 export function eventsFrom(events: TurnEvent[]): AsyncIterable<TurnEvent> {
 	return (async function* () {
