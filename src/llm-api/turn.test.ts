@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { ToolSet } from "ai";
 import {
 	getReasoningDeltaFromStreamChunk,
 	isOpenAIGPT,
@@ -939,20 +940,20 @@ describe("annotateToolCaching", () => {
 		const toolSet = {
 			read: { description: "Read a file" },
 			write: { description: "Write a file" },
-		} as any;
+		} as unknown as ToolSet;
 		const result = annotateToolCaching(toolSet, "anthropic/claude-sonnet-4-6");
-		expect((result.write as any).providerOptions).toEqual({
+		expect(result.write?.providerOptions).toEqual({
 			anthropic: { cacheControl: { type: "ephemeral" } },
 		});
-		expect((result.read as any).providerOptions).toBeUndefined();
+		expect(result.read?.providerOptions).toBeUndefined();
 	});
 
 	test("adds cache control to last tool for zen anthropic models", () => {
 		const toolSet = {
 			shell: { description: "Run shell" },
-		} as any;
+		} as unknown as ToolSet;
 		const result = annotateToolCaching(toolSet, "zen/claude-sonnet-4-6");
-		expect((result.shell as any).providerOptions).toEqual({
+		expect(result.shell?.providerOptions).toEqual({
 			anthropic: { cacheControl: { type: "ephemeral" } },
 		});
 	});
@@ -960,13 +961,13 @@ describe("annotateToolCaching", () => {
 	test("returns toolset unchanged for non-anthropic models", () => {
 		const toolSet = {
 			read: { description: "Read a file" },
-		} as any;
+		} as unknown as ToolSet;
 		const result = annotateToolCaching(toolSet, "openai/gpt-5.4");
 		expect(result).toBe(toolSet);
 	});
 
 	test("returns empty toolset unchanged", () => {
-		const toolSet = {} as any;
+		const toolSet = {} as unknown as ToolSet;
 		const result = annotateToolCaching(toolSet, "anthropic/claude-sonnet-4-6");
 		expect(result).toBe(toolSet);
 	});

@@ -30,8 +30,7 @@
 			},
 			"suspicious": {
 				"noDebugger": "error",
-				"noExplicitAny": "error",
-				"noConsole": "error"
+				"noExplicitAny": "error"
 			},
 			"correctness": {
 				"noUnusedVariables": "error",

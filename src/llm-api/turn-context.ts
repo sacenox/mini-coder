@@ -247,8 +247,7 @@ function withCacheBreakpoint(msg: CoreMessage): CoreMessage {
 		providerOptions: {
 			...(msg?.providerOptions ?? {}),
 			anthropic: {
-				...((msg?.providerOptions?.anthropic as Record<string, unknown>) ??
-					{}),
+				...((msg?.providerOptions?.anthropic as Record<string, unknown>) ?? {}),
 				cacheControl: { type: "ephemeral" },
 			},
 		},

@@ -2,8 +2,8 @@ import { type streamText, wrapLanguageModel } from "ai";
 
 import { isAnthropicModelFamily } from "./model-routing.ts";
 import type { ThinkingEffort } from "./provider-options.ts";
-import { annotateAnthropicCacheBreakpoints } from "./turn-context.ts";
 import type { ContextPruningMode } from "./turn-context.ts";
+import { annotateAnthropicCacheBreakpoints } from "./turn-context.ts";
 import { prepareTurnMessages } from "./turn-prepare-messages.ts";
 import { buildTurnProviderOptions } from "./turn-provider-options.ts";
 
@@ -64,9 +64,10 @@ export function buildStreamTextRequest(
 	// This runs on every step so the cache breakpoints always track the tail.
 	const model = isAnthropicModelFamily(input.modelString)
 		? wrapLanguageModel({
-				model: input.model,
+				model: input.model as Parameters<typeof wrapLanguageModel>[0]["model"],
 				middleware: [
 					{
+						specificationVersion: "v3" as const,
 						transformParams: async ({ params }) => ({
 							...params,
 							prompt: annotateAnthropicCacheBreakpoints(
