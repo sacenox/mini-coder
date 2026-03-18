@@ -5,6 +5,7 @@ import {
 	NoSuchModelError,
 	RetryError,
 } from "ai";
+import { extractObjectMessage } from "../llm-api/error-utils.ts";
 
 function safeStringifyErrorObject(value: object): string {
 	try {
@@ -17,22 +18,6 @@ function safeStringifyErrorObject(value: object): string {
 	} catch {
 		return "Unknown error";
 	}
-}
-
-function extractObjectMessage(err: object): string | null {
-	const record = err as Record<string, unknown>;
-	const direct = record.message;
-	if (typeof direct === "string" && direct.trim()) return direct.trim();
-
-	const nested = record.error;
-	if (typeof nested === "object" && nested !== null) {
-		const nestedMessage = (nested as Record<string, unknown>).message;
-		if (typeof nestedMessage === "string" && nestedMessage.trim()) {
-			return nestedMessage.trim();
-		}
-	}
-
-	return null;
 }
 
 function toUserErrorMessage(err: unknown): string {

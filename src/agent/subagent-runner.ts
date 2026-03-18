@@ -124,6 +124,36 @@ async function resolveDiagnostics(opts: {
 	return formatSubagentDiagnostics(stdout, stderr);
 }
 
+/**
+ * Parse the structured output from a subagent subprocess.
+ * Returns the parsed summary on success, or an error message string on failure.
+ */
+export function parseSubagentOutput(
+	rawText: string,
+	exitCode: number | null,
+): SubagentSummary | string {
+	const trimmed = rawText.trim();
+	if (!trimmed) {
+		return `Subagent subprocess produced no output (exit code ${String(exitCode)})`;
+	}
+
+	let parsed: SubagentSummary & { error?: string };
+	try {
+		parsed = JSON.parse(trimmed) as SubagentSummary & { error?: string };
+	} catch {
+		return `Subagent subprocess wrote non-JSON output (exit code ${String(exitCode)}): ${trimmed.slice(0, 200)}`;
+	}
+
+	if (parsed.error) {
+		return `Subagent failed: ${parsed.error}`;
+	}
+	if (exitCode !== 0) {
+		return `Subagent process exited with code ${String(exitCode)}`;
+	}
+
+	return parsed;
+}
+
 export function createSubagentRunner(
 	cwd: string,
 	getCurrentModel: () => string,
@@ -214,45 +244,13 @@ export function createSubagentRunner(
 				);
 			}
 
-			const trimmed = text.trim();
-			if (!trimmed) {
+			const parsed = parseSubagentOutput(text, proc.exitCode);
+			if (typeof parsed === "string") {
 				const diagnostics = await resolveDiagnostics({
 					stdoutTail,
 					stderrTail,
 				});
-				throw new Error(
-					`Subagent subprocess produced no output (exit code ${String(proc.exitCode)})${diagnostics}`,
-				);
-			}
-
-			let parsed: SubagentSummary & { error?: string };
-			try {
-				parsed = JSON.parse(trimmed) as SubagentSummary & { error?: string };
-			} catch {
-				const diagnostics = await resolveDiagnostics({
-					stdoutTail,
-					stderrTail,
-				});
-				throw new Error(
-					`Subagent subprocess wrote non-JSON output (exit code ${String(proc.exitCode)}): ${trimmed.slice(0, 200)}${diagnostics}`,
-				);
-			}
-
-			if (parsed.error) {
-				const diagnostics = await resolveDiagnostics({
-					stdoutTail,
-					stderrTail,
-				});
-				throw new Error(`Subagent failed: ${parsed.error}${diagnostics}`);
-			}
-			if (proc.exitCode !== 0) {
-				const diagnostics = await resolveDiagnostics({
-					stdoutTail,
-					stderrTail,
-				});
-				throw new Error(
-					`Subagent process exited with code ${String(proc.exitCode)}${diagnostics}`,
-				);
+				throw new Error(`${parsed}${diagnostics}`);
 			}
 
 			const output: SubagentOutput = {

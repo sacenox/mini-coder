@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { resolvePath } from "../tools/shared.ts";
+import { resolvePath } from "../internal/file-edit/path.ts";
 import { buildToolSet } from "./tools.ts";
 
 let cwd = "";

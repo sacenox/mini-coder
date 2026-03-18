@@ -1,4 +1,4 @@
-function extractObjectMessage(error: object): string | null {
+export function extractObjectMessage(error: object): string | null {
 	const record = error as Record<string, unknown>;
 	const direct = record.message;
 	if (typeof direct === "string" && direct.trim()) return direct.trim();

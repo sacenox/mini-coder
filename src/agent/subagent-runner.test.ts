@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { resolveMcCommand, tailTextFromChunks } from "./subagent-runner.ts";
+import {
+	parseSubagentOutput,
+	resolveMcCommand,
+	tailTextFromChunks,
+} from "./subagent-runner.ts";
 
 describe("tailTextFromChunks", () => {
 	test("keeps only the byte tail without buffering everything", () => {
@@ -45,5 +49,55 @@ describe("resolveMcCommand", () => {
 		expect(resolveMcCommand("/repo/mc", undefined, "--help")).toEqual([
 			"/repo/mc",
 		]);
+	});
+});
+
+describe("parseSubagentOutput", () => {
+	test("returns error string for empty output", () => {
+		const result = parseSubagentOutput("", 0);
+		expect(typeof result).toBe("string");
+		expect(result).toContain("no output");
+	});
+
+	test("returns error string for non-JSON output", () => {
+		const result = parseSubagentOutput("not json", 0);
+		expect(typeof result).toBe("string");
+		expect(result).toContain("non-JSON");
+	});
+
+	test("returns error string when parsed JSON has error field", () => {
+		const result = parseSubagentOutput(
+			JSON.stringify({
+				error: "something broke",
+				result: "",
+				inputTokens: 0,
+				outputTokens: 0,
+			}),
+			0,
+		);
+		expect(typeof result).toBe("string");
+		expect(result).toContain("something broke");
+	});
+
+	test("returns error string for non-zero exit code", () => {
+		const result = parseSubagentOutput(
+			JSON.stringify({ result: "ok", inputTokens: 10, outputTokens: 5 }),
+			1,
+		);
+		expect(typeof result).toBe("string");
+		expect(result).toContain("exit");
+	});
+
+	test("returns parsed summary on success", () => {
+		const result = parseSubagentOutput(
+			JSON.stringify({ result: "done", inputTokens: 100, outputTokens: 50 }),
+			0,
+		);
+		expect(typeof result).toBe("object");
+		expect(result).toEqual({
+			result: "done",
+			inputTokens: 100,
+			outputTokens: 50,
+		});
 	});
 });
