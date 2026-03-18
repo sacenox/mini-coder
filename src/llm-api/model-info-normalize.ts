@@ -1,4 +1,5 @@
 import type { ModelCapabilityRow } from "../session/db/model-info-repo.ts";
+import { isRecord } from "./history/shared.ts";
 
 interface ModelsDevEntry {
 	canonicalModelId: string;
@@ -11,10 +12,6 @@ interface ModelsDevEntry {
 export interface ModelMatchIndex {
 	exact: Map<string, string>;
 	alias: Map<string, string | null>;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null;
 }
 
 function basename(value: string): string {

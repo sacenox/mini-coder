@@ -1,6 +1,7 @@
 import type { FlexibleSchema, StepResult } from "ai";
 import { dynamicTool, jsonSchema, type streamText } from "ai";
 import { normalizeUnknownError } from "./error-utils.ts";
+import { isRecord } from "./history/shared.ts";
 import {
 	extractToolArgs,
 	hasRenderableToolArgs,
@@ -119,7 +120,7 @@ interface StreamTextChunk {
 
 const TOOL_RESULT_CHUNK_TYPES = new Set(["tool-result", "tool-error"]);
 
-function normalizeToolCallId(raw: unknown): string | null {
+function normalizeStringId(raw: unknown): string | null {
 	if (typeof raw !== "string") return null;
 	const trimmed = raw.trim();
 	return trimmed ? trimmed : null;
@@ -129,16 +130,6 @@ function normalizeToolName(raw: unknown): string {
 	if (typeof raw !== "string") return "tool";
 	const trimmed = raw.trim();
 	return trimmed || "tool";
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return value !== null && typeof value === "object";
-}
-
-function normalizeTextPartId(raw: unknown): string | null {
-	if (typeof raw !== "string") return null;
-	const trimmed = raw.trim();
-	return trimmed ? trimmed : null;
 }
 
 function getOpenAITextPhase(
@@ -171,7 +162,7 @@ class StreamTextPhaseTracker {
 	private sawExplicitReasoningThisStep = false;
 
 	route(chunk: StreamTextChunk): StreamTextRoute {
-		const textPartId = normalizeTextPartId(chunk.id);
+		const textPartId = normalizeStringId(chunk.id);
 		switch (chunk.type) {
 			case "start-step": {
 				this.sawExplicitReasoningThisStep = false;
@@ -232,7 +223,7 @@ class StreamToolCallTracker {
 
 		if (type === "tool-input-start") {
 			const toolName = normalizeToolName(chunk.toolName);
-			const toolCallId = normalizeToolCallId(chunk.toolCallId);
+			const toolCallId = normalizeStringId(chunk.toolCallId);
 			const args = extractToolArgs(chunk);
 			if (!hasRenderableToolArgs(args)) {
 				if (!toolCallId) {
@@ -254,7 +245,7 @@ class StreamToolCallTracker {
 				chunk: this.trackRenderableStart(
 					chunk,
 					toolName,
-					normalizeToolCallId(chunk.toolCallId),
+					normalizeStringId(chunk.toolCallId),
 				),
 				suppressTurnEvent: false,
 			};
@@ -262,7 +253,7 @@ class StreamToolCallTracker {
 
 		if (TOOL_RESULT_CHUNK_TYPES.has(type)) {
 			const toolName = normalizeToolName(chunk.toolName);
-			const existingToolCallId = normalizeToolCallId(chunk.toolCallId);
+			const existingToolCallId = normalizeStringId(chunk.toolCallId);
 			if (existingToolCallId) {
 				this.consumeTracked(toolName, existingToolCallId);
 				return { chunk, suppressTurnEvent: false };

@@ -81,11 +81,11 @@ function buildAgentOptions(opts: {
 		initialOpenAIPromptCacheRetention: getPreferredOpenAIPromptCacheRetention(),
 		initialGoogleCachedContent: getPreferredGoogleCachedContent(),
 		reporter: opts.reporter,
-		...(opts.sessionId ? { sessionId: opts.sessionId } : {}),
-		...(opts.headless ? { headless: true } : {}),
-		...(opts.agentSystemPrompt
-			? { agentSystemPrompt: opts.agentSystemPrompt }
-			: {}),
+		...(opts.sessionId !== undefined && { sessionId: opts.sessionId }),
+		...(opts.headless !== undefined && { headless: opts.headless }),
+		...(opts.agentSystemPrompt !== undefined && {
+			agentSystemPrompt: opts.agentSystemPrompt,
+		}),
 	};
 }
 

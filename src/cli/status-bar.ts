@@ -1,17 +1,9 @@
 import * as c from "yoctocolors";
 import type { StatusBarData } from "../agent/reporter.ts";
+import { stripAnsi } from "../internal/ansi.ts";
 import { terminal } from "./terminal-io.ts";
 
-const ANSI_ESCAPE = "\u001b";
 const STATUS_SEP = c.dim("  ·  ");
-
-function stripAnsi(s: string): string {
-	if (!s.includes(ANSI_ESCAPE)) return s;
-	return s
-		.split(ANSI_ESCAPE)
-		.map((chunk, idx) => (idx === 0 ? chunk : chunk.replace(/^\[[0-9;]*m/, "")))
-		.join("");
-}
 
 function truncatePlainText(value: string, maxLen: number): string {
 	if (value.length <= maxLen) return value;

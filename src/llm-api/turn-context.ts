@@ -1,4 +1,5 @@
 import { pruneMessages } from "ai";
+import { isRecord } from "./history/shared.ts";
 import type { CoreMessage } from "./turn.ts";
 
 interface ToolContributorStats {
@@ -35,10 +36,6 @@ function safeStringify(value: unknown): string {
 	} catch {
 		return JSON.stringify(String(value));
 	}
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return value !== null && typeof value === "object";
 }
 
 /**

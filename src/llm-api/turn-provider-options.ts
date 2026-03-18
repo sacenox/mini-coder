@@ -1,3 +1,4 @@
+import { isRecord } from "./history/shared.ts";
 import { isOpenAIGPT } from "./history-transforms.ts";
 import {
 	getCacheFamily,
@@ -5,10 +6,6 @@ import {
 	getThinkingProviderOptions,
 	type ThinkingEffort,
 } from "./provider-options.ts";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return value !== null && typeof value === "object";
-}
 
 function mergeDeep(
 	target: Record<string, unknown>,

@@ -42,10 +42,10 @@ export function buildToolSet(opts: {
 		shell as ToolDef,
 		withCwdDefault(listSkillsTool as ToolDef, cwd),
 		withCwdDefault(readSkillTool as ToolDef, cwd),
-		createSubagentTool(async (prompt, agentName) => {
-			const output = await opts.runSubagent(prompt, agentName, undefined);
-			return output;
-		}, opts.availableAgents) as ToolDef,
+		createSubagentTool(
+			(prompt, agentName) => opts.runSubagent(prompt, agentName, undefined),
+			opts.availableAgents,
+		) as ToolDef,
 	];
 
 	if (process.env.EXA_API_KEY) {

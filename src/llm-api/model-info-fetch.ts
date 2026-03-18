@@ -1,4 +1,5 @@
 import { getAccessToken, isLoggedIn } from "../oauth/auth-storage.ts";
+import { isRecord } from "./history/shared.ts";
 
 const ZEN_BASE = "https://opencode.ai/zen/v1";
 const OPENAI_BASE = "https://api.openai.com";
@@ -11,10 +12,6 @@ export interface ProviderModelCandidate {
 	displayName: string;
 	contextWindow: number | null;
 	free: boolean;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null;
 }
 
 function normalizeModelId(modelId: string): string {
