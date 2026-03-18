@@ -93,17 +93,36 @@ export function prepareTurnMessages(input: {
 	}
 
 	// 3. Context pruning
-	const preStats = apiLogOn
-		? getMessageDiagnostics(normalised)
-		: getMessageStats(normalised);
-	if (apiLogOn) logApiEvent("turn context pre-prune", preStats);
-
 	const pruned = applyContextPruning(normalised, pruningMode);
 
-	const postStats = apiLogOn
-		? getMessageDiagnostics(pruned)
-		: getMessageStats(pruned);
-	if (apiLogOn) logApiEvent("turn context post-prune", postStats);
+	// Only compute stats when they will actually be consumed:
+	// - apiLogOn: logged for debugging
+	// - pruning active + messages changed: used in "context-pruned" yield event
+	const pruningActive = pruningMode !== "off";
+	const needsStats = apiLogOn || pruningActive;
+
+	let preStats: { messageCount: number; totalBytes: number };
+	let postStats: { messageCount: number; totalBytes: number };
+
+	if (!needsStats) {
+		// pruning is off and API log is off — skip expensive serialisation
+		const count = normalised.length;
+		preStats = { messageCount: count, totalBytes: 0 };
+		postStats = preStats;
+	} else {
+		preStats = apiLogOn
+			? getMessageDiagnostics(normalised)
+			: getMessageStats(normalised);
+		if (apiLogOn) logApiEvent("turn context pre-prune", preStats);
+		// Reuse preStats when pruning was a no-op (same array reference)
+		postStats =
+			pruned === normalised
+				? preStats
+				: apiLogOn
+					? getMessageDiagnostics(pruned)
+					: getMessageStats(pruned);
+		if (apiLogOn) logApiEvent("turn context post-prune", postStats);
+	}
 
 	// 4. Payload compaction
 	const compacted = compactToolResultPayloads(
