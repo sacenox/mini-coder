@@ -74,7 +74,7 @@ export function annotateToolCaching(
 	if (!isAnthropicModelFamily(modelString)) return toolSet;
 	const keys = Object.keys(toolSet);
 	if (keys.length === 0) return toolSet;
-	const lastKey = keys[keys.length - 1] as string;
+	const lastKey = keys.at(-1) as string;
 	const lastTool = (toolSet as Record<string, ToolEntry>)[lastKey] as ToolEntry;
 	return {
 		...toolSet,
@@ -162,11 +162,10 @@ function normalizeToolName(raw: unknown): string {
 function getOpenAITextPhase(
 	chunk: StreamTextChunk,
 ): "commentary" | "final_answer" | null {
-	const providerData = isRecord(chunk.providerMetadata)
-		? chunk.providerMetadata
-		: isRecord(chunk.providerOptions)
-			? chunk.providerOptions
-			: null;
+	let providerData: Record<string, unknown> | null = null;
+	if (isRecord(chunk.providerMetadata)) providerData = chunk.providerMetadata;
+	else if (isRecord(chunk.providerOptions))
+		providerData = chunk.providerOptions;
 	if (!providerData) return null;
 	const openai = providerData.openai;
 	if (!isRecord(openai)) return null;

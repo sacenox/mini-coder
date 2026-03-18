@@ -111,12 +111,11 @@ export function prepareTurnMessages(input: {
 			: getMessageStats(normalised);
 		if (apiLogOn) logApiEvent("turn context pre-prune", preStats);
 		// Reuse preStats when pruning was a no-op (same array reference)
-		postStats =
-			pruned === normalised
-				? preStats
-				: apiLogOn
-					? getMessageDiagnostics(pruned)
-					: getMessageStats(pruned);
+		if (pruned === normalised) postStats = preStats;
+		else
+			postStats = apiLogOn
+				? getMessageDiagnostics(pruned)
+				: getMessageStats(pruned);
 		if (apiLogOn) logApiEvent("turn context post-prune", postStats);
 	}
 

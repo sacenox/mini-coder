@@ -129,12 +129,10 @@ export function renderToolCall(toolName: string, args: unknown): void {
 }
 
 function formatErrorBadge(result: unknown): string {
-	const msg =
-		typeof result === "string"
-			? result
-			: result instanceof Error
-				? result.message
-				: JSON.stringify(result);
+	let msg: string;
+	if (typeof result === "string") msg = result;
+	else if (result instanceof Error) msg = result.message;
+	else msg = JSON.stringify(result);
 	const oneLiner = msg.split("\n")[0] ?? msg;
 	return `${G.err} ${c.red(oneLiner)}`;
 }

@@ -28,11 +28,8 @@ export async function handleMcpCommand(
 			}
 			writeln();
 			for (const s of servers) {
-				const detail = s.url
-					? c.dim(`  ${s.url}`)
-					: s.command
-						? c.dim(`  ${s.command}`)
-						: "";
+				const detailText = s.url ?? s.command ?? "";
+				const detail = detailText ? c.dim(`  ${detailText}`) : "";
 				writeln(
 					`  ${c.yellow("⚙")} ${c.bold(s.name)}  ${c.dim(s.transport)}${detail}`,
 				);

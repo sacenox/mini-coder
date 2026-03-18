@@ -27,8 +27,9 @@ function buildContextSegment(opts: {
 
 	const pct = Math.round((opts.contextTokens / opts.contextWindow) * 100);
 	const pctStr = `${pct}%`;
-	const pctColored =
-		pct >= 90 ? c.red(pctStr) : pct >= 75 ? c.yellow(pctStr) : c.dim(pctStr);
+	let pctColored = c.dim(pctStr);
+	if (pct >= 90) pctColored = c.red(pctStr);
+	else if (pct >= 75) pctColored = c.yellow(pctStr);
 	return (
 		c.dim(
 			`ctx ${fmtTokens(opts.contextTokens)}/${fmtTokens(opts.contextWindow)} `,

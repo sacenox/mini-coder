@@ -26,14 +26,26 @@
 			"style": {
 				"noNonNullAssertion": "error",
 				"noParameterAssign": "error",
-				"useConst": "error"
+				"noShoutyConstants": "error",
+				"noEnum": "error",
+				"noNestedTernary": "error",
+				"useConst": "error",
+				"useCollapsedIf": "error",
+				"useThrowNewError": "error",
+				"useThrowOnlyError": "error",
+				"useNumberNamespace": "error",
+				"useAtIndex": "error"
 			},
 			"complexity": {
-				"noUselessCatch": "error"
+				"noUselessCatch": "error",
+				"noUselessStringConcat": "error",
+				"noForEach": "error"
 			},
 			"suspicious": {
 				"noDebugger": "error",
-				"noExplicitAny": "error"
+				"noExplicitAny": "error",
+				"noConsole": "error",
+				"noEvolvingTypes": "error"
 			},
 			"correctness": {
 				"noUnusedVariables": "error",

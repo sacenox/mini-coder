@@ -91,12 +91,9 @@ export async function handleLoginCommand(
 				writeln(`  ${c.cyan(url)}`);
 				writeln();
 				// Try to open the browser
-				const open =
-					process.platform === "darwin"
-						? "open"
-						: process.platform === "win32"
-							? "start"
-							: "xdg-open";
+				let open = "xdg-open";
+				if (process.platform === "darwin") open = "open";
+				else if (process.platform === "win32") open = "start";
 				Bun.spawn([open, url], { stdout: "ignore", stderr: "ignore" });
 				ctx.startSpinner("waiting for browser callback");
 			},

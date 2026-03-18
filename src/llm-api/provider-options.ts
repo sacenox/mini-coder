@@ -44,7 +44,8 @@ function getAnthropicThinkingOptions(
 		/^claude-opus-4/.test(modelId);
 	if (isAdaptive) {
 		const isOpus = /^claude-opus-4/.test(modelId);
-		const mapped = effort === "xhigh" ? (isOpus ? "max" : "high") : effort;
+		const xhighMapping = isOpus ? "max" : "high";
+		const mapped = effort === "xhigh" ? xhighMapping : effort;
 		return { anthropic: { thinking: { type: "adaptive" }, effort: mapped } };
 	}
 

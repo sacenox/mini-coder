@@ -63,11 +63,14 @@ export function mapStreamChunkToTurnEvent(c: StreamChunk): TurnEvent | null {
 			};
 		}
 		case "tool-result": {
+			let result: unknown;
+			if ("output" in c) result = c.output;
+			else if ("result" in c) result = c.result;
 			return {
 				type: "tool-result",
 				toolCallId: String(c.toolCallId ?? ""),
 				toolName: String(c.toolName ?? ""),
-				result: "output" in c ? c.output : "result" in c ? c.result : undefined,
+				result,
 				isError: "isError" in c ? Boolean(c.isError) : false,
 			};
 		}

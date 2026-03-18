@@ -88,12 +88,9 @@ export function getMessageDiagnostics(
 				typeof rawToolName === "string" && rawToolName.length > 0
 					? rawToolName
 					: "unknown";
-			const payload =
-				"output" in partRecord
-					? partRecord.output
-					: "result" in partRecord
-						? partRecord.result
-						: null;
+			let payload: unknown = null;
+			if ("output" in partRecord) payload = partRecord.output;
+			else if ("result" in partRecord) payload = partRecord.result;
 			const payloadBytes = getByteLength(safeStringify(payload));
 			toolResultBytes += payloadBytes;
 
@@ -196,8 +193,9 @@ export function compactToolResultPayloads(
 			const partType = (part as { type?: unknown }).type;
 			if (partType !== "tool-result") return part;
 
-			const payload =
-				"output" in part ? part.output : "result" in part ? part.result : null;
+			let payload: unknown = null;
+			if ("output" in part) payload = part.output;
+			else if ("result" in part) payload = part.result;
 			const serializedPayload = safeStringify(payload);
 			const originalBytes = getByteLength(serializedPayload);
 			if (originalBytes <= capBytes) return part;

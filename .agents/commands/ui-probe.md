@@ -4,11 +4,13 @@ description: Run one-shot mc sessions across all SDK paths, capture output, and 
 
 The goal is to capture a realistic perspective of what the users see when using mini-coder.
 
-Run `mc` one-shots using one cheap model per Zen SDK path, capture their raw terminal output, then analyse it yourself and write `UI-REPORT.md` in the repo root. Do NOT delegate the report to the models under test.
+Run `mc` one-shots using one cheap model per Zen SDK path, capture their raw terminal output, then analyse it yourself and write `UI-REPORT.md` in the repo root.
+Do NOT delegate the report to the models under test.
+Use `tmux` so you can test interactive sessions properly.
 
 ## Models to use (one per SDK path)
 
-Pick cheap/free options. Verify available models at https://opencode.ai/docs/zen/ if needed, then choose:
+Pick cheap options. Verify available models at https://opencode.ai/docs/zen/ if needed, then choose:
 
 - `@ai-sdk/anthropic` path → a `zen/claude-*` haiku-class model
 - `@ai-sdk/google` path → a `zen/gemini-*` flash-class model
@@ -16,6 +18,7 @@ Pick cheap/free options. Verify available models at https://opencode.ai/docs/zen
 - `@ai-sdk/openai-compatible` path → `zen/*` or similar small low cost model
 
 Avoid free models due to rate limit issues.
+Also use a Anthropic Oauth model for completness
 
 ## Prompt to give each model
 

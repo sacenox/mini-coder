@@ -793,7 +793,7 @@ describe("applyContextPruning", () => {
 
 		const pruned = applyContextPruning(messages, "balanced");
 		expect(pruned.length).toBeLessThan(messages.length);
-		expect(pruned[pruned.length - 1]?.role).toBe("user");
+		expect(pruned.at(-1)?.role).toBe("user");
 	});
 });
 

@@ -135,11 +135,9 @@ function renderShellResult(
 	const stdoutLines = countShellLines(r.stdout);
 	const stderrLines = countShellLines(r.stderr);
 	const stdoutSingleLine = getSingleShellLine(r.stdout);
-	const badge = r.timedOut
-		? c.yellow("timeout")
-		: r.success
-			? c.green("done")
-			: c.red("error");
+	let badge = c.red("error");
+	if (r.timedOut) badge = c.yellow("timeout");
+	else if (r.success) badge = c.green("done");
 	const parts = buildShellSummaryParts({
 		exitCode: r.exitCode,
 		stdoutLines,
