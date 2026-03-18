@@ -29,18 +29,20 @@ conventions and not introduce more specs. (`.agents` / `AGENTS.md`, while also s
 - Seamless shell integration with `!` in prompt input.
 - Reference files and skills from the working directory and global configs with `@` in prompt input, plus autocomplete for files, skills, to include in the prompt. Skills should have their respective tools and implementation to match other coding agents
 - Press `ESC` at any point during an assistant response to interrupt it: the partial response is preserved in history with an interrupt stub appended (so the LLM retains context), and the user is returned to the prompt silently. `ctrl+c` exits forcefully. `ctrl+d` (EOF) gracefully exits.
-- Elegantly handles hitting max context size for the model. Also handles max tool calls, gracefully finishing the turn with an update from the agent
+- Elegantly handles hitting max context size for the model using regular pruning.
+- No max steps or max tool calls. user can interrupt, this is not needed.
 - Support prompt caching via the used sdks.
 - Feature parity with community configs like custom agents, skill and commands.
 - Shell-first tool surface for LLMs: `shell`, `listSkills`, and `readSkill`, plus connected MCP tools and optional web tools when configured. Keep the core surface small and easy to use so it actually reduces friction for the LLMs.
 - File work should follow a simple flow: inspect with shell, mutate with `mc-edit`, verify with shell.
+- Large shell outputs should be truncated automatically for the llm, to avoid context explosions and encourage targetted reads.
 - `mc-edit` should stay narrow and reliable: exact-text edits only, deterministic failures on stale or ambiguous state, diff and machine-friendly output while staying human readable.
 - Optional `webSearch` and `webContent` tools when `EXA_API_KEY` is set.
 - Commands in CLI prompt:
   - `/model` (alias `/models`) command allows the user to pick a model from connected providers. As well as thinking effort for the model if supported. Selection persists accross sessions.
   - `/undo` removes the last turn from conversation history, it does not restore filesystem state.
   - `/reasoning` toggles display of model reasoning output.
-  - `/verbose` toggles output truncation. Tuncates large outputs keeping start and end sections and truncating the rest when verbose is off.
+  - `/verbose` toggles output truncation. Tuncates large outputs keeping start and end sections and truncating the rest when verbose is off. This controls truncation for the user output, it's a visibility UI concern
   - `/context` configures context pruning and tool-result caps.
   - `/cache` toggles prompt caching globally; sub-commands configure provider-specific caching (`/cache openai <in_memory|24h>`, `/cache gemini <off|cachedContents/...>`).
   - `/review` reviews recent changes via a global custom command installed at app start (`~/.agents/commands/review.md`), and can be customized or shadowed locally.
