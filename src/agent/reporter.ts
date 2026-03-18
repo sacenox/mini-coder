@@ -7,6 +7,7 @@ export interface TurnResult {
 	contextTokens: number;
 	newMessages: CoreMessage[];
 	reasoningText: string;
+	hitMaxSteps: boolean;
 }
 
 export interface StatusBarData {

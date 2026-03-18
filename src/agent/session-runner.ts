@@ -218,45 +218,55 @@ export class SessionRunner {
 		let lastAssistantText = "";
 
 		try {
-			this.reporter.startSpinner("thinking");
-			const events = runTurn({
-				model: llm,
-				modelString: this.currentModel,
-				messages: this.coreHistory,
-				tools: this.tools,
-				...(systemPrompt ? { systemPrompt } : {}),
-				signal: abortController.signal,
-				pruningMode: this.pruningMode,
-				toolResultPayloadCapBytes: this.toolResultPayloadCapBytes,
-				promptCachingEnabled: this.promptCachingEnabled,
-				openaiPromptCacheRetention: this.openaiPromptCacheRetention,
-				googleCachedContent: this.googleCachedContent,
-				...(this.currentThinkingEffort
-					? { thinkingEffort: this.currentThinkingEffort }
-					: {}),
-			});
+			let continueLoop = true;
+			while (continueLoop) {
+				this.reporter.startSpinner("thinking");
+				const events = runTurn({
+					model: llm,
+					modelString: this.currentModel,
+					messages: this.coreHistory,
+					tools: this.tools,
+					...(systemPrompt ? { systemPrompt } : {}),
+					signal: abortController.signal,
+					pruningMode: this.pruningMode,
+					toolResultPayloadCapBytes: this.toolResultPayloadCapBytes,
+					promptCachingEnabled: this.promptCachingEnabled,
+					openaiPromptCacheRetention: this.openaiPromptCacheRetention,
+					googleCachedContent: this.googleCachedContent,
+					...(this.currentThinkingEffort
+						? { thinkingEffort: this.currentThinkingEffort }
+						: {}),
+				});
 
-			const { inputTokens, outputTokens, contextTokens, newMessages } =
-				await this.reporter.renderTurn(events, {
+				const {
+					inputTokens,
+					outputTokens,
+					contextTokens,
+					newMessages,
+					hitMaxSteps,
+				} = await this.reporter.renderTurn(events, {
 					showReasoning: this.showReasoning,
 					verboseOutput: this.verboseOutput,
 				});
-			const historyMessages = sanitizeModelAuthoredMessages(
-				newMessages,
-				this.currentModel,
-			);
+				const historyMessages = sanitizeModelAuthoredMessages(
+					newMessages,
+					this.currentModel,
+				);
 
-			if (historyMessages.length > 0) {
-				this.coreHistory.push(...historyMessages);
-				this.session.messages.push(...historyMessages);
-				saveMessages(this.session.id, historyMessages, thisTurn);
+				if (historyMessages.length > 0) {
+					this.coreHistory.push(...historyMessages);
+					this.session.messages.push(...historyMessages);
+					saveMessages(this.session.id, historyMessages, thisTurn);
+				}
+
+				lastAssistantText = extractAssistantText(historyMessages);
+				this.totalIn += inputTokens;
+				this.totalOut += outputTokens;
+				this.lastContextTokens = contextTokens;
+				touchActiveSession(this.session);
+
+				continueLoop = hitMaxSteps && !abortController.signal.aborted;
 			}
-
-			lastAssistantText = extractAssistantText(historyMessages);
-			this.totalIn += inputTokens;
-			this.totalOut += outputTokens;
-			this.lastContextTokens = contextTokens;
-			touchActiveSession(this.session);
 		} catch (err) {
 			const stubMsg = makeInterruptMessage("error");
 			this.coreHistory.push(stubMsg);

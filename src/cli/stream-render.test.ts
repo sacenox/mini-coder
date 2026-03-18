@@ -50,6 +50,7 @@ describe("renderTurn", () => {
 			contextTokens: 3,
 			newMessages: [],
 			reasoningText: "",
+			hitMaxSteps: false,
 		});
 	});
 

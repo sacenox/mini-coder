@@ -128,6 +128,7 @@ export function turnDone(messages: CoreMessage[] = []): TurnEvent {
 		inputTokens: 1,
 		outputTokens: 2,
 		contextTokens: 3,
+		hitMaxSteps: false,
 		messages,
 	};
 }

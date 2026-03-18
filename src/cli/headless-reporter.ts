@@ -31,6 +31,7 @@ export class HeadlessReporter implements AgentReporter {
 		let inputTokens = 0;
 		let outputTokens = 0;
 		let contextTokens = 0;
+		let hitMaxSteps = false;
 		let newMessages: CoreMessage[] = [];
 		let accumulatedText = "";
 		let reasoningText = "";
@@ -49,6 +50,7 @@ export class HeadlessReporter implements AgentReporter {
 					inputTokens = event.inputTokens;
 					outputTokens = event.outputTokens;
 					contextTokens = event.contextTokens;
+					hitMaxSteps = event.hitMaxSteps;
 					newMessages = event.messages;
 					break;
 				case "turn-error": {
@@ -72,6 +74,7 @@ export class HeadlessReporter implements AgentReporter {
 			contextTokens,
 			newMessages,
 			reasoningText: normalizeReasoningText(reasoningText),
+			hitMaxSteps,
 		};
 	}
 

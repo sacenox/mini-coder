@@ -158,11 +158,14 @@ export async function* runTurn(options: {
 			outputTokens: finalState.outputTokens,
 		});
 
+		const hitMaxSteps = finalState.stepCount >= MAX_STEPS;
+
 		yield {
 			type: "turn-complete",
 			inputTokens: finalState.inputTokens,
 			outputTokens: finalState.outputTokens,
 			contextTokens: finalState.contextTokens,
+			hitMaxSteps,
 			messages: finalState.partialMessages,
 		};
 	} catch (err) {
