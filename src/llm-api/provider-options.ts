@@ -8,13 +8,6 @@ import {
 
 export type ThinkingEffort = "low" | "medium" | "high" | "xhigh";
 
-interface CachingOptions {
-	enabled: boolean;
-	openaiRetention?: "in_memory" | "24h";
-	googleCachedContent?: string | null;
-	googleExplicitCachingCompatible?: boolean;
-}
-
 type CacheFamily = "google" | "anthropic" | "none";
 
 const ANTHROPIC_BUDGET: Record<ThinkingEffort, number> = {
@@ -144,22 +137,4 @@ export function getCacheFamily(modelString: string): CacheFamily {
 		if (match(modelString)) return family;
 	}
 	return "none";
-}
-
-export function getCachingProviderOptions(
-	modelString: string,
-	opts: CachingOptions,
-): Record<string, unknown> | null {
-	if (!opts.enabled) return null;
-
-	const family = getCacheFamily(modelString);
-	if (
-		family === "google" &&
-		opts.googleCachedContent &&
-		opts.googleExplicitCachingCompatible !== false
-	) {
-		return { google: { cachedContent: opts.googleCachedContent } };
-	}
-
-	return null;
 }

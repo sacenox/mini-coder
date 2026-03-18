@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 
 import {
 	getCacheFamily,
-	getCachingProviderOptions,
 	getThinkingProviderOptions,
 } from "./provider-options.ts";
 
@@ -61,61 +60,5 @@ describe("getCacheFamily", () => {
 	});
 	test("identifies none for others", () => {
 		expect(getCacheFamily("ollama/llama3")).toBe("none");
-	});
-});
-
-describe("getCachingProviderOptions", () => {
-	test("returns null if disabled", () => {
-		expect(
-			getCachingProviderOptions("openai/gpt-4", { enabled: false }),
-		).toBeNull();
-	});
-
-	test("returns null for openai (caching is automatic, no hint sent)", () => {
-		expect(
-			getCachingProviderOptions("openai/gpt-4", {
-				enabled: true,
-				openaiRetention: "24h",
-			}),
-		).toBeNull();
-	});
-
-	test("returns google cached content when explicit caching is compatible", () => {
-		expect(
-			getCachingProviderOptions("google/gemini-1.5-pro", {
-				enabled: true,
-				googleCachedContent: "cache-123",
-				googleExplicitCachingCompatible: true,
-			}),
-		).toEqual({
-			google: { cachedContent: "cache-123" },
-		});
-	});
-
-	test("returns null for google when explicit caching is incompatible", () => {
-		expect(
-			getCachingProviderOptions("google/gemini-1.5-pro", {
-				enabled: true,
-				googleCachedContent: "cache-123",
-				googleExplicitCachingCompatible: false,
-			}),
-		).toBeNull();
-	});
-
-	test("returns null for google if no content id", () => {
-		expect(
-			getCachingProviderOptions("google/gemini-1.5-pro", {
-				enabled: true,
-				googleCachedContent: null,
-			}),
-		).toBeNull();
-	});
-
-	test("returns null for anthropic (handled via messages)", () => {
-		expect(
-			getCachingProviderOptions("anthropic/claude-3-opus", {
-				enabled: true,
-			}),
-		).toBeNull();
 	});
 });

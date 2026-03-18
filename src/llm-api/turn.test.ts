@@ -15,6 +15,7 @@ import {
 	compactToolResultPayloads,
 	getMessageDiagnostics,
 } from "./turn-context.ts";
+import { annotateToolCaching } from "./turn-execution.ts";
 
 describe("isOpenAIGPT", () => {
 	test("matches openai/gpt-* models", () => {
@@ -866,83 +867,107 @@ describe("compactToolResultPayloads", () => {
 });
 
 describe("annotateAnthropicCacheBreakpoints", () => {
-	test("adds cache control to system prompt and removes it from returned systemPrompt", () => {
-		const messages: CoreMessage[] = [{ role: "user", content: "hello" }];
-		const {
-			messages: annotated,
-			systemPrompt,
-			diagnostics,
-		} = annotateAnthropicCacheBreakpoints(messages, "System rules");
+	const cacheOpts = {
+		anthropic: { cacheControl: { type: "ephemeral" } },
+	};
 
-		expect(systemPrompt).toBeUndefined();
-		expect(annotated.length).toBe(2);
-		expect(annotated[0]).toEqual({
-			role: "system",
-			content: "System rules",
-			providerOptions: {
-				anthropic: { cacheControl: { type: "ephemeral" } },
-			},
-		});
-		expect(diagnostics.breakpointsAdded).toBe(1);
+	test("annotates system messages with cache control", () => {
+		const messages: CoreMessage[] = [
+			{ role: "system", content: "System rules" },
+			{ role: "user", content: "hello" },
+		];
+		const annotated = annotateAnthropicCacheBreakpoints(messages);
+
+		expect(annotated[0]?.providerOptions).toEqual(cacheOpts);
+		// Only 1 non-system message — not enough for last 2, so just the 1
+		expect(annotated[1]?.providerOptions).toEqual(cacheOpts);
 	});
 
-	test("adds breakpoint to second to last message if there are enough messages", () => {
+	test("annotates last 2 non-system messages", () => {
 		const messages: CoreMessage[] = [
 			{ role: "user", content: "m1" },
 			{ role: "assistant", content: "m2" },
 			{ role: "user", content: "m3" },
 			{ role: "assistant", content: "m4" },
 		];
-		const {
-			messages: annotated,
-			systemPrompt,
-			diagnostics,
-		} = annotateAnthropicCacheBreakpoints(messages, undefined);
+		const annotated = annotateAnthropicCacheBreakpoints(messages);
 
-		expect(systemPrompt).toBeUndefined();
-		expect(annotated.length).toBe(4);
-		// 2nd to last message is index 2 (m3)
-		expect(annotated[2]).toEqual({
-			role: "user",
-			content: "m3",
-			providerOptions: {
-				anthropic: { cacheControl: { type: "ephemeral" } },
-			},
-		});
-		expect(annotated[3]?.providerOptions).toBeUndefined();
-		expect(diagnostics.breakpointsAdded).toBe(1);
+		expect(annotated[0]?.providerOptions).toBeUndefined();
+		expect(annotated[1]?.providerOptions).toBeUndefined();
+		expect(annotated[2]?.providerOptions).toEqual(cacheOpts);
+		expect(annotated[3]?.providerOptions).toEqual(cacheOpts);
 	});
 
-	test("handles system prompt and second to last message together", () => {
+	test("annotates both system and last 2 non-system messages", () => {
 		const messages: CoreMessage[] = [
+			{ role: "system", content: "System rules" },
 			{ role: "user", content: "m1" },
 			{ role: "assistant", content: "m2" },
 			{ role: "user", content: "m3" },
 		];
-		const {
-			messages: annotated,
-			systemPrompt,
-			diagnostics,
-		} = annotateAnthropicCacheBreakpoints(messages, "System rules");
+		const annotated = annotateAnthropicCacheBreakpoints(messages);
 
-		expect(systemPrompt).toBeUndefined();
-		expect(annotated.length).toBe(4);
+		// system
+		expect(annotated[0]?.providerOptions).toEqual(cacheOpts);
+		// first non-system — not in last 2
+		expect(annotated[1]?.providerOptions).toBeUndefined();
+		// last 2 non-system
+		expect(annotated[2]?.providerOptions).toEqual(cacheOpts);
+		expect(annotated[3]?.providerOptions).toEqual(cacheOpts);
+	});
 
-		// system message
-		expect(annotated[0]).toEqual({
-			role: "system",
-			content: "System rules",
-			providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
+	test("preserves existing providerOptions", () => {
+		const messages: CoreMessage[] = [
+			{
+				role: "user",
+				content: "m1",
+				providerOptions: { anthropic: { thinking: { type: "adaptive" } } },
+			},
+		];
+		const annotated = annotateAnthropicCacheBreakpoints(messages);
+		expect(annotated[0]?.providerOptions).toEqual({
+			anthropic: {
+				thinking: { type: "adaptive" },
+				cacheControl: { type: "ephemeral" },
+			},
 		});
+	});
+});
 
-		// 2nd to last message was index 1 of the original array, which is "assistant m2".
-		// Now it is at index 2 of annotated array.
-		expect(annotated[2]).toEqual({
-			role: "assistant",
-			content: "m2",
-			providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
+describe("annotateToolCaching", () => {
+	test("adds cache control to last tool for anthropic models", () => {
+		const toolSet = {
+			read: { description: "Read a file" },
+			write: { description: "Write a file" },
+		} as any;
+		const result = annotateToolCaching(toolSet, "anthropic/claude-sonnet-4-6");
+		expect((result.write as any).providerOptions).toEqual({
+			anthropic: { cacheControl: { type: "ephemeral" } },
 		});
+		expect((result.read as any).providerOptions).toBeUndefined();
+	});
 
-		expect(diagnostics.breakpointsAdded).toBe(2);
+	test("adds cache control to last tool for zen anthropic models", () => {
+		const toolSet = {
+			shell: { description: "Run shell" },
+		} as any;
+		const result = annotateToolCaching(toolSet, "zen/claude-sonnet-4-6");
+		expect((result.shell as any).providerOptions).toEqual({
+			anthropic: { cacheControl: { type: "ephemeral" } },
+		});
+	});
+
+	test("returns toolset unchanged for non-anthropic models", () => {
+		const toolSet = {
+			read: { description: "Read a file" },
+		} as any;
+		const result = annotateToolCaching(toolSet, "openai/gpt-5.4");
+		expect(result).toBe(toolSet);
+	});
+
+	test("returns empty toolset unchanged", () => {
+		const toolSet = {} as any;
+		const result = annotateToolCaching(toolSet, "anthropic/claude-sonnet-4-6");
+		expect(result).toBe(toolSet);
 	});
 });

@@ -6,11 +6,9 @@ import {
 	stripToolRuntimeInputFields,
 } from "./history-transforms.ts";
 import { isAnthropicModelFamily } from "./model-routing.ts";
-import { getCacheFamily } from "./provider-options.ts";
 import { isAnthropicOAuth } from "./providers.ts";
 import type { CoreMessage } from "./turn.ts";
 import {
-	annotateAnthropicCacheBreakpoints,
 	applyContextPruning,
 	type ContextPruningMode,
 	compactToolResultPayloads,
@@ -40,7 +38,6 @@ export function prepareTurnMessages(input: {
 	systemPrompt: string | undefined;
 	pruningMode: ContextPruningMode;
 	toolResultPayloadCapBytes: number;
-	promptCachingEnabled: boolean;
 }): PreparedMessages {
 	const {
 		messages,
@@ -49,7 +46,6 @@ export function prepareTurnMessages(input: {
 		systemPrompt,
 		pruningMode,
 		toolResultPayloadCapBytes,
-		promptCachingEnabled,
 	} = input;
 
 	const apiLogOn = isApiLogEnabled();
@@ -136,54 +132,27 @@ export function prepareTurnMessages(input: {
 		});
 	}
 
-	// 5. Anthropic prompt caching breakpoints
+	// 5. OAuth identity: Anthropic OAuth requires the Claude Code identity as
+	//    the first system block so the API recognises the client. We inline
+	//    both identity and system prompt as messages (identity first) so the
+	//    SDK sends them in the correct order on the wire.
 	let finalMessages = compacted;
 	let finalSystemPrompt = systemPrompt;
 
-	const cacheFamily = getCacheFamily(modelString);
-	if (cacheFamily === "anthropic" && promptCachingEnabled) {
-		const annotated = annotateAnthropicCacheBreakpoints(
-			compacted,
-			systemPrompt,
-		);
-		finalMessages = annotated.messages;
-		finalSystemPrompt = annotated.systemPrompt;
-		if (apiLogOn) {
-			logApiEvent("Anthropic prompt caching", annotated.diagnostics);
-		}
-	}
-
-	// 6. OAuth identity: Anthropic OAuth requires the Claude Code identity as
-	//    a separate first system block so the API recognises the client.
 	if (isAnthropicModelFamily(modelString) && isAnthropicOAuth()) {
 		const ccIdentity =
 			"You are Claude Code, Anthropic's official CLI for Claude.";
-		const ccSystemMsg = {
-			role: "system",
-			content: ccIdentity,
-			providerOptions: {
-				anthropic: { cacheControl: { type: "ephemeral" } },
-			},
-		} as CoreMessage;
-
+		const systemMessages: CoreMessage[] = [
+			{ role: "system", content: ccIdentity } as CoreMessage,
+		];
 		if (finalSystemPrompt) {
-			// System prompt hasn't been inlined — prepend identity as separate
-			// system message so the AI SDK sends two blocks.
-			finalMessages = [ccSystemMsg, ...finalMessages];
-		} else {
-			// System prompt was inlined into messages by cache breakpoint annotation.
-			// Insert the identity block before the existing system message.
-			const sysIdx = finalMessages.findIndex((m) => m.role === "system");
-			if (sysIdx >= 0) {
-				finalMessages = [
-					...finalMessages.slice(0, sysIdx),
-					ccSystemMsg,
-					...finalMessages.slice(sysIdx),
-				];
-			} else {
-				finalMessages = [ccSystemMsg, ...finalMessages];
-			}
+			systemMessages.push({
+				role: "system",
+				content: finalSystemPrompt,
+			} as CoreMessage);
+			finalSystemPrompt = undefined;
 		}
+		finalMessages = [...systemMessages, ...finalMessages];
 	}
 
 	const wasPruned =

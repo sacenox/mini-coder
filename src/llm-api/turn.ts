@@ -8,6 +8,7 @@ import {
 	DEFAULT_TOOL_RESULT_PAYLOAD_CAP_BYTES,
 } from "./turn-context.ts";
 import {
+	annotateToolCaching,
 	buildToolSet,
 	createTurnStateTracker,
 	mapFullStreamToTurnEvents,
@@ -44,9 +45,6 @@ export async function* runTurn(options: {
 	thinkingEffort?: ThinkingEffort;
 	pruningMode?: ContextPruningMode;
 	toolResultPayloadCapBytes?: number;
-	promptCachingEnabled?: boolean;
-	openaiPromptCacheRetention?: "in_memory" | "24h";
-	googleCachedContent?: string | null;
 }): AsyncGenerator<TurnEvent> {
 	const {
 		model,
@@ -57,13 +55,11 @@ export async function* runTurn(options: {
 		signal,
 		thinkingEffort,
 		pruningMode = "balanced",
-		promptCachingEnabled = true,
-		openaiPromptCacheRetention = "in_memory",
-		googleCachedContent = null,
 		toolResultPayloadCapBytes = DEFAULT_TOOL_RESULT_PAYLOAD_CAP_BYTES,
 	} = options;
 
-	const toolSet = buildToolSet(tools);
+	const rawToolSet = buildToolSet(tools);
+	const toolSet = annotateToolCaching(rawToolSet, modelString);
 	const turnState = createTurnStateTracker({
 		onStepLog: ({ finishReason, usage }) => {
 			logApiEvent("step finish", {
@@ -79,9 +75,6 @@ export async function* runTurn(options: {
 			modelString,
 			messages,
 			thinkingEffort,
-			promptCachingEnabled,
-			openaiPromptCacheRetention,
-			googleCachedContent,
 			toolCount,
 			systemPrompt,
 			pruningMode,
@@ -114,15 +107,14 @@ export async function* runTurn(options: {
 
 		if (isApiLogEnabled()) {
 			logApiEvent("prompt caching configured", {
-				enabled: promptCachingEnabled,
 				cacheFamily: providerOptionsResult.cacheFamily,
-				cacheOpts: providerOptionsResult.cacheOpts,
 			});
 		}
 
 		const result = streamText(
 			buildStreamTextRequest({
 				model,
+				modelString,
 				prepared,
 				toolSet,
 				onStepFinish: turnState.onStepFinish,

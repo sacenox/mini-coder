@@ -241,52 +241,50 @@ export function compactToolResultPayloads(
 	return mutated ? compacted : messages;
 }
 
-export function annotateAnthropicCacheBreakpoints(
-	turnMessages: CoreMessage[],
-	systemPrompt?: string,
-): {
-	messages: CoreMessage[];
-	systemPrompt?: string;
-	diagnostics: { breakpointsAdded: number; stableIdx: number };
-} {
-	const finalMessages = [...turnMessages];
-	let breakpointsAdded = 0;
-
-	const stableIdx = finalMessages.length > 2 ? finalMessages.length - 2 : -1;
-	if (stableIdx >= 0 && finalMessages[stableIdx]) {
-		const msg = finalMessages[stableIdx];
-		finalMessages[stableIdx] = {
-			...msg,
-			providerOptions: {
-				...(msg?.providerOptions ?? {}),
-				anthropic: {
-					...((msg?.providerOptions?.anthropic as Record<string, unknown>) ??
-						{}),
-					cacheControl: { type: "ephemeral" },
-				},
-			},
-		} as CoreMessage;
-		breakpointsAdded++;
-	}
-
-	let finalSystemPrompt = systemPrompt;
-	if (systemPrompt) {
-		finalMessages.unshift({
-			role: "system",
-			content: systemPrompt,
-			providerOptions: {
-				anthropic: { cacheControl: { type: "ephemeral" } },
-			},
-		});
-		finalSystemPrompt = undefined;
-		breakpointsAdded++;
-	}
-
+function withCacheBreakpoint(msg: CoreMessage): CoreMessage {
 	return {
-		messages: finalMessages,
-		...(finalSystemPrompt !== undefined
-			? { systemPrompt: finalSystemPrompt }
-			: {}),
-		diagnostics: { breakpointsAdded, stableIdx },
-	};
+		...msg,
+		providerOptions: {
+			...(msg?.providerOptions ?? {}),
+			anthropic: {
+				...((msg?.providerOptions?.anthropic as Record<string, unknown>) ??
+					{}),
+				cacheControl: { type: "ephemeral" },
+			},
+		},
+	} as CoreMessage;
+}
+
+/**
+ * Add Anthropic ephemeral cache breakpoints to messages. Designed to run
+ * per-step via middleware so breakpoints always track the conversation tail.
+ *
+ * Anthropic allows max 4 breakpoints per request. We reserve 1 for tool
+ * caching (see annotateToolCaching), leaving 3 for messages:
+ *   - First system message (stable prefix)
+ *   - Last 2 non-system messages (moving tail)
+ */
+export function annotateAnthropicCacheBreakpoints(
+	prompt: CoreMessage[],
+): CoreMessage[] {
+	const result = [...prompt];
+	const systemIdxs: number[] = [];
+	const nonSystemIdxs: number[] = [];
+
+	for (let i = 0; i < result.length; i++) {
+		if (result[i]?.role === "system") systemIdxs.push(i);
+		else nonSystemIdxs.push(i);
+	}
+
+	// Annotate first system message
+	for (const idx of systemIdxs.slice(0, 1)) {
+		result[idx] = withCacheBreakpoint(result[idx] as CoreMessage);
+	}
+
+	// Annotate last 2 non-system messages
+	for (const idx of nonSystemIdxs.slice(-2)) {
+		result[idx] = withCacheBreakpoint(result[idx] as CoreMessage);
+	}
+
+	return result;
 }

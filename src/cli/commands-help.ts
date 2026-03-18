@@ -32,7 +32,6 @@ export function renderHelpCommand(
 		["/reasoning [on|off]", "toggle reasoning display"],
 		["/verbose [on|off]", "toggle output truncation"],
 		["/context [prune|cap]", "configure pruning and tool-result caps"],
-		["/cache [...]", "configure provider prompt caching"],
 		["/agent [name]", "set or clear the active agent"],
 		["/mcp list", "list MCP servers"],
 		["/mcp add <n> <t> [u]", "add an MCP server"],

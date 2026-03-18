@@ -1,7 +1,7 @@
 # TODO
 
-- Reaching max tool calls causes a 400 error
 - CTRL+d hangs sometimes and doesn't exit
+- Codebase is hurting from fast iteration and adding/removing features as well as core fundamental changes.
 
 ## Deferred fixes
 

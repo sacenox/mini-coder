@@ -33,9 +33,6 @@ interface SessionRunnerOptions {
 	initialVerboseOutput: boolean;
 	initialPruningMode: ContextPruningMode;
 	initialToolResultPayloadCapBytes: number;
-	initialPromptCachingEnabled: boolean;
-	initialOpenAIPromptCacheRetention: "in_memory" | "24h";
-	initialGoogleCachedContent: string | null;
 	sessionId?: string | undefined;
 	extraSystemPrompt?: string | undefined;
 }
@@ -62,9 +59,6 @@ export class SessionRunner {
 	public verboseOutput: boolean;
 	public pruningMode: ContextPruningMode;
 	public toolResultPayloadCapBytes: number;
-	public promptCachingEnabled: boolean;
-	public openaiPromptCacheRetention: "in_memory" | "24h";
-	public googleCachedContent: string | null;
 
 	public session!: ActiveSession;
 
@@ -88,9 +82,6 @@ export class SessionRunner {
 		this.verboseOutput = opts.initialVerboseOutput;
 		this.pruningMode = opts.initialPruningMode;
 		this.toolResultPayloadCapBytes = opts.initialToolResultPayloadCapBytes;
-		this.promptCachingEnabled = opts.initialPromptCachingEnabled;
-		this.openaiPromptCacheRetention = opts.initialOpenAIPromptCacheRetention;
-		this.googleCachedContent = opts.initialGoogleCachedContent;
 		this.extraSystemPrompt = opts.extraSystemPrompt;
 		this.initSession(opts.sessionId);
 	}
@@ -215,9 +206,6 @@ export class SessionRunner {
 				signal: abortController.signal,
 				pruningMode: this.pruningMode,
 				toolResultPayloadCapBytes: this.toolResultPayloadCapBytes,
-				promptCachingEnabled: this.promptCachingEnabled,
-				openaiPromptCacheRetention: this.openaiPromptCacheRetention,
-				googleCachedContent: this.googleCachedContent,
 				...(this.currentThinkingEffort
 					? { thinkingEffort: this.currentThinkingEffort }
 					: {}),

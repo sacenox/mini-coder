@@ -79,45 +79,10 @@ function createFetchWithLogging(): ProviderFetch {
 
 const fetchWithLogging = createFetchWithLogging();
 
-/** Betas the AI SDK adds that are not compatible with OAuth / Claude Code identity. */
-const OAUTH_STRIP_BETAS = new Set(["structured-outputs-2025-11-13"]);
+/** Betas the AI SDK adds that are not compatible with the OAuth endpoint. */
+const OAUTH_STRIP_BETAS = new Set<string>();
 
-/** Strip non-standard fields from the request body that the AI SDK adds but
- *  the Anthropic API doesn't expect (e.g. `caller` on tool_use blocks,
- *  `$schema` on tool input_schema). */
-function sanitizeOAuthBody(body: string): string {
-	try {
-		const json = JSON.parse(body);
-		// Normalize tool input schemas to only type/properties/required
-		if (Array.isArray(json.tools)) {
-			for (const tool of json.tools) {
-				if (tool.input_schema) {
-					tool.input_schema = {
-						type: "object",
-						properties: tool.input_schema.properties ?? {},
-						required: tool.input_schema.required ?? [],
-					};
-				}
-			}
-		}
-		// Strip non-standard fields from tool_use blocks in messages
-		if (Array.isArray(json.messages)) {
-			for (const msg of json.messages) {
-				if (!Array.isArray(msg.content)) continue;
-				for (const block of msg.content) {
-					if (block.type === "tool_use") {
-						delete block.caller;
-					}
-				}
-			}
-		}
-		return JSON.stringify(json);
-	} catch {
-		return body;
-	}
-}
-
-function createOAuthFetch(): ProviderFetch {
+function createOAuthFetch(accessToken: string): ProviderFetch {
 	const baseFetch = createFetchWithLogging();
 	const oauthFetch = async (
 		input: Parameters<ProviderFetch>[0],
@@ -136,14 +101,11 @@ function createOAuthFetch(): ProviderFetch {
 					.join(",");
 				h.set("anthropic-beta", filtered);
 			}
-			// OAuth tokens require Claude Code client identity
+			h.delete("x-api-key");
+			h.set("authorization", `Bearer ${accessToken}`);
 			h.set("user-agent", "claude-cli/2.1.75");
 			h.set("x-app", "cli");
 			opts = { ...opts, headers: Object.fromEntries(h.entries()) };
-		}
-		// Sanitize body to remove non-standard fields
-		if (opts?.body) {
-			opts = { ...opts, body: sanitizeOAuthBody(opts.body.toString()) };
 		}
 		return baseFetch(input, opts);
 	};
@@ -263,6 +225,19 @@ type AsyncModelResolver = (
 let oauthAnthropicCache: { token: string; provider: AnthropicProvider } | null =
 	null;
 
+function createOAuthAnthropicProvider(token: string): AnthropicProvider {
+	return createAnthropic({
+		// Use empty apiKey + custom fetch (like opencode) instead of authToken.
+		// The SDK sends x-api-key for apiKey, which we override to Authorization
+		// Bearer in the OAuth fetch wrapper.
+		apiKey: "",
+		fetch: createOAuthFetch(token),
+		headers: {
+			"anthropic-beta": "claude-code-20250219,oauth-2025-04-20",
+		},
+	});
+}
+
 async function resolveAnthropicModel(modelId: string): Promise<LanguageModel> {
 	// OAuth token takes priority over env var
 	if (isLoggedIn("anthropic")) {
@@ -271,13 +246,7 @@ async function resolveAnthropicModel(modelId: string): Promise<LanguageModel> {
 			if (!oauthAnthropicCache || oauthAnthropicCache.token !== token) {
 				oauthAnthropicCache = {
 					token,
-					provider: createAnthropic({
-						fetch: createOAuthFetch(),
-						authToken: token,
-						headers: {
-							"anthropic-beta": "claude-code-20250219,oauth-2025-04-20",
-						},
-					}),
+					provider: createOAuthAnthropicProvider(token),
 				};
 			}
 			return oauthAnthropicCache.provider(modelId);

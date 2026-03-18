@@ -1,6 +1,8 @@
-import type { streamText } from "ai";
+import { type streamText, wrapLanguageModel } from "ai";
 
+import { isAnthropicModelFamily } from "./model-routing.ts";
 import type { ThinkingEffort } from "./provider-options.ts";
+import { annotateAnthropicCacheBreakpoints } from "./turn-context.ts";
 import type { ContextPruningMode } from "./turn-context.ts";
 import { prepareTurnMessages } from "./turn-prepare-messages.ts";
 import { buildTurnProviderOptions } from "./turn-provider-options.ts";
@@ -18,9 +20,6 @@ interface BuildTurnPreparationInput {
 	modelString: string;
 	messages: CoreMessage[];
 	thinkingEffort: ThinkingEffort | undefined;
-	promptCachingEnabled: boolean;
-	openaiPromptCacheRetention: "in_memory" | "24h";
-	googleCachedContent: string | null;
 	toolCount: number;
 	systemPrompt: string | undefined;
 	pruningMode: ContextPruningMode;
@@ -34,11 +33,6 @@ export function buildTurnPreparation(input: BuildTurnPreparationInput): {
 	const providerOptionsResult = buildTurnProviderOptions({
 		modelString: input.modelString,
 		thinkingEffort: input.thinkingEffort,
-		promptCachingEnabled: input.promptCachingEnabled,
-		openaiPromptCacheRetention: input.openaiPromptCacheRetention,
-		googleCachedContent: input.googleCachedContent,
-		toolCount: input.toolCount,
-		hasSystemPrompt: Boolean(input.systemPrompt),
 	});
 
 	const prepared = prepareTurnMessages({
@@ -48,7 +42,6 @@ export function buildTurnPreparation(input: BuildTurnPreparationInput): {
 		systemPrompt: input.systemPrompt,
 		pruningMode: input.pruningMode,
 		toolResultPayloadCapBytes: input.toolResultPayloadCapBytes,
-		promptCachingEnabled: input.promptCachingEnabled,
 	});
 
 	return { providerOptionsResult, prepared };
@@ -56,6 +49,7 @@ export function buildTurnPreparation(input: BuildTurnPreparationInput): {
 
 interface BuildStreamTextRequestInput {
 	model: CoreModel;
+	modelString: string;
 	prepared: ReturnType<typeof prepareTurnMessages>;
 	toolSet: ToolSet;
 	onStepFinish: NonNullable<StreamTextOptions["onStepFinish"]>;
@@ -66,8 +60,26 @@ interface BuildStreamTextRequestInput {
 export function buildStreamTextRequest(
 	input: BuildStreamTextRequestInput,
 ): StreamTextOptions {
+	// Wrap the model with caching middleware for Anthropic models.
+	// This runs on every step so the cache breakpoints always track the tail.
+	const model = isAnthropicModelFamily(input.modelString)
+		? wrapLanguageModel({
+				model: input.model,
+				middleware: [
+					{
+						transformParams: async ({ params }) => ({
+							...params,
+							prompt: annotateAnthropicCacheBreakpoints(
+								params.prompt as CoreMessage[],
+							) as typeof params.prompt,
+						}),
+					},
+				],
+			})
+		: input.model;
+
 	return {
-		model: input.model,
+		model,
 		maxOutputTokens: 16384,
 		messages: input.prepared.messages,
 		tools: input.toolSet,

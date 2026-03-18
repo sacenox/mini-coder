@@ -2,6 +2,7 @@ import type { FlexibleSchema, StepResult } from "ai";
 import { dynamicTool, jsonSchema, type streamText } from "ai";
 import { normalizeUnknownError } from "./error-utils.ts";
 import { isRecord } from "./history/shared.ts";
+import { isAnthropicModelFamily } from "./model-routing.ts";
 import {
 	extractToolArgs,
 	hasRenderableToolArgs,
@@ -59,6 +60,38 @@ export function buildToolSet(tools: ToolDef[]): ToolSet {
 		(toolSet as Record<string, ToolEntry>)[def.name] = toCoreTool(def);
 	}
 	return toolSet;
+}
+
+/**
+ * Add an Anthropic cache breakpoint to the last tool so the system+tools
+ * prefix is cached as a unit. This helps exceed the per-model minimum
+ * cacheable prefix (e.g. 4096 tokens for Opus).
+ */
+export function annotateToolCaching(
+	toolSet: ToolSet,
+	modelString: string,
+): ToolSet {
+	if (!isAnthropicModelFamily(modelString)) return toolSet;
+	const keys = Object.keys(toolSet);
+	if (keys.length === 0) return toolSet;
+	const lastKey = keys[keys.length - 1] as string;
+	const lastTool = (toolSet as Record<string, ToolEntry>)[lastKey] as ToolEntry;
+	return {
+		...toolSet,
+		[lastKey]: {
+			...lastTool,
+			providerOptions: {
+				...(lastTool.providerOptions ?? {}),
+				anthropic: {
+					...((lastTool.providerOptions?.anthropic as Record<
+						string,
+						unknown
+					>) ?? {}),
+					cacheControl: { type: "ephemeral" },
+				},
+			},
+		},
+	} as ToolSet;
 }
 
 export function createTurnStateTracker(opts: {

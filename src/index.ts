@@ -28,10 +28,7 @@ import { autoDiscoverModel } from "./llm-api/providers.ts";
 
 import {
 	getPreferredContextPruningMode,
-	getPreferredGoogleCachedContent,
 	getPreferredModel,
-	getPreferredOpenAIPromptCacheRetention,
-	getPreferredPromptCachingEnabled,
 	getPreferredShowReasoning,
 	getPreferredThinkingEffort,
 	getPreferredToolResultPayloadCapBytes,
@@ -66,9 +63,6 @@ function buildAgentOptions(opts: {
 		initialVerboseOutput: getPreferredVerboseOutput(),
 		initialPruningMode: getPreferredContextPruningMode(),
 		initialToolResultPayloadCapBytes: getPreferredToolResultPayloadCapBytes(),
-		initialPromptCachingEnabled: getPreferredPromptCachingEnabled(),
-		initialOpenAIPromptCacheRetention: getPreferredOpenAIPromptCacheRetention(),
-		initialGoogleCachedContent: getPreferredGoogleCachedContent(),
 		reporter: opts.reporter,
 		...(opts.sessionId !== undefined && { sessionId: opts.sessionId }),
 	};

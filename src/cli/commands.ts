@@ -1,7 +1,6 @@
 import * as c from "yoctocolors";
 import { handleAgentCommand } from "./commands-agent.ts";
 import {
-	handleCacheCommand,
 	handleContextCommand,
 	handleReasoningCommand,
 	handleVerboseCommand,
@@ -105,10 +104,6 @@ export async function handleCommand(
 		case "context":
 			handleContextCommand(ctx, args);
 			return { type: "handled" };
-		case "cache":
-			handleCacheCommand(ctx, args);
-			return { type: "handled" };
-
 		case "agent":
 			handleAgentCommand(ctx, args);
 			return { type: "handled" };

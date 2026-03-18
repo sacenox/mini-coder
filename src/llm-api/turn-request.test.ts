@@ -6,6 +6,7 @@ describe("buildStreamTextRequest", () => {
 	test("overrides the AI SDK default onError logger", () => {
 		const request = buildStreamTextRequest({
 			model: {} as Parameters<typeof buildStreamTextRequest>[0]["model"],
+			modelString: "openai/gpt-5.4",
 			prepared: {
 				messages: [{ role: "user", content: "hi" }] as CoreMessage[],
 				systemPrompt: undefined,

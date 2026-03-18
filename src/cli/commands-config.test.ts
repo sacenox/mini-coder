@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import {
-	handleCacheCommand,
 	handleContextCommand,
 	handleReasoningCommand,
 	handleVerboseCommand,
@@ -21,12 +20,6 @@ function createContext(overrides?: Partial<CommandContext>): CommandContext {
 		setPruningMode: () => {},
 		toolResultPayloadCapBytes: 0,
 		setToolResultPayloadCapBytes: () => {},
-		promptCachingEnabled: true,
-		setPromptCachingEnabled: () => {},
-		openaiPromptCacheRetention: "in_memory",
-		setOpenAIPromptCacheRetention: () => {},
-		googleCachedContent: null,
-		setGoogleCachedContent: () => {},
 		undoLastTurn: async () => false,
 		startNewSession: () => {},
 		connectMcpServer: async () => {},
@@ -49,17 +42,6 @@ describe("commands-config", () => {
 		});
 		handleContextCommand(ctx, "cap 12kb");
 		expect(captured).toBe(12 * 1024);
-	});
-
-	test("/cache gemini off clears cached content", () => {
-		let cachedContent: string | null = "cachedContents/foo";
-		const ctx = createContext({
-			setGoogleCachedContent: (value) => {
-				cachedContent = value;
-			},
-		});
-		handleCacheCommand(ctx, "gemini off");
-		expect(cachedContent).toBeNull();
 	});
 
 	test("/reasoning toggles when no arg is provided", () => {

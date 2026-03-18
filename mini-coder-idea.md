@@ -44,7 +44,6 @@ conventions and not introduce more specs. (`.agents` / `AGENTS.md`, while also s
   - `/reasoning` toggles display of model reasoning output.
   - `/verbose` toggles output truncation. Tuncates large outputs keeping start and end sections and truncating the rest when verbose is off. This controls truncation for the user output, it's a visibility UI concern
   - `/context` configures context pruning and tool-result caps.
-  - `/cache` toggles prompt caching globally; sub-commands configure provider-specific caching (`/cache openai <in_memory|24h>`, `/cache gemini <off|cachedContents/...>`).
   - `/review` reviews recent changes via a global custom command installed at app start (`~/.agents/commands/review.md`), and can be customized or shadowed locally.
   - `/agent` sets or clears the active agent.
   - `/mcp` list/add/remove mcp servers. servers are stored in sqlite
