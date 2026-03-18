@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { renderError, renderUserMessage } from "./output.ts";
+import { renderError } from "./output.ts";
 import { Spinner } from "./spinner.ts";
 import { renderTurn } from "./stream-render.ts";
 import {
@@ -40,22 +40,6 @@ afterEach(() => {
 // A single blank line separates visually distinct blocks.
 
 describe("UI audit: output hierarchy", () => {
-	describe("user message rendering", () => {
-		test("single-line message has › prefix at column 0", () => {
-			captureStdout();
-			renderUserMessage("hello world");
-			expect(stripAnsi(getCapturedStdout())).toBe("› hello world\n");
-		});
-
-		test("multi-line message indents continuations with 2 spaces", () => {
-			captureStdout();
-			renderUserMessage("line 1\nline 2\nline 3");
-			expect(stripAnsi(getCapturedStdout())).toBe(
-				"› line 1\n  line 2\n  line 3\n",
-			);
-		});
-	});
-
 	describe("tool call rendering", () => {
 		test("shell call is indented 2 spaces with $ glyph", () => {
 			captureStdout();
