@@ -1,4 +1,4 @@
-import { stepCountIs, type streamText } from "ai";
+import type { streamText } from "ai";
 
 import type { ThinkingEffort } from "./provider-options.ts";
 import type { ContextPruningMode } from "./turn-context.ts";
@@ -9,6 +9,10 @@ type StreamTextOptions = Parameters<typeof streamText>[0];
 type CoreMessage = NonNullable<StreamTextOptions["messages"]>[number];
 type CoreModel = StreamTextOptions["model"];
 type ToolSet = NonNullable<StreamTextOptions["tools"]>;
+
+const continueUntilModelStops: NonNullable<
+	StreamTextOptions["stopWhen"]
+> = () => false;
 
 interface BuildTurnPreparationInput {
 	modelString: string;
@@ -57,7 +61,6 @@ interface BuildStreamTextRequestInput {
 	onStepFinish: NonNullable<StreamTextOptions["onStepFinish"]>;
 	signal: AbortSignal | undefined;
 	providerOptions: Record<string, unknown>;
-	maxSteps: number;
 }
 
 export function buildStreamTextRequest(
@@ -68,14 +71,8 @@ export function buildStreamTextRequest(
 		maxOutputTokens: 16384,
 		messages: input.prepared.messages,
 		tools: input.toolSet,
-		stopWhen: stepCountIs(input.maxSteps),
+		stopWhen: continueUntilModelStops,
 		onStepFinish: input.onStepFinish,
-		prepareStep: ({ stepNumber }: { stepNumber: number }) => {
-			if (stepNumber >= input.maxSteps - 1) {
-				return { activeTools: [] as Array<keyof typeof input.toolSet> };
-			}
-			return undefined;
-		},
 		...(input.prepared.systemPrompt
 			? { system: input.prepared.systemPrompt }
 			: {}),

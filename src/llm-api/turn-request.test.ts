@@ -19,7 +19,6 @@ describe("buildStreamTextRequest", () => {
 			onStepFinish: () => {},
 			signal: undefined,
 			providerOptions: {},
-			maxSteps: 50,
 		});
 
 		expect(request.onError?.({ error: new Error("boom") })).toBeUndefined();

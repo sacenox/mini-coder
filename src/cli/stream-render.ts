@@ -26,7 +26,6 @@ export async function renderTurn(
 	contextTokens: number;
 	newMessages: CoreMessage[];
 	reasoningText: string;
-	hitMaxSteps: boolean;
 }> {
 	const showReasoning = opts?.showReasoning ?? true;
 	const verboseOutput = opts?.verboseOutput ?? false;
@@ -36,7 +35,6 @@ export async function renderTurn(
 	let inputTokens = 0;
 	let outputTokens = 0;
 	let contextTokens = 0;
-	let hitMaxSteps = false;
 	let newMessages: CoreMessage[] = [];
 	const startedToolCalls = new Set<string>();
 	const toolCallInfo = new Map<string, { toolName: string; label: string }>();
@@ -140,7 +138,6 @@ export async function renderTurn(
 				inputTokens = event.inputTokens;
 				outputTokens = event.outputTokens;
 				contextTokens = event.contextTokens;
-				hitMaxSteps = event.hitMaxSteps;
 				newMessages = event.messages;
 				break;
 			}
@@ -169,6 +166,5 @@ export async function renderTurn(
 		contextTokens,
 		newMessages,
 		reasoningText: getReasoningText(),
-		hitMaxSteps,
 	};
 }

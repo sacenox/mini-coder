@@ -44,8 +44,6 @@ export interface TurnCompleteEvent {
 	outputTokens: number;
 	/** Input tokens of the final step — equals the actual context window usage. */
 	contextTokens: number;
-	/** True when the turn ended because it hit the max steps limit. */
-	hitMaxSteps: boolean;
 	/**
 	 * Raw AI SDK ModelMessage objects generated this turn.
 	 * These are passed directly back to streamText on subsequent turns —

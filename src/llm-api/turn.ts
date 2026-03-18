@@ -9,7 +9,7 @@ import {
 } from "./turn-context.ts";
 import {
 	buildToolSet,
-	createTurnStepTracker,
+	createTurnStateTracker,
 	mapFullStreamToTurnEvents,
 	type StreamTextResultFull,
 } from "./turn-execution.ts";
@@ -25,8 +25,6 @@ import type { ToolDef, TurnEvent } from "./types.ts";
 type StreamTextOptions = Parameters<typeof streamText>[0];
 export type CoreMessage = NonNullable<StreamTextOptions["messages"]>[number];
 type CoreModel = StreamTextOptions["model"];
-
-const MAX_STEPS = 50;
 
 // ─── runTurn ──────────────────────────────────────────────────────────────────
 
@@ -66,10 +64,9 @@ export async function* runTurn(options: {
 	} = options;
 
 	const toolSet = buildToolSet(tools);
-	const stepTracker = createTurnStepTracker({
-		onStepLog: ({ stepNumber, finishReason, usage }) => {
+	const turnState = createTurnStateTracker({
+		onStepLog: ({ finishReason, usage }) => {
 			logApiEvent("step finish", {
-				stepNumber,
 				finishReason,
 				usage,
 			});
@@ -128,10 +125,9 @@ export async function* runTurn(options: {
 				model,
 				prepared,
 				toolSet,
-				onStepFinish: stepTracker.onStepFinish,
+				onStepFinish: turnState.onStepFinish,
 				signal,
 				providerOptions: providerOptionsResult.providerOptions,
-				maxSteps: MAX_STEPS,
 			}),
 		) as StreamTextResultFull;
 		result.response.catch(() => {});
@@ -151,25 +147,22 @@ export async function* runTurn(options: {
 			yield event;
 		}
 
-		const finalState = stepTracker.getState();
+		const finalState = turnState.getState();
 		logApiEvent("turn complete", {
 			newMessagesCount: finalState.partialMessages.length,
 			inputTokens: finalState.inputTokens,
 			outputTokens: finalState.outputTokens,
 		});
 
-		const hitMaxSteps = finalState.stepCount >= MAX_STEPS;
-
 		yield {
 			type: "turn-complete",
 			inputTokens: finalState.inputTokens,
 			outputTokens: finalState.outputTokens,
 			contextTokens: finalState.contextTokens,
-			hitMaxSteps,
 			messages: finalState.partialMessages,
 		};
 	} catch (err) {
-		const finalState = stepTracker.getState();
+		const finalState = turnState.getState();
 		const normalizedError = normalizeUnknownError(err);
 		logApiEvent("turn error", normalizedError);
 		yield {

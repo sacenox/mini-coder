@@ -20,17 +20,16 @@ export type StreamTextResultFull = ReturnType<typeof streamText> & {
 	response: Promise<{ messages?: CoreMessage[] }>;
 };
 
-interface TurnStepState {
-	stepCount: number;
+interface TurnState {
 	inputTokens: number;
 	outputTokens: number;
 	contextTokens: number;
 	partialMessages: CoreMessage[];
 }
 
-interface TurnStepTracker {
+interface TurnStateTracker {
 	onStepFinish: (step: StepResult<ToolSet>) => void;
-	getState: () => TurnStepState;
+	getState: () => TurnState;
 }
 
 function isZodSchema(s: unknown): boolean {
@@ -62,14 +61,12 @@ export function buildToolSet(tools: ToolDef[]): ToolSet {
 	return toolSet;
 }
 
-export function createTurnStepTracker(opts: {
+export function createTurnStateTracker(opts: {
 	onStepLog: (entry: {
-		stepNumber: number;
 		finishReason: string | null | undefined;
 		usage: unknown;
 	}) => void;
-}): TurnStepTracker {
-	let stepCount = 0;
+}): TurnStateTracker {
 	let inputTokens = 0;
 	let outputTokens = 0;
 	let contextTokens = 0;
@@ -78,14 +75,12 @@ export function createTurnStepTracker(opts: {
 	return {
 		onStepFinish: (step: StepResult<ToolSet>) => {
 			opts.onStepLog({
-				stepNumber: stepCount + 1,
 				finishReason: step.finishReason,
 				usage: step.usage,
 			});
 			inputTokens += step.usage?.inputTokens ?? 0;
 			outputTokens += step.usage?.outputTokens ?? 0;
 			contextTokens = step.usage?.inputTokens ?? contextTokens;
-			stepCount += 1;
 
 			const s = step as unknown as {
 				response?: { messages?: CoreMessage[] };
@@ -94,7 +89,6 @@ export function createTurnStepTracker(opts: {
 			partialMessages = s.response?.messages ?? s.messages ?? partialMessages;
 		},
 		getState: () => ({
-			stepCount,
 			inputTokens,
 			outputTokens,
 			contextTokens,
