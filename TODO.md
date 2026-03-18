@@ -1,11 +1,21 @@
 # TODO
 
-## Colored shell output
+## Refactor and add color to shell tool console output
 
-We could look into coloring the most used shell commands.
+When the llm uses the shell tool, it shows the following patterns:
 
-- Check the db for most used commands.
-- Use yoctocolors for the coloring.
+- Chained shell commands `cd ... && cat ...` and even longer chains.
+- `mc-edit` calls weaved into cat and other shell calls.
+
+These patterns affect how we render the calls to the user, with most call lines being truncated early and not showing the important parts of the shell call. We could show these as a structured human readable.
+
+Coloring the outputs, could we just ask for colors when running shell commands safely, maybe set an env var for the subprocess? Then we could just let those colors render.
+
+`mc-edit` could be improved to print a colored diff.
+
+- Check the db for most used commands. We don't need to support the whole shell ecosystem, just take a sample of the most used.
+- Use yoctocolors for the coloring of the diffs in mc-edit.
+- This is about the output for the **user** the llm get's the no color, as is today.
 
 ---
 

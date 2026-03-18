@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { restoreTerminal } from "../cli/output.ts";
+import { stripAnsi } from "../internal/ansi.ts";
 import { buildFileEditShellPrelude } from "../internal/file-edit/command.ts";
 import type { ToolDef } from "../llm-api/types.ts";
 
@@ -29,6 +30,10 @@ export interface ShellOutput {
 	exitCode: number;
 	success: boolean;
 	timedOut: boolean;
+	/** Raw stdout with ANSI escape codes preserved (for user display). */
+	rawStdout?: string | undefined;
+	/** Raw stderr with ANSI escape codes preserved (for user display). */
+	rawStderr?: string | undefined;
 }
 
 const MAX_OUTPUT_BYTES = 10_000; // 10KB per stream
@@ -39,6 +44,7 @@ export async function runShellCommand(input: ShellInput): Promise<ShellOutput> {
 	const env: Record<string, string | undefined> = Object.assign(
 		{},
 		process.env as Record<string, string | undefined>,
+		{ FORCE_COLOR: "1" },
 		input.env ?? {},
 	);
 
@@ -130,12 +136,17 @@ export async function runShellCommand(input: ShellInput): Promise<ShellOutput> {
 		}
 	}
 
+	const rawOut = stdout.trimEnd();
+	const rawErr = stderr.trimEnd();
+	const hasAnsi = rawOut.includes("\x1b[") || rawErr.includes("\x1b[");
 	return {
-		stdout: stdout.trimEnd(),
-		stderr: stderr.trimEnd(),
+		stdout: hasAnsi ? stripAnsi(rawOut) : rawOut,
+		stderr: hasAnsi ? stripAnsi(rawErr) : rawErr,
 		exitCode,
 		success: exitCode === 0,
 		timedOut,
+		rawStdout: hasAnsi ? rawOut : undefined,
+		rawStderr: hasAnsi ? rawErr : undefined,
 	};
 }
 

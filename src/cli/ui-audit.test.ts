@@ -204,7 +204,7 @@ describe("UI audit: full turn scenarios", () => {
 		);
 
 		const plain = simulateTerminal(getCapturedStdout());
-		expect(plain).toContain("  $ ls");
+		expect(plain).toContain("  ← ls");
 		expect(plain).toMatch(/^ {4}done/m);
 		expect(plain).toContain("\n\n◆ Found file.txt");
 	});
@@ -250,7 +250,7 @@ describe("UI audit: full turn scenarios", () => {
 		const firstResultIdx = lines.findIndex((l) =>
 			l.match(/^ {4}done.*out: hello/),
 		);
-		const secondCallIdx = lines.findIndex((l) => l.includes("$ cat b.txt"));
+		const secondCallIdx = lines.findIndex((l) => l.includes("← cat b.txt"));
 		expect(firstResultIdx).toBeGreaterThan(-1);
 		expect(secondCallIdx).toBeGreaterThan(firstResultIdx);
 		const between = lines.slice(firstResultIdx + 1, secondCallIdx);
@@ -488,7 +488,7 @@ describe("UI audit: parallel tool calls", () => {
 		const plain = simulateTerminal(getCapturedStdout());
 
 		// All three calls rendered
-		expect(plain).toContain("  $ ls src");
+		expect(plain).toContain("  ← ls src");
 		expect(plain).toMatch(/^ {2}⇢/m);
 		expect(plain).toMatch(/^ {2}←/m);
 
@@ -717,8 +717,8 @@ describe("UI audit: parallel tool calls", () => {
 		expect(plain).toContain("I'll check two files");
 
 		// Both parallel calls
-		expect(plain).toContain("$ cat a.ts");
-		expect(plain).toContain("$ cat b.ts");
+		expect(plain).toContain("← cat a.ts");
+		expect(plain).toContain("← cat b.ts");
 
 		// Second reasoning block
 		const reasoningCount = (plain.match(/· reasoning/g) ?? []).length;

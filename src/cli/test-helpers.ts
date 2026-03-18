@@ -1,3 +1,4 @@
+import { stripAnsi } from "../internal/ansi.ts";
 import type { CoreMessage } from "../llm-api/turn.ts";
 import type { TurnEvent } from "../llm-api/types.ts";
 import { terminal } from "./terminal-io.ts";
@@ -49,10 +50,7 @@ export function restoreStdout(): void {
 	terminal.doStdoutWrite = _originalDoStdoutWrite;
 }
 
-export function stripAnsi(text: string): string {
-	const esc = String.fromCharCode(0x1b);
-	return text.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "");
-}
+export { stripAnsi };
 
 /**
  * Simulate terminal rendering for cursor-control sequences:
@@ -60,8 +58,8 @@ export function stripAnsi(text: string): string {
  * Strips ANSI SGR codes so the result is plain text.
  */
 export function simulateTerminal(raw: string): string {
-	const esc = String.fromCharCode(0x1b);
-	const noColor = raw.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "");
+	const esc = "\x1b";
+	const noColor = stripAnsi(raw);
 	const lines: string[] = [""];
 	let row = 0;
 	let col = 0;

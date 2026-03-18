@@ -4,6 +4,18 @@ import type {
 	FileEditErrorCode,
 } from "../internal/file-edit/exact-text.ts";
 
+function shouldColorize(): boolean {
+	return process.env.FORCE_COLOR === "1" || process.env.FORCE_COLOR === "true";
+}
+
+/** Raw ANSI codes for diff coloring (works in piped subprocesses). */
+const ansi = {
+	red: (s: string) => `\x1b[31m${s}\x1b[39m`,
+	green: (s: string) => `\x1b[32m${s}\x1b[39m`,
+	cyan: (s: string) => `\x1b[36m${s}\x1b[39m`,
+	dim: (s: string) => `\x1b[2m${s}\x1b[22m`,
+};
+
 export interface StructuredOutputWriter {
 	stdout: (text: string) => void;
 	stderr: (text: string) => void;
@@ -46,6 +58,14 @@ function normalizePatchLines(patchText: string): string[] {
 	});
 }
 
+function colorizeDiffLine(line: string): string {
+	if (line.startsWith("---") || line.startsWith("+++")) return ansi.dim(line);
+	if (line.startsWith("@@")) return ansi.cyan(line);
+	if (line.startsWith("+")) return ansi.green(line);
+	if (line.startsWith("-")) return ansi.red(line);
+	return line;
+}
+
 export function renderUnifiedDiff(
 	filePath: string,
 	before: string,
@@ -66,7 +86,11 @@ export function renderUnifiedDiff(
 			context: 3,
 		},
 	);
-	return normalizePatchLines(patchText).join("\n");
+	const lines = normalizePatchLines(patchText);
+	if (shouldColorize()) {
+		return lines.map(colorizeDiffLine).join("\n");
+	}
+	return lines.join("\n");
 }
 
 function renderMetadataBlock(

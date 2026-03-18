@@ -122,12 +122,16 @@ function renderShellResult(
 		exitCode: number;
 		success: boolean;
 		timedOut: boolean;
+		rawStdout?: string;
+		rawStderr?: string;
 	};
 	if (!r || typeof r.stdout !== "string" || typeof r.stderr !== "string") {
 		return false;
 	}
 
 	const verboseOutput = opts?.verboseOutput === true;
+	const displayStdout = r.rawStdout ?? r.stdout;
+	const displayStderr = r.rawStderr ?? r.stderr;
 	const stdoutLines = countShellLines(r.stdout);
 	const stderrLines = countShellLines(r.stderr);
 	const stdoutSingleLine = getSingleShellLine(r.stdout);
@@ -148,7 +152,7 @@ function renderShellResult(
 
 	writePreviewLines({
 		label: "stderr",
-		value: r.stderr,
+		value: displayStderr,
 		lineColor: c.red,
 		maxLines: verboseOutput ? Number.POSITIVE_INFINITY : 10,
 	});
@@ -162,7 +166,7 @@ function renderShellResult(
 	) {
 		writePreviewLines({
 			label: "stdout",
-			value: r.stdout,
+			value: displayStdout,
 			lineColor: c.dim,
 			maxLines: verboseOutput ? Number.POSITIVE_INFINITY : 20,
 		});

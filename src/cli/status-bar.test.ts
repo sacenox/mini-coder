@@ -1,15 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { buildStatusBarSignature, renderStatusBar } from "./status-bar.ts";
 import { terminal } from "./terminal-io.ts";
-import { withTerminalColumns } from "./test-helpers.ts";
+import { stripAnsi, withTerminalColumns } from "./test-helpers.ts";
 
 let stdout = "";
 const originalStdoutWrite = terminal.stdoutWrite.bind(terminal);
-
-function stripAnsi(s: string): string {
-	const esc = String.fromCharCode(0x1b);
-	return s.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "");
-}
 
 afterEach(() => {
 	stdout = "";
