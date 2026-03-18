@@ -72,13 +72,10 @@ const FINAL_MESSAGE = `
 - If verification was run, report commands and outcomes briefly.
 - If verification could not be run, say so clearly.`;
 
-const SUBAGENT_DELEGATION = `You are running as a subagent. Complete the task you have been given directly using your tools. Do not spawn further subagents unless the subtask is unambiguously separable and self-contained.`;
-
 export function buildSystemPrompt(
 	sessionTimeAnchor: string,
 	cwd: string,
 	extraSystemPrompt?: string,
-	isSubagent?: boolean,
 	/** Override home directory — used in tests to isolate global context loading. */
 	homeDir?: string,
 ): string {
@@ -86,7 +83,7 @@ export function buildSystemPrompt(
 	const localContext = loadLocalContextFile(cwd);
 	const cwdDisplay = tildePath(cwd);
 	let prompt = `You are mini-coder, a small and fast CLI coding agent.
-You have access to shell, subagent, listSkills, readSkill, connected MCP tools, and optional web tools.
+You have access to shell, listSkills, readSkill, connected MCP tools, and optional web tools.
 
 Current working directory: ${cwdDisplay}
 Current date/time: ${sessionTimeAnchor}
@@ -137,10 +134,6 @@ Apply one safe exact-text edit to an existing file.
 		for (const skill of skills) {
 			prompt += `\n- ${skill.name}: ${skill.description} (${skill.source})`;
 		}
-	}
-
-	if (isSubagent) {
-		prompt += `\n\n${SUBAGENT_DELEGATION}`;
 	}
 
 	if (extraSystemPrompt) {

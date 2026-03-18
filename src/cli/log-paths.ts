@@ -28,7 +28,7 @@ const LOG_FILE_RE = /^(api|errors)-(\d+)\.log$/;
 
 /**
  * Remove log files left by dead processes. Called once on startup by
- * non-subagent processes so the logs directory doesn't grow unbounded.
+ * the logs directory doesn't grow unbounded.
  */
 export function cleanStaleLogs(): void {
 	let entries: string[];

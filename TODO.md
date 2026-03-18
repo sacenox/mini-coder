@@ -1,9 +1,10 @@
 # TODO
 
+- Reaching max tool calls causes a 400 error
+- CTRL+d hangs sometimes and doesn't exit
+
 ## Deferred fixes
 
-- Investigate using tmux to allow agents to use mc from a users perspective
-- Subagent and shell tools are very similar, shell could do what subagent does without changes. This could be leveraged to reduce code. Subagent process runner is used for custom commands that fork context as well, there will need to be refactored.
 - `/_debug` hidden command that snapshots recent logs/db and creates a report in the cwd. For dev mostly but available to all. Do not list it anywhere, only documented here and in the code itself.
 
 ---

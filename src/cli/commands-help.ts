@@ -33,7 +33,7 @@ export function renderHelpCommand(
 		["/verbose [on|off]", "toggle output truncation"],
 		["/context [prune|cap]", "configure pruning and tool-result caps"],
 		["/cache [...]", "configure provider prompt caching"],
-		["/agent [name]", "set or clear the active primary agent"],
+		["/agent [name]", "set or clear the active agent"],
 		["/mcp list", "list MCP servers"],
 		["/mcp add <n> <t> [u]", "add an MCP server"],
 		["/mcp remove <name>", "remove an MCP server"],
@@ -67,11 +67,10 @@ export function renderHelpCommand(
 		writeln();
 		writeln(`  ${c.dim("agents")}`);
 		for (const agent of agents.values()) {
-			const mode = agent.mode ? c.dim(agent.mode) : c.dim("agent");
 			const source =
 				agent.source === "local" ? c.dim("local") : c.dim("global");
 			writeln(
-				`  ${c.magenta(agent.name.padEnd(28))} ${c.dim(agent.description)} ${c.dim("·")} ${mode} ${c.dim("·")} ${source}`,
+				`  ${c.magenta(agent.name.padEnd(28))} ${c.dim(agent.description)} ${c.dim("·")} ${source}`,
 			);
 		}
 	}

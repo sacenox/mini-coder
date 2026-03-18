@@ -16,19 +16,12 @@ afterEach(() => {
 });
 
 describe("tool set registration", () => {
-	test("keeps shell, subagent, and skill tools while removing local file tools", () => {
+	test("keeps shell and skill tools while removing local file tools", () => {
 		const names = buildToolSet({
 			cwd,
-			runSubagent: async () => ({
-				result: "ok",
-				inputTokens: 0,
-				outputTokens: 0,
-			}),
-			availableAgents: new Map(),
 		}).map((tool) => tool.name);
 
 		expect(names).toContain("shell");
-		expect(names).toContain("subagent");
 		expect(names).toContain("listSkills");
 		expect(names).toContain("readSkill");
 		expect(names).not.toContain("read");

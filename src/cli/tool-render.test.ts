@@ -21,15 +21,6 @@ describe("buildToolCallLine", () => {
 		expect(line).toContain("…");
 	});
 
-	test("formats subagent calls with agent label", () => {
-		const line = buildToolCallLine("subagent", {
-			agentName: "reviewer",
-			prompt: "Review this diff",
-		});
-		expect(line).toContain("[@reviewer]");
-		expect(line).toContain("Review this diff");
-	});
-
 	test("formats empty shell start events as a generic shell label", () => {
 		const line = buildToolCallLine("shell", {});
 		expect(line).toContain("$");

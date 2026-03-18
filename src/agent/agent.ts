@@ -1,5 +1,5 @@
 import * as c from "yoctocolors";
-import { type AgentConfig, loadAgents } from "../cli/agents.ts";
+import { loadAgents } from "../cli/agents.ts";
 import type { CommandContext } from "../cli/types.ts";
 import type { ThinkingEffort } from "../llm-api/providers.ts";
 import type { ContextPruningMode } from "../llm-api/turn.ts";
@@ -21,7 +21,6 @@ import {
 } from "../session/db/index.ts";
 import type { AgentReporter } from "./reporter.ts";
 import { SessionRunner } from "./session-runner.ts";
-import { createSubagentRunner } from "./subagent-runner.ts";
 import { buildToolSet } from "./tools.ts";
 
 interface AgentOptions {
@@ -37,19 +36,7 @@ interface AgentOptions {
 	initialGoogleCachedContent: string | null;
 	sessionId?: string;
 	reporter: AgentReporter;
-	headless?: boolean;
 	agentSystemPrompt?: string;
-}
-
-/** Agents with mode "primary" are for interactive use only — exclude from subagent tool. */
-function subagentAgents(
-	agents: Map<string, AgentConfig>,
-): Map<string, AgentConfig> {
-	const filtered = new Map<string, AgentConfig>();
-	for (const [name, cfg] of agents) {
-		if (cfg.mode !== "primary") filtered.set(name, cfg);
-	}
-	return filtered;
 }
 
 export async function initAgent(opts: AgentOptions): Promise<{
@@ -57,18 +44,9 @@ export async function initAgent(opts: AgentOptions): Promise<{
 	cmdCtx: CommandContext;
 }> {
 	const cwd = opts.cwd;
-	let currentModel = opts.model;
 
-	const { runSubagent, killAll } = createSubagentRunner(
-		cwd,
-		() => currentModel,
-	);
 	const agents = loadAgents(cwd);
-	const tools: ToolDef[] = buildToolSet({
-		cwd,
-		runSubagent,
-		availableAgents: subagentAgents(agents),
-	});
+	const tools: ToolDef[] = buildToolSet({ cwd });
 
 	const mcpTools: ToolDef[] = [];
 
@@ -103,7 +81,7 @@ export async function initAgent(opts: AgentOptions): Promise<{
 		reporter: opts.reporter,
 		tools,
 		mcpTools,
-		initialModel: currentModel,
+		initialModel: opts.model,
 		initialThinkingEffort: opts.initialThinkingEffort,
 		initialShowReasoning: opts.initialShowReasoning,
 		initialVerboseOutput: opts.initialVerboseOutput,
@@ -114,11 +92,9 @@ export async function initAgent(opts: AgentOptions): Promise<{
 		initialGoogleCachedContent: opts.initialGoogleCachedContent,
 		sessionId: opts.sessionId,
 		extraSystemPrompt: opts.agentSystemPrompt,
-		isSubagent: opts.headless,
-		killSubprocesses: killAll,
 	});
 
-	// Active primary agent state — name only; the system prompt is stored on runner.
+	// Active agent state — name only; the system prompt is stored on runner.
 	let activeAgentName: string | null = getPreferredActiveAgent();
 	if (opts.agentSystemPrompt) {
 		activeAgentName = null;
@@ -140,7 +116,6 @@ export async function initAgent(opts: AgentOptions): Promise<{
 			runner.currentModel = m;
 			runner.session.model = m;
 			setPreferredModel(m);
-			currentModel = m; // Update local reference for runSubagent
 		},
 		get thinkingEffort() {
 			return runner.currentThinkingEffort;
@@ -199,8 +174,6 @@ export async function initAgent(opts: AgentOptions): Promise<{
 			setPreferredGoogleCachedContent(contentId);
 		},
 		cwd,
-		runSubagent: (prompt, agentName?, model?, abortSignal?) =>
-			runSubagent(prompt, agentName, model, abortSignal),
 
 		get activeAgent() {
 			return activeAgentName;

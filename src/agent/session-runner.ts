@@ -38,8 +38,6 @@ interface SessionRunnerOptions {
 	initialGoogleCachedContent: string | null;
 	sessionId?: string | undefined;
 	extraSystemPrompt?: string | undefined;
-	isSubagent?: boolean | undefined;
-	killSubprocesses?: (() => void) | undefined;
 }
 
 interface RunnerStatusInfo {
@@ -78,8 +76,6 @@ export class SessionRunner {
 	private lastContextTokens = 0;
 	private _extraSystemPrompt: string | undefined;
 	private _systemPrompt: string | undefined;
-	private isSubagent: boolean | undefined;
-	private killSubprocesses: (() => void) | undefined;
 
 	constructor(opts: SessionRunnerOptions) {
 		this.cwd = opts.cwd;
@@ -95,8 +91,6 @@ export class SessionRunner {
 		this.promptCachingEnabled = opts.initialPromptCachingEnabled;
 		this.openaiPromptCacheRetention = opts.initialOpenAIPromptCacheRetention;
 		this.googleCachedContent = opts.initialGoogleCachedContent;
-		this.isSubagent = opts.isSubagent;
-		this.killSubprocesses = opts.killSubprocesses;
 		this.extraSystemPrompt = opts.extraSystemPrompt;
 		this.initSession(opts.sessionId);
 	}
@@ -181,13 +175,6 @@ export class SessionRunner {
 	): Promise<string> {
 		const abortController = new AbortController();
 		const stopWatcher = watchForCancel(abortController);
-
-		if (this.killSubprocesses) {
-			const killSubs = this.killSubprocesses;
-			abortController.signal.addEventListener("abort", () => {
-				killSubs();
-			});
-		}
 
 		const thisTurn = this.turnIndex++;
 		const userMsg: CoreMessage =
@@ -288,7 +275,6 @@ export class SessionRunner {
 			this.sessionTimeAnchor,
 			this.cwd,
 			this._extraSystemPrompt,
-			this.isSubagent,
 		);
 	}
 }

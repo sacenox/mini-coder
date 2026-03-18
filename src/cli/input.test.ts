@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import {
 	buildPromptDisplay,
 	expandInputBuffer,
-	getSubagentControlAction,
 	getTurnControlAction,
 	pasteLabel,
 	pruneInputPasteTokens,
@@ -138,33 +137,5 @@ describe("getTurnControlAction", () => {
 	test("returns null for empty or unrelated bytes", () => {
 		expect(getTurnControlAction(new Uint8Array([]))).toBeNull();
 		expect(getTurnControlAction(new Uint8Array([0x61, 0x62, 0x63]))).toBeNull();
-	});
-});
-
-describe("getSubagentControlAction", () => {
-	test("treats any ESC-containing sequence as cancel", () => {
-		expect(getSubagentControlAction(new Uint8Array([0x1b]))).toBe("cancel");
-		expect(getSubagentControlAction(new Uint8Array([0x1b, 0x66]))).toBe(
-			"cancel",
-		);
-		expect(getSubagentControlAction(new Uint8Array([0x1b, 0x1b]))).toBe(
-			"cancel",
-		);
-		expect(getSubagentControlAction(new Uint8Array([0x1b, 0x5b, 0x41]))).toBe(
-			"cancel",
-		);
-		expect(getSubagentControlAction(new Uint8Array([0x1b, 0x4f, 0x50]))).toBe(
-			"cancel",
-		);
-		expect(getSubagentControlAction(new Uint8Array([0x61, 0x1b, 0x62]))).toBe(
-			"cancel",
-		);
-	});
-
-	test("returns quit on Ctrl+C", () => {
-		expect(getSubagentControlAction(new Uint8Array([0x03]))).toBe("quit");
-		expect(
-			getSubagentControlAction(new Uint8Array([0x1b, 0x5b, 0x41, 0x03])),
-		).toBe("quit");
 	});
 });

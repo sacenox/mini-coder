@@ -10,17 +10,8 @@ import {
 export interface CustomCommand {
 	name: string;
 	description: string;
-	/** Override model for this command (only applies when running as a subagent) */
+	/** Optional model override from frontmatter (e.g. "zen/claude-3-5-haiku") */
 	model?: string;
-	/** Run command under a specific agent's system prompt (only applies when running as a subagent) */
-	agent?: string;
-	/**
-	 * Claude Code: `"fork"` runs the command in an isolated subagent context.
-	 * Default (omitted) runs inline in the current conversation.
-	 */
-	context?: "fork";
-	/** OpenCode: equivalent to `context: "fork"` — forces subagent invocation */
-	subtask?: boolean;
 	/** Raw template string (after frontmatter is stripped) */
 	template: string;
 	/** "global" (~/.agents/) or "local" (./.agents/) — local wins on conflict */
@@ -41,9 +32,6 @@ export function loadCustomCommands(
 		includeClaudeDirs: true,
 		mapConfig: ({ name, meta, body, source }) => ({
 			...baseConfigFields(name, meta, source),
-			...(meta.agent ? { agent: meta.agent } : {}),
-			...(meta.context === "fork" ? { context: "fork" as const } : {}),
-			...(meta.subtask ? { subtask: true } : {}),
 			template: body,
 		}),
 	});

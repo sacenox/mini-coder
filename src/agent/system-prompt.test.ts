@@ -48,7 +48,6 @@ describe("buildSystemPrompt", () => {
 			"mock-time-anchor",
 			tmpDir,
 			undefined,
-			undefined,
 			fakeHome,
 		);
 		expect(prompt).toContain("You are mini-coder");
@@ -77,7 +76,6 @@ describe("buildSystemPrompt", () => {
 			"mock-time-anchor",
 			tmpDir,
 			undefined,
-			undefined,
 			fakeHome,
 		);
 		expect(prompt).toContain("# Project context");
@@ -90,62 +88,22 @@ describe("buildSystemPrompt", () => {
 			"mock-time-anchor",
 			tmpDir,
 			undefined,
-			undefined,
 			fakeHome,
 		);
 		const occurrences = prompt.split("# Project context").length - 1;
 		expect(occurrences).toBe(1);
 	});
 
-	it("appends subagent delegation wording in subagent mode", () => {
-		const prompt = buildSystemPrompt(
-			"mock-time-anchor",
-			tmpDir,
-			undefined,
-			true,
-			fakeHome,
-		);
-		expect(prompt).toContain("You are running as a subagent");
-		expect(prompt).toContain(
-			"Do not spawn further subagents unless the subtask is unambiguously separable",
-		);
-	});
-
-	it("does not append subagent wording in non-subagent mode", () => {
-		const prompt = buildSystemPrompt(
-			"mock",
-			tmpDir,
-			undefined,
-			false,
-			fakeHome,
-		);
-		expect(prompt).not.toContain("You are running as a subagent");
-	});
-
-	it("appends extraSystemPrompt after context and subagent wording", () => {
+	it("appends extraSystemPrompt after context", () => {
 		writeFileSync(join(tmpDir, "AGENTS.md"), "ctx");
-		const prompt = buildSystemPrompt(
-			"mock",
-			tmpDir,
-			"custom extra",
-			true,
-			fakeHome,
-		);
-		const subagentIdx = prompt.indexOf("You are running as a subagent");
+		const prompt = buildSystemPrompt("mock", tmpDir, "custom extra", fakeHome);
 		const extraIdx = prompt.indexOf("custom extra");
 		const contextIdx = prompt.indexOf("ctx");
-		expect(contextIdx).toBeLessThan(subagentIdx);
-		expect(subagentIdx).toBeLessThan(extraIdx);
+		expect(contextIdx).toBeLessThan(extraIdx);
 	});
 
 	it("includes cwd and current time in prompt", () => {
-		const prompt = buildSystemPrompt(
-			"mock",
-			tmpDir,
-			undefined,
-			undefined,
-			fakeHome,
-		);
+		const prompt = buildSystemPrompt("mock", tmpDir, undefined, fakeHome);
 		expect(prompt).toContain("Current working directory:");
 		expect(prompt).toContain("Current date/time:");
 	});
@@ -153,13 +111,7 @@ describe("buildSystemPrompt", () => {
 	it("includes global context when ~/.agents/AGENTS.md present", () => {
 		mkdirSync(join(fakeHome, ".agents"), { recursive: true });
 		writeFileSync(join(fakeHome, ".agents", "AGENTS.md"), "global info");
-		const prompt = buildSystemPrompt(
-			"mock",
-			tmpDir,
-			undefined,
-			undefined,
-			fakeHome,
-		);
+		const prompt = buildSystemPrompt("mock", tmpDir, undefined, fakeHome);
 		expect(prompt).toContain("# Project context");
 		expect(prompt).toContain("global info");
 	});
@@ -168,13 +120,7 @@ describe("buildSystemPrompt", () => {
 		mkdirSync(join(fakeHome, ".agents"), { recursive: true });
 		writeFileSync(join(fakeHome, ".agents", "AGENTS.md"), "global info");
 		writeFileSync(join(tmpDir, "AGENTS.md"), "local info");
-		const prompt = buildSystemPrompt(
-			"mock",
-			tmpDir,
-			undefined,
-			undefined,
-			fakeHome,
-		);
+		const prompt = buildSystemPrompt("mock", tmpDir, undefined, fakeHome);
 		expect(prompt).toContain("global info");
 		expect(prompt).toContain("local info");
 		expect(prompt.indexOf("global info")).toBeLessThan(
@@ -183,13 +129,7 @@ describe("buildSystemPrompt", () => {
 	});
 
 	it("does not include # Project context when neither global nor local context present", () => {
-		const prompt = buildSystemPrompt(
-			"mock",
-			tmpDir,
-			undefined,
-			undefined,
-			fakeHome,
-		);
+		const prompt = buildSystemPrompt("mock", tmpDir, undefined, fakeHome);
 		expect(prompt).not.toContain("# Project context");
 	});
 
@@ -201,13 +141,7 @@ describe("buildSystemPrompt", () => {
 			"---\nname: deploy\ndescription: Deploy safely\n---\n\n# Deploy\nDetailed body",
 		);
 
-		const prompt = buildSystemPrompt(
-			"mock",
-			tmpDir,
-			undefined,
-			undefined,
-			fakeHome,
-		);
+		const prompt = buildSystemPrompt("mock", tmpDir, undefined, fakeHome);
 		expect(prompt).toContain("# Available skills (metadata only)");
 		expect(prompt).toContain(
 			"Use `listSkills` to browse and `readSkill` to load one SKILL.md on demand.",
@@ -224,13 +158,7 @@ describe("buildSystemPrompt", () => {
 			"---\nname: release\ndescription: Ship releases\n---\n\nRelease body",
 		);
 
-		const prompt = buildSystemPrompt(
-			"mock",
-			tmpDir,
-			undefined,
-			undefined,
-			fakeHome,
-		);
+		const prompt = buildSystemPrompt("mock", tmpDir, undefined, fakeHome);
 		expect(prompt).toContain("- release: Ship releases (global)");
 		expect(prompt).not.toContain("Release body");
 	});

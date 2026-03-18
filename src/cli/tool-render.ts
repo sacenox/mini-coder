@@ -4,7 +4,6 @@ import { renderToolResultByName } from "./tool-result-renderers.ts";
 
 function toolGlyph(name: string): string {
 	if (name === "shell") return G.run;
-	if (name === "subagent") return G.agent;
 	if (name === "readSkill") return G.read;
 	if (name === "listSkills") return G.search;
 	if (name === "webSearch") return G.search;
@@ -86,15 +85,6 @@ function formatShellCallLine(cmd: string): string {
 export function buildToolCallLine(name: string, args: unknown): string {
 	const a =
 		args && typeof args === "object" ? (args as Record<string, unknown>) : {};
-
-	if (name === "subagent") {
-		const prompt = typeof a.prompt === "string" ? a.prompt : "";
-		const short = prompt.length > 60 ? `${prompt.slice(0, 57)}…` : prompt;
-		const agentName =
-			typeof a.agentName === "string" && a.agentName ? a.agentName : "";
-		const label = agentName ? ` ${c.dim(c.cyan(`[@${agentName}]`))}` : "";
-		return `${G.agent}${label} ${c.dim("—")} ${short}`;
-	}
 
 	if (name === "shell") {
 		const cmd = String(a.command ?? "").trim();

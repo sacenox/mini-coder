@@ -15,15 +15,3 @@ export function getTurnControlAction(
 	}
 	return null;
 }
-
-export function getSubagentControlAction(
-	chunk: Uint8Array,
-): "cancel" | "quit" | null {
-	for (const byte of chunk) {
-		if (byte === CTRL_C_BYTE || byte === CTRL_D_BYTE) return "quit";
-	}
-	for (const byte of chunk) {
-		if (byte === ESC_BYTE) return "cancel";
-	}
-	return null;
-}

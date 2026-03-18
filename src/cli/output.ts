@@ -69,7 +69,6 @@ export const G = {
 	read: c.dim("←"),
 	write: c.green("✎"),
 	run: c.dim("$"),
-	agent: c.cyan("⇢"),
 	mcp: c.yellow("⚙"),
 	ok: c.green("✔"),
 	err: c.red("✖"),

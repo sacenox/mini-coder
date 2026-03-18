@@ -1,5 +1,4 @@
 import * as c from "yoctocolors";
-import { isAbortError } from "../agent/agent-helpers.ts";
 import { handleAgentCommand } from "./commands-agent.ts";
 import {
 	handleCacheCommand,
@@ -16,8 +15,7 @@ import {
 	expandTemplate,
 	loadCustomCommands,
 } from "./custom-commands.ts";
-import { watchForCancel } from "./input.ts";
-import { PREFIX, renderBanner, write, writeln } from "./output.ts";
+import { PREFIX, renderBanner, writeln } from "./output.ts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -69,44 +67,7 @@ async function handleCustomCommand(
 	writeln(`${PREFIX.info} ${label} ${src}`);
 	writeln();
 
-	// context: fork (Claude Code) or subtask: true (OpenCode) → isolated subagent.
-
-	// Default: run inline in the current conversation.
-	const fork = cmd.context === "fork" || cmd.subtask === true;
-
-	if (!fork) {
-		return { type: "inject-user-message", text: prompt };
-	}
-
-	const abortController = new AbortController();
-	const stopWatcher = watchForCancel(abortController, {
-		allowSubagentEsc: true,
-	});
-	try {
-		ctx.startSpinner("subagent");
-		const output = await ctx.runSubagent(
-			prompt,
-			cmd.agent,
-			cmd.model,
-			abortController.signal,
-		);
-		write(output.result);
-		writeln();
-
-		return {
-			type: "inject-user-message",
-			text: `/${cmd.name} output:\n\n${output.result}\n\n<system-message>Summarize the findings above to the user.</system-message>`,
-		};
-	} catch (e) {
-		if (isAbortError(e as Error)) {
-			return { type: "handled" };
-		}
-		writeln(`${PREFIX.error} /${cmd.name} failed: ${String(e)}`);
-		return { type: "handled" };
-	} finally {
-		stopWatcher();
-		ctx.stopSpinner();
-	}
+	return { type: "inject-user-message", text: prompt };
 }
 
 // ─── Dispatch ─────────────────────────────────────────────────────────────────

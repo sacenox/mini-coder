@@ -176,7 +176,7 @@ async function main() {
 	);
 
 	// ── Parallel mixed tools ───────────────────────────────
-	separator("8. Parallel mixed tools (shell + subagent + readSkill)");
+	separator("8. Parallel mixed tools (shell + readSkill)");
 	await renderTurn(
 		eventsFrom([
 			{
@@ -184,12 +184,6 @@ async function main() {
 				toolName: "shell",
 				toolCallId: "m1",
 				args: { command: "wc -l src/**/*.ts" },
-			},
-			{
-				type: "tool-call-start",
-				toolName: "subagent",
-				toolCallId: "m2",
-				args: { prompt: "Review the error handling patterns in src/", agentName: "reviewer" },
 			},
 			{
 				type: "tool-call-start",
@@ -205,13 +199,6 @@ async function main() {
 				result: shell({
 					stdout: "  142 src/index.ts\n   87 src/utils.ts\n   45 src/config.ts\n  274 total",
 				}),
-			},
-			{
-				type: "tool-result",
-				toolName: "subagent",
-				toolCallId: "m2",
-				isError: false,
-				result: { inputTokens: 2500, outputTokens: 800, agentName: "reviewer" },
 			},
 			{
 				type: "tool-result",
@@ -329,34 +316,8 @@ async function main() {
 	writeln("");
 	renderError("Connection timed out after 60s");
 
-	// ── MCP tool ───────────────────────────────────────────
-	separator("13. MCP tool call");
-	await renderTurn(
-		eventsFrom([
-			{
-				type: "tool-call-start",
-				toolName: "mcp_github_create_issue",
-				toolCallId: "mcp1",
-				args: { repo: "my-org/my-repo", title: "Fix validation bug", body: "..." },
-			},
-			{
-				type: "tool-result",
-				toolName: "mcp_github_create_issue",
-				toolCallId: "mcp1",
-				isError: false,
-				result: { url: "https://github.com/my-org/my-repo/issues/42" },
-			},
-			{
-				type: "text-delta",
-				delta: "Created issue #42 for tracking the validation bug.",
-			},
-			done(),
-		]),
-		new Spinner(),
-	);
-
 	// ── Full realistic session ─────────────────────────────
-	separator("14. Realistic multi-turn snippet");
+	separator("13. Realistic multi-turn snippet");
 	renderUserMessage("Fix the type error in src/config.ts");
 	writeln("");
 	await renderTurn(
@@ -444,7 +405,7 @@ async function main() {
 	);
 
 	// ── Web search ──────────────────────────────────────────
-	separator("15. Web search results");
+	separator("14. Web search results");
 	await renderTurn(
 		eventsFrom([
 			{

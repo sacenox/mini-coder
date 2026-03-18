@@ -9,9 +9,6 @@ interface CliArgs {
 	prompt: string | null;
 	cwd: string;
 	help: boolean;
-	subagent: boolean;
-	agentName: string | null;
-	outputFd: number | null;
 }
 
 export function parseArgs(argv: string[]): CliArgs {
@@ -23,9 +20,6 @@ export function parseArgs(argv: string[]): CliArgs {
 		prompt: null,
 		cwd: process.cwd(),
 		help: false,
-		subagent: false,
-		agentName: null,
-		outputFd: null,
 	};
 
 	const positional: string[] = [];
@@ -56,17 +50,6 @@ export function parseArgs(argv: string[]): CliArgs {
 			case "-h":
 				args.help = true;
 				break;
-			case "--subagent":
-				args.subagent = true;
-				break;
-			case "--agent":
-				args.agentName = argv[++i] ?? null;
-				break;
-			case "--output-fd": {
-				const fd = Number.parseInt(argv[++i] ?? "", 10);
-				if (!Number.isNaN(fd)) args.outputFd = fd;
-				break;
-			}
 			default:
 				if (!arg.startsWith("-")) positional.push(arg);
 		}

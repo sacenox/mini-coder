@@ -86,7 +86,7 @@ Developer-focused CLI coding agent. Prioritizes dev flow — no slow startup, no
 : Remove MCP server.
 
 `/agent` \[*name*\]
-: Set or clear active primary agent.
+: Set or clear active agent.
 
 `/review`
 : Review changes (custom command, auto-created globally).
@@ -118,9 +118,6 @@ Developer-focused CLI coding agent. Prioritizes dev flow — no slow startup, no
 
 **shell**
 : Execute bash commands; repo inspection and `mc-edit` edits happen here.
-
-**subagent**
-: Spawn a focused mini-agent for parallel subtasks.
 
 **listSkills**
 : List discovered skills (metadata only).
@@ -165,16 +162,7 @@ Drop a `.md` file in `.agents/commands/` (local) or `~/.agents/commands/` (globa
 : Shown in `/help`.
 
 `model`
-: Override model (only with `context: fork`).
-
-`context`
-: `fork` to run as isolated subagent; default is inline.
-
-`subtask`
-: `true` forces subagent (OpenCode-compatible alias).
-
-`agent`
-: Run under named agent's system prompt (only with `context: fork`).
+: Optional metadata field.
 
 **Argument substitution:**
 
@@ -198,12 +186,9 @@ Drop a `.md` file in `.agents/agents/` (local) or `~/.agents/agents/` (global). 
 : Shown in `/help`.
 
 `model`
-: Override active model.
+: Optional metadata field.
 
-`mode`
-: `primary` excludes from subagent tool; `subagent`/`all`/omitted keeps it available.
-
-Body is the agent system prompt. Non-primary agents are exposed to the **subagent** tool for delegation.
+Body is the agent system prompt.
 
 ## SKILLS
 

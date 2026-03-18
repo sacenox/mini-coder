@@ -27,7 +27,6 @@ afterEach(() => {
 //   [2-space]    reasoning body text    (dim italic)
 //   [0-indent] ◆ assistant reply       (cyan ◆)
 //   [2-space]  $ shell command          (dim $, tool call)
-//   [2-space]  ⇢ subagent prompt       (cyan ⇢, tool call)
 //   [4-space]    done exit 0 · ...     (tool result badge)
 //   [4-space]    stderr (N lines)      (tool result preview label)
 //   [4-space]    │ preview line         (tool result preview content)
@@ -45,18 +44,6 @@ describe("UI audit: output hierarchy", () => {
 			captureStdout();
 			renderToolCall("shell", { command: "echo hi" });
 			expect(stripAnsi(getCapturedStdout())).toBe("  $ echo hi\n");
-		});
-
-		test("subagent call is indented 2 spaces with ⇢ glyph", () => {
-			captureStdout();
-			renderToolCall("subagent", {
-				prompt: "Review code",
-				agentName: "reviewer",
-			});
-			const plain = stripAnsi(getCapturedStdout());
-			expect(plain).toStartWith("  ⇢");
-			expect(plain).toContain("[@reviewer]");
-			expect(plain).toContain("Review code");
 		});
 
 		test("readSkill call is indented 2 spaces with ← glyph", () => {
@@ -120,17 +107,6 @@ describe("UI audit: output hierarchy", () => {
 			renderToolResult("shell", "something broke", true);
 			const plain = stripAnsi(getCapturedStdout());
 			expect(plain).toMatch(/^ {4}✖/m);
-		});
-
-		test("subagent result is indented 4 spaces", () => {
-			captureStdout();
-			renderToolResult(
-				"subagent",
-				{ inputTokens: 100, outputTokens: 50, agentName: "reviewer" },
-				false,
-			);
-			const plain = stripAnsi(getCapturedStdout());
-			expect(plain).toMatch(/^ {4}⇢/m);
 		});
 	});
 
@@ -414,7 +390,7 @@ describe("UI audit: parallel tool calls", () => {
 		expect(plain).toContain("◆ Both done.");
 	});
 
-	test("three parallel mixed tools: shell + subagent + readSkill", async () => {
+	test("two parallel mixed tools: shell + readSkill", async () => {
 		captureStdout();
 
 		await renderTurn(
@@ -424,12 +400,6 @@ describe("UI audit: parallel tool calls", () => {
 					toolName: "shell",
 					toolCallId: "m1",
 					args: { command: "ls src" },
-				},
-				{
-					type: "tool-call-start",
-					toolName: "subagent",
-					toolCallId: "m2",
-					args: { prompt: "Analyze code" },
 				},
 				{
 					type: "tool-call-start",
@@ -443,13 +413,6 @@ describe("UI audit: parallel tool calls", () => {
 					toolCallId: "m1",
 					isError: false,
 					result: shellResult({ stdout: "index.ts" }),
-				},
-				{
-					type: "tool-result",
-					toolName: "subagent",
-					toolCallId: "m2",
-					isError: false,
-					result: { inputTokens: 50, outputTokens: 30 },
 				},
 				{
 					type: "tool-result",
@@ -471,14 +434,12 @@ describe("UI audit: parallel tool calls", () => {
 
 		const plain = simulateTerminal(getCapturedStdout());
 
-		// All three calls rendered
+		// Both calls rendered
 		expect(plain).toContain("  ← ls src");
-		expect(plain).toMatch(/^ {2}⇢/m);
 		expect(plain).toMatch(/^ {2}←/m);
 
-		// All three results at 4-space indent
+		// Both results at 4-space indent
 		expect(plain).toMatch(/^ {4}done.*index\.ts/m);
-		expect(plain).toMatch(/^ {4}⇢/m);
 		// readSkill result uses · (info) glyph
 		expect(plain).toMatch(/^ {4}·/m);
 	});
@@ -755,7 +716,6 @@ describe("UI audit: consistent indentation depths", () => {
 	test("all tool call types share 2-space indent", () => {
 		const tools = [
 			{ name: "shell", args: { command: "ls" } },
-			{ name: "subagent", args: { prompt: "do stuff" } },
 			{ name: "readSkill", args: { name: "deploy" } },
 			{ name: "listSkills", args: {} },
 			{ name: "mcp_server_tool", args: {} },
@@ -809,10 +769,6 @@ describe("UI audit: consistent indentation depths", () => {
 	test("all tool result types start at 4-space indent", () => {
 		const results: Array<{ name: string; result: unknown }> = [
 			{ name: "shell", result: shellResult({ stdout: "ok" }) },
-			{
-				name: "subagent",
-				result: { inputTokens: 10, outputTokens: 5 },
-			},
 			{
 				name: "listSkills",
 				result: {

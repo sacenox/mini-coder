@@ -1,14 +1,10 @@
 #!/usr/bin/env bun
-import { writeSync } from "node:fs";
-
 import * as c from "yoctocolors";
 import { initAgent } from "./agent/agent.ts";
-import { loadAgents } from "./cli/agents.ts";
 import { parseArgs, printHelp } from "./cli/args.ts";
 import { bootstrapGlobalDefaults } from "./cli/bootstrap.ts";
 import { initErrorLog } from "./cli/error-log.ts";
 import { resolveFileRefs } from "./cli/file-refs.ts";
-import { HeadlessReporter } from "./cli/headless-reporter.ts";
 import { runInputLoop } from "./cli/input-loop.ts";
 import { cleanStaleLogs } from "./cli/log-paths.ts";
 import {
@@ -22,7 +18,6 @@ import {
 	writeln,
 } from "./cli/output.ts";
 import { resolvePromptInput } from "./cli/stdin-prompt.ts";
-import { writeJsonLine } from "./cli/structured-output.ts";
 import { terminal } from "./cli/terminal-io.ts";
 import { initApiLog } from "./llm-api/api-log.ts";
 import {
@@ -50,11 +45,7 @@ import { getMostRecentSession, printSessionList } from "./session/manager.ts";
 registerTerminalCleanup();
 initErrorLog();
 initApiLog();
-// Only clean stale logs from the top-level process to avoid races
-// between sibling subagents and unnecessary overhead in short-lived subprocesses.
-if (!process.env.MC_SUBAGENT_DEPTH || process.env.MC_SUBAGENT_DEPTH === "0") {
-	cleanStaleLogs();
-}
+cleanStaleLogs();
 initModelInfoCache();
 pruneOldData();
 void refreshModelInfoInBackground().catch(() => {});
@@ -66,8 +57,6 @@ function buildAgentOptions(opts: {
 	cwd: string;
 	reporter: AgentInitOptions["reporter"];
 	sessionId?: string | undefined;
-	headless?: boolean;
-	agentSystemPrompt?: string | undefined;
 }): AgentInitOptions {
 	return {
 		model: opts.model,
@@ -82,17 +71,7 @@ function buildAgentOptions(opts: {
 		initialGoogleCachedContent: getPreferredGoogleCachedContent(),
 		reporter: opts.reporter,
 		...(opts.sessionId !== undefined && { sessionId: opts.sessionId }),
-		...(opts.headless !== undefined && { headless: opts.headless }),
-		...(opts.agentSystemPrompt !== undefined && {
-			agentSystemPrompt: opts.agentSystemPrompt,
-		}),
 	};
-}
-
-function writeStructuredResult(outputFd: number, payload: unknown): void {
-	writeJsonLine((text) => {
-		writeSync(outputFd, Buffer.from(text));
-	}, payload);
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
@@ -138,61 +117,7 @@ async function main(): Promise<void> {
 	// Determine model: CLI flag > persisted user preference > auto-discover
 	const model = args.model ?? getPreferredModel() ?? autoDiscoverModel();
 
-	if (!args.subagent) {
-		bootstrapGlobalDefaults();
-	}
-
-	if (args.subagent) {
-		// Headless mode: no banner, no interactive loop, single prompt then exit
-		const parentCwd = args.cwd;
-		let agentSystemPrompt: string | undefined;
-		let modelOverride = model;
-
-		if (args.agentName) {
-			const agents = loadAgents(args.cwd);
-			const agentConfig = agents.get(args.agentName);
-			if (!agentConfig) {
-				renderError(new Error(`Agent "${args.agentName}" not found`), "agent");
-				process.exit(1);
-			}
-			agentSystemPrompt = agentConfig.systemPrompt;
-			if (agentConfig.model) modelOverride = agentConfig.model;
-		}
-
-		try {
-			const { runner } = await initAgent(
-				buildAgentOptions({
-					model: modelOverride,
-					cwd: parentCwd,
-					reporter: new HeadlessReporter(),
-					headless: true,
-					agentSystemPrompt,
-				}),
-			);
-
-			const { text: resolvedText, images: refImages } = await resolveFileRefs(
-				prompt ?? "",
-				parentCwd,
-			);
-			const result = await runner.processUserInput(resolvedText, refImages);
-			const status = runner.getStatusInfo();
-			const summary = {
-				result,
-				inputTokens: status.totalIn,
-				outputTokens: status.totalOut,
-			};
-
-			if (args.outputFd !== null) {
-				writeStructuredResult(args.outputFd, summary);
-			}
-		} catch (err) {
-			if (args.outputFd !== null) {
-				writeStructuredResult(args.outputFd, { error: String(err) });
-			}
-			process.exit(1);
-		}
-		return;
-	}
+	bootstrapGlobalDefaults();
 
 	if (!prompt) {
 		// Only show banner for interactive sessions, not piped/one-shot

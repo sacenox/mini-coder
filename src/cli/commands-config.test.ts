@@ -30,7 +30,6 @@ function createContext(overrides?: Partial<CommandContext>): CommandContext {
 		undoLastTurn: async () => false,
 		startNewSession: () => {},
 		connectMcpServer: async () => {},
-		runSubagent: async () => ({ result: "", inputTokens: 0, outputTokens: 0 }),
 		activeAgent: null,
 		setActiveAgent: () => {},
 		startSpinner: () => {},

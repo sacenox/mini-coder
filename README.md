@@ -53,11 +53,10 @@ Use `/login` inside the REPL to authenticate via browser-based OAuth (currently 
 - **Multi-provider** — auto-discovers Anthropic, OpenAI, Gemini, Ollama, or any OpenAI-compatible endpoint
 - **Session memory** — SQLite-backed. Resume with `-c` or `-r <id>`
 - **Shell integration** — `!` prefix for inline commands, `@` to reference files with tab completion
-- **Subagents** — spawn parallel mini-coder instances for independent subtasks
 - **Web search** — `webSearch` + `webContent` tools when `EXA_API_KEY` is set
 - **MCP support** — connect external tool servers over HTTP or stdio
 - **Custom commands** — drop `.md` files in `.agents/commands/` → instant `/slash` commands
-- **Custom agents** — `.agents/agents/*.md` for specialized personas, usable as primary or via subagent
+- **Custom agents** — `.agents/agents/*.md` for specialized personas you can activate with `/agent`
 - **Skills** — `.agents/skills/<name>/SKILL.md`, inject with `@name`
 - **`mc-edit`** — safe, exact-text file editing (no full-file rewrites)
 - **16 ANSI colors** — inherits your terminal theme. Always looks right.

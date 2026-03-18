@@ -11,10 +11,7 @@ import {
 	renderInputBuffer,
 } from "./input-buffer.ts";
 import { getInputCompletion } from "./input-completion.ts";
-import {
-	getSubagentControlAction,
-	getTurnControlAction,
-} from "./input-control.ts";
+import { getTurnControlAction } from "./input-control.ts";
 import {
 	deleteWordBackward as deleteWordBackwardInBuffer,
 	insertAtCursor,
@@ -68,10 +65,7 @@ export {
 	pruneInputPasteTokens,
 	renderInputBuffer,
 } from "./input-buffer.ts";
-export {
-	getSubagentControlAction,
-	getTurnControlAction,
-} from "./input-control.ts";
+export { getTurnControlAction } from "./input-control.ts";
 
 // ─── Singleton stdin reader (shared across readline() calls) ─────────────────
 // We create the ReadableStream once so that repeated readline() calls don't
@@ -126,10 +120,6 @@ async function readKey(reader: StreamReader): Promise<string> {
 // readline() never race for the same bytes. The caller must call the returned
 // stop() in a finally block.
 
-type WatchForCancelOptions = {
-	allowSubagentEsc?: boolean;
-};
-
 function exitOnCtrlC(opts?: {
 	printNewline?: boolean;
 	disableBracketedPaste?: boolean;
@@ -143,10 +133,7 @@ function exitOnCtrlC(opts?: {
 	process.exit(130);
 }
 
-export function watchForCancel(
-	abortController: AbortController,
-	options?: WatchForCancelOptions,
-): () => void {
+export function watchForCancel(abortController: AbortController): () => void {
 	if (!terminal.isTTY) return () => {};
 
 	const onCancel = () => {
@@ -154,9 +141,7 @@ export function watchForCancel(
 		abortController.abort();
 	};
 
-	const getAction = options?.allowSubagentEsc
-		? getSubagentControlAction
-		: getTurnControlAction;
+	const getAction = getTurnControlAction;
 
 	const onData = (chunk: Buffer) => {
 		const action = getAction(chunk);

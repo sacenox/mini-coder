@@ -69,29 +69,6 @@ describe("loadCustomCommands", () => {
 		expect(result.get("search")?.description).toBe("local");
 		expect(result.get("search")?.source).toBe("local");
 	});
-
-	test("loads context: fork from frontmatter", () => {
-		writeCmd(
-			dir,
-			"deploy",
-			"---\ndescription: Deploy\ncontext: fork\n---\n\nDeploy it",
-		);
-		expect(loadCustomCommands(dir).get("deploy")?.context).toBe("fork");
-	});
-
-	test("context is undefined when not specified", () => {
-		writeCmd(dir, "plain", "---\ndescription: Plain\n---\n\nDo it");
-		expect(loadCustomCommands(dir).get("plain")?.context).toBeUndefined();
-	});
-
-	test("loads subtask: true from frontmatter", () => {
-		writeCmd(
-			dir,
-			"analyze",
-			"---\ndescription: Analyze\nsubtask: true\n---\n\nAnalyze it",
-		);
-		expect(loadCustomCommands(dir).get("analyze")?.subtask).toBe(true);
-	});
 });
 
 // ─── expandTemplate ───────────────────────────────────────────────────────────

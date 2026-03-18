@@ -32,11 +32,10 @@ conventions and not introduce more specs. (`.agents` / `AGENTS.md`, while also s
 - Elegantly handles hitting max context size for the model. Also handles max tool calls, gracefully finishing the turn with an update from the agent
 - Support prompt caching via the used sdks.
 - Feature parity with community configs like custom agents, skill and commands.
-- Shell-first tool surface for LLMs: `shell`, `subagent`, `listSkills`, and `readSkill`, plus connected MCP tools. Keep the core surface small and easy to use so it actually reduces friction for the LLMs.
+- Shell-first tool surface for LLMs: `shell`, `listSkills`, and `readSkill`, plus connected MCP tools and optional web tools when configured. Keep the core surface small and easy to use so it actually reduces friction for the LLMs.
 - File work should follow a simple flow: inspect with shell, mutate with `mc-edit`, verify with shell.
 - `mc-edit` should stay narrow and reliable: exact-text edits only, deterministic failures on stale or ambiguous state, diff and machine-friendly output while staying human readable.
 - Optional `webSearch` and `webContent` tools when `EXA_API_KEY` is set.
-- `subagent` tool spawns a fresh `mc` subprocess in one shot mode.
 - Commands in CLI prompt:
   - `/model` (alias `/models`) command allows the user to pick a model from connected providers. As well as thinking effort for the model if supported. Selection persists accross sessions.
   - `/undo` removes the last turn from conversation history, it does not restore filesystem state.
@@ -45,7 +44,7 @@ conventions and not introduce more specs. (`.agents` / `AGENTS.md`, while also s
   - `/context` configures context pruning and tool-result caps.
   - `/cache` toggles prompt caching globally; sub-commands configure provider-specific caching (`/cache openai <in_memory|24h>`, `/cache gemini <off|cachedContents/...>`).
   - `/review` reviews recent changes via a global custom command installed at app start (`~/.agents/commands/review.md`), and can be customized or shadowed locally.
-  - `/agent` sets or clears the active primary agent.
+  - `/agent` sets or clears the active agent.
   - `/mcp` list/add/remove mcp servers. servers are stored in sqlite
   - `/login` shows OAuth login status. `/login <provider>` starts browser-based OAuth login. `/logout <provider>` clears saved tokens. Currently supports Anthropic.
   - `/new` starts a new session with clean context. Clean UI and fresh session display
@@ -81,6 +80,6 @@ Core modules:
 - `llm-api`: Provides the api to intereact with the provider and process the full conversation turn + tool calling.
 - `cli`: Output/UI, with logical separated subfolder: user input/output and ui/etc..
 - `agent`: Main agent implementation
-- `tools`: shell, subagent, skill, and web/search helpers
+- `tools`: shell, skill, and web/search helpers
 - `session`: sqlite-backed sessions, settings, model info, and MCP server storage
 - `mcp`: handles connecting to mcp servers

@@ -20,12 +20,11 @@ export function handleAgentCommand(ctx: CommandContext, args: string): void {
 		writeln();
 		writeln(c.dim("  agents:"));
 		for (const agent of agents.values()) {
-			const modeTag = agent.mode ? c.dim(` [${agent.mode}]`) : "";
 			const srcTag =
 				agent.source === "local" ? c.dim(" (local)") : c.dim(" (global)");
 			const active = ctx.activeAgent === agent.name ? c.cyan(" ◀ active") : "";
 			writeln(
-				`  ${c.magenta(`@${agent.name}`.padEnd(26))} ${c.dim(agent.description)}${modeTag}${srcTag}${active}`,
+				`  ${c.magenta(`@${agent.name}`.padEnd(26))} ${c.dim(agent.description)}${srcTag}${active}`,
 			);
 		}
 		writeln();
