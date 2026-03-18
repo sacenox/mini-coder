@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { stripAnsi } from "../ansi.ts";
 import { runFileEditCli } from "./cli.ts";
 
 let cwd = "";
@@ -56,7 +57,7 @@ describe("runFileEditCli", () => {
 
 		expect(exitCode).toBe(0);
 		expect(capture.getStderr()).toBe("");
-		expect(capture.getStdout()).toBe(
+		expect(stripAnsi(capture.getStdout())).toBe(
 			[
 				"--- f.txt",
 				"+++ f.txt",
@@ -88,7 +89,7 @@ describe("runFileEditCli", () => {
 
 		expect(exitCode).toBe(0);
 		expect(capture.getStderr()).toBe("");
-		expect(capture.getStdout()).toBe(
+		expect(stripAnsi(capture.getStdout())).toBe(
 			[
 				"(no changes)",
 				"",
@@ -109,7 +110,7 @@ describe("runFileEditCli", () => {
 		);
 
 		expect(exitCode).toBe(1);
-		expect(capture.getStdout()).toBe("");
+		expect(stripAnsi(capture.getStdout())).toBe("");
 		expect(capture.getStderr()).toBe(
 			[
 				"ok: false",

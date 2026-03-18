@@ -5,10 +5,6 @@ import type {
 	FileEditErrorCode,
 } from "../internal/file-edit/exact-text.ts";
 
-function shouldColorize(): boolean {
-	return process.env.FORCE_COLOR === "1" || process.env.FORCE_COLOR === "true";
-}
-
 export interface StructuredOutputWriter {
 	stdout: (text: string) => void;
 	stderr: (text: string) => void;
@@ -63,6 +59,7 @@ export function renderUnifiedDiff(
 	filePath: string,
 	before: string,
 	after: string,
+	options?: { colorize?: boolean },
 ): string {
 	if (before === after) {
 		return "(no changes)";
@@ -80,7 +77,7 @@ export function renderUnifiedDiff(
 		},
 	);
 	const lines = normalizePatchLines(patchText);
-	if (shouldColorize()) {
+	if (options?.colorize) {
 		return lines.map(colorizeDiffLine).join("\n");
 	}
 	return lines.join("\n");
@@ -107,8 +104,12 @@ export function writeFileEditResult(
 	result: FileEditCliSuccess | FileEditCliFailure,
 ): void {
 	if (result.ok) {
+		const colorize =
+			process.env.FORCE_COLOR === "1" || process.env.FORCE_COLOR === "true";
 		const sections = [
-			renderUnifiedDiff(result.path, result.before, result.after),
+			renderUnifiedDiff(result.path, result.before, result.after, {
+				colorize,
+			}),
 			renderMetadataBlock(result),
 		];
 		io.stdout(`${sections.join("\n\n")}\n`);
