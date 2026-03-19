@@ -1,4 +1,5 @@
 ---
+name: ui-probe
 description: Run one-shot mc sessions across all SDK paths, capture output, and write a UI/UX analysis report to UI-REPORT.md.
 ---
 

@@ -1,4 +1,5 @@
 ---
+name: release
 description: Create a new tagged npm release (patch/minor/major)
 ---
 

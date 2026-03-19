@@ -1,4 +1,5 @@
 ---
+name: idea-check
 description: Check the codebase for correctness acording to the original idea.
 ---
 

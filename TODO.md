@@ -1,8 +1,7 @@
 # TODO
 
-- Need to review our parity with opencode and claude code configs (skills, agents, and commands). Identify gaps and missing functionality. use online docs for both to assert functionality
+- Codebase is hurting from fast iteration and adding/removing features as well as core fundamental changes. We need to do a large refactoring based on the updated idea and remove the extra complexity and fragments of all the experimentation we did with other features.
 - CTRL+d hangs sometimes and doesn't exit.
-- Codebase is hurting from fast iteration and adding/removing features as well as core fundamental changes.
 
 ---
 
