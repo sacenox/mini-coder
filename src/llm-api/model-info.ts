@@ -34,7 +34,7 @@ const MODELS_DEV_SYNC_KEY = "last_models_dev_sync_at";
 const PROVIDER_SYNC_KEY_PREFIX = "last_provider_sync_at:";
 const CACHE_VERSION_KEY = "model_info_cache_version";
 const CACHE_VERSION = 3;
-export const MODEL_INFO_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+export const MODEL_INFO_TTL_MS = 24 * 60 * 60 * 1000;
 
 export {
 	buildModelMatchIndex,

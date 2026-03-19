@@ -1,8 +1,6 @@
 # TODO
 
-- Status bar drops the cwd path when the line gets long (observed with long OAuth model names on second turn). May be a terminal width truncation issue.
-- Model DB sync doesn't include newer Zen models. `gpt-5.4-nano`, `gpt-5.4-mini`, `gpt-5.4` are available on Zen but absent from `provider_models`. The sync may be running against a stale endpoint or filtering too aggressively.
-- Need to review our parity with opencode and claude code configs (skills, agents, and commands). Identify gaps and missing functionality.
+- Need to review our parity with opencode and claude code configs (skills, agents, and commands). Identify gaps and missing functionality. use online docs for both to assert functionality
 - CTRL+d hangs sometimes and doesn't exit.
 - Codebase is hurting from fast iteration and adding/removing features as well as core fundamental changes.
 
