@@ -11,7 +11,6 @@ export interface TurnResult {
 
 export interface StatusBarData {
 	model: string;
-	provider: string;
 	cwd: string;
 	gitBranch: string | null;
 	sessionId: string;

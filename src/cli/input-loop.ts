@@ -44,13 +44,10 @@ export async function runInputLoop(opts: InputLoopOptions): Promise<void> {
 	while (true) {
 		const branch = gitBranchCache.get();
 		const status = runner.getStatusInfo();
-		const provider = status.model.split("/")[0] ?? "";
-		const modelShort = status.model.split("/").slice(1).join("/");
 		const cwdDisplay = tildePath(cwd);
 		const contextWindow = getContextWindow(status.model);
 		const statusData = {
-			model: modelShort,
-			provider,
+			model: status.model,
 			cwd: cwdDisplay,
 			gitBranch: branch,
 			sessionId: status.sessionId,

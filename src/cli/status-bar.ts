@@ -44,7 +44,6 @@ function renderStatusLine(segments: string[]): string {
 export function buildStatusBarSignature(opts: StatusBarData): string {
 	return JSON.stringify({
 		model: opts.model,
-		provider: opts.provider,
 		cwd: opts.cwd,
 		gitBranch: opts.gitBranch,
 		sessionId: opts.sessionId,
@@ -88,9 +87,6 @@ export function renderStatusBar(opts: StatusBarData): void {
 	const required = [c.cyan(opts.model), c.dim(`#${opts.sessionId}`)];
 	const optional: string[] = [];
 
-	if (opts.provider && opts.provider !== "zen") {
-		optional.push(c.dim(opts.provider));
-	}
 	if (opts.activeAgent) optional.push(c.green(`@${opts.activeAgent}`));
 	if (opts.thinkingEffort) optional.push(c.dim(`✦ ${opts.thinkingEffort}`));
 	if (opts.gitBranch) optional.push(c.dim(`⎇ ${opts.gitBranch}`));

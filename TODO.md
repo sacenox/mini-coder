@@ -1,6 +1,5 @@
 # TODO
 
-- Prompt UI is missing provider information in some cases. Zen models omit the `zen/` prefix while OAuth models correctly show `anthropic`. Refactor so current provider is always clear.
 - Banner doesn't show reasoning or verbose status. Users can't tell if these are active without toggling.
 - Status bar drops the cwd path when the line gets long (observed with long OAuth model names on second turn). May be a terminal width truncation issue.
 - Model DB sync doesn't include newer Zen models. `gpt-5.4-nano`, `gpt-5.4-mini`, `gpt-5.4` are available on Zen but absent from `provider_models`. The sync may be running against a stale endpoint or filtering too aggressively.

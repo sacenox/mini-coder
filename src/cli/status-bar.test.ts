@@ -19,8 +19,7 @@ describe("renderStatusBar", () => {
 
 		await withTerminalColumns(200, () => {
 			renderStatusBar({
-				model: "gpt-5.3-codex",
-				provider: "zen",
+				model: "zen/gpt-5.3-codex",
 				cwd: "~/src/mini-coder",
 				gitBranch: "main",
 				sessionId: "1234567890",
@@ -35,7 +34,7 @@ describe("renderStatusBar", () => {
 		});
 
 		const line = stripAnsi(stdout).trim();
-		expect(line).toContain("gpt-5.3-codex");
+		expect(line).toContain("zen/gpt-5.3-codex");
 		expect(line).toContain("#12345678");
 		expect(line).toContain("@general");
 		expect(line).toContain("tok 1.2k/3.4k");
@@ -51,8 +50,7 @@ describe("renderStatusBar", () => {
 
 		await withTerminalColumns(42, () => {
 			renderStatusBar({
-				model: "gpt-5.3-codex",
-				provider: "openai",
+				model: "zen/gpt-5.3-codex",
 				cwd: "~/src/mini-coder",
 				gitBranch: "feature/super-long-branch-name",
 				sessionId: "abcdef123456",
@@ -67,7 +65,7 @@ describe("renderStatusBar", () => {
 		});
 
 		const line = stripAnsi(stdout).trim();
-		expect(line).toContain("gpt-5.3-codex");
+		expect(line).toContain("zen/gpt-5.3-codex");
 		expect(line).toContain("#abcdef12");
 		expect(line).not.toContain("~/src/");
 		expect(line).not.toContain("ctx 72.0k");
@@ -80,8 +78,7 @@ describe("renderStatusBar", () => {
 
 		await withTerminalColumns(120, () => {
 			renderStatusBar({
-				model: "llama3.2",
-				provider: "ollama",
+				model: "ollama/llama3.2",
 				cwd: "~/src/mini-coder",
 				gitBranch: null,
 				sessionId: "001122334455",
@@ -102,8 +99,7 @@ describe("renderStatusBar", () => {
 
 	test("buildStatusBarSignature is stable and reflects changed fields", () => {
 		const base = {
-			model: "gpt-5.3-codex",
-			provider: "zen",
+			model: "zen/gpt-5.3-codex",
 			cwd: "~/src/mini-coder",
 			gitBranch: "main",
 			sessionId: "1234567890",
