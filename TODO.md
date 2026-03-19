@@ -8,19 +8,23 @@
 - CTRL+d hangs sometimes and doesn't exit.
 - Codebase is hurting from fast iteration and adding/removing features as well as core fundamental changes.
 
+---
+
 ## Polish
 
 - **Truncated tool commands** — Long `mc-edit` invocations truncate with `…` mid-argument (e.g. `--new '{…`). Could truncate at argument boundaries for clarity.
 - **`sed` classification in shell icons** — `sed -n '1,200p'` (read-only) shows the `✎` write icon. Complex pipes like `grep … | sed …` show `?`. Could check for `-n`/`-i` flags, or classify `sed` as `$` (generic run).
 
-## Deferred fixes
+---
+
+# Deferred fixes
 
 - `/_debug` hidden command that snapshots recent logs/db and creates a report in the cwd. For dev mostly but available to all. Do not list it anywhere, only documented here and in the code itself.
 - Check this skill to learn about tmux and how we can use it to run manual tests. https://raw.githubusercontent.com/obra/superpowers-lab/refs/heads/main/skills/using-tmux-for-interactive-commands/SKILL.md
 
 ---
 
-### LSP Diagnostics (not very important, with strong linting this is not as necessary, but we should implement asap)
+### LSP Diagnostics (not very important, with strong linting this is not as necessary, but we should implement asap, deferred)
 
 We should have a closed loop feedback for LSP diagnostics on edits/reads.
 
