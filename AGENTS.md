@@ -12,3 +12,4 @@
 - Don't make random test files, if you need to test something, write a propper unit test.
 - If you make temp files, clean them up when you are done.
 - Use Conventional Commits formatting for commit messages.
+- Never contradict or dismiss the user's statements about how the code behaves. If the user says something was working before, treat that as fact and investigate the git history to find the regression. Do not speculate that it was "always broken."
