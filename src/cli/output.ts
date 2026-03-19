@@ -8,6 +8,10 @@ import type {
 	TurnResult,
 } from "../agent/reporter.ts";
 import type { TurnEvent } from "../llm-api/types.ts";
+import {
+	getPreferredShowReasoning,
+	getPreferredVerboseOutput,
+} from "../session/db/index.ts";
 import { loadAgents } from "./agents.ts";
 import { loadCustomCommands } from "./custom-commands.ts";
 import { logError } from "./error-log.ts";
@@ -135,6 +139,8 @@ export function renderBanner(model: string, cwd: string): void {
 	);
 
 	const items: string[] = [];
+	if (getPreferredShowReasoning()) items.push("reasoning: on");
+	if (getPreferredVerboseOutput()) items.push("verbose: on");
 	const contextFiles = discoverContextFiles(cwd);
 	if (contextFiles.length > 0) items.push(...contextFiles);
 
