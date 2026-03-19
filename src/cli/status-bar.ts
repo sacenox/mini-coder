@@ -85,10 +85,7 @@ function fitStatusSegments(
 
 export function renderStatusBar(opts: StatusBarData): void {
 	const cols = Math.max(20, terminal.stdoutColumns || 80);
-	const required = [
-		c.cyan(opts.model),
-		c.dim(`#${opts.sessionId.slice(0, 8)}`),
-	];
+	const required = [c.cyan(opts.model), c.dim(`#${opts.sessionId}`)];
 	const optional: string[] = [];
 
 	if (opts.provider && opts.provider !== "zen") {
