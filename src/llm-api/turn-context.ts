@@ -24,7 +24,7 @@ interface MessageDiagnostics {
 	};
 }
 
-export const DEFAULT_TOOL_RESULT_PAYLOAD_CAP_BYTES = 16 * 1024;
+const DEFAULT_TOOL_RESULT_PAYLOAD_CAP_BYTES = 16 * 1024;
 
 function getByteLength(value: string): number {
 	return Buffer.byteLength(value, "utf8");
@@ -129,22 +129,7 @@ export function getMessageDiagnostics(
 	};
 }
 
-export type ContextPruningMode = "off" | "balanced" | "aggressive";
-
-export function applyContextPruning(
-	messages: CoreMessage[],
-	mode: ContextPruningMode,
-): CoreMessage[] {
-	if (mode === "off") return messages;
-	if (mode === "aggressive") {
-		return pruneMessages({
-			messages,
-			reasoning: "before-last-message",
-			toolCalls: "before-last-20-messages",
-			emptyMessages: "remove",
-		}) as CoreMessage[];
-	}
-
+export function applyContextPruning(messages: CoreMessage[]): CoreMessage[] {
 	return pruneMessages({
 		messages,
 		reasoning: "before-last-message",
@@ -177,9 +162,8 @@ function wrapCompactedToolResultOutput(
 
 export function compactToolResultPayloads(
 	messages: CoreMessage[],
-	capBytes = DEFAULT_TOOL_RESULT_PAYLOAD_CAP_BYTES,
 ): CoreMessage[] {
-	if (!Number.isFinite(capBytes) || capBytes <= 0) return messages;
+	const capBytes = DEFAULT_TOOL_RESULT_PAYLOAD_CAP_BYTES;
 
 	let mutated = false;
 	const compacted = messages.map((message) => {

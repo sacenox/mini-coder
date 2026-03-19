@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { isLoggedIn } from "../oauth/auth-storage.ts";
+import { isLoggedIn } from "../session/oauth/auth-storage.ts";
 import { autoDiscoverModel, resolveModel } from "./providers.ts";
 
 const anthropicOAuth = isLoggedIn("anthropic");

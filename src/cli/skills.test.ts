@@ -1,8 +1,8 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadSkillContent, loadSkills, loadSkillsIndex } from "./skills.ts";
+import { loadSkillContent, loadSkillsIndex } from "./skills.ts";
 import { terminal } from "./terminal-io.ts";
 
 const originalStdoutWrite = terminal.stdoutWrite.bind(terminal);
@@ -182,20 +182,34 @@ describe("skills loader", () => {
 		const index = loadSkillsIndex(dir, fakeHome);
 		expect(index.has("missing-name")).toBe(false);
 		expect(index.has("missing-description")).toBe(false);
-		expect(index.has("Bad_Name")).toBe(false);
+		expect(index.get("Bad_Name")?.description).toBe("bad");
+		expect(stdout).toContain("does not match lowercase alnum + hyphen format");
 		expect(index.get("valid-skill")?.description).toBe("valid");
 	});
 
-	test("compatibility loadSkills still returns full records", () => {
+	it("parses context: fork from frontmatter", () => {
 		writeSkill(
 			dir,
 			".agents",
-			"compat-skill",
-			"---\nname: compat-skill\ndescription: compat\n---\ncompat body",
+			"forked-skill",
+			"---\nname: forked-skill\ndescription: runs in isolation\ncontext: fork\n---\nDo stuff in a fork",
 		);
+		const index = loadSkillsIndex(dir, fakeHome);
+		const skill = index.get("forked-skill");
+		expect(skill).toBeDefined();
+		expect(skill?.context).toBe("fork");
+	});
 
-		const skills = loadSkills(dir, fakeHome);
-		expect(skills.get("compat-skill")?.description).toBe("compat");
-		expect(skills.get("compat-skill")?.content).toContain("compat body");
+	it("does not set context for skills without context: fork", () => {
+		writeSkill(
+			dir,
+			".agents",
+			"no-fork-skill",
+			"---\nname: no-fork-skill\ndescription: normal skill\n---\ncontent",
+		);
+		const index = loadSkillsIndex(dir, fakeHome);
+		const skill = index.get("no-fork-skill");
+		expect(skill).toBeDefined();
+		expect(skill?.context).toBeUndefined();
 	});
 });

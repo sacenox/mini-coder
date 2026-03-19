@@ -56,7 +56,6 @@ export async function runInputLoop(opts: InputLoopOptions): Promise<void> {
 			contextTokens: status.lastContextTokens,
 			contextWindow,
 			thinkingEffort: status.thinkingEffort,
-			activeAgent: cmdCtx.activeAgent,
 			showReasoning: status.showReasoning,
 		};
 		const statusSignature = buildStatusBarSignature(statusData);

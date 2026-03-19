@@ -28,7 +28,6 @@ describe("renderStatusBar", () => {
 				contextTokens: 8000,
 				contextWindow: 128000,
 				thinkingEffort: "medium",
-				activeAgent: "general",
 				showReasoning: true,
 			});
 		});
@@ -36,7 +35,6 @@ describe("renderStatusBar", () => {
 		const line = stripAnsi(stdout).trim();
 		expect(line).toContain("zen/gpt-5.3-codex");
 		expect(line).toContain("#12345678");
-		expect(line).toContain("@general");
 		expect(line).toContain("tok 1.2k/3.4k");
 		expect(line).toContain("ctx 8.0k/128.0k");
 		expect(line).toContain("~/src/mini-coder");
@@ -59,7 +57,6 @@ describe("renderStatusBar", () => {
 				contextTokens: 72000,
 				contextWindow: 128000,
 				thinkingEffort: "xhigh",
-				activeAgent: "writer",
 				showReasoning: true,
 			});
 		});
@@ -87,7 +84,6 @@ describe("renderStatusBar", () => {
 				contextTokens: 2048,
 				contextWindow: null,
 				thinkingEffort: null,
-				activeAgent: null,
 				showReasoning: false,
 			});
 		});

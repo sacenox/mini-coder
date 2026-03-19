@@ -3,7 +3,7 @@ import type { ImageAttachment } from "../cli/image-types.ts";
 import { watchForCancel } from "../cli/input.ts";
 import type { ThinkingEffort } from "../llm-api/providers.ts";
 import { resolveModel } from "../llm-api/providers.ts";
-import type { ContextPruningMode, CoreMessage } from "../llm-api/turn.ts";
+import type { CoreMessage } from "../llm-api/turn.ts";
 import { runTurn } from "../llm-api/turn.ts";
 import type { ToolDef } from "../llm-api/types.ts";
 import { getMaxTurnIndex, saveMessages } from "../session/db/index.ts";
@@ -31,10 +31,7 @@ interface SessionRunnerOptions {
 	initialThinkingEffort: ThinkingEffort | null;
 	initialShowReasoning: boolean;
 	initialVerboseOutput: boolean;
-	initialPruningMode: ContextPruningMode;
-	initialToolResultPayloadCapBytes: number;
 	sessionId?: string | undefined;
-	extraSystemPrompt?: string | undefined;
 }
 
 interface RunnerStatusInfo {
@@ -57,8 +54,6 @@ export class SessionRunner {
 	public currentThinkingEffort: ThinkingEffort | null;
 	public showReasoning: boolean;
 	public verboseOutput: boolean;
-	public pruningMode: ContextPruningMode;
-	public toolResultPayloadCapBytes: number;
 
 	public session!: ActiveSession;
 
@@ -68,7 +63,6 @@ export class SessionRunner {
 	private totalIn = 0;
 	private totalOut = 0;
 	private lastContextTokens = 0;
-	private _extraSystemPrompt: string | undefined;
 	private _systemPrompt: string | undefined;
 
 	constructor(opts: SessionRunnerOptions) {
@@ -80,19 +74,7 @@ export class SessionRunner {
 		this.currentThinkingEffort = opts.initialThinkingEffort;
 		this.showReasoning = opts.initialShowReasoning;
 		this.verboseOutput = opts.initialVerboseOutput;
-		this.pruningMode = opts.initialPruningMode;
-		this.toolResultPayloadCapBytes = opts.initialToolResultPayloadCapBytes;
-		this.extraSystemPrompt = opts.extraSystemPrompt;
 		this.initSession(opts.sessionId);
-	}
-
-	public get extraSystemPrompt(): string | undefined {
-		return this._extraSystemPrompt;
-	}
-
-	public set extraSystemPrompt(value: string | undefined) {
-		this._extraSystemPrompt = value;
-		this.rebuildSystemPrompt();
 	}
 
 	public getStatusInfo(): RunnerStatusInfo {
@@ -137,6 +119,21 @@ export class SessionRunner {
 		this.lastContextTokens = 0;
 		this.sessionTimeAnchor = new Date(this.session.createdAt).toISOString();
 		this.rebuildSystemPrompt();
+	}
+
+	public switchSession(id: string): boolean {
+		const resumed = resumeSession(id);
+		if (!resumed) return false;
+		this.session = resumed;
+		this.currentModel = resumed.model;
+		this.coreHistory = [...resumed.messages];
+		this.turnIndex = getMaxTurnIndex(resumed.id) + 1;
+		this.totalIn = 0;
+		this.totalOut = 0;
+		this.lastContextTokens = 0;
+		this.sessionTimeAnchor = new Date(resumed.createdAt).toISOString();
+		this.rebuildSystemPrompt();
+		return true;
 	}
 
 	public addShellContext(command: string, output: string): void {
@@ -204,8 +201,6 @@ export class SessionRunner {
 				tools: this.tools,
 				...(systemPrompt ? { systemPrompt } : {}),
 				signal: abortController.signal,
-				pruningMode: this.pruningMode,
-				toolResultPayloadCapBytes: this.toolResultPayloadCapBytes,
 				...(this.currentThinkingEffort
 					? { thinkingEffort: this.currentThinkingEffort }
 					: {}),
@@ -249,10 +244,6 @@ export class SessionRunner {
 			this._systemPrompt = undefined;
 			return;
 		}
-		this._systemPrompt = buildSystemPrompt(
-			this.sessionTimeAnchor,
-			this.cwd,
-			this._extraSystemPrompt,
-		);
+		this._systemPrompt = buildSystemPrompt(this.sessionTimeAnchor, this.cwd);
 	}
 }

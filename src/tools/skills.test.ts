@@ -22,7 +22,8 @@ describe("skills tools", () => {
 
 	test("listSkills returns metadata only", async () => {
 		const result = await listSkillsTool.execute({ cwd });
-		expect(result.skills).toEqual([
+		const localSkills = result.skills.filter((s) => s.source === "local");
+		expect(localSkills).toEqual([
 			{ name: "deploy", description: "Deploy app", source: "local" },
 		]);
 		expect(

@@ -2,8 +2,11 @@ import { type streamText, wrapLanguageModel } from "ai";
 
 import { isAnthropicModelFamily } from "./model-routing.ts";
 import type { ThinkingEffort } from "./provider-options.ts";
-import type { ContextPruningMode } from "./turn-context.ts";
-import { annotateAnthropicCacheBreakpoints } from "./turn-context.ts";
+import {
+	annotateAnthropicCacheBreakpoints,
+	applyContextPruning,
+	compactToolResultPayloads,
+} from "./turn-context.ts";
 import { prepareTurnMessages } from "./turn-prepare-messages.ts";
 import { buildTurnProviderOptions } from "./turn-provider-options.ts";
 
@@ -22,8 +25,6 @@ interface BuildTurnPreparationInput {
 	thinkingEffort: ThinkingEffort | undefined;
 	toolCount: number;
 	systemPrompt: string | undefined;
-	pruningMode: ContextPruningMode;
-	toolResultPayloadCapBytes: number;
 }
 
 export function buildTurnPreparation(input: BuildTurnPreparationInput): {
@@ -40,8 +41,6 @@ export function buildTurnPreparation(input: BuildTurnPreparationInput): {
 		modelString: input.modelString,
 		toolCount: input.toolCount,
 		systemPrompt: input.systemPrompt,
-		pruningMode: input.pruningMode,
-		toolResultPayloadCapBytes: input.toolResultPayloadCapBytes,
 	});
 
 	return { providerOptionsResult, prepared };
@@ -60,24 +59,27 @@ interface BuildStreamTextRequestInput {
 export function buildStreamTextRequest(
 	input: BuildStreamTextRequestInput,
 ): StreamTextOptions {
-	// Wrap the model with caching middleware for Anthropic models.
-	// This runs on every step so the cache breakpoints always track the tail.
-	const model = isAnthropicModelFamily(input.modelString)
-		? wrapLanguageModel({
-				model: input.model as Parameters<typeof wrapLanguageModel>[0]["model"],
-				middleware: [
-					{
-						specificationVersion: "v3" as const,
-						transformParams: async ({ params }) => ({
-							...params,
-							prompt: annotateAnthropicCacheBreakpoints(
-								params.prompt as CoreMessage[],
-							) as typeof params.prompt,
-						}),
-					},
-				],
-			})
-		: input.model;
+	// Wrap with per-step middleware that prunes context and compacts payloads
+	// between multi-step tool-use rounds. For Anthropic models we also annotate
+	// cache breakpoints so they track the moving conversation tail.
+	const isAnthropic = isAnthropicModelFamily(input.modelString);
+	const model = wrapLanguageModel({
+		model: input.model as Parameters<typeof wrapLanguageModel>[0]["model"],
+		middleware: [
+			{
+				specificationVersion: "v3" as const,
+				transformParams: async ({ params }) => {
+					const prompt = params.prompt as CoreMessage[];
+					const pruned = applyContextPruning(prompt);
+					const compacted = compactToolResultPayloads(pruned);
+					const final = isAnthropic
+						? annotateAnthropicCacheBreakpoints(compacted)
+						: compacted;
+					return { ...params, prompt: final as typeof params.prompt };
+				},
+			},
+		],
+	});
 
 	return {
 		model,

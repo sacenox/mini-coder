@@ -7,7 +7,7 @@ import {
 	listLoggedInProviders,
 	login,
 	logout,
-} from "../oauth/auth-storage.ts";
+} from "../session/oauth/auth-storage.ts";
 import { PREFIX, writeln } from "./output.ts";
 import type { CommandContext } from "./types.ts";
 

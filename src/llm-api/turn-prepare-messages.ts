@@ -10,7 +10,6 @@ import { isAnthropicOAuth } from "./providers.ts";
 import type { CoreMessage } from "./turn.ts";
 import {
 	applyContextPruning,
-	type ContextPruningMode,
 	compactToolResultPayloads,
 	getMessageDiagnostics,
 	getMessageStats,
@@ -36,17 +35,8 @@ export function prepareTurnMessages(input: {
 	modelString: string;
 	toolCount: number;
 	systemPrompt: string | undefined;
-	pruningMode: ContextPruningMode;
-	toolResultPayloadCapBytes: number;
 }): PreparedMessages {
-	const {
-		messages,
-		modelString,
-		toolCount,
-		systemPrompt,
-		pruningMode,
-		toolResultPayloadCapBytes,
-	} = input;
+	const { messages, modelString, toolCount, systemPrompt } = input;
 
 	const apiLogOn = isApiLogEnabled();
 
@@ -89,44 +79,27 @@ export function prepareTurnMessages(input: {
 	}
 
 	// 3. Context pruning
-	const pruned = applyContextPruning(normalised, pruningMode);
-
-	// Only compute stats when they will actually be consumed:
-	// - apiLogOn: logged for debugging
-	// - pruning active + messages changed: used in "context-pruned" yield event
-	const pruningActive = pruningMode !== "off";
-	const needsStats = apiLogOn || pruningActive;
+	const pruned = applyContextPruning(normalised);
 
 	let preStats: { messageCount: number; totalBytes: number };
 	let postStats: { messageCount: number; totalBytes: number };
 
-	if (!needsStats) {
-		// pruning is off and API log is off — skip expensive serialisation
-		const count = normalised.length;
-		preStats = { messageCount: count, totalBytes: 0 };
-		postStats = preStats;
-	} else {
-		preStats = apiLogOn
-			? getMessageDiagnostics(normalised)
-			: getMessageStats(normalised);
-		if (apiLogOn) logApiEvent("turn context pre-prune", preStats);
-		// Reuse preStats when pruning was a no-op (same array reference)
+	if (!apiLogOn) {
+		preStats = getMessageStats(normalised);
 		if (pruned === normalised) postStats = preStats;
-		else
-			postStats = apiLogOn
-				? getMessageDiagnostics(pruned)
-				: getMessageStats(pruned);
-		if (apiLogOn) logApiEvent("turn context post-prune", postStats);
+		else postStats = getMessageStats(pruned);
+	} else {
+		preStats = getMessageDiagnostics(normalised);
+		logApiEvent("turn context pre-prune", preStats);
+		if (pruned === normalised) postStats = preStats;
+		else postStats = getMessageDiagnostics(pruned);
+		logApiEvent("turn context post-prune", postStats);
 	}
 
 	// 4. Payload compaction
-	const compacted = compactToolResultPayloads(
-		pruned,
-		toolResultPayloadCapBytes,
-	);
+	const compacted = compactToolResultPayloads(pruned);
 	if (compacted !== pruned && apiLogOn) {
 		logApiEvent("turn context post-compaction", {
-			capBytes: toolResultPayloadCapBytes,
 			diagnostics: getMessageDiagnostics(compacted),
 		});
 	}
@@ -155,9 +128,8 @@ export function prepareTurnMessages(input: {
 	}
 
 	const wasPruned =
-		(pruningMode === "balanced" || pruningMode === "aggressive") &&
-		(postStats.messageCount < preStats.messageCount ||
-			postStats.totalBytes < preStats.totalBytes);
+		postStats.messageCount < preStats.messageCount ||
+		postStats.totalBytes < preStats.totalBytes;
 
 	return {
 		messages: finalMessages,

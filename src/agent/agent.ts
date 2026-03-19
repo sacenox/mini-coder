@@ -1,19 +1,13 @@
 import * as c from "yoctocolors";
-import { loadAgents } from "../cli/agents.ts";
 import type { CommandContext } from "../cli/types.ts";
 import type { ThinkingEffort } from "../llm-api/providers.ts";
-import type { ContextPruningMode } from "../llm-api/turn.ts";
 import type { ToolDef } from "../llm-api/types.ts";
 import { connectMcpServer } from "../mcp/client.ts";
 import {
-	getPreferredActiveAgent,
 	listMcpServers,
-	setPreferredActiveAgent,
-	setPreferredContextPruningMode,
 	setPreferredModel,
 	setPreferredShowReasoning,
 	setPreferredThinkingEffort,
-	setPreferredToolResultPayloadCapBytes,
 	setPreferredVerboseOutput,
 } from "../session/db/index.ts";
 import type { AgentReporter } from "./reporter.ts";
@@ -26,11 +20,8 @@ interface AgentOptions {
 	initialThinkingEffort: ThinkingEffort | null;
 	initialShowReasoning: boolean;
 	initialVerboseOutput: boolean;
-	initialPruningMode: ContextPruningMode;
-	initialToolResultPayloadCapBytes: number;
 	sessionId?: string;
 	reporter: AgentReporter;
-	agentSystemPrompt?: string;
 }
 
 export async function initAgent(opts: AgentOptions): Promise<{
@@ -39,7 +30,6 @@ export async function initAgent(opts: AgentOptions): Promise<{
 }> {
 	const cwd = opts.cwd;
 
-	const agents = loadAgents(cwd);
 	const tools: ToolDef[] = buildToolSet({ cwd });
 
 	const mcpTools: ToolDef[] = [];
@@ -79,25 +69,8 @@ export async function initAgent(opts: AgentOptions): Promise<{
 		initialThinkingEffort: opts.initialThinkingEffort,
 		initialShowReasoning: opts.initialShowReasoning,
 		initialVerboseOutput: opts.initialVerboseOutput,
-		initialPruningMode: opts.initialPruningMode,
-		initialToolResultPayloadCapBytes: opts.initialToolResultPayloadCapBytes,
 		sessionId: opts.sessionId,
-		extraSystemPrompt: opts.agentSystemPrompt,
 	});
-
-	// Active agent state — name only; the system prompt is stored on runner.
-	let activeAgentName: string | null = getPreferredActiveAgent();
-	if (opts.agentSystemPrompt) {
-		activeAgentName = null;
-	} else if (activeAgentName) {
-		const agentCfg = agents.get(activeAgentName);
-		if (agentCfg) {
-			runner.extraSystemPrompt = agentCfg.systemPrompt;
-		} else {
-			activeAgentName = null;
-			setPreferredActiveAgent(null);
-		}
-	}
 
 	const cmdCtx: CommandContext = {
 		get currentModel() {
@@ -129,36 +102,14 @@ export async function initAgent(opts: AgentOptions): Promise<{
 			runner.verboseOutput = verbose;
 			setPreferredVerboseOutput(verbose);
 		},
-		get pruningMode() {
-			return runner.pruningMode;
-		},
-		setPruningMode: (mode) => {
-			runner.pruningMode = mode;
-			setPreferredContextPruningMode(mode);
-		},
-		get toolResultPayloadCapBytes() {
-			return runner.toolResultPayloadCapBytes;
-		},
-		setToolResultPayloadCapBytes: (bytes) => {
-			runner.toolResultPayloadCapBytes = Math.max(0, bytes);
-			setPreferredToolResultPayloadCapBytes(runner.toolResultPayloadCapBytes);
-		},
 		cwd,
-
-		get activeAgent() {
-			return activeAgentName;
-		},
-		setActiveAgent: (name, systemPrompt?) => {
-			activeAgentName = name;
-			runner.extraSystemPrompt = systemPrompt;
-			setPreferredActiveAgent(name);
-		},
 
 		undoLastTurn: () => runner.undoLastTurn(),
 		connectMcpServer: connectAndAddMcp,
 		startSpinner: (label?: string) => opts.reporter.startSpinner(label),
 		stopSpinner: () => opts.reporter.stopSpinner(),
 		startNewSession: () => runner.startNewSession(),
+		switchSession: (id: string) => runner.switchSession(id),
 	};
 
 	return { runner, cmdCtx };

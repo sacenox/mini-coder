@@ -2,11 +2,6 @@ import { streamText } from "ai";
 import { isApiLogEnabled, logApiEvent } from "./api-log.ts";
 import { normalizeUnknownError } from "./error-utils.ts";
 import type { ThinkingEffort } from "./provider-options.ts";
-
-import {
-	type ContextPruningMode,
-	DEFAULT_TOOL_RESULT_PAYLOAD_CAP_BYTES,
-} from "./turn-context.ts";
 import {
 	annotateToolCaching,
 	buildToolSet,
@@ -18,8 +13,6 @@ import {
 	buildStreamTextRequest,
 	buildTurnPreparation,
 } from "./turn-request.ts";
-
-export type { ContextPruningMode } from "./turn-context.ts";
 
 import type { ToolDef, TurnEvent } from "./types.ts";
 
@@ -43,8 +36,6 @@ export async function* runTurn(options: {
 	systemPrompt?: string;
 	signal?: AbortSignal;
 	thinkingEffort?: ThinkingEffort;
-	pruningMode?: ContextPruningMode;
-	toolResultPayloadCapBytes?: number;
 }): AsyncGenerator<TurnEvent> {
 	const {
 		model,
@@ -54,8 +45,6 @@ export async function* runTurn(options: {
 		systemPrompt,
 		signal,
 		thinkingEffort,
-		pruningMode = "balanced",
-		toolResultPayloadCapBytes = DEFAULT_TOOL_RESULT_PAYLOAD_CAP_BYTES,
 	} = options;
 
 	const rawToolSet = buildToolSet(tools);
@@ -77,8 +66,6 @@ export async function* runTurn(options: {
 			thinkingEffort,
 			toolCount,
 			systemPrompt,
-			pruningMode,
-			toolResultPayloadCapBytes,
 		});
 
 		logApiEvent("turn start", {
@@ -86,14 +73,11 @@ export async function* runTurn(options: {
 			messageCount: messages.length,
 			reasoningSummaryRequested:
 				providerOptionsResult.reasoningSummaryRequested,
-			pruningMode,
-			toolResultPayloadCapBytes,
 		});
 
 		if (prepared.pruned) {
 			yield {
 				type: "context-pruned",
-				mode: pruningMode as "balanced" | "aggressive",
 				beforeMessageCount: prepared.prePruneMessageCount,
 				afterMessageCount: prepared.postPruneMessageCount,
 				removedMessageCount:

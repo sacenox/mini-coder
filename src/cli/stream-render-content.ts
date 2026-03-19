@@ -9,7 +9,10 @@ export class StreamRenderContent {
 	private accumulatedReasoning = "";
 	private highlighter: Highlighter | undefined;
 
-	constructor(private readonly spinner: Spinner) {}
+	constructor(
+		private readonly spinner: Spinner,
+		private readonly quiet = false,
+	) {}
 
 	getText(): string {
 		return this.accumulatedText;
@@ -32,14 +35,18 @@ export class StreamRenderContent {
 		if (!this.inText) {
 			text = text.trimStart();
 			if (!text) return;
-			this.spinner.stop();
-			if (renderedVisibleOutput) writeln();
-			write(`${G.reply} `);
+			if (!this.quiet) {
+				this.spinner.stop();
+				if (renderedVisibleOutput) writeln();
+				write(`${G.reply} `);
+			}
 			this.inText = true;
-			if (terminal.isStdoutTTY) this.highlighter = createHighlighter();
+			if (!this.quiet && terminal.isStdoutTTY)
+				this.highlighter = createHighlighter();
 		}
 		const isFirstLine = !this.accumulatedText.includes("\n");
 		this.accumulatedText += text;
+		if (this.quiet) return;
 		this.spinner.stop();
 		if (this.highlighter) {
 			let colored = this.highlighter.write(text);
@@ -71,6 +78,10 @@ export class StreamRenderContent {
 
 	flushOpenContent(): void {
 		if (!this.inText) return;
+		if (this.quiet) {
+			this.inText = false;
+			return;
+		}
 		if (this.highlighter) {
 			let finalColored = this.highlighter.end();
 			if (finalColored) {

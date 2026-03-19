@@ -1,5 +1,4 @@
 import type { ThinkingEffort } from "../../llm-api/providers.ts";
-import type { ContextPruningMode } from "../../llm-api/turn.ts";
 import { getDb } from "./connection.ts";
 
 function getSetting(key: string): string | null {
@@ -72,41 +71,4 @@ export function getPreferredVerboseOutput(): boolean {
 
 export function setPreferredVerboseOutput(verbose: boolean): void {
 	setSetting("preferred_verbose_output", verbose ? "true" : "false");
-}
-
-export function getPreferredContextPruningMode(): ContextPruningMode {
-	const v = getSetting("preferred_context_pruning_mode");
-	if (v === "off" || v === "balanced" || v === "aggressive") return v;
-	return "balanced";
-}
-
-export function setPreferredContextPruningMode(mode: ContextPruningMode): void {
-	setSetting("preferred_context_pruning_mode", mode);
-}
-
-export function getPreferredToolResultPayloadCapBytes(): number {
-	const v = getSetting("preferred_tool_result_payload_cap_bytes");
-	if (v === null) return 16 * 1024;
-	const parsed = Number.parseInt(v, 10);
-	if (!Number.isFinite(parsed) || parsed < 0) return 16 * 1024;
-	return parsed;
-}
-
-export function setPreferredToolResultPayloadCapBytes(bytes: number): void {
-	setSetting(
-		"preferred_tool_result_payload_cap_bytes",
-		String(Math.max(0, bytes)),
-	);
-}
-
-export function getPreferredActiveAgent(): string | null {
-	return getSetting("preferred_active_agent");
-}
-
-export function setPreferredActiveAgent(agent: string | null): void {
-	if (agent === null) {
-		getDb().run("DELETE FROM settings WHERE key = 'preferred_active_agent'");
-	} else {
-		setSetting("preferred_active_agent", agent);
-	}
 }

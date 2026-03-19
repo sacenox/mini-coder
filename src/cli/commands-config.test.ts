@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import {
-	handleContextCommand,
 	handleReasoningCommand,
 	handleVerboseCommand,
 } from "./commands-config.ts";
@@ -16,15 +15,11 @@ function createContext(overrides?: Partial<CommandContext>): CommandContext {
 		setShowReasoning: () => {},
 		verboseOutput: false,
 		setVerboseOutput: () => {},
-		pruningMode: "balanced",
-		setPruningMode: () => {},
-		toolResultPayloadCapBytes: 0,
-		setToolResultPayloadCapBytes: () => {},
+
 		undoLastTurn: async () => false,
 		startNewSession: () => {},
+		switchSession: () => false,
 		connectMcpServer: async () => {},
-		activeAgent: null,
-		setActiveAgent: () => {},
 		startSpinner: () => {},
 		stopSpinner: () => {},
 		cwd: process.cwd(),
@@ -33,17 +28,6 @@ function createContext(overrides?: Partial<CommandContext>): CommandContext {
 }
 
 describe("commands-config", () => {
-	test("/context cap accepts kilobytes", () => {
-		let captured = 0;
-		const ctx = createContext({
-			setToolResultPayloadCapBytes: (bytes) => {
-				captured = bytes;
-			},
-		});
-		handleContextCommand(ctx, "cap 12kb");
-		expect(captured).toBe(12 * 1024);
-	});
-
 	test("/reasoning toggles when no arg is provided", () => {
 		let reasoningVisible = true;
 		const ctx = createContext({

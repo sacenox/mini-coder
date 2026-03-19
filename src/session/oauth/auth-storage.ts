@@ -4,7 +4,7 @@
  * Tokens are stored in the oauth_tokens table and auto-refreshed when expired.
  */
 
-import { getDb } from "../session/db/connection.ts";
+import { getDb } from "../db/connection.ts";
 import { anthropicOAuth } from "./anthropic.ts";
 import type {
 	OAuthCredentials,

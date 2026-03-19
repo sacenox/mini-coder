@@ -39,12 +39,9 @@ export function touchActiveSession(session: ActiveSession): void {
 
 // ─── List sessions (for --list flag) ─────────────────────────────────────────
 
-export function printSessionList(): void {
+export function renderSessionTable(footer: string): boolean {
 	const sessions = listSessions(20);
-	if (sessions.length === 0) {
-		writeln(c.dim("No sessions found."));
-		return;
-	}
+	if (sessions.length === 0) return false;
 
 	writeln(`\n${c.bold("Recent sessions:")}`);
 	for (const s of sessions) {
@@ -55,9 +52,15 @@ export function printSessionList(): void {
 			`  ${c.dim(s.id.padEnd(14))} ${title.padEnd(30)} ${c.cyan(s.model.split("/").pop() ?? s.model).padEnd(20)} ${c.dim(cwd)}  ${c.dim(date)}`,
 		);
 	}
-	writeln(
-		`\n${c.dim("Use")} mc --resume <id> ${c.dim("to continue a session.")}`,
+	writeln(`\n${footer}`);
+	return true;
+}
+
+export function printSessionList(): void {
+	const shown = renderSessionTable(
+		`${c.dim("Use")} mc --resume <id> ${c.dim("to continue a session.")}`,
 	);
+	if (!shown) writeln(c.dim("No sessions found."));
 }
 
 // ─── Find the most recent session ─────────────────────────────────────────────

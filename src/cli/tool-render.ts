@@ -13,7 +13,7 @@ function toolGlyph(name: string): string {
 }
 
 /** Resolve glyph for well-known shell commands (lazy to avoid init-order issues). */
-function shellCmdGlyph(cmd: string): string {
+function shellCmdGlyph(cmd: string, fullCmd: string): string {
 	switch (cmd) {
 		case "cat":
 		case "head":
@@ -25,13 +25,14 @@ function shellCmdGlyph(cmd: string): string {
 		case "find":
 			return G.search;
 		case "mc-edit":
-		case "sed":
 		case "rm":
 		case "mkdir":
 		case "cp":
 		case "mv":
 		case "touch":
 			return G.write;
+		case "sed":
+			return /\s-i\b/.test(fullCmd) ? G.write : G.run;
 		case "git":
 		case "bun":
 		case "echo":
@@ -76,7 +77,7 @@ function truncate(s: string, max: number): string {
 function formatShellCallLine(cmd: string): string {
 	const { cwd, rest } = parseShellCdPrefix(cmd);
 	const firstCmd = extractFirstCommand(rest);
-	const glyph = shellCmdGlyph(firstCmd);
+	const glyph = shellCmdGlyph(firstCmd, rest);
 	const cwdSuffix = cwd ? ` ${c.dim(`in ${cwd}`)}` : "";
 	const display = truncate(rest, 80);
 	return `${glyph} ${display}${cwdSuffix}`;

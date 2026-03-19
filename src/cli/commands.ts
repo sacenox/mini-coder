@@ -1,7 +1,9 @@
+import { randomBytes } from "node:crypto";
+import { unlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import * as c from "yoctocolors";
-import { handleAgentCommand } from "./commands-agent.ts";
 import {
-	handleContextCommand,
 	handleReasoningCommand,
 	handleVerboseCommand,
 } from "./commands-config.ts";
@@ -9,12 +11,9 @@ import { renderHelpCommand } from "./commands-help.ts";
 import { handleLoginCommand, handleLogoutCommand } from "./commands-login.ts";
 import { handleMcpCommand } from "./commands-mcp.ts";
 import { handleModelCommand } from "./commands-model.ts";
-import {
-	type CustomCommand,
-	expandTemplate,
-	loadCustomCommands,
-} from "./custom-commands.ts";
+import { handleSessionCommand } from "./commands-session.ts";
 import { PREFIX, renderBanner, writeln } from "./output.ts";
+import { loadSkillContentFromMeta, loadSkillsIndex } from "./skills.ts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -49,26 +48,6 @@ function handleNew(ctx: CommandContext): void {
 	renderBanner(ctx.currentModel, ctx.cwd);
 }
 
-// ─── Custom commands ──────────────────────────────────────────────────────────
-
-async function handleCustomCommand(
-	cmd: CustomCommand,
-	args: string,
-	ctx: CommandContext,
-): Promise<CommandResult> {
-	const prompt = await expandTemplate(cmd.template, args, ctx.cwd);
-	const label = c.cyan(cmd.name);
-	const srcPath =
-		cmd.source === "local"
-			? `.agents/commands/${cmd.name}.md`
-			: `~/.agents/commands/${cmd.name}.md`;
-	const src = c.dim(`[${srcPath}]`);
-	writeln(`${PREFIX.info} ${label} ${src}`);
-	writeln();
-
-	return { type: "inject-user-message", text: prompt };
-}
-
 // ─── Dispatch ─────────────────────────────────────────────────────────────────
 
 export async function handleCommand(
@@ -76,13 +55,6 @@ export async function handleCommand(
 	args: string,
 	ctx: CommandContext,
 ): Promise<CommandResult> {
-	// Custom commands take precedence over built-ins.
-	const custom = loadCustomCommands(ctx.cwd);
-	const customCmd = custom.get(command.toLowerCase());
-	if (customCmd) {
-		return await handleCustomCommand(customCmd, args, ctx);
-	}
-
 	switch (command.toLowerCase()) {
 		case "model":
 		case "models":
@@ -101,13 +73,6 @@ export async function handleCommand(
 			handleVerboseCommand(ctx, args);
 			return { type: "handled" };
 
-		case "context":
-			handleContextCommand(ctx, args);
-			return { type: "handled" };
-		case "agent":
-			handleAgentCommand(ctx, args);
-			return { type: "handled" };
-
 		case "mcp":
 			await handleMcpCommand(ctx, args);
 			return { type: "handled" };
@@ -120,13 +85,18 @@ export async function handleCommand(
 			handleLogoutCommand(ctx, args);
 			return { type: "handled" };
 
+		case "session":
+		case "sessions":
+			handleSessionCommand(ctx, args);
+			return { type: "handled" };
+
 		case "new":
 			handleNew(ctx);
 			return { type: "handled" };
 
 		case "help":
 		case "?":
-			renderHelpCommand(ctx, custom);
+			renderHelpCommand(ctx);
 			return { type: "handled" };
 
 		case "exit":
@@ -135,10 +105,108 @@ export async function handleCommand(
 			return { type: "exit" };
 
 		default: {
+			// Skill reference: /skill-name injects skill content as a user message.
+			const skills = loadSkillsIndex(ctx.cwd);
+			const skill = skills.get(command.toLowerCase());
+			if (skill) {
+				const loaded = loadSkillContentFromMeta(skill);
+				if (loaded) {
+					const srcPath =
+						skill.source === "local"
+							? `.agents/skills/${skill.name}/SKILL.md`
+							: `~/.agents/skills/${skill.name}/SKILL.md`;
+
+					// context: fork — run in an isolated mc subprocess
+					if (skill.context === "fork") {
+						writeln(
+							`${PREFIX.info} ${c.cyan(skill.name)} ${c.dim(`[${srcPath}] (forked subagent)`)}`,
+						);
+						writeln();
+						const subagentPrompt = args
+							? `${loaded.content}\n\n${args}`
+							: loaded.content;
+						const result = await runForkedSkill(
+							skill.name,
+							subagentPrompt,
+							ctx.cwd,
+						);
+						return { type: "inject-user-message", text: result };
+					}
+
+					writeln(
+						`${PREFIX.info} ${c.cyan(skill.name)} ${c.dim(`[${srcPath}]`)}`,
+					);
+					writeln();
+					const prompt = args ? `${loaded.content}\n\n${args}` : loaded.content;
+					return { type: "inject-user-message", text: prompt };
+				}
+			}
+
 			writeln(
 				`${PREFIX.error} unknown: /${command}  ${c.dim("— /help for commands")}`,
 			);
 			return { type: "unknown", command };
+		}
+	}
+}
+
+// ─── Forked skill execution ──────────────────────────────────────────────────
+
+const FORK_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
+async function runForkedSkill(
+	skillName: string,
+	prompt: string,
+	cwd: string,
+): Promise<string> {
+	// Write prompt to a temp file to avoid shell argument length limits
+	const tmpFile = join(
+		tmpdir(),
+		`mc-fork-${randomBytes(8).toString("hex")}.md`,
+	);
+	writeFileSync(tmpFile, prompt, "utf8");
+
+	try {
+		writeln(
+			`${PREFIX.info} ${c.dim("running subagent…")} ${c.dim(`(timeout: ${FORK_TIMEOUT_MS / 1000}s)`)}`,
+		);
+
+		const proc = Bun.spawn([process.execPath, Bun.main], {
+			cwd,
+			stdin: Bun.file(tmpFile),
+			env: {
+				...process.env,
+				NO_COLOR: "1",
+				FORCE_COLOR: "0",
+			},
+			stdout: "pipe",
+			stderr: "pipe",
+		});
+
+		const timer = setTimeout(() => {
+			try {
+				proc.kill("SIGTERM");
+			} catch {
+				/* already dead */
+			}
+		}, FORK_TIMEOUT_MS);
+
+		const stdout = await new Response(proc.stdout).text();
+		const stderr = await new Response(proc.stderr).text();
+		const exitCode = await proc.exited;
+		clearTimeout(timer);
+
+		if (exitCode !== 0 && !stdout.trim()) {
+			return `[Subagent skill "${skillName}" failed (exit ${exitCode})]\n${stderr.trim()}`;
+		}
+
+		const output = stdout.trim();
+		return `[Subagent result from skill "${skillName}"]\n\n${output}`;
+	} finally {
+		try {
+			unlinkSync(tmpFile);
+		} catch {
+			/* best effort cleanup */
 		}
 	}
 }

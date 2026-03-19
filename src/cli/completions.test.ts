@@ -44,27 +44,12 @@ describe("getCommandCompletions", () => {
 		expect(results).toContain("/verbose off");
 	});
 
-	test("completes /context subcommands", () => {
-		const results = getCommandCompletions("/context p", cwd);
-		expect(results).toContain("/context prune");
-	});
-
-	test("completes /context prune values", () => {
-		const results = getCommandCompletions("/context prune b", cwd);
-		expect(results).toContain("/context prune balanced");
-	});
-
 	test("completes /mcp subcommands", () => {
 		const results = getCommandCompletions("/mcp ", cwd);
 		expect(results).toContain("/mcp list");
 		expect(results).toContain("/mcp add");
 		expect(results).toContain("/mcp remove");
 		expect(results).toContain("/mcp rm");
-	});
-
-	test("completes /agent with off", () => {
-		const results = getCommandCompletions("/agent o", cwd);
-		expect(results).toContain("/agent off");
 	});
 
 	test("exact match for single-word command", () => {
@@ -80,7 +65,7 @@ describe("getCommandCompletions", () => {
 	});
 
 	test("returns empty for fourth token", () => {
-		const results = getCommandCompletions("/context prune balanced extra", cwd);
+		const results = getCommandCompletions("/model effort low extra", cwd);
 		expect(results).toEqual([]);
 	});
 });

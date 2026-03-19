@@ -19,7 +19,6 @@ export interface StatusBarData {
 	contextTokens: number;
 	contextWindow: number | null;
 	thinkingEffort?: string | null;
-	activeAgent?: string | null;
 	showReasoning?: boolean;
 }
 

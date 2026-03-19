@@ -256,7 +256,6 @@ describe("UI audit: full turn scenarios", () => {
 			eventsFrom([
 				{
 					type: "context-pruned",
-					mode: "balanced",
 					beforeMessageCount: 100,
 					afterMessageCount: 80,
 					removedMessageCount: 20,
@@ -272,7 +271,6 @@ describe("UI audit: full turn scenarios", () => {
 
 		const plain = stripAnsi(getCapturedStdout());
 		expect(plain).toContain("· context pruned");
-		expect(plain).toContain("balanced");
 		expect(plain).toContain("–20 messages");
 	});
 

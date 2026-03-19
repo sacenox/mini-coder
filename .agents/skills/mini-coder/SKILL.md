@@ -85,9 +85,6 @@ Inside `mc`, the user can run slash commands such as:
 - `/model <id>` — switch models
 - `/model effort <low|medium|high|xhigh|off>` — set reasoning effort when supported
 - `/reasoning [on|off]` — toggle reasoning display
-- `/context prune <off|balanced|aggressive>` — set pruning strategy
-- `/context cap <off|bytes|kb>` — cap tool payload size
-- `/cache <on|off>` — toggle prompt caching
 - `/undo` — remove the last conversation turn (does not revert filesystem changes)
 - `/new` — start a fresh session
 - `/mcp list` — list configured MCP servers

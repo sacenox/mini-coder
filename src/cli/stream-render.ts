@@ -19,7 +19,7 @@ import {
 export async function renderTurn(
 	events: AsyncIterable<TurnEvent>,
 	spinner: Spinner,
-	opts?: { showReasoning?: boolean; verboseOutput?: boolean },
+	opts?: { showReasoning?: boolean; verboseOutput?: boolean; quiet?: boolean },
 ): Promise<{
 	inputTokens: number;
 	outputTokens: number;
@@ -27,9 +27,10 @@ export async function renderTurn(
 	newMessages: CoreMessage[];
 	reasoningText: string;
 }> {
-	const showReasoning = opts?.showReasoning ?? true;
+	const quiet = opts?.quiet ?? false;
+	const showReasoning = !quiet && (opts?.showReasoning ?? true);
 	const verboseOutput = opts?.verboseOutput ?? false;
-	const content = new StreamRenderContent(spinner);
+	const content = new StreamRenderContent(spinner, quiet);
 	const liveReasoning = new LiveReasoningBlock();
 
 	let inputTokens = 0;
@@ -90,12 +91,13 @@ export async function renderTurn(
 				}
 				liveReasoning.finish();
 				content.flushOpenContent();
-				spinner.stop();
-				if (renderedVisibleOutput && !isConsecutiveToolCall) writeln();
-				renderToolCall(event.toolName, event.args);
-				renderedVisibleOutput = true;
-
-				spinner.start(event.toolName);
+				if (!quiet) {
+					spinner.stop();
+					if (renderedVisibleOutput && !isConsecutiveToolCall) writeln();
+					renderToolCall(event.toolName, event.args);
+					renderedVisibleOutput = true;
+					spinner.start(event.toolName);
+				}
 				break;
 			}
 
@@ -104,29 +106,34 @@ export async function renderTurn(
 				const callInfo = toolCallInfo.get(event.toolCallId);
 				toolCallInfo.delete(event.toolCallId);
 				liveReasoning.finish();
-				spinner.stop();
-				if (parallelCallCount > 1 && callInfo) {
-					writeln(`    ${c.dim("↳")} ${callInfo.label}`);
+				if (!quiet) {
+					spinner.stop();
+					if (parallelCallCount > 1 && callInfo) {
+						writeln(`    ${c.dim("↳")} ${callInfo.label}`);
+					}
+					if (toolCallInfo.size === 0) parallelCallCount = 0;
+					renderToolResult(event.toolName, event.result, event.isError, {
+						verboseOutput,
+					});
+					renderedVisibleOutput = true;
+					spinner.start("thinking");
+				} else {
+					if (toolCallInfo.size === 0) parallelCallCount = 0;
 				}
-				if (toolCallInfo.size === 0) parallelCallCount = 0;
-				renderToolResult(event.toolName, event.result, event.isError, {
-					verboseOutput,
-				});
-				renderedVisibleOutput = true;
-
-				spinner.start("thinking");
 				break;
 			}
 
 			case "context-pruned": {
 				liveReasoning.finish();
 				content.flushOpenContent();
-				spinner.stop();
-				const removedKb = (event.removedBytes / 1024).toFixed(1);
-				writeln(
-					`${G.info} ${c.dim("context pruned")}  ${c.dim(event.mode)}  ${c.dim(`–${event.removedMessageCount} messages`)}  ${c.dim(`–${removedKb} KB`)}`,
-				);
-				renderedVisibleOutput = true;
+				if (!quiet) {
+					spinner.stop();
+					const removedKb = (event.removedBytes / 1024).toFixed(1);
+					writeln(
+						`${G.info} ${c.dim("context pruned")}  ${c.dim(`–${event.removedMessageCount} messages`)}  ${c.dim(`–${removedKb} KB`)}`,
+					);
+					renderedVisibleOutput = true;
+				}
 				break;
 			}
 
@@ -134,7 +141,7 @@ export async function renderTurn(
 				liveReasoning.finish();
 				content.flushOpenContent();
 				spinner.stop();
-				if (!renderedVisibleOutput) writeln();
+				if (!quiet && !renderedVisibleOutput) writeln();
 				inputTokens = event.inputTokens;
 				outputTokens = event.outputTokens;
 				contextTokens = event.contextTokens;

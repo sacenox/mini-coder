@@ -35,7 +35,7 @@ test("parseAppError - APICallError context_length_exceeded", () => {
 	});
 	expect(parseAppError(err)).toEqual({
 		headline: "Max context size reached",
-		hint: "Use /context prune to reduce history, or /new to start fresh",
+		hint: "Use /new to start a fresh session",
 	});
 });
 
@@ -48,7 +48,7 @@ test("parseAppError - APICallError request too large", () => {
 	});
 	expect(parseAppError(err)).toEqual({
 		headline: "Max context size reached",
-		hint: "Use /context prune to reduce history, or /new to start fresh",
+		hint: "Use /new to start a fresh session",
 	});
 });
 

@@ -9,12 +9,10 @@ import { runInputLoop } from "./cli/input-loop.ts";
 import { cleanStaleLogs } from "./cli/log-paths.ts";
 import {
 	CliReporter,
-	G,
 	RenderedError,
 	registerTerminalCleanup,
 	renderBanner,
 	renderError,
-	renderUserMessage,
 	writeln,
 } from "./cli/output.ts";
 import { resolvePromptInput } from "./cli/stdin-prompt.ts";
@@ -27,11 +25,9 @@ import {
 import { autoDiscoverModel } from "./llm-api/providers.ts";
 
 import {
-	getPreferredContextPruningMode,
 	getPreferredModel,
 	getPreferredShowReasoning,
 	getPreferredThinkingEffort,
-	getPreferredToolResultPayloadCapBytes,
 	getPreferredVerboseOutput,
 	pruneOldData,
 } from "./session/db/index.ts";
@@ -61,8 +57,6 @@ function buildAgentOptions(opts: {
 		initialThinkingEffort: getPreferredThinkingEffort(),
 		initialShowReasoning: getPreferredShowReasoning(),
 		initialVerboseOutput: getPreferredVerboseOutput(),
-		initialPruningMode: getPreferredContextPruningMode(),
-		initialToolResultPayloadCapBytes: getPreferredToolResultPayloadCapBytes(),
 		reporter: opts.reporter,
 		...(opts.sessionId !== undefined && { sessionId: opts.sessionId }),
 	};
@@ -119,26 +113,28 @@ async function main(): Promise<void> {
 	}
 
 	try {
+		const oneShot = !!prompt;
 		const agentOpts = buildAgentOptions({
 			model,
 			cwd: args.cwd,
-			reporter: new CliReporter(),
+			reporter: new CliReporter(oneShot),
 			sessionId,
 		});
 
 		const { runner, cmdCtx } = await initAgent(agentOpts);
 
-		if (prompt) {
-			renderUserMessage(prompt);
+		if (oneShot) {
 			const { text: resolvedText, images: refImages } = await resolveFileRefs(
 				prompt,
 				args.cwd,
 			);
-			await runner.processUserInput(resolvedText, refImages);
-			const { totalIn, totalOut } = runner.getStatusInfo();
-			writeln(
-				`${G.info} ${c.dim(`${totalIn.toLocaleString()} in / ${totalOut.toLocaleString()} out tokens`)}`,
+			const responseText = await runner.processUserInput(
+				resolvedText,
+				refImages,
 			);
+			if (responseText) {
+				writeln(responseText);
+			}
 			return;
 		}
 

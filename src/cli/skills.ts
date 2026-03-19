@@ -18,23 +18,22 @@ export interface SkillMeta {
 	source: "global" | "local";
 	rootPath: string;
 	filePath: string;
-}
-
-interface SkillRecord extends SkillMeta {
-	content: string;
+	context?: "fork";
 }
 
 export interface LoadedSkillContent {
 	name: string;
 	content: string;
 	source: "global" | "local";
+	skillDir: string;
+	resources: string[];
 }
 
 const MAX_FRONTMATTER_BYTES = 64 * 1024;
 const SKILL_NAME_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const MIN_SKILL_NAME_LENGTH = 1;
 const MAX_SKILL_NAME_LENGTH = 64;
 const warnedInvalidSkills = new Set<string>();
+const warnedSkillIssues = new Set<string>();
 
 type SkillCandidate = {
 	folderName: string;
@@ -47,6 +46,7 @@ type SkillCandidate = {
 type SkillFrontmatter = {
 	name?: string;
 	description?: string;
+	context?: string;
 };
 
 function parseSkillFrontmatter(filePath: string): SkillFrontmatter {
@@ -72,6 +72,7 @@ function parseSkillFrontmatter(filePath: string): SkillFrontmatter {
 				.replace(/^["']|["']$/g, "");
 			if (key === "name") meta.name = value;
 			if (key === "description") meta.description = value;
+			if (key === "context") meta.context = value;
 		}
 		return meta;
 	} catch {
@@ -159,6 +160,13 @@ function warnInvalidSkill(filePath: string, reason: string): void {
 	writeln(`${G.warn} skipping invalid skill ${filePath}: ${reason}`);
 }
 
+function warnSkillIssue(filePath: string, reason: string): void {
+	const key = `${filePath}:${reason}`;
+	if (warnedSkillIssues.has(key)) return;
+	warnedSkillIssues.add(key);
+	writeln(`${G.warn} skill ${filePath}: ${reason}`);
+}
+
 function validateSkill(candidate: SkillCandidate): SkillMeta | null {
 	const meta = getCandidateFrontmatter(candidate);
 	const name = meta.name?.trim();
@@ -178,22 +186,17 @@ function validateSkill(candidate: SkillCandidate): SkillMeta | null {
 		);
 		return null;
 	}
-	if (
-		name.length < MIN_SKILL_NAME_LENGTH ||
-		name.length > MAX_SKILL_NAME_LENGTH
-	) {
-		warnInvalidSkill(
+	if (name.length > MAX_SKILL_NAME_LENGTH) {
+		warnSkillIssue(
 			candidate.filePath,
-			`name must be ${MIN_SKILL_NAME_LENGTH}-${MAX_SKILL_NAME_LENGTH} characters`,
+			`name exceeds ${MAX_SKILL_NAME_LENGTH} characters`,
 		);
-		return null;
 	}
 	if (!SKILL_NAME_RE.test(name)) {
-		warnInvalidSkill(
+		warnSkillIssue(
 			candidate.filePath,
-			"name must match lowercase alnum + hyphen format",
+			"name does not match lowercase alnum + hyphen format",
 		);
-		return null;
 	}
 
 	return {
@@ -202,6 +205,7 @@ function validateSkill(candidate: SkillCandidate): SkillMeta | null {
 		source: candidate.source,
 		rootPath: candidate.rootPath,
 		filePath: candidate.filePath,
+		...(meta.context === "fork" && { context: "fork" as const }),
 	};
 }
 
@@ -264,12 +268,48 @@ export function loadSkillsIndex(
 	return index;
 }
 
+const MAX_RESOURCE_LISTING = 50;
+
+function listSkillResources(skillDir: string): string[] {
+	const resources: string[] = [];
+	function walk(dir: string, prefix: string): void {
+		let entries: string[];
+		try {
+			entries = readdirSync(dir);
+		} catch {
+			return;
+		}
+		for (const entry of entries) {
+			if (resources.length >= MAX_RESOURCE_LISTING) return;
+			if (entry === "SKILL.md") continue;
+			const full = join(dir, entry);
+			const rel = prefix ? `${prefix}/${entry}` : entry;
+			try {
+				if (statSync(full).isDirectory()) {
+					walk(full, rel);
+				} else {
+					resources.push(rel);
+				}
+			} catch {}
+		}
+	}
+	walk(skillDir, "");
+	return resources;
+}
+
 export function loadSkillContentFromMeta(
 	skill: SkillMeta,
 ): LoadedSkillContent | null {
 	try {
 		const content = readFileSync(skill.filePath, "utf-8");
-		return { name: skill.name, content, source: skill.source };
+		const skillDir = dirname(skill.filePath);
+		return {
+			name: skill.name,
+			content,
+			source: skill.source,
+			skillDir,
+			resources: listSkillResources(skillDir),
+		};
 	} catch {
 		return null;
 	}
@@ -283,18 +323,4 @@ export function loadSkillContent(
 	const skill = loadSkillsIndex(cwd, homeDir).get(name);
 	if (!skill) return null;
 	return loadSkillContentFromMeta(skill);
-}
-
-// Compatibility shim while callsites migrate to metadata-first loading.
-export function loadSkills(
-	cwd: string,
-	homeDir?: string,
-): Map<string, SkillRecord> {
-	const skills = new Map<string, SkillRecord>();
-	for (const [name, meta] of loadSkillsIndex(cwd, homeDir)) {
-		const loaded = loadSkillContentFromMeta(meta);
-		if (!loaded) continue;
-		skills.set(name, { ...meta, content: loaded.content });
-	}
-	return skills;
 }

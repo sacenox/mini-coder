@@ -52,7 +52,6 @@ export function buildStatusBarSignature(opts: StatusBarData): string {
 		contextTokens: opts.contextTokens,
 		contextWindow: opts.contextWindow,
 		thinkingEffort: opts.thinkingEffort ?? null,
-		activeAgent: opts.activeAgent ?? null,
 		showReasoning: opts.showReasoning ?? false,
 	});
 }
@@ -87,7 +86,6 @@ export function renderStatusBar(opts: StatusBarData): void {
 	const required = [c.cyan(opts.model), c.dim(`#${opts.sessionId}`)];
 	const optional: string[] = [];
 
-	if (opts.activeAgent) optional.push(c.green(`@${opts.activeAgent}`));
 	if (opts.thinkingEffort) optional.push(c.dim(`✦ ${opts.thinkingEffort}`));
 	if (opts.gitBranch) optional.push(c.dim(`⎇ ${opts.gitBranch}`));
 

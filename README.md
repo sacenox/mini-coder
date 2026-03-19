@@ -55,9 +55,7 @@ Use `/login` inside the REPL to authenticate via browser-based OAuth (currently 
 - **Shell integration** — `!` prefix for inline commands, `@` to reference files with tab completion
 - **Web search** — `webSearch` + `webContent` tools when `EXA_API_KEY` is set
 - **MCP support** — connect external tool servers over HTTP or stdio
-- **Custom commands** — drop `.md` files in `.agents/commands/` → instant `/slash` commands
-- **Custom agents** — `.agents/agents/*.md` for specialized personas you can activate with `/agent`
-- **Skills** — `.agents/skills/<name>/SKILL.md`, inject with `@name`
+- **Skills** — `.agents/skills/<name>/SKILL.md`, invoke with `/skill-name` in the prompt
 - **`mc-edit`** — safe, exact-text file editing (no full-file rewrites)
 - **16 ANSI colors** — inherits your terminal theme. Always looks right.
 

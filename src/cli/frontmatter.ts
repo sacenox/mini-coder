@@ -1,6 +1,6 @@
 // ─── Frontmatter parser ───────────────────────────────────────────────────────
 
-export interface Frontmatter {
+interface Frontmatter {
 	description?: string;
 	model?: string;
 	name?: string;

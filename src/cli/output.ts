@@ -12,8 +12,6 @@ import {
 	getPreferredShowReasoning,
 	getPreferredVerboseOutput,
 } from "../session/db/index.ts";
-import { loadAgents } from "./agents.ts";
-import { loadCustomCommands } from "./custom-commands.ts";
 import { logError } from "./error-log.ts";
 import { parseAppError } from "./error-parse.ts";
 import { loadSkillsIndex } from "./skills.ts";
@@ -144,17 +142,9 @@ export function renderBanner(model: string, cwd: string): void {
 	const contextFiles = discoverContextFiles(cwd);
 	if (contextFiles.length > 0) items.push(...contextFiles);
 
-	const agents = loadAgents(cwd);
-	if (agents.size > 0)
-		items.push(`${agents.size} agent${agents.size > 1 ? "s" : ""}`);
-
 	const skills = loadSkillsIndex(cwd);
 	if (skills.size > 0)
 		items.push(`${skills.size} skill${skills.size > 1 ? "s" : ""}`);
-
-	const commands = loadCustomCommands(cwd);
-	if (commands.size > 0)
-		items.push(`${commands.size} custom cmd${commands.size > 1 ? "s" : ""}`);
 
 	if (items.length > 0) {
 		writeln(`  ${c.dim(items.join("  ·  "))}`);
@@ -168,11 +158,15 @@ export function renderBanner(model: string, cwd: string): void {
 export class CliReporter implements AgentReporter {
 	private spinner = new Spinner();
 
+	constructor(private readonly quiet = false) {}
+
 	info(msg: string): void {
+		if (this.quiet) return;
 		this.spinner.stop();
 		writeln(`${G.info} ${c.dim(msg)}`);
 	}
 
+	/** Errors always render, even in quiet mode — they go to stderr and must be visible. */
 	error(msg: string | Error, hint?: string): void {
 		this.spinner.stop();
 		if (typeof msg === "string") {
@@ -183,16 +177,19 @@ export class CliReporter implements AgentReporter {
 	}
 
 	warn(msg: string): void {
+		if (this.quiet) return;
 		this.spinner.stop();
 		writeln(`${G.warn} ${msg}`);
 	}
 
 	writeText(text: string): void {
+		if (this.quiet) return;
 		this.spinner.stop();
 		writeln(text);
 	}
 
 	startSpinner(label?: string): void {
+		if (this.quiet) return;
 		this.spinner.start(label);
 	}
 
@@ -204,10 +201,14 @@ export class CliReporter implements AgentReporter {
 		events: AsyncIterable<TurnEvent>,
 		opts?: { showReasoning?: boolean; verboseOutput?: boolean },
 	): Promise<TurnResult> {
-		return renderTurn(events, this.spinner, opts);
+		return renderTurn(events, this.spinner, {
+			...opts,
+			quiet: this.quiet,
+		});
 	}
 
 	renderStatusBar(data: StatusBarData): void {
+		if (this.quiet) return;
 		renderStatusBar(data);
 	}
 

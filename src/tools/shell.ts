@@ -12,8 +12,9 @@ const ShellSchema = z.object({
 		.min(1000)
 		.max(300_000)
 		.optional()
-		.default(30_000)
-		.describe("Timeout in milliseconds (default: 30s, max: 5min)"),
+		.describe(
+			"Timeout in milliseconds (max: 5min). If omitted, the command runs until it exits.",
+		),
 	env: z
 		.record(z.string(), z.string())
 		.optional()
@@ -40,11 +41,21 @@ const MAX_OUTPUT_BYTES = 10_000; // 10KB per stream
 
 export async function runShellCommand(input: ShellInput): Promise<ShellOutput> {
 	const cwd = input.cwd ?? process.cwd();
-	const timeout = input.timeout ?? 30_000;
+	const timeout = input.timeout;
+	const existingGitCount =
+		Number(
+			input.env?.GIT_CONFIG_COUNT ?? process.env.GIT_CONFIG_COUNT ?? "0",
+		) || 0;
+	const gitIdx = String(existingGitCount);
 	const env: Record<string, string | undefined> = Object.assign(
 		{},
 		process.env as Record<string, string | undefined>,
-		{ FORCE_COLOR: "1" },
+		{
+			FORCE_COLOR: "1",
+			GIT_CONFIG_COUNT: String(existingGitCount + 1),
+			[`GIT_CONFIG_KEY_${gitIdx}`]: "color.ui",
+			[`GIT_CONFIG_VALUE_${gitIdx}`]: "always",
+		},
 		input.env ?? {},
 	);
 
@@ -62,24 +73,26 @@ export async function runShellCommand(input: ShellInput): Promise<ShellOutput> {
 		},
 	);
 
-	const timer = setTimeout(() => {
-		timedOut = true;
-		try {
-			proc.kill("SIGTERM");
-			setTimeout(() => {
+	const timer = timeout
+		? setTimeout(() => {
+				timedOut = true;
 				try {
-					proc.kill("SIGKILL");
+					proc.kill("SIGTERM");
+					setTimeout(() => {
+						try {
+							proc.kill("SIGKILL");
+						} catch {
+							/* already dead */
+						}
+					}, 2000);
 				} catch {
-					/* already dead */
+					/* already done */
 				}
-			}, 2000);
-		} catch {
-			/* already done */
-		}
-		for (const reader of readers) {
-			reader.cancel().catch(() => {});
-		}
-	}, timeout);
+				for (const reader of readers) {
+					reader.cancel().catch(() => {});
+				}
+			}, timeout)
+		: undefined;
 
 	async function collectStream(
 		stream: ReadableStream<Uint8Array>,
@@ -125,7 +138,7 @@ export async function runShellCommand(input: ShellInput): Promise<ShellOutput> {
 		]);
 		exitCode = await proc.exited;
 	} finally {
-		clearTimeout(timer);
+		if (timer) clearTimeout(timer);
 		restoreTerminal();
 		if (wasRaw) {
 			try {

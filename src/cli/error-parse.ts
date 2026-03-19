@@ -74,7 +74,7 @@ export function parseAppError(err: unknown): {
 		) {
 			return {
 				headline: "Max context size reached",
-				hint: "Use /context prune to reduce history, or /new to start fresh",
+				hint: "Use /new to start a fresh session",
 			};
 		}
 		if (err.statusCode === 429) {

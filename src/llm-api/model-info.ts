@@ -1,4 +1,3 @@
-import { isLoggedIn } from "../oauth/auth-storage.ts";
 import {
 	listModelCapabilities,
 	listModelInfoState,
@@ -9,6 +8,7 @@ import {
 	replaceProviderModels,
 	setModelInfoState,
 } from "../session/db/model-info-repo.ts";
+import { isLoggedIn } from "../session/oauth/auth-storage.ts";
 import {
 	buildRuntimeCache,
 	emptyRuntimeCache,
@@ -266,6 +266,20 @@ export function getContextWindow(modelString: string): number | null {
 
 export function supportsThinking(modelString: string): boolean {
 	return resolveModelInfo(modelString)?.reasoning ?? false;
+}
+
+/** Return cached model IDs synchronously (for Tab-completion). */
+export function getCachedModelIds(): string[] {
+	ensureLoaded();
+	const visible = getVisibleProvidersForSnapshotFromEnv(process.env);
+	const ids: string[] = [];
+	for (const row of runtimeCache.providerModelsByKey.values()) {
+		if (visible.has(row.provider)) {
+			ids.push(`${row.provider}/${row.providerModelId}`);
+		}
+	}
+	ids.sort((a, b) => a.localeCompare(b));
+	return ids;
 }
 
 function hasCachedModelsForAllVisibleProviders(): boolean {

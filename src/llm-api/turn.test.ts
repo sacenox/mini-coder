@@ -729,7 +729,7 @@ describe("stripOpenAIItemIdsFromHistory", () => {
 });
 
 describe("applyContextPruning", () => {
-	test("balanced mode does not prune sessions shorter than 40 messages", () => {
+	test("does not prune sessions shorter than 40 messages", () => {
 		const messages: CoreMessage[] = [
 			{ role: "user", content: "u1" },
 			{
@@ -756,12 +756,12 @@ describe("applyContextPruning", () => {
 			{ role: "user", content: "u4" },
 		];
 
-		const pruned = applyContextPruning(messages, "balanced");
+		const pruned = applyContextPruning(messages);
 		// 8 messages < 40 threshold — nothing should be pruned
 		expect(pruned.length).toBe(messages.length);
 	});
 
-	test("balanced mode prunes stale tool history in large sessions", () => {
+	test("prunes stale tool history in large sessions", () => {
 		// Build a history of 50 messages (25 user+assistant pairs with tool calls)
 		const messages: CoreMessage[] = [];
 		for (let i = 0; i < 25; i++) {
@@ -791,7 +791,7 @@ describe("applyContextPruning", () => {
 		}
 		messages.push({ role: "user", content: "final" });
 
-		const pruned = applyContextPruning(messages, "balanced");
+		const pruned = applyContextPruning(messages);
 		expect(pruned.length).toBeLessThan(messages.length);
 		expect(pruned.at(-1)?.role).toBe("user");
 	});
@@ -839,7 +839,7 @@ describe("compactToolResultPayloads", () => {
 			} as unknown as CoreMessage,
 		];
 
-		const compacted = compactToolResultPayloads(messages, 1024);
+		const compacted = compactToolResultPayloads(messages);
 		const part = (compacted[0] as { content: Array<Record<string, unknown>> })
 			.content[0];
 		expect(part?.output).toMatchObject({
@@ -852,17 +852,17 @@ describe("compactToolResultPayloads", () => {
 	}
 
 	test("compacts oversized tool payloads without breaking output schema", () => {
-		const largePayload = "x".repeat(10_000);
+		const largePayload = "x".repeat(20_000);
 		expectCompactedJsonOutput({ type: "json", value: { blob: largePayload } });
 	});
 
 	test("wraps compacted legacy raw output into json output schema", () => {
-		const largePayload = "x".repeat(10_000);
+		const largePayload = "x".repeat(20_000);
 		expectCompactedJsonOutput({ blob: largePayload });
 	});
 
 	test("rewraps compacted typed text output into json schema", () => {
-		const largePayload = "x".repeat(10_000);
+		const largePayload = "x".repeat(20_000);
 		expectCompactedJsonOutput({ type: "text", value: largePayload });
 	});
 });

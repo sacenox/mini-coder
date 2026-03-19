@@ -29,7 +29,6 @@ export interface ToolResultEvent {
 
 export interface ContextPrunedEvent {
 	type: "context-pruned";
-	mode: "balanced" | "aggressive";
 	beforeMessageCount: number;
 	afterMessageCount: number;
 	removedMessageCount: number;

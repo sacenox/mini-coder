@@ -207,7 +207,6 @@ describe("renderTurn", () => {
 			eventsFrom([
 				{
 					type: "context-pruned",
-					mode: "balanced",
 					beforeMessageCount: 120,
 					afterMessageCount: 90,
 					removedMessageCount: 30,
@@ -221,7 +220,7 @@ describe("renderTurn", () => {
 		);
 
 		expect(stripAnsi(getCapturedStdout())).toContain(
-			"· context pruned  balanced  –30 messages  –14.6 KB",
+			"· context pruned  –30 messages  –14.6 KB",
 		);
 	});
 

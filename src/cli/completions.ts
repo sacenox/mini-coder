@@ -1,6 +1,5 @@
 import { join, relative } from "node:path";
-import { loadAgents } from "./agents.ts";
-import { loadCustomCommands } from "./custom-commands.ts";
+import { getCachedModelIds } from "../llm-api/model-info.ts";
 import { loadSkillsIndex } from "./skills.ts";
 
 // ─── Built-in commands ─────────────────────────────────────────────────────────
@@ -8,11 +7,11 @@ import { loadSkillsIndex } from "./skills.ts";
 const BUILTIN_COMMANDS = [
 	"model",
 	"models",
+	"session",
+	"sessions",
 	"undo",
 	"reasoning",
 	"verbose",
-	"context",
-	"agent",
 	"mcp",
 	"new",
 	"help",
@@ -25,23 +24,14 @@ const BUILTIN_COMMANDS = [
 // ─── Sub-command / parameter completions ───────────────────────────────────────
 
 const COMMAND_PARAMS: Record<string, string[] | ((cwd: string) => string[])> = {
-	model: ["effort"],
+	model: () => ["effort", ...getCachedModelIds()],
 	reasoning: ["on", "off"],
 	verbose: ["on", "off"],
-	context: ["prune", "cap"],
 	mcp: ["list", "add", "remove", "rm"],
-	agent: (cwd) => {
-		const agents = loadAgents(cwd);
-		return ["off", ...agents.keys()];
-	},
 };
 
 const NESTED_PARAMS: Record<string, Record<string, string[]>> = {
 	model: { effort: ["low", "medium", "high", "xhigh", "off"] },
-	context: {
-		prune: ["off", "balanced", "aggressive"],
-		cap: ["off"],
-	},
 };
 
 // ─── Public API ────────────────────────────────────────────────────────────────
@@ -63,10 +53,10 @@ export function getCommandCompletions(text: string, cwd: string): string[] {
 			if (results.length >= MAX) break;
 		}
 
-		// Custom commands
+		// Skills: /skill-name
 		if (results.length < MAX) {
-			const custom = loadCustomCommands(cwd);
-			for (const name of custom.keys()) {
+			const skills = loadSkillsIndex(cwd);
+			for (const [name] of skills) {
 				if (name.startsWith(p0)) results.push(`/${name}`);
 				if (results.length >= MAX) break;
 			}
@@ -102,7 +92,7 @@ export function getCommandCompletions(text: string, cwd: string): string[] {
 	return [];
 }
 
-/** Complete an `@`-prefixed reference (skills, files). */
+/** Complete an `@`-prefixed reference (files only). */
 
 export async function getAtCompletions(
 	prefix: string,
@@ -111,22 +101,11 @@ export async function getAtCompletions(
 	const query = prefix.startsWith("@") ? prefix.slice(1) : prefix;
 	const results: string[] = [];
 
-	// Skills: @<skill-name>
-	const skills = loadSkillsIndex(cwd);
-	for (const [name] of skills) {
+	const glob = new Bun.Glob(`**/*${query}*`);
+	for await (const file of glob.scan({ cwd, onlyFiles: true })) {
+		if (file.includes("node_modules") || file.includes(".git")) continue;
+		results.push(`@${relative(cwd, join(cwd, file))}`);
 		if (results.length >= MAX) break;
-		if (name.includes(query)) results.push(`@${name}`);
-	}
-
-	// Files: @<relative-path> — fill remaining slots up to MAX
-
-	if (results.length < MAX) {
-		const glob = new Bun.Glob(`**/*${query}*`);
-		for await (const file of glob.scan({ cwd, onlyFiles: true })) {
-			if (file.includes("node_modules") || file.includes(".git")) continue;
-			results.push(`@${relative(cwd, join(cwd, file))}`);
-			if (results.length >= MAX) break;
-		}
 	}
 
 	return results;

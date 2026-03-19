@@ -17,14 +17,15 @@ Very focused on dev flow, simple setup steps and fast to coding.
 Elegant output that focus on the conversation with the agent and their actions. Ensure an accurate cronological conversation log that is very readable for the user. Keep a visible hierchy of actions -> results and assistant reasoning and responses.
 Accurate and reliable and fast core set of features.
 Community oriented, all of the inspirations have their own dotfile format, try to follow the existing
-conventions and not introduce more specs.  We want to do our best to support and autodiscover community config standards:
-
-- AGENTS.md -> https://agents.md/
-  - CLAUDE.md (same as AGENTS.md)
-- Skills -> https://agentskills.io/client-implementation/adding-skills-support
-  - Claude skills too. They claim to follow the spec, we should only need to discover them too.
+conventions and not introduce more specs.
 
 ## Features:
+
+We want to do our best to support and autodiscover community config standards:
+  - AGENTS.md -> https://agents.md/
+    - CLAUDE.md (same as AGENTS.md)
+  - Skills -> https://agentskills.io/client-implementation/adding-skills-support (and https://agentskills.io/client-implementation/adding-skills-support.md)
+    - Claude skills too. They claim to follow the spec, we should only need to discover them too.
 
 - Auto discovery of providers via ENV (Example: OPENCODE_API_KEY), or local servers (Example: ollama)
   - `/login` shows OAuth login status. `/login <provider>` starts browser-based OAuth login. `/logout <provider>` clears saved tokens. Currently supports Anthropic. (Both pi and opencode support this too)
@@ -43,10 +44,11 @@ conventions and not introduce more specs.  We want to do our best to support and
   - Shell like autocomplete for filepaths, `@` embeds a file into the prompt and autocompletes filepaths
 
 - Context handling:
-  - Elegantly handles hitting max context size for the model using regular pruning.
+  - Elegantly handles hitting max context size for the model using regular per step pruning. Stops with a conversation summary if max context is reached.
   - No max steps or max tool calls. user can interrupt, this is not needed.
   - Support prompt caching via the used sdks.
   - Rolling context pruning with a balanced default. (Must not break caching!)
+  - Clear and accurate token tracking.
   - Recover from errors returning the user to the prompt with clear messaging
   - `/undo` removes the last turn from conversation history, it does not restore filesystem state.
 
@@ -75,7 +77,7 @@ conventions and not introduce more specs.  We want to do our best to support and
   - Skill tools show compact metadata-oriented output
   - Shell tool shows the command called and its output
   - MCP tools stay clearly distinguishable from shell work
-- status bar like prompt, with current model/provider/session/git branch/active agent/thinking effort/context usage/token input/token output
+- status bar like prompt, with current model/provider/session/git branch/thinking effort/context usage/token input/token output information grouped logically and human readable.
 - some prompt colored animation when a turn is processing. Needs to be carefully done, so it shows correctly in wait times and with clear labels
 
 ## Tech stack
@@ -88,12 +90,3 @@ conventions and not introduce more specs.  We want to do our best to support and
 
 Clean separation of concerns, use modules to organize the app. Group logical features together for best browsability and readability of the code. Use subdirectories to group files logically.
 No mocked/offline-servers type of tests. Focused tests on _our_ logic. Do not test our dependencies.
-
-Core modules:
-
-- `llm-api`: Provides the api to intereact with the provider and process the full conversation turn + tool calling.
-- `cli`: Output/UI, with logical separated subfolder: user input/output and ui/etc..
-- `agent`: Main agent implementation
-- `tools`: shell, skill, and web/search helpers
-- `session`: sqlite-backed sessions, settings, model info, and MCP server storage
-- `mcp`: handles connecting to mcp servers

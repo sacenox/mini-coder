@@ -1,4 +1,4 @@
-import { getAccessToken, isLoggedIn } from "../oauth/auth-storage.ts";
+import { getAccessToken, isLoggedIn } from "../session/oauth/auth-storage.ts";
 import { isRecord } from "./history/shared.ts";
 
 const ZEN_BASE = "https://opencode.ai/zen/v1";

@@ -46,31 +46,19 @@ Developer-focused CLI coding agent. Prioritizes dev flow — no slow startup, no
 `/model effort` *low|medium|high|xhigh|off*
 : Set reasoning effort.
 
-`/reasoning` \[*on|off*\]
-: Toggle reasoning display.
-
-`/context prune` *off|balanced|aggressive*
-: Pruning strategy.
-
-`/context cap` *off|bytes|kb*
-: Tool result payload cap.
-
-`/cache` *on|off*
-: Toggle prompt caching globally.
-
-`/cache openai` *in_memory|24h*
-: OpenAI cache retention.
-
-`/cache gemini` *off|cachedContents/...*
-: Gemini cached content.
-
-`/undo`
-: Remove last turn (does NOT revert filesystem).
+`/session` \[*id*\]
+: List sessions or switch to one.
 
 `/new`
 : Start a fresh session.
 
-`/verbose`
+`/undo`
+: Remove last turn (does NOT revert filesystem).
+
+`/reasoning` \[*on|off*\]
+: Toggle reasoning display.
+
+`/verbose` \[*on|off*\]
 : Toggle output truncation.
 
 `/mcp list`
@@ -85,11 +73,8 @@ Developer-focused CLI coding agent. Prioritizes dev flow — no slow startup, no
 `/mcp remove` *name*
 : Remove MCP server.
 
-`/agent` \[*name*\]
-: Set or clear active agent.
-
 `/review`
-: Review changes (custom command, auto-created globally).
+: Review recent changes (global skill, auto-created at first run).
 
 `/login`
 : Show OAuth login status.
@@ -109,10 +94,30 @@ Developer-focused CLI coding agent. Prioritizes dev flow — no slow startup, no
 ## INLINE FEATURES
 
 `!` prefix
-: Runs shell commands inline.
+: Runs shell commands inline — output is sent to the LLM as a user message.
 
 `@` prefix
-: References files or skills (with tab completion).
+: Embeds a file into the prompt (Tab to complete file paths).
+
+`/` prefix
+: Reference a skill in the prompt (Tab to complete skill names).
+
+## KEYS
+
+`ESC`
+: Interrupt the assistant response — partial output is preserved in history.
+
+`Ctrl+C`
+: Exit forcefully.
+
+`Ctrl+D`
+: Graceful exit (EOF).
+
+`↑` / `↓`
+: Navigate command history.
+
+`Ctrl+R`
+: Search command history.
 
 ## BUILT-IN TOOLS
 
@@ -150,46 +155,6 @@ mc-edit <path> (--old <text> | --old-file <path>) [--new <text> | --new-file <pa
 
 Workflow: inspect with **shell** → edit with **mc-edit** → verify with **shell**.
 
-## CUSTOM COMMANDS
-
-Drop a `.md` file in `.agents/commands/` (local) or `~/.agents/commands/` (global) and it becomes a `/command`. Filename equals command name (`standup.md` → `/standup`).
-
-`.claude/commands/*.md` is also supported.
-
-**Frontmatter fields:**
-
-`description`
-: Shown in `/help`.
-
-`model`
-: Optional metadata field.
-
-**Argument substitution:**
-
-`$ARGUMENTS` expands to the full argument string; `$1`–`$9` expand to positional tokens.
-
-**Shell interpolation:**
-
-`` !`cmd` `` injects shell output at expansion time (10 s timeout).
-
-**Precedence:** custom commands shadow built-ins. Local overrides global.
-
-## CUSTOM AGENTS
-
-Drop a `.md` file in `.agents/agents/` (local) or `~/.agents/agents/` (global). Filename equals agent name. Activate with `/agent <name>`.
-
-`.claude/agents/*.md` is also supported.
-
-**Frontmatter fields:**
-
-`description`
-: Shown in `/help`.
-
-`model`
-: Optional metadata field.
-
-Body is the agent system prompt.
-
 ## SKILLS
 
 Skills are reusable instruction files at `.agents/skills/<name>/SKILL.md`.
@@ -206,18 +171,18 @@ Skills are reusable instruction files at `.agents/skills/<name>/SKILL.md`.
 
 Skills are never auto-loaded. Load explicitly:
 
-- `@skill-name` in prompts (injects body wrapped in `<skill>` XML).
+- `/skill-name` in prompts (injects body as a user message).
 - **listSkills** / **readSkill** tools at runtime.
 
 Local discovery walks up from cwd to the git worktree root.
 
-## CONFIGURATION
+A default **review** skill is created at `~/.agents/skills/review/SKILL.md` on first run if it doesn't exist. It can be customized or shadowed locally.
 
-Supports `.agents` and `.claude` layouts for commands, skills, agents, and context.
+## CONFIGURATION
 
 Config roots: `.agents/`, `.claude/` — local (repo) or global (`~/`).
 
-**Context files** (one global + one local loaded):
+**Context files** (one global + one local loaded into the system prompt):
 
 - Global: `~/.agents/AGENTS.md` → `~/.agents/CLAUDE.md`
 - Local: `./.agents/AGENTS.md` → `./CLAUDE.md` → `./AGENTS.md`
@@ -254,7 +219,7 @@ Config roots: `.agents/`, `.claude/` — local (repo) or global (`~/`).
 : App data directory (sessions.db, api.log, errors.log).
 
 `.agents/` or `.claude/`
-: Config directories for commands, agents, skills.
+: Config directories for skills and context files.
 
 `AGENTS.md` / `CLAUDE.md`
 : Project context files.

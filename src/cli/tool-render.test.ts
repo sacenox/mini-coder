@@ -27,6 +27,29 @@ describe("buildToolCallLine", () => {
 		expect(line).toContain("shell");
 	});
 
+	test("classifies sed -n as run (read-only)", () => {
+		const line = stripAnsi(
+			buildToolCallLine("shell", { command: "sed -n 1,200p file.ts" }),
+		);
+		expect(line).toContain("$");
+		expect(line).not.toContain("✎");
+	});
+
+	test("classifies sed -i as write (in-place)", () => {
+		const line = stripAnsi(
+			buildToolCallLine("shell", { command: "sed -i s/foo/bar/g file.ts" }),
+		);
+		expect(line).toContain("✎");
+	});
+
+	test("classifies plain sed as run", () => {
+		const line = stripAnsi(
+			buildToolCallLine("shell", { command: "sed s/foo/bar/ file.ts" }),
+		);
+		expect(line).toContain("$");
+		expect(line).not.toContain("✎");
+	});
+
 	test("formats readSkill calls with the requested skill name", () => {
 		const line = buildToolCallLine("readSkill", { name: "deploy" });
 		expect(line).toContain("read skill");
