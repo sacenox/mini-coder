@@ -9,7 +9,7 @@ Use the shell tool and `bun run dev` to do manual tests. One shot and interactiv
 Employ YAGNI in your review.
 Check TODO.md for know issues already tracked.
 
-Question design choices and rethink as needed while staying compliant with the original idea. This includes changing UI and console output as needed.
+Question design choices and rethink as needed while staying compliant with the original idea. This includes changing UI and console output as needed. Make sure all documentation matches the idea file.
 
 If you think the codebase is now at a good place, check the recent commit for all changes and report the final status to the user.
 
