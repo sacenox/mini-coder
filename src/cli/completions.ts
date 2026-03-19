@@ -12,13 +12,14 @@ const BUILTIN_COMMANDS = [
 	"reasoning",
 	"verbose",
 	"context",
-	"cache",
 	"agent",
 	"mcp",
 	"new",
 	"help",
 	"exit",
 	"quit",
+	"login",
+	"logout",
 ];
 
 // ─── Sub-command / parameter completions ───────────────────────────────────────
@@ -28,7 +29,6 @@ const COMMAND_PARAMS: Record<string, string[] | ((cwd: string) => string[])> = {
 	reasoning: ["on", "off"],
 	verbose: ["on", "off"],
 	context: ["prune", "cap"],
-	cache: ["on", "off", "openai", "gemini"],
 	mcp: ["list", "add", "remove", "rm"],
 	agent: (cwd) => {
 		const agents = loadAgents(cwd);
@@ -41,10 +41,6 @@ const NESTED_PARAMS: Record<string, Record<string, string[]>> = {
 	context: {
 		prune: ["off", "balanced", "aggressive"],
 		cap: ["off"],
-	},
-	cache: {
-		openai: ["in_memory", "24h"],
-		gemini: ["off"],
 	},
 };
 

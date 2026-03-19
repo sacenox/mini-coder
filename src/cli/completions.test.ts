@@ -54,18 +54,6 @@ describe("getCommandCompletions", () => {
 		expect(results).toContain("/context prune balanced");
 	});
 
-	test("completes /cache subcommands", () => {
-		const results = getCommandCompletions("/cache o", cwd);
-		expect(results).toContain("/cache on");
-		expect(results).toContain("/cache off");
-		expect(results).toContain("/cache openai");
-	});
-
-	test("completes /cache openai values", () => {
-		const results = getCommandCompletions("/cache openai i", cwd);
-		expect(results).toContain("/cache openai in_memory");
-	});
-
 	test("completes /mcp subcommands", () => {
 		const results = getCommandCompletions("/mcp ", cwd);
 		expect(results).toContain("/mcp list");
@@ -92,7 +80,7 @@ describe("getCommandCompletions", () => {
 	});
 
 	test("returns empty for fourth token", () => {
-		const results = getCommandCompletions("/cache openai in_memory extra", cwd);
+		const results = getCommandCompletions("/context prune balanced extra", cwd);
 		expect(results).toEqual([]);
 	});
 });
