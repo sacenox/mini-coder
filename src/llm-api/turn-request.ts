@@ -1,4 +1,4 @@
-import { type streamText, wrapLanguageModel } from "ai";
+import type { streamText } from "ai";
 
 import { isAnthropicModelFamily } from "./model-routing.ts";
 import type { ThinkingEffort } from "./provider-options.ts";
@@ -59,35 +59,38 @@ interface BuildStreamTextRequestInput {
 export function buildStreamTextRequest(
 	input: BuildStreamTextRequestInput,
 ): StreamTextOptions {
-	// Wrap with per-step middleware that prunes context and compacts payloads
-	// between multi-step tool-use rounds. For Anthropic models we also annotate
-	// cache breakpoints so they track the moving conversation tail.
+	// Per-step context management via prepareStep: prunes old tool history,
+	// compacts large payloads, and annotates Anthropic cache breakpoints.
+	// Runs on CoreMessages before SDK conversion, so pruneMessages operates
+	// on the correct types and message boundaries.
 	const isAnthropic = isAnthropicModelFamily(input.modelString);
-	const model = wrapLanguageModel({
-		model: input.model as Parameters<typeof wrapLanguageModel>[0]["model"],
-		middleware: [
-			{
-				specificationVersion: "v3" as const,
-				transformParams: async ({ params }) => {
-					const prompt = params.prompt as CoreMessage[];
-					const pruned = applyContextPruning(prompt);
-					const compacted = compactToolResultPayloads(pruned);
-					const final = isAnthropic
-						? annotateAnthropicCacheBreakpoints(compacted)
-						: compacted;
-					return { ...params, prompt: final as typeof params.prompt };
-				},
-			},
-		],
-	});
 
 	return {
-		model,
+		model: input.model,
 		maxOutputTokens: 16384,
 		messages: input.prepared.messages,
 		tools: input.toolSet,
 		stopWhen: continueUntilModelStops,
 		onStepFinish: input.onStepFinish,
+		prepareStep: ({ stepNumber, messages }) => {
+			// Step 0 messages are already pruned by prepareTurnMessages;
+			// only apply cache breakpoints.
+			if (stepNumber === 0) {
+				return isAnthropic
+					? {
+							messages: annotateAnthropicCacheBreakpoints(
+								messages as CoreMessage[],
+							) as typeof messages,
+						}
+					: {};
+			}
+			const pruned = applyContextPruning(messages as CoreMessage[]);
+			const compacted = compactToolResultPayloads(pruned);
+			const final = isAnthropic
+				? annotateAnthropicCacheBreakpoints(compacted)
+				: compacted;
+			return { messages: final as typeof messages };
+		},
 		...(input.prepared.systemPrompt
 			? { system: input.prepared.systemPrompt }
 			: {}),

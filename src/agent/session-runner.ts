@@ -5,6 +5,10 @@ import type { ThinkingEffort } from "../llm-api/providers.ts";
 import { resolveModel } from "../llm-api/providers.ts";
 import type { CoreMessage } from "../llm-api/turn.ts";
 import { runTurn } from "../llm-api/turn.ts";
+import {
+	applyContextPruning,
+	compactToolResultPayloads,
+} from "../llm-api/turn-context.ts";
 import type { ToolDef } from "../llm-api/types.ts";
 import { getMaxTurnIndex, saveMessages } from "../session/db/index.ts";
 import type { ActiveSession } from "../session/manager.ts";
@@ -227,6 +231,12 @@ export class SessionRunner {
 			this.totalOut += outputTokens;
 			this.lastContextTokens = contextTokens;
 			touchActiveSession(this.session);
+
+			// Prune coreHistory after each turn so the next turn starts lean.
+			// The DB retains the full history; this only affects in-memory context.
+			this.coreHistory = compactToolResultPayloads(
+				applyContextPruning(this.coreHistory),
+			);
 		} catch (err) {
 			const stubMsg = makeInterruptMessage("error");
 			this.coreHistory.push(stubMsg);
