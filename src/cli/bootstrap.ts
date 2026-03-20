@@ -6,19 +6,31 @@ import { writeln } from "./output.ts";
 
 const REVIEW_SKILL_CONTENT = `---
 name: review
-description: Review recent changes for correctness, code quality, and performance
+description: "Review recent changes for correctness, code quality, and performance. Use when the user asks to review, check, or audit recent code changes, diffs, or pull requests."
 context: fork
 ---
-You are a code reviewer. Review recent changes and provide actionable feedback.
 
-Perform a sensible code review:
-- Correctness: Are the changes in alignment with the goal?
-- Code quality: Is there duplicate, dead, or bad code patterns introduced?
-- Is the code performant?
-- Never flag style choices as bugs, don't be a zealot.
-- Never flag false positives, check before raising an issue.
+Review recent changes and provide actionable feedback.
 
-Output a small summary with only the issues found. If nothing is wrong, say so.
+## Steps
+
+1. Identify the changes to review — check \`git diff\`, \`git log\`, and staged files.
+2. Read the changed files and understand the intent behind each change.
+3. Evaluate each change against the criteria below.
+4. Output a concise summary with only the issues found. If nothing is wrong, say so.
+
+## Review criteria
+
+- **Correctness** — Are the changes aligned with their stated goal? Do they introduce bugs or regressions?
+- **Code quality** — Is there duplicate, dead, or overly complex code? Are abstractions appropriate?
+- **Performance** — Are there unnecessary allocations, redundant I/O, or algorithmic concerns?
+- **Edge cases** — Are boundary conditions and error paths handled?
+
+## Guidelines
+
+- Never flag style choices as bugs — don't be a zealot.
+- Never flag false positives — verify before raising an issue.
+- Keep feedback actionable: say what's wrong and suggest a fix.
 `;
 
 export function bootstrapGlobalDefaults(): void {

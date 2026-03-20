@@ -43,7 +43,7 @@ conventions and not introduce more specs.
 - We want to do our best to support and autodiscover community config standards:
   - AGENTS.md -> https://agents.md/
     - CLAUDE.md (same as AGENTS.md)
-  - Skills -> https://agentskills.io/client-implementation/adding-skills-support (and https://agentskills.io/client-implementation/adding-skills-support.md)
+  - Skills -> https://agentskills.io/client-implementation/adding-skills-support (and https://agentskills.io/client-implementation/adding-skills-support.md, https://agentskills.io/llms.txt)
     - Claude skills too. They claim to follow the spec, we should only need to discover them too.
 
 - Auto discovery of providers via ENV (Example: OPENCODE_API_KEY), or local servers (Example: ollama)
