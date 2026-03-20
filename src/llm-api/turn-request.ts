@@ -4,7 +4,7 @@ import { isAnthropicModelFamily } from "./model-routing.ts";
 import type { ThinkingEffort } from "./provider-options.ts";
 import {
   annotateAnthropicCacheBreakpoints,
-  applyContextPruning,
+  applyStepPruning,
   compactToolResultPayloads,
 } from "./turn-context.ts";
 import { prepareTurnMessages } from "./turn-prepare-messages.ts";
@@ -64,6 +64,7 @@ export function buildStreamTextRequest(
   // Runs on CoreMessages before SDK conversion, so pruneMessages operates
   // on the correct types and message boundaries.
   const isAnthropic = isAnthropicModelFamily(input.modelString);
+  const initialMessageCount = input.prepared.messages.length;
 
   return {
     model: input.model,
@@ -73,8 +74,8 @@ export function buildStreamTextRequest(
     stopWhen: continueUntilModelStops,
     onStepFinish: input.onStepFinish,
     prepareStep: ({ stepNumber, messages }) => {
-      // Step 0 messages are already pruned by prepareTurnMessages;
-      // only apply cache breakpoints.
+      // Step 0: already pruned by prepareTurnMessages, only annotate
+      // cache breakpoints.
       if (stepNumber === 0) {
         return isAnthropic
           ? {
@@ -84,7 +85,12 @@ export function buildStreamTextRequest(
             }
           : {};
       }
-      const pruned = applyContextPruning(messages as CoreMessage[]);
+      // Steps 1+: use step-aware pruning that preserves the cached
+      // prefix and keeps the model's chain-of-thought.
+      const pruned = applyStepPruning(
+        messages as CoreMessage[],
+        initialMessageCount,
+      );
       const compacted = compactToolResultPayloads(pruned);
       const final = isAnthropic
         ? annotateAnthropicCacheBreakpoints(compacted)

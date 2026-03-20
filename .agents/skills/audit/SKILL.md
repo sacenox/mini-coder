@@ -48,4 +48,5 @@ Write `AUDIT-REPORT.md` in the repo root with these sections:
 - **UI/UX Alignment** — comparison of actual output vs mini-coder-idea.md expectations across providers.
 - **Recommendations** — split into immediate bugs, code changes, and polish items.
 
+Don't just recite the todo items back to the user, report on the audit itself.
 Be concise. The report is analysis only — review findings with the user before making any changes.

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { CoreMessage } from "./turn.ts";
+import { applyContextPruning } from "./turn-context.ts";
 import { buildStreamTextRequest } from "./turn-request.ts";
 
 function makePrepared(messages: CoreMessage[]) {
@@ -108,29 +109,52 @@ describe("buildStreamTextRequest", () => {
     expect(result).toEqual({});
   });
 
-  test("prepareStep prunes tool history at step 1+", () => {
-    // 30 tool-call/result pairs = 91 messages (30*3 + 1 final user)
-    const messages = buildToolHistory(30);
-    const request = buildStreamTextRequest(makeDefaultInput(messages));
+  test("prepareStep preserves initial prefix at step 1+ (cache-friendly)", () => {
+    // Simulate the real flow: prepareTurnMessages prunes first, then
+    // prepareStep runs on the pruned messages + new step responses.
+    const raw = buildToolHistory(30); // 91 messages
+    const prePruned = applyContextPruning(raw); // simulates prepareTurnMessages
+    const request = buildStreamTextRequest(makeDefaultInput(prePruned));
 
-    const result = callPrepareStep(request, 1, messages);
+    // Simulate step 1: pre-pruned messages + new tool interaction
+    const withNewMessages = [
+      ...prePruned,
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "tool-call",
+            toolCallId: "new1",
+            toolName: "shell",
+            input: {},
+          },
+        ],
+      } as unknown as CoreMessage,
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "new1",
+            toolName: "shell",
+            output: { text: "new-result" },
+          },
+        ],
+      } as unknown as CoreMessage,
+    ];
 
-    // pruneMessages with "before-last-40-messages" should remove old tool
-    // history, resulting in fewer messages than the original 91
+    const result = callPrepareStep(request, 1, withNewMessages);
+
+    // Adjusted window covers everything — no messages removed
     expect(result.messages).toBeDefined();
-    expect(result.messages?.length).toBeLessThan(messages.length);
-  });
+    expect(result.messages?.length).toBe(withNewMessages.length);
 
-  test("prepareStep does not prune short conversations at step 1+", () => {
-    // 5 pairs = 16 messages, well under the 40-message threshold
-    const messages = buildToolHistory(5);
-    const request = buildStreamTextRequest(makeDefaultInput(messages));
-
-    const result = callPrepareStep(request, 1, messages);
-
-    // Short conversations should keep all messages
-    expect(result.messages).toBeDefined();
-    expect(result.messages?.length).toBe(messages.length);
+    // Initial prefix is byte-identical (cache-friendly)
+    for (let i = 0; i < prePruned.length; i++) {
+      expect(JSON.stringify(result.messages?.[i])).toBe(
+        JSON.stringify(prePruned[i]),
+      );
+    }
   });
 
   test("prepareStep adds cache breakpoints for Anthropic models", () => {
@@ -155,49 +179,57 @@ describe("buildStreamTextRequest", () => {
     expect(withCache.length).toBeGreaterThan(0);
   });
 
-  test("prepareStep prunes consistently across multiple steps", () => {
-    // Simulate growing context across steps
-    const base = buildToolHistory(30); // 91 messages
+  test("prepareStep falls back to full pruning on very long turns", () => {
+    // Build a history that exceeds the step prune fallback threshold (200)
+    const huge = buildToolHistory(70); // 70*3 + 1 = 211 messages
+    const request = buildStreamTextRequest(makeDefaultInput(huge));
+
+    const result = callPrepareStep(request, 1, huge);
+
+    // Full context pruning kicks in — old tool calls removed
+    expect(result.messages).toBeDefined();
+    expect(result.messages?.length).toBeLessThan(huge.length);
+  });
+
+  test("prepareStep preserves messages across growing steps", () => {
+    // Pre-prune to simulate real prepareTurnMessages flow
+    const raw = buildToolHistory(20); // 61 messages
+    const base = applyContextPruning(raw);
     const request = buildStreamTextRequest(makeDefaultInput(base));
 
-    // Step 1: prune from 91 messages
+    // Step 1: same as initial
     const result1 = callPrepareStep(request, 1, base);
 
-    // Step 5: add more messages (simulating accumulated tool calls)
-    const grown = [
-      ...base,
-      {
+    // Step 5: 10 new messages appended
+    const grown = [...base];
+    for (let i = 0; i < 5; i++) {
+      grown.push({
         role: "assistant",
         content: [
           {
             type: "tool-call",
-            toolCallId: "extra1",
+            toolCallId: `extra${i}`,
             toolName: "shell",
             input: {},
           },
         ],
-      } as unknown as CoreMessage,
-      {
+      } as unknown as CoreMessage);
+      grown.push({
         role: "tool",
         content: [
           {
             type: "tool-result",
-            toolCallId: "extra1",
+            toolCallId: `extra${i}`,
             toolName: "shell",
-            output: { text: "extra" },
+            output: { text: `extra-${i}` },
           },
         ],
-      } as unknown as CoreMessage,
-    ];
+      } as unknown as CoreMessage);
+    }
     const result5 = callPrepareStep(request, 5, grown);
 
-    // Both should prune, and the larger input should not produce a much
-    // larger output — pruning keeps the tail window roughly constant
-    const len1 = result1.messages?.length ?? 0;
-    const len5 = result5.messages?.length ?? 0;
-    expect(len1).toBeLessThan(base.length);
-    expect(len5).toBeLessThan(grown.length);
-    // The pruned sizes should be similar (within a small window)
-    expect(Math.abs(len1 - len5)).toBeLessThanOrEqual(4);
+    // Adjusted window preserves everything
+    expect(result1.messages?.length).toBe(base.length);
+    expect(result5.messages?.length).toBe(grown.length);
   });
 });

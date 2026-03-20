@@ -138,6 +138,46 @@ export function applyContextPruning(messages: CoreMessage[]): CoreMessage[] {
   }) as CoreMessage[];
 }
 
+/**
+ * Step-level pruning designed to preserve the Anthropic prompt cache.
+ *
+ * Two differences from applyContextPruning:
+ *
+ * 1. reasoning: "none" — keeps the model's chain-of-thought intact during
+ *    the turn. Without this, reasoning from every previous step is stripped
+ *    (the last message is always a tool result, so "before-last-message"
+ *    exempts nothing), causing the model to lose its plan and loop.
+ *
+ * 2. The tool-call window is anchored to the boundary that prepareTurnMessages
+ *    already established. prepareTurnMessages pruned with before-last-40 at
+ *    the initial message count, stripping tool calls from messages 0 through
+ *    (initialCount - 40). By using a window of 40 + newMessageCount, we keep
+ *    that boundary fixed: the initial prefix stays byte-identical across
+ *    steps, so the Anthropic cache hit covers the full conversation history
+ *    up to the user's message.
+ *
+ * Falls back to full context pruning when the conversation grows past
+ * STEP_PRUNE_FALLBACK_THRESHOLD to prevent context-window overflow on
+ * very long turns.
+ */
+const STEP_PRUNE_FALLBACK_THRESHOLD = 200;
+
+export function applyStepPruning(
+  messages: CoreMessage[],
+  initialMessageCount: number,
+): CoreMessage[] {
+  if (messages.length > STEP_PRUNE_FALLBACK_THRESHOLD) {
+    return applyContextPruning(messages);
+  }
+  const newMessageCount = Math.max(0, messages.length - initialMessageCount);
+  return pruneMessages({
+    messages,
+    reasoning: "none",
+    toolCalls: `before-last-${40 + newMessageCount}-messages`,
+    emptyMessages: "remove",
+  }) as CoreMessage[];
+}
+
 function compactHeadTail(
   serialized: string,
   maxChars = 4096,
@@ -223,6 +263,33 @@ export function compactToolResultPayloads(
   return mutated ? compacted : messages;
 }
 
+/**
+ * Strip any existing Anthropic cache breakpoints from a message so we can
+ * re-annotate cleanly without accumulating stale markers across steps.
+ */
+function stripCacheBreakpoint(msg: CoreMessage): CoreMessage {
+  const anthropic = msg?.providerOptions?.anthropic as
+    | Record<string, unknown>
+    | undefined;
+  if (!anthropic?.cacheControl) return msg;
+
+  const { cacheControl: _, ...rest } = anthropic;
+  const hasOtherKeys = Object.keys(rest).length > 0;
+  const { anthropic: __, ...otherProviders } = msg.providerOptions as Record<
+    string,
+    unknown
+  >;
+  const hasOtherProviders = Object.keys(otherProviders).length > 0;
+
+  return {
+    ...msg,
+    providerOptions: {
+      ...(hasOtherProviders ? otherProviders : {}),
+      ...(hasOtherKeys ? { anthropic: rest } : {}),
+    },
+  } as CoreMessage;
+}
+
 function withCacheBreakpoint(msg: CoreMessage): CoreMessage {
   return {
     ...msg,
@@ -243,28 +310,52 @@ function withCacheBreakpoint(msg: CoreMessage): CoreMessage {
  * Anthropic allows max 4 breakpoints per request. We reserve 1 for tool
  * caching (see annotateToolCaching), leaving 3 for messages:
  *   - First system message (stable prefix)
- *   - Last 2 non-system messages (moving tail)
+ *   - Last user message (stable within a turn — anchors the cached prefix)
+ *   - Last non-system message (moving tail)
+ *
+ * By anchoring a breakpoint at the last user message, the full conversation
+ * prefix up to the user's input is cached and reused across multi-step tool
+ * loops. Only the new assistant/tool messages after it need re-processing.
  */
 export function annotateAnthropicCacheBreakpoints(
   prompt: CoreMessage[],
 ): CoreMessage[] {
-  const result = [...prompt];
-  const systemIdxs: number[] = [];
-  const nonSystemIdxs: number[] = [];
+  // Strip existing breakpoints to prevent accumulation across steps
+  const result = prompt.map(stripCacheBreakpoint);
+
+  let firstSystemIdx = -1;
+  let lastUserIdx = -1;
+  let lastNonSystemIdx = -1;
 
   for (let i = 0; i < result.length; i++) {
-    if (result[i]?.role === "system") systemIdxs.push(i);
-    else nonSystemIdxs.push(i);
+    const role = result[i]?.role;
+    if (role === "system") {
+      if (firstSystemIdx === -1) firstSystemIdx = i;
+    } else {
+      lastNonSystemIdx = i;
+      if (role === "user") lastUserIdx = i;
+    }
   }
 
-  // Annotate first system message
-  for (const idx of systemIdxs.slice(0, 1)) {
-    result[idx] = withCacheBreakpoint(result[idx] as CoreMessage);
+  // Annotate first system message (stable prefix)
+  if (firstSystemIdx >= 0) {
+    result[firstSystemIdx] = withCacheBreakpoint(
+      result[firstSystemIdx] as CoreMessage,
+    );
   }
 
-  // Annotate last 2 non-system messages
-  for (const idx of nonSystemIdxs.slice(-2)) {
-    result[idx] = withCacheBreakpoint(result[idx] as CoreMessage);
+  // Annotate last user message (stable within a turn)
+  if (lastUserIdx >= 0) {
+    result[lastUserIdx] = withCacheBreakpoint(
+      result[lastUserIdx] as CoreMessage,
+    );
+  }
+
+  // Annotate last non-system message (moving tail) — skip if same as lastUserIdx
+  if (lastNonSystemIdx >= 0 && lastNonSystemIdx !== lastUserIdx) {
+    result[lastNonSystemIdx] = withCacheBreakpoint(
+      result[lastNonSystemIdx] as CoreMessage,
+    );
   }
 
   return result;

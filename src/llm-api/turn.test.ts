@@ -12,6 +12,7 @@ import type { CoreMessage } from "./turn.ts";
 import {
   annotateAnthropicCacheBreakpoints,
   applyContextPruning,
+  applyStepPruning,
   compactToolResultPayloads,
   getMessageDiagnostics,
 } from "./turn-context.ts";
@@ -726,6 +727,161 @@ describe("applyContextPruning", () => {
   });
 });
 
+describe("applyStepPruning", () => {
+  /** Build N tool-call/result triplets + a final user message. */
+  function buildHistory(pairCount: number): CoreMessage[] {
+    const messages: CoreMessage[] = [];
+    for (let i = 0; i < pairCount; i++) {
+      messages.push({ role: "user", content: `u${i}` });
+      messages.push({
+        role: "assistant",
+        content: [
+          {
+            type: "tool-call",
+            toolCallId: `tc${i}`,
+            toolName: "shell",
+            input: {},
+          },
+        ],
+      } as unknown as CoreMessage);
+      messages.push({
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: `tc${i}`,
+            toolName: "shell",
+            output: { text: `r${i}` },
+          },
+        ],
+      } as unknown as CoreMessage);
+    }
+    messages.push({ role: "user", content: "final" });
+    return messages;
+  }
+
+  test("preserves all messages when within threshold", () => {
+    // Pre-prune to simulate real prepareTurnMessages flow
+    const raw = buildHistory(20); // 61 messages
+    const initial = applyContextPruning(raw);
+    // Simulate 2 new messages from a tool call
+    const step2 = [
+      ...initial,
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "tool-call",
+            toolCallId: "new1",
+            toolName: "shell",
+            input: {},
+          },
+        ],
+      } as unknown as CoreMessage,
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "new1",
+            toolName: "shell",
+            output: { text: "new" },
+          },
+        ],
+      } as unknown as CoreMessage,
+    ];
+
+    const pruned = applyStepPruning(step2, initial.length);
+    // Adjusted window covers everything — no messages removed
+    expect(pruned.length).toBe(step2.length);
+  });
+
+  test("preserves reasoning (does not strip chain-of-thought)", () => {
+    const messages: CoreMessage[] = [
+      { role: "user", content: "plan" },
+      {
+        role: "assistant",
+        content: [
+          { type: "reasoning", text: "I should read the file first" },
+          {
+            type: "tool-call",
+            toolCallId: "tc1",
+            toolName: "shell",
+            input: {},
+          },
+        ],
+      } as unknown as CoreMessage,
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "tc1",
+            toolName: "shell",
+            output: { text: "file contents" },
+          },
+        ],
+      } as unknown as CoreMessage,
+    ];
+
+    const pruned = applyStepPruning(messages, messages.length);
+    const assistantContent = pruned[1]?.content as Array<{
+      type: string;
+      text?: string;
+    }>;
+    const reasoning = assistantContent.find((p) => p.type === "reasoning");
+    expect(reasoning).toBeDefined();
+    expect(reasoning?.text).toBe("I should read the file first");
+  });
+
+  test("falls back to full pruning past threshold", () => {
+    const huge = buildHistory(70); // 211 messages > 200 threshold
+    const pruned = applyStepPruning(huge, huge.length);
+    // Full context pruning removes old tool calls
+    expect(pruned.length).toBeLessThan(huge.length);
+  });
+
+  test("initial prefix is byte-identical after step pruning", () => {
+    const initial = buildHistory(25); // 76 messages
+    // Apply turn-boundary pruning (simulates prepareTurnMessages)
+    const turnPruned = applyContextPruning(initial);
+
+    // Simulate step 1: append new messages
+    const step1 = [
+      ...turnPruned,
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "tool-call",
+            toolCallId: "new1",
+            toolName: "shell",
+            input: {},
+          },
+        ],
+      } as unknown as CoreMessage,
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "new1",
+            toolName: "shell",
+            output: { text: "new" },
+          },
+        ],
+      } as unknown as CoreMessage,
+    ];
+
+    const stepPruned = applyStepPruning(step1, turnPruned.length);
+
+    // The initial prefix (turnPruned messages) must be identical
+    for (let i = 0; i < turnPruned.length; i++) {
+      expect(JSON.stringify(stepPruned[i])).toBe(JSON.stringify(turnPruned[i]));
+    }
+  });
+});
+
 describe("getMessageDiagnostics", () => {
   test("aggregates role and tool-result byte stats", () => {
     const messages: CoreMessage[] = [
@@ -813,7 +969,7 @@ describe("annotateAnthropicCacheBreakpoints", () => {
     expect(annotated[1]?.providerOptions).toEqual(cacheOpts);
   });
 
-  test("annotates last 2 non-system messages", () => {
+  test("annotates last user message and last non-system message", () => {
     const messages: CoreMessage[] = [
       { role: "user", content: "m1" },
       { role: "assistant", content: "m2" },
@@ -822,13 +978,17 @@ describe("annotateAnthropicCacheBreakpoints", () => {
     ];
     const annotated = annotateAnthropicCacheBreakpoints(messages);
 
+    // m1: not last user, not last non-system
     expect(annotated[0]?.providerOptions).toBeUndefined();
+    // m2: assistant, not last
     expect(annotated[1]?.providerOptions).toBeUndefined();
+    // m3: last user message — breakpoint
     expect(annotated[2]?.providerOptions).toEqual(cacheOpts);
+    // m4: last non-system message — breakpoint
     expect(annotated[3]?.providerOptions).toEqual(cacheOpts);
   });
 
-  test("annotates both system and last 2 non-system messages", () => {
+  test("annotates system, last user, and last non-system messages", () => {
     const messages: CoreMessage[] = [
       { role: "system", content: "System rules" },
       { role: "user", content: "m1" },
@@ -837,12 +997,13 @@ describe("annotateAnthropicCacheBreakpoints", () => {
     ];
     const annotated = annotateAnthropicCacheBreakpoints(messages);
 
-    // system
+    // system — breakpoint
     expect(annotated[0]?.providerOptions).toEqual(cacheOpts);
-    // first non-system — not in last 2
+    // m1: not last user
     expect(annotated[1]?.providerOptions).toBeUndefined();
-    // last 2 non-system
-    expect(annotated[2]?.providerOptions).toEqual(cacheOpts);
+    // m2: not last non-system
+    expect(annotated[2]?.providerOptions).toBeUndefined();
+    // m3: last user AND last non-system — single breakpoint
     expect(annotated[3]?.providerOptions).toEqual(cacheOpts);
   });
 
