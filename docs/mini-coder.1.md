@@ -6,7 +6,7 @@
 
 ## SYNOPSIS
 
-`mc` \[*options*\] \[*prompt*\]
+`mc` \[_options_\] \[_prompt_\]
 
 ## DESCRIPTION
 
@@ -14,25 +14,25 @@ Developer-focused CLI coding agent. Prioritizes dev flow — no slow startup, no
 
 ## OPTIONS
 
-`-m`, `--model` *id*
+`-m`, `--model` _id_
 : Model to use (e.g. `zen/claude-sonnet-4-6`).
 
 `-c`, `--continue`
 : Continue most recent session.
 
-`-r`, `--resume` *id*
+`-r`, `--resume` _id_
 : Resume a specific session.
 
 `-l`, `--list`
 : List recent sessions.
 
-`--cwd` *path*
+`--cwd` _path_
 : Set working directory.
 
 `-h`, `--help`
 : Display help.
 
-*prompt*
+_prompt_
 : Optional one-shot prompt. Runs once then exits.
 
 ## INTERACTIVE COMMANDS
@@ -40,13 +40,13 @@ Developer-focused CLI coding agent. Prioritizes dev flow — no slow startup, no
 `/model`
 : List all available models.
 
-`/model` *id*
+`/model` _id_
 : Switch model.
 
-`/model effort` *low|medium|high|xhigh|off*
+`/model effort` _low|medium|high|xhigh|off_
 : Set reasoning effort.
 
-`/session` \[*id*\]
+`/session` \[_id_\]
 : List sessions or switch to one.
 
 `/new`
@@ -55,22 +55,22 @@ Developer-focused CLI coding agent. Prioritizes dev flow — no slow startup, no
 `/undo`
 : Remove last turn (does NOT revert filesystem).
 
-`/reasoning` \[*on|off*\]
+`/reasoning` \[_on|off_\]
 : Toggle reasoning display.
 
-`/verbose` \[*on|off*\]
+`/verbose` \[_on|off_\]
 : Toggle output truncation.
 
 `/mcp list`
 : List MCP servers.
 
-`/mcp add` *name* `http` *url*
+`/mcp add` _name_ `http` _url_
 : Add HTTP MCP server.
 
-`/mcp add` *name* `stdio` *cmd* \[*args...*\]
+`/mcp add` _name_ `stdio` _cmd_ \[_args..._\]
 : Add stdio MCP server.
 
-`/mcp remove` *name*
+`/mcp remove` _name_
 : Remove MCP server.
 
 `/review`
@@ -79,10 +79,10 @@ Developer-focused CLI coding agent. Prioritizes dev flow — no slow startup, no
 `/login`
 : Show OAuth login status.
 
-`/login` *provider*
+`/login` _provider_
 : Login via OAuth (opens browser for device flow). Currently supports `anthropic`.
 
-`/logout` *provider*
+`/logout` _provider_
 : Clear saved OAuth tokens.
 
 `/help`

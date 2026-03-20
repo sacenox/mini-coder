@@ -5,33 +5,33 @@ const originalWrite = terminal.stderrWrite.bind(terminal);
 const originalIsTTY = process.stderr.isTTY;
 
 afterEach(() => {
-	terminal.stderrWrite = originalWrite;
-	process.stderr.isTTY = originalIsTTY;
+  terminal.stderrWrite = originalWrite;
+  process.stderr.isTTY = originalIsTTY;
 });
 
 describe("terminal.restoreTerminal", () => {
-	test("does not write cursor control escapes when stderr is not a TTY", () => {
-		let output = "";
-		terminal.stderrWrite = (text: string) => {
-			output += text;
-		};
-		process.stderr.isTTY = false;
+  test("does not write cursor control escapes when stderr is not a TTY", () => {
+    let output = "";
+    terminal.stderrWrite = (text: string) => {
+      output += text;
+    };
+    process.stderr.isTTY = false;
 
-		terminal.restoreTerminal();
+    terminal.restoreTerminal();
 
-		expect(output).toBe("");
-	});
+    expect(output).toBe("");
+  });
 
-	test("writes cursor restore escapes when stderr is a TTY", () => {
-		let output = "";
-		terminal.stderrWrite = (text: string) => {
-			output += text;
-		};
-		process.stderr.isTTY = true;
+  test("writes cursor restore escapes when stderr is a TTY", () => {
+    let output = "";
+    terminal.stderrWrite = (text: string) => {
+      output += text;
+    };
+    process.stderr.isTTY = true;
 
-		terminal.restoreTerminal();
+    terminal.restoreTerminal();
 
-		expect(output).toContain("\x1B[?25h");
-		expect(output).toContain("\r\x1B[2K");
-	});
+    expect(output).toContain("\x1B[?25h");
+    expect(output).toContain("\r\x1B[2K");
+  });
 });

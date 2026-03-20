@@ -1,49 +1,51 @@
 {
-	"name": "mini-coder",
-	"version": "0.2.0",
-	"description": "A small, fast CLI coding agent",
-	"module": "src/index.ts",
-	"type": "module",
-	"bin": {
-		"mc": "dist/mc.js",
-		"mc-edit": "dist/mc-edit.js"
-	},
-	"scripts": {
-		"build": "bun run scripts/build.ts",
-		"dev": "bun run src/index.ts",
-		"typecheck": "tsc --noEmit",
-		"lint": "biome check src",
-		"format": "biome check --write src",
-		"knip": "knip",
-		"test": "bun test --only-failures",
-		"test:verbose": "bun test",
-		"jscpd": "jscpd src",
-		"prepare": "lefthook install"
-	},
-	"dependencies": {
-		"@ai-sdk/anthropic": "^3.0.60",
-		"@ai-sdk/google": "^3.0.51",
-		"@ai-sdk/openai": "^3.0.45",
-		"@ai-sdk/openai-compatible": "^2.0.36",
-		"@modelcontextprotocol/sdk": "^1.27.1",
-		"ai": "^6.0.127",
-		"diff": "^8.0.3",
-		"yoctocolors": "^2.1.2",
-		"yoctomarkdown": "^0.0.7",
-		"zod": "^4.3.6"
-	},
-	"devDependencies": {
-		"@biomejs/biome": "^2.4.6",
-		"@types/bun": "latest",
-		"jscpd": "^4.0.8",
-		"knip": "^5.86.0",
-		"lefthook": "^2.1.4",
-		"typescript": "^5.9.3"
-	},
-	"knip": {
-		"entry": [
-			"src/mc-edit.ts"
-		]
-	},
-	"license": "MIT"
+  "name": "mini-coder",
+  "version": "0.2.0",
+  "description": "A small, fast CLI coding agent",
+  "module": "src/index.ts",
+  "type": "module",
+  "bin": {
+    "mc": "dist/mc.js",
+    "mc-edit": "dist/mc-edit.js"
+  },
+  "scripts": {
+    "prepare": "lefthook install",
+    "build": "bun run scripts/build.ts",
+    "dev": "bun run src/index.ts",
+    "format": "prettier --write --log-level warn .",
+    "check": "bun run prettier -c . && bun run typecheck && bun run lint && bun run knip && bun run jscpd && bun run test",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check src",
+    "knip": "knip",
+    "test": "bun test --only-failures",
+    "test:verbose": "bun test",
+    "jscpd": "jscpd -s src"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.60",
+    "@ai-sdk/google": "^3.0.51",
+    "@ai-sdk/openai": "^3.0.45",
+    "@ai-sdk/openai-compatible": "^2.0.36",
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "ai": "^6.0.127",
+    "diff": "^8.0.3",
+    "yoctocolors": "^2.1.2",
+    "yoctomarkdown": "^0.0.7",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.6",
+    "@types/bun": "latest",
+    "jscpd": "^4.0.8",
+    "knip": "^5.86.0",
+    "lefthook": "^2.1.4",
+    "prettier": "^3.8.1",
+    "typescript": "^5.9.3"
+  },
+  "knip": {
+    "entry": [
+      "src/mc-edit.ts"
+    ]
+  },
+  "license": "MIT"
 }

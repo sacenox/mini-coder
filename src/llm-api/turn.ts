@@ -3,15 +3,15 @@ import { isApiLogEnabled, logApiEvent } from "./api-log.ts";
 import { normalizeUnknownError } from "./error-utils.ts";
 import type { ThinkingEffort } from "./provider-options.ts";
 import {
-	annotateToolCaching,
-	buildToolSet,
-	createTurnStateTracker,
-	mapFullStreamToTurnEvents,
-	type StreamTextResultFull,
+  annotateToolCaching,
+  buildToolSet,
+  createTurnStateTracker,
+  mapFullStreamToTurnEvents,
+  type StreamTextResultFull,
 } from "./turn-execution.ts";
 import {
-	buildStreamTextRequest,
-	buildTurnPreparation,
+  buildStreamTextRequest,
+  buildTurnPreparation,
 } from "./turn-request.ts";
 
 import type { ToolDef, TurnEvent } from "./types.ts";
@@ -29,122 +29,122 @@ type CoreModel = StreamTextOptions["model"];
  * (or TurnErrorEvent on failure).
  */
 export async function* runTurn(options: {
-	model: CoreModel;
-	modelString: string;
-	messages: CoreMessage[];
-	tools: ToolDef[];
-	systemPrompt?: string;
-	signal?: AbortSignal;
-	thinkingEffort?: ThinkingEffort;
+  model: CoreModel;
+  modelString: string;
+  messages: CoreMessage[];
+  tools: ToolDef[];
+  systemPrompt?: string;
+  signal?: AbortSignal;
+  thinkingEffort?: ThinkingEffort;
 }): AsyncGenerator<TurnEvent> {
-	const {
-		model,
-		modelString,
-		messages,
-		tools,
-		systemPrompt,
-		signal,
-		thinkingEffort,
-	} = options;
+  const {
+    model,
+    modelString,
+    messages,
+    tools,
+    systemPrompt,
+    signal,
+    thinkingEffort,
+  } = options;
 
-	const rawToolSet = buildToolSet(tools);
-	const toolSet = annotateToolCaching(rawToolSet, modelString);
-	const turnState = createTurnStateTracker({
-		onStepLog: ({ finishReason, usage }) => {
-			logApiEvent("step finish", {
-				finishReason,
-				usage,
-			});
-		},
-	});
+  const rawToolSet = buildToolSet(tools);
+  const toolSet = annotateToolCaching(rawToolSet, modelString);
+  const turnState = createTurnStateTracker({
+    onStepLog: ({ finishReason, usage }) => {
+      logApiEvent("step finish", {
+        finishReason,
+        usage,
+      });
+    },
+  });
 
-	try {
-		const toolCount = Object.keys(toolSet).length;
-		const { providerOptionsResult, prepared } = buildTurnPreparation({
-			modelString,
-			messages,
-			thinkingEffort,
-			toolCount,
-			systemPrompt,
-		});
+  try {
+    const toolCount = Object.keys(toolSet).length;
+    const { providerOptionsResult, prepared } = buildTurnPreparation({
+      modelString,
+      messages,
+      thinkingEffort,
+      toolCount,
+      systemPrompt,
+    });
 
-		logApiEvent("turn start", {
-			modelString,
-			messageCount: messages.length,
-			reasoningSummaryRequested:
-				providerOptionsResult.reasoningSummaryRequested,
-		});
+    logApiEvent("turn start", {
+      modelString,
+      messageCount: messages.length,
+      reasoningSummaryRequested:
+        providerOptionsResult.reasoningSummaryRequested,
+    });
 
-		if (prepared.pruned) {
-			yield {
-				type: "context-pruned",
-				beforeMessageCount: prepared.prePruneMessageCount,
-				afterMessageCount: prepared.postPruneMessageCount,
-				removedMessageCount:
-					prepared.prePruneMessageCount - prepared.postPruneMessageCount,
-				beforeTotalBytes: prepared.prePruneTotalBytes,
-				afterTotalBytes: prepared.postPruneTotalBytes,
-				removedBytes:
-					prepared.prePruneTotalBytes - prepared.postPruneTotalBytes,
-			};
-		}
+    if (prepared.pruned) {
+      yield {
+        type: "context-pruned",
+        beforeMessageCount: prepared.prePruneMessageCount,
+        afterMessageCount: prepared.postPruneMessageCount,
+        removedMessageCount:
+          prepared.prePruneMessageCount - prepared.postPruneMessageCount,
+        beforeTotalBytes: prepared.prePruneTotalBytes,
+        afterTotalBytes: prepared.postPruneTotalBytes,
+        removedBytes:
+          prepared.prePruneTotalBytes - prepared.postPruneTotalBytes,
+      };
+    }
 
-		if (isApiLogEnabled()) {
-			logApiEvent("prompt caching configured", {
-				cacheFamily: providerOptionsResult.cacheFamily,
-			});
-		}
+    if (isApiLogEnabled()) {
+      logApiEvent("prompt caching configured", {
+        cacheFamily: providerOptionsResult.cacheFamily,
+      });
+    }
 
-		const result = streamText(
-			buildStreamTextRequest({
-				model,
-				modelString,
-				prepared,
-				toolSet,
-				onStepFinish: turnState.onStepFinish,
-				signal,
-				providerOptions: providerOptionsResult.providerOptions,
-			}),
-		) as StreamTextResultFull;
-		result.response.catch(() => {});
+    const result = streamText(
+      buildStreamTextRequest({
+        model,
+        modelString,
+        prepared,
+        toolSet,
+        onStepFinish: turnState.onStepFinish,
+        signal,
+        providerOptions: providerOptionsResult.providerOptions,
+      }),
+    ) as StreamTextResultFull;
+    result.response.catch(() => {});
 
-		for await (const event of mapFullStreamToTurnEvents(result.fullStream, {
-			onChunk: (streamChunk) => {
-				logApiEvent("stream chunk", {
-					type: streamChunk.type,
-					toolCallId: streamChunk.toolCallId,
-					toolName: streamChunk.toolName,
-					isError: streamChunk.isError,
-					hasArgs: "args" in streamChunk || "input" in streamChunk,
-					hasOutput: "output" in streamChunk || "result" in streamChunk,
-				});
-			},
-		})) {
-			yield event;
-		}
+    for await (const event of mapFullStreamToTurnEvents(result.fullStream, {
+      onChunk: (streamChunk) => {
+        logApiEvent("stream chunk", {
+          type: streamChunk.type,
+          toolCallId: streamChunk.toolCallId,
+          toolName: streamChunk.toolName,
+          isError: streamChunk.isError,
+          hasArgs: "args" in streamChunk || "input" in streamChunk,
+          hasOutput: "output" in streamChunk || "result" in streamChunk,
+        });
+      },
+    })) {
+      yield event;
+    }
 
-		const finalState = turnState.getState();
-		logApiEvent("turn complete", {
-			newMessagesCount: finalState.partialMessages.length,
-			inputTokens: finalState.inputTokens,
-			outputTokens: finalState.outputTokens,
-		});
+    const finalState = turnState.getState();
+    logApiEvent("turn complete", {
+      newMessagesCount: finalState.partialMessages.length,
+      inputTokens: finalState.inputTokens,
+      outputTokens: finalState.outputTokens,
+    });
 
-		yield {
-			type: "turn-complete",
-			inputTokens: finalState.inputTokens,
-			outputTokens: finalState.outputTokens,
-			contextTokens: finalState.contextTokens,
-			messages: finalState.partialMessages,
-		};
-	} catch (err) {
-		const finalState = turnState.getState();
-		const normalizedError = normalizeUnknownError(err);
-		logApiEvent("turn error", normalizedError);
-		yield {
-			type: "turn-error",
-			error: normalizedError,
-			partialMessages: finalState.partialMessages,
-		};
-	}
+    yield {
+      type: "turn-complete",
+      inputTokens: finalState.inputTokens,
+      outputTokens: finalState.outputTokens,
+      contextTokens: finalState.contextTokens,
+      messages: finalState.partialMessages,
+    };
+  } catch (err) {
+    const finalState = turnState.getState();
+    const normalizedError = normalizeUnknownError(err);
+    logApiEvent("turn error", normalizedError);
+    yield {
+      type: "turn-error",
+      error: normalizedError,
+      partialMessages: finalState.partialMessages,
+    };
+  }
 }

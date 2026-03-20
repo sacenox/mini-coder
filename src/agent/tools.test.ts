@@ -8,47 +8,47 @@ import { buildToolSet } from "./tools.ts";
 let cwd = "";
 
 beforeEach(() => {
-	cwd = mkdtempSync(join(tmpdir(), "agent-tools-test-"));
+  cwd = mkdtempSync(join(tmpdir(), "agent-tools-test-"));
 });
 
 afterEach(() => {
-	rmSync(cwd, { recursive: true, force: true });
+  rmSync(cwd, { recursive: true, force: true });
 });
 
 describe("tool set registration", () => {
-	test("keeps shell and skill tools while removing local file tools", () => {
-		const names = buildToolSet({
-			cwd,
-		}).map((tool) => tool.name);
+  test("keeps shell and skill tools while removing local file tools", () => {
+    const names = buildToolSet({
+      cwd,
+    }).map((tool) => tool.name);
 
-		expect(names).toContain("shell");
-		expect(names).toContain("listSkills");
-		expect(names).toContain("readSkill");
-		expect(names).not.toContain("read");
-		expect(names).not.toContain("create");
-		expect(names).not.toContain("replace");
-		expect(names).not.toContain("insert");
-	});
+    expect(names).toContain("shell");
+    expect(names).toContain("listSkills");
+    expect(names).toContain("readSkill");
+    expect(names).not.toContain("read");
+    expect(names).not.toContain("create");
+    expect(names).not.toContain("replace");
+    expect(names).not.toContain("insert");
+  });
 });
 
 describe("resolvePath", () => {
-	test("expands ~ to home directory", () => {
-		const { filePath } = resolvePath("/any/cwd", "~/foo/bar");
-		expect(filePath).toBe(join(homedir(), "foo/bar"));
-	});
+  test("expands ~ to home directory", () => {
+    const { filePath } = resolvePath("/any/cwd", "~/foo/bar");
+    expect(filePath).toBe(join(homedir(), "foo/bar"));
+  });
 
-	test("resolves absolute path as-is", () => {
-		const { filePath } = resolvePath("/any/cwd", "/tmp/foo");
-		expect(filePath).toBe("/tmp/foo");
-	});
+  test("resolves absolute path as-is", () => {
+    const { filePath } = resolvePath("/any/cwd", "/tmp/foo");
+    expect(filePath).toBe("/tmp/foo");
+  });
 
-	test("resolves relative path against cwd", () => {
-		const { filePath } = resolvePath("/my/cwd", "foo/bar");
-		expect(filePath).toBe("/my/cwd/foo/bar");
-	});
+  test("resolves relative path against cwd", () => {
+    const { filePath } = resolvePath("/my/cwd", "foo/bar");
+    expect(filePath).toBe("/my/cwd/foo/bar");
+  });
 
-	test("normalizes quoted and padded path input", () => {
-		const { filePath } = resolvePath("/my/cwd", '  "~/foo/bar"  ');
-		expect(filePath).toBe(join(homedir(), "foo/bar"));
-	});
+  test("normalizes quoted and padded path input", () => {
+    const { filePath } = resolvePath("/my/cwd", '  "~/foo/bar"  ');
+    expect(filePath).toBe(join(homedir(), "foo/bar"));
+  });
 });

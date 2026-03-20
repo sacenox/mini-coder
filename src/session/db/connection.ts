@@ -4,13 +4,13 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 function getConfigDir(): string {
-	return join(homedir(), ".config", "mini-coder");
+  return join(homedir(), ".config", "mini-coder");
 }
 
 function getDbPath(): string {
-	const dir = getConfigDir();
-	if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-	return join(dir, "sessions.db");
+  const dir = getConfigDir();
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  return join(dir, "sessions.db");
 }
 
 const DB_VERSION = 4;
@@ -105,55 +105,55 @@ const SCHEMA = `
 let _db: Database | null = null;
 
 export function isSqliteBusyError(err: unknown): boolean {
-	if (!(err instanceof Error)) return false;
-	const message = err.message.toLowerCase();
-	return (
-		message.includes("database is locked") || message.includes("sqlite_busy")
-	);
+  if (!(err instanceof Error)) return false;
+  const message = err.message.toLowerCase();
+  return (
+    message.includes("database is locked") || message.includes("sqlite_busy")
+  );
 }
 
 function runBestEffortMaintenance(task: () => void): void {
-	try {
-		task();
-	} catch (err) {
-		if (!isSqliteBusyError(err)) throw err;
-	}
+  try {
+    task();
+  } catch (err) {
+    if (!isSqliteBusyError(err)) throw err;
+  }
 }
 
 function configureDb(db: Database): void {
-	db.exec("PRAGMA journal_mode=WAL;");
-	db.exec("PRAGMA foreign_keys=ON;");
-	db.exec("PRAGMA busy_timeout=1000;");
+  db.exec("PRAGMA journal_mode=WAL;");
+  db.exec("PRAGMA foreign_keys=ON;");
+  db.exec("PRAGMA busy_timeout=1000;");
 }
 
 export function getDb(): Database {
-	if (!_db) {
-		const dbPath = getDbPath();
-		let db = new Database(dbPath, { create: true });
-		configureDb(db);
+  if (!_db) {
+    const dbPath = getDbPath();
+    let db = new Database(dbPath, { create: true });
+    configureDb(db);
 
-		const version =
-			db.query<{ user_version: number }, []>("PRAGMA user_version").get()
-				?.user_version ?? 0;
-		if (version !== DB_VERSION) {
-			try {
-				db.close();
-			} catch {
-				// ignore
-			}
-			for (const path of [dbPath, `${dbPath}-wal`, `${dbPath}-shm`]) {
-				if (existsSync(path)) unlinkSync(path);
-			}
-			db = new Database(dbPath, { create: true });
-			configureDb(db);
-			db.exec(SCHEMA);
-			db.exec(`PRAGMA user_version = ${DB_VERSION};`);
-		} else {
-			db.exec(SCHEMA);
-		}
-		_db = db;
-	}
-	return _db;
+    const version =
+      db.query<{ user_version: number }, []>("PRAGMA user_version").get()
+        ?.user_version ?? 0;
+    if (version !== DB_VERSION) {
+      try {
+        db.close();
+      } catch {
+        // ignore
+      }
+      for (const path of [dbPath, `${dbPath}-wal`, `${dbPath}-shm`]) {
+        if (existsSync(path)) unlinkSync(path);
+      }
+      db = new Database(dbPath, { create: true });
+      configureDb(db);
+      db.exec(SCHEMA);
+      db.exec(`PRAGMA user_version = ${DB_VERSION};`);
+    } else {
+      db.exec(SCHEMA);
+    }
+    _db = db;
+  }
+  return _db;
 }
 
 /** Keep only this many most-recent sessions. */
@@ -166,40 +166,40 @@ const MAX_PROMPT_HISTORY = 500;
  * Call once at startup (after getDb()).
  */
 export function pruneOldData(): void {
-	const db = getDb();
-	let deletedSessions = 0;
-	let deletedHistory = 0;
+  const db = getDb();
+  let deletedSessions = 0;
+  let deletedHistory = 0;
 
-	runBestEffortMaintenance(() => {
-		deletedSessions = db.run(
-			`DELETE FROM sessions WHERE id NOT IN (
+  runBestEffortMaintenance(() => {
+    deletedSessions = db.run(
+      `DELETE FROM sessions WHERE id NOT IN (
        SELECT id FROM sessions ORDER BY updated_at DESC LIMIT ?
      )`,
-			[MAX_SESSIONS],
-		).changes;
+      [MAX_SESSIONS],
+    ).changes;
 
-		deletedHistory = db.run(
-			`DELETE FROM prompt_history WHERE id NOT IN (
+    deletedHistory = db.run(
+      `DELETE FROM prompt_history WHERE id NOT IN (
        SELECT id FROM prompt_history ORDER BY id DESC LIMIT ?
      )`,
-			[MAX_PROMPT_HISTORY],
-		).changes;
-	});
+      [MAX_PROMPT_HISTORY],
+    ).changes;
+  });
 
-	// Reclaim pages freed by deletions.
-	if (deletedSessions > 0 || deletedHistory > 0) {
-		// Defer VACUUM off the synchronous startup path so the CLI prompt
-		// renders before the (potentially slow) page-reclaim scan runs.
-		setImmediate(() => {
-			runBestEffortMaintenance(() => {
-				db.exec("VACUUM;");
-			});
-		});
-	}
+  // Reclaim pages freed by deletions.
+  if (deletedSessions > 0 || deletedHistory > 0) {
+    // Defer VACUUM off the synchronous startup path so the CLI prompt
+    // renders before the (potentially slow) page-reclaim scan runs.
+    setImmediate(() => {
+      runBestEffortMaintenance(() => {
+        db.exec("VACUUM;");
+      });
+    });
+  }
 
-	// Passive checkpoint keeps startup opportunistic: if another process is using
-	// the database, we skip shrinking the WAL instead of failing the whole CLI.
-	runBestEffortMaintenance(() => {
-		db.exec("PRAGMA wal_checkpoint(PASSIVE);");
-	});
+  // Passive checkpoint keeps startup opportunistic: if another process is using
+  // the database, we skip shrinking the WAL instead of failing the whole CLI.
+  runBestEffortMaintenance(() => {
+    db.exec("PRAGMA wal_checkpoint(PASSIVE);");
+  });
 }

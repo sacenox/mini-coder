@@ -2,73 +2,74 @@ import type { ThinkingEffort } from "../../llm-api/providers.ts";
 import { getDb } from "./connection.ts";
 
 function getSetting(key: string): string | null {
-	const row = getDb()
-		.query<{ value: string }, [string]>(
-			"SELECT value FROM settings WHERE key = ?",
-		)
-		.get(key);
-	return row?.value ?? null;
+  const row = getDb()
+    .query<
+      { value: string },
+      [string]
+    >("SELECT value FROM settings WHERE key = ?")
+    .get(key);
+  return row?.value ?? null;
 }
 
 function setSetting(key: string, value: string): void {
-	getDb().run(
-		`INSERT INTO settings (key, value) VALUES (?, ?)
+  getDb().run(
+    `INSERT INTO settings (key, value) VALUES (?, ?)
      ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-		[key, value],
-	);
+    [key, value],
+  );
 }
 
 export function parseBooleanSetting(
-	value: string | null,
-	fallback: boolean,
+  value: string | null,
+  fallback: boolean,
 ): boolean {
-	if (value === null) return fallback;
-	const normalized = value.trim().toLowerCase();
-	if (normalized === "true" || normalized === "on" || normalized === "1") {
-		return true;
-	}
-	if (normalized === "false" || normalized === "off" || normalized === "0") {
-		return false;
-	}
-	return fallback;
+  if (value === null) return fallback;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "true" || normalized === "on" || normalized === "1") {
+    return true;
+  }
+  if (normalized === "false" || normalized === "off" || normalized === "0") {
+    return false;
+  }
+  return fallback;
 }
 
 export function getPreferredModel(): string | null {
-	return getSetting("preferred_model");
+  return getSetting("preferred_model");
 }
 
 export function setPreferredModel(model: string): void {
-	setSetting("preferred_model", model);
+  setSetting("preferred_model", model);
 }
 
 export function getPreferredThinkingEffort(): ThinkingEffort | null {
-	const v = getSetting("preferred_thinking_effort");
-	if (v === "low" || v === "medium" || v === "high" || v === "xhigh") return v;
-	return null;
+  const v = getSetting("preferred_thinking_effort");
+  if (v === "low" || v === "medium" || v === "high" || v === "xhigh") return v;
+  return null;
 }
 
 export function setPreferredThinkingEffort(
-	effort: ThinkingEffort | null,
+  effort: ThinkingEffort | null,
 ): void {
-	if (effort === null) {
-		getDb().run("DELETE FROM settings WHERE key = 'preferred_thinking_effort'");
-	} else {
-		setSetting("preferred_thinking_effort", effort);
-	}
+  if (effort === null) {
+    getDb().run("DELETE FROM settings WHERE key = 'preferred_thinking_effort'");
+  } else {
+    setSetting("preferred_thinking_effort", effort);
+  }
 }
 
 export function getPreferredShowReasoning(): boolean {
-	return parseBooleanSetting(getSetting("preferred_show_reasoning"), false);
+  return parseBooleanSetting(getSetting("preferred_show_reasoning"), false);
 }
 
 export function setPreferredShowReasoning(show: boolean): void {
-	setSetting("preferred_show_reasoning", show ? "true" : "false");
+  setSetting("preferred_show_reasoning", show ? "true" : "false");
 }
 
 export function getPreferredVerboseOutput(): boolean {
-	return parseBooleanSetting(getSetting("preferred_verbose_output"), false);
+  return parseBooleanSetting(getSetting("preferred_verbose_output"), false);
 }
 
 export function setPreferredVerboseOutput(verbose: boolean): void {
-	setSetting("preferred_verbose_output", verbose ? "true" : "false");
+  setSetting("preferred_verbose_output", verbose ? "true" : "false");
 }

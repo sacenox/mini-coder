@@ -8,36 +8,36 @@ import { listSkillsTool, readSkillTool } from "../tools/skills.ts";
  * Inject a default cwd if not provided by the LLM.
  */
 function withCwdDefault(tool: ToolDef, cwd: string): ToolDef {
-	const originalExecute = tool.execute;
-	return {
-		...tool,
-		execute: async (input: unknown) => {
-			const patched = (
-				typeof input === "object" && input !== null ? input : {}
-			) as Record<string, unknown>;
-			if (patched.cwd === undefined) patched.cwd = cwd;
-			return originalExecute(patched);
-		},
-	};
+  const originalExecute = tool.execute;
+  return {
+    ...tool,
+    execute: async (input: unknown) => {
+      const patched = (
+        typeof input === "object" && input !== null ? input : {}
+      ) as Record<string, unknown>;
+      if (patched.cwd === undefined) patched.cwd = cwd;
+      return originalExecute(patched);
+    },
+  };
 }
 
 export function buildToolSet(opts: { cwd: string }): ToolDef[] {
-	const { cwd } = opts;
+  const { cwd } = opts;
 
-	const shell = withCwdDefault(shellTool as ToolDef, cwd) as ToolDef<
-		{ cwd?: string; command: string },
-		ShellOutput
-	>;
+  const shell = withCwdDefault(shellTool as ToolDef, cwd) as ToolDef<
+    { cwd?: string; command: string },
+    ShellOutput
+  >;
 
-	const tools: ToolDef[] = [
-		shell as ToolDef,
-		withCwdDefault(listSkillsTool as ToolDef, cwd),
-		withCwdDefault(readSkillTool as ToolDef, cwd),
-	];
+  const tools: ToolDef[] = [
+    shell as ToolDef,
+    withCwdDefault(listSkillsTool as ToolDef, cwd),
+    withCwdDefault(readSkillTool as ToolDef, cwd),
+  ];
 
-	if (process.env.EXA_API_KEY) {
-		tools.push(webSearchTool as ToolDef, webContentTool as ToolDef);
-	}
+  if (process.env.EXA_API_KEY) {
+    tools.push(webSearchTool as ToolDef, webContentTool as ToolDef);
+  }
 
-	return tools;
+  return tools;
 }

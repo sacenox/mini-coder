@@ -22,13 +22,13 @@ Output a small summary with only the issues found. If nothing is wrong, say so.
 `;
 
 export function bootstrapGlobalDefaults(): void {
-	const skillDir = join(homedir(), ".agents", "skills", "review");
-	const skillPath = join(skillDir, "SKILL.md");
-	if (!existsSync(skillPath)) {
-		mkdirSync(skillDir, { recursive: true });
-		writeFileSync(skillPath, REVIEW_SKILL_CONTENT, "utf-8");
-		writeln(
-			`${c.green("✓")} created ${c.dim("~/.agents/skills/review/SKILL.md")} ${c.dim("(edit it to customise your reviews)")}`,
-		);
-	}
+  const skillDir = join(homedir(), ".agents", "skills", "review");
+  const skillPath = join(skillDir, "SKILL.md");
+  if (!existsSync(skillPath)) {
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(skillPath, REVIEW_SKILL_CONTENT, "utf-8");
+    writeln(
+      `${c.green("✓")} created ${c.dim("~/.agents/skills/review/SKILL.md")} ${c.dim("(edit it to customise your reviews)")}`,
+    );
+  }
 }

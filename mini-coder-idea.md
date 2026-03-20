@@ -21,7 +21,7 @@ conventions and not introduce more specs.
 
 ## Features:
 
-We want to do our best to support and autodiscover community config standards:
+- We want to do our best to support and autodiscover community config standards:
   - AGENTS.md -> https://agents.md/
     - CLAUDE.md (same as AGENTS.md)
   - Skills -> https://agentskills.io/client-implementation/adding-skills-support (and https://agentskills.io/client-implementation/adding-skills-support.md)
@@ -59,14 +59,13 @@ We want to do our best to support and autodiscover community config standards:
   - Optional `webSearch` and `webContent` tools when `EXA_API_KEY` is set.
   - Cross model system prompt with clear descriptions of the expected dev flow and guidance as a code agent focused on shell first.
 
--Other Commands in CLI prompt:
+- Other Commands in CLI prompt:
   - `/reasoning` toggles display of model reasoning output.
   - `/verbose` toggles output truncation. Tuncates large outputs keeping start and end sections and truncating the rest when verbose is off. This controls truncation for the user output, it's a visibility UI concern
   - `/review` reviews recent changes via a global custom skill installed at app start (`~/.agents/skills/review.md`), and can be customized or shadowed locally.
 
 - Connect to MCP servers over Streamable HTTP / SSE fallback or stdio.
   - `/mcp` list/add/remove mcp servers. servers are stored in sqlite
-  
 
 ## UI/Output
 

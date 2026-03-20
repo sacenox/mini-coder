@@ -1,15 +1,4 @@
 pre-commit:
-  parallel: true
   commands:
-    jscpd:
-      run: bun run jscpd
-    knip:
-      run: bun run knip
-    typecheck:
-      run: bun run typecheck
-    format:
-      run: bun run format
-    lint:
-      run: bun run lint
-    test:
-      run: bun run test
+    check:
+      run: bun run check
