@@ -356,11 +356,26 @@ export async function* mapFullStreamToTurnEvents(
   stream: AsyncIterable<{ type?: string; [key: string]: unknown }>,
   opts: {
     onChunk?: (chunk: { type?: string; [key: string]: unknown }) => void;
+    stepPruneQueue?: {
+      removedMessageCount: number;
+      removedBytes: number;
+      beforeMessageCount: number;
+      afterMessageCount: number;
+      beforeTotalBytes: number;
+      afterTotalBytes: number;
+    }[];
   },
 ): AsyncGenerator<TurnEvent> {
   const toolCallTracker = new StreamToolCallTracker();
   const textPhaseTracker = new StreamTextPhaseTracker();
   for await (const originalChunk of stream) {
+    // Drain step-pruning records before each new step so the user sees
+    // the pruning notification before the step's output begins.
+    if (originalChunk.type === "start-step" && opts.stepPruneQueue) {
+      for (const rec of opts.stepPruneQueue.splice(0)) {
+        yield { type: "context-pruned", ...rec };
+      }
+    }
     const prepared = toolCallTracker.prepare(originalChunk);
     const chunk = prepared.chunk;
     const route = textPhaseTracker.route(chunk);

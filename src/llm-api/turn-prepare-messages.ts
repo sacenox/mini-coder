@@ -127,9 +127,7 @@ export function prepareTurnMessages(input: {
     finalMessages = [...systemMessages, ...finalMessages];
   }
 
-  const wasPruned =
-    postStats.messageCount < preStats.messageCount ||
-    postStats.totalBytes < preStats.totalBytes;
+  const wasPruned = postStats.messageCount < preStats.messageCount;
 
   return {
     messages: finalMessages,

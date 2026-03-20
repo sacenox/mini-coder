@@ -27,6 +27,7 @@ function makeDefaultInput(
     onStepFinish: () => {},
     signal: undefined,
     providerOptions: {},
+    stepPruneQueue: [],
   };
 }
 

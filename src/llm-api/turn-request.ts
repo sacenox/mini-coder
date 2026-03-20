@@ -6,9 +6,19 @@ import {
   annotateAnthropicCacheBreakpoints,
   applyStepPruning,
   compactToolResultPayloads,
+  getMessageStats,
 } from "./turn-context.ts";
 import { prepareTurnMessages } from "./turn-prepare-messages.ts";
 import { buildTurnProviderOptions } from "./turn-provider-options.ts";
+
+export interface StepPruneRecord {
+  removedMessageCount: number;
+  removedBytes: number;
+  beforeMessageCount: number;
+  afterMessageCount: number;
+  beforeTotalBytes: number;
+  afterTotalBytes: number;
+}
 
 type StreamTextOptions = Parameters<typeof streamText>[0];
 type CoreMessage = NonNullable<StreamTextOptions["messages"]>[number];
@@ -54,6 +64,7 @@ interface BuildStreamTextRequestInput {
   onStepFinish: NonNullable<StreamTextOptions["onStepFinish"]>;
   signal: AbortSignal | undefined;
   providerOptions: Record<string, unknown>;
+  stepPruneQueue: StepPruneRecord[];
 }
 
 export function buildStreamTextRequest(
@@ -87,10 +98,24 @@ export function buildStreamTextRequest(
       }
       // Steps 1+: use step-aware pruning that preserves the cached
       // prefix and keeps the model's chain-of-thought.
+      const preCount = messages.length;
       const pruned = applyStepPruning(
         messages as CoreMessage[],
         initialMessageCount,
       );
+      const postCount = pruned.length;
+      if (postCount < preCount) {
+        const pre = getMessageStats(messages as CoreMessage[]);
+        const post = getMessageStats(pruned);
+        input.stepPruneQueue.push({
+          beforeMessageCount: pre.messageCount,
+          afterMessageCount: post.messageCount,
+          removedMessageCount: pre.messageCount - post.messageCount,
+          beforeTotalBytes: pre.totalBytes,
+          afterTotalBytes: post.totalBytes,
+          removedBytes: pre.totalBytes - post.totalBytes,
+        });
+      }
       const compacted = compactToolResultPayloads(pruned);
       const final = isAnthropic
         ? annotateAnthropicCacheBreakpoints(compacted)

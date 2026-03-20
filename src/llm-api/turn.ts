@@ -12,6 +12,7 @@ import {
 import {
   buildStreamTextRequest,
   buildTurnPreparation,
+  type StepPruneRecord,
 } from "./turn-request.ts";
 
 import type { ToolDef, TurnEvent } from "./types.ts";
@@ -95,6 +96,8 @@ export async function* runTurn(options: {
       });
     }
 
+    const stepPruneQueue: StepPruneRecord[] = [];
+
     const result = streamText(
       buildStreamTextRequest({
         model,
@@ -104,11 +107,13 @@ export async function* runTurn(options: {
         onStepFinish: turnState.onStepFinish,
         signal,
         providerOptions: providerOptionsResult.providerOptions,
+        stepPruneQueue,
       }),
     ) as StreamTextResultFull;
     result.response.catch(() => {});
 
     for await (const event of mapFullStreamToTurnEvents(result.fullStream, {
+      stepPruneQueue,
       onChunk: (streamChunk) => {
         logApiEvent("stream chunk", {
           type: streamChunk.type,
