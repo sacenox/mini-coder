@@ -3,11 +3,11 @@ name: audit
 description: Full codebase audit — code review, multi-provider UI testing, and combined report.
 ---
 
-Run a complete audit of the mini-coder implementation. Use `mini-coder-idea.md` and `TODO.md` as source of truth throughout.
+Run a complete audit of the mini-coder implementation.
 
 ## Phase 1 — Code & Architecture Review
 
-Audit the codebase against `mini-coder-idea.md`:
+Audit the codebase against the core idea:
 
 - Question design choices and rethink as needed while staying compliant with the original idea.
 - Employ KISS, DRY, and YAGNI — no surprise additions or eager optimizations.
@@ -45,7 +45,7 @@ Write `AUDIT-REPORT.md` in the repo root with these sections:
 
 - **Summary** — how you tested and what you found.
 - **Code & Architecture** — correctness issues, KISS, DRY, and YAGNI violations, idea misalignment.
-- **UI/UX Alignment** — comparison of actual output vs mini-coder-idea.md expectations across providers.
+- **UI/UX Alignment** — comparison of actual output vs the core idea's expectations across providers.
 - **Recommendations** — split into immediate bugs, code changes, and polish items.
 
 Don't just recite the todo items back to the user, report on the audit itself.
