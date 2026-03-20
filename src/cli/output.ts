@@ -1,7 +1,6 @@
-import { existsSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
 import * as c from "yoctocolors";
+import { discoverContextFiles } from "../agent/context-files.ts";
 import type {
   AgentReporter,
   StatusBarData,
@@ -108,22 +107,6 @@ export function renderError(err: unknown, context = "render"): void {
 }
 
 // ─── Banner ───────────────────────────────────────────────────────────────────
-
-function discoverContextFiles(cwd: string): string[] {
-  const found: string[] = [];
-  const globalDir = join(HOME, ".agents");
-  const candidates: [string, string][] = [
-    [join(globalDir, "AGENTS.md"), "~/.agents/AGENTS.md"],
-    [join(globalDir, "CLAUDE.md"), "~/.agents/CLAUDE.md"],
-    [join(cwd, ".agents", "AGENTS.md"), ".agents/AGENTS.md"],
-    [join(cwd, "CLAUDE.md"), "CLAUDE.md"],
-    [join(cwd, "AGENTS.md"), "AGENTS.md"],
-  ];
-  for (const [abs, label] of candidates) {
-    if (existsSync(abs)) found.push(label);
-  }
-  return found;
-}
 
 export function renderBanner(model: string, cwd: string): void {
   writeln();

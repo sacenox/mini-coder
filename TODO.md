@@ -7,6 +7,8 @@
 
 # Deferred fixes
 
+- **Thinking effort breaks `claude-haiku-4-5` via Zen** — The model info cache (sourced from models.dev) marks `claude-haiku-4-5` as `reasoning: 1`. When a thinking effort is persisted (e.g. `medium`), the app sends `"thinking": {"type": "adaptive"}` which Zen (and likely the Anthropic API) rejects with a 400: _"adaptive thinking is not supported on this model"_. The `supportsThinking()` check is too broad — it trusts the models.dev flag but doesn't validate whether the specific model actually accepts the adaptive thinking API parameter. Without a persisted thinking effort the model works fine.
+- **`zen/claude-3-5-haiku` 404** — The AI SDK auto-resolves `claude-3-5-haiku` to `claude-3-5-haiku-20241022`, which Zen doesn't serve. The Zen endpoint expects exactly `claude-3-5-haiku`. This is an SDK behaviour issue that may need a workaround or documentation.
 - Several truncation helpers accross the cli module files, consolidate in a cli/truncate.ts for rendering truncation.
 - When a shell tool call hits max timeout, the turn ends and the parent terminal is left in a broken state.
 - **MiniMax empty lines in one-shot** — Investigate empty text deltas. May need to skip rendering deltas that are only whitespace at stream start.

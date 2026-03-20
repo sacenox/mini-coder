@@ -36,7 +36,7 @@ conventions and not introduce more specs.
   - `/new` starts a new session with clean context. Clean UI and fresh session display
 
 - Enriched user prompt:
-  - Rich line editing/history/image paste
+  - Rich line editing/history/image paste. Enter submits.
   - Seamless shell integration with `!` in prompt input. Runs command in subprocess and sends the output to the llm as user message.
   - Reference skills from the working directory and global configs with `/` in prompt input, plus autocomplete for skills to include in the prompt.
   - Press `ESC` at any point during an assistant response to interrupt it: the partial response is preserved in history with an interrupt stub appended (so the LLM retains context), and the user is returned to the prompt silently. `ctrl+c` exits forcefully. `ctrl+d` (EOF) gracefully exits.

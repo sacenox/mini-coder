@@ -100,7 +100,7 @@ export async function initAgent(opts: AgentOptions): Promise<{
       runner.verboseOutput = verbose;
       setPreferredVerboseOutput(verbose);
     },
-    cwd, // TODO: What is this used for? Why is it here?
+    cwd,
     undoLastTurn: () => runner.undoLastTurn(),
     connectMcpServer: connectAndAddMcp,
     startSpinner: (label?: string) => opts.reporter.startSpinner(label),

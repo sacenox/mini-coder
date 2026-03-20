@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { buildSystemPrompt, loadLocalContextFile } from "./system-prompt.ts";
+import { loadLocalContextFile } from "./context-files.ts";
+import { buildSystemPrompt } from "./system-prompt.ts";
 
 let tmpDir: string;
 let fakeHome: string;

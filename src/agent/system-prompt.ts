@@ -1,63 +1,10 @@
-import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
 import { tildePath } from "../cli/output.ts";
 import { loadSkillsIndex } from "../cli/skills.ts";
-
-function tryReadFile(p: string): string | null {
-  if (!existsSync(p)) return null;
-  try {
-    return readFileSync(p, "utf-8");
-  } catch {
-    return null;
-  }
-}
-
-function collectFiles(...paths: string[]): string | null {
-  const parts: string[] = [];
-  for (const p of paths) {
-    const content = tryReadFile(p);
-    if (content) parts.push(content);
-  }
-  return parts.length > 0 ? parts.join("\n\n") : null;
-}
-
-function loadGlobalContextFile(homeDir: string): string | null {
-  return collectFiles(
-    join(homeDir, ".agents", "AGENTS.md"),
-    join(homeDir, ".agents", "CLAUDE.md"),
-    join(homeDir, ".claude", "CLAUDE.md"),
-  );
-}
-
-/** Try reading all context files from a single directory. */
-function loadContextFileAt(dir: string): string | null {
-  return collectFiles(
-    join(dir, ".agents", "AGENTS.md"),
-    join(dir, ".agents", "CLAUDE.md"),
-    join(dir, ".claude", "CLAUDE.md"),
-    join(dir, "CLAUDE.md"),
-    join(dir, "AGENTS.md"),
-  );
-}
-
-/**
- * Walk from cwd up to the git root (or just cwd if outside a repo),
- * returning the nearest context file found.
- */
-export function loadLocalContextFile(cwd: string): string | null {
-  const start = resolve(cwd);
-  let current = start;
-  while (true) {
-    const content = loadContextFileAt(current);
-    if (content) return content;
-    if (existsSync(join(current, ".git"))) break;
-    const parent = dirname(current);
-    if (parent === current) break;
-    current = parent;
-  }
-  return null;
-}
+import {
+  loadGlobalContextFile,
+  loadLocalContextFile,
+} from "./context-files.ts";
 
 const AUTONOMY = `
 
