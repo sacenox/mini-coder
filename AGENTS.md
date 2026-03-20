@@ -2,6 +2,8 @@
 
 - App data folder is in `~/.config/mini-coder/`. It includes sqlite db file and logs.
 - README.md is cosmetic for users, don't edit unless asked to.
+- Known issues are in `docs` as well as the other man-like document about mini-coder.
+- Create or reuse the `TODO.md` file to track your progress in long tasks. Remove completed items, keep it clean, concise, and up to date at all times. Track it in git.
 - Write minimal tests, focused on our code's logic. Never test dependencies. Never use mocks or stubs.
 - Keep the repo pristine: no failing tests, no lint, no build issues, no `ignore`-style comments. No failing hooks.
 - Verify your changes, you can use the shell tool and `tmux` to test as needed.
@@ -13,7 +15,6 @@
 - Don't make random test files, if you need to test something, write a propper unit test.
 - If you make temp files, clean them up when you are done.
 - Use Conventional Commits formatting for commit messages. When you commit, include the whole diff unless told otherwise.
-- Create or reuse the `TODO.md` file to track your progress in long tasks. Remove completed items, keep it clean and concise. Track it in git.
 
 ## Core idea, treat this as the source of truth for the design/implementation.
 

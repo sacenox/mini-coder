@@ -10,7 +10,7 @@ Run a complete audit of the mini-coder implementation.
 
 Audit the codebase against the project's core idea (the source of truth for design):
 
-1. Read the core idea section in AGENTS.md (or the system prompt context).
+1. Read the core idea section in AGENTS.md (or the system prompt context). And the KNOWN_ISSUES.md files.
 2. Walk through each module and question design choices — stay compliant with the original idea.
 3. Employ KISS, DRY, and YAGNI — flag surprise additions or eager optimizations.
 4. Check `TODO.md` for known issues already tracked — don't duplicate them.
