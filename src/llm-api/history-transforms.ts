@@ -1,14 +1,13 @@
 export {
-	sanitizeGeminiToolMessages,
-	sanitizeGeminiToolMessagesWithMetadata,
+  sanitizeGeminiToolMessages,
+  sanitizeGeminiToolMessagesWithMetadata,
 } from "./history/gemini.ts";
 
 export {
-	isOpenAIGPT,
-	normalizeOpenAICompatibleToolCallInputs,
-	stripGPTCommentaryFromHistory,
-	stripOpenAIHistoryTransforms,
-	stripOpenAIItemIdsFromHistory,
+  isOpenAIGPT,
+  normalizeOpenAICompatibleToolCallInputs,
+  stripGPTCommentaryFromHistory,
+  stripOpenAIHistoryTransforms,
 } from "./history/openai.ts";
 export { getReasoningDeltaFromStreamChunk } from "./history/reasoning.ts";
 export { stripToolRuntimeInputFields } from "./history/shared.ts";
