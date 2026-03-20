@@ -49,7 +49,6 @@ type SkillFrontmatter = {
   context?: string;
 };
 
-// TODO: Isn't this repeating what we have in frontmatter.ts? Update that and use it here.
 function parseSkillFrontmatter(filePath: string): SkillFrontmatter {
   let fd: number | null = null;
   try {
@@ -99,7 +98,6 @@ function candidateConflictName(candidate: SkillCandidate): string {
 function findGitBoundary(cwd: string): string | null {
   let current = resolve(cwd);
   while (true) {
-    // TODO: What happens when there is no git repo? we need to check first, right now we just blindly walk the whole filesystem
     if (existsSync(join(current, ".git"))) return current;
     const parent = dirname(current);
     if (parent === current) return null;

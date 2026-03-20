@@ -43,7 +43,7 @@ function renderStatusLine(segments: string[]): string {
 
 export function buildStatusBarSignature(opts: StatusBarData): string {
   return JSON.stringify({
-    model: opts.model, // TODO: Combine with thinking effort: provider/model effort
+    model: opts.model,
     cwd: opts.cwd,
     gitBranch: opts.gitBranch,
     sessionId: opts.sessionId,
@@ -51,8 +51,8 @@ export function buildStatusBarSignature(opts: StatusBarData): string {
     outputTokens: opts.outputTokens,
     contextTokens: opts.contextTokens,
     contextWindow: opts.contextWindow,
-    thinkingEffort: opts.thinkingEffort ?? null, // TODO: Combine with provider/model display
-    showReasoning: opts.showReasoning ?? false, // TODO: We show this in the banner, let's remove it from here
+    thinkingEffort: opts.thinkingEffort ?? null,
+    showReasoning: opts.showReasoning ?? false,
   });
 }
 
