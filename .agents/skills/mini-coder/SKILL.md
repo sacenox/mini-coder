@@ -114,6 +114,86 @@ For complex, multi-part tasks you can use `mc` as a subagent coordinator.
 - Trivial lookups or single-file reads — do them directly.
 - Tasks requiring continuous back-and-forth with the user — handle interactively.
 
+## Using tmux with mc
+
+When testing `mc` interactively from an outer agent or script, use `tmux` to drive the session. This avoids the limitations of non-interactive shell invocations.
+
+### Setup
+
+```sh
+tmux new-session -d -s test -x 200 -y 50
+tmux send-keys -t test 'bun run dev' Enter      # or 'mc'
+sleep 3                                           # wait for banner
+```
+
+### Sending input
+
+Use `-l` (literal) to avoid key-name interpretation, then send `Enter` separately:
+
+```sh
+tmux send-keys -t test -l "What files are in src/"
+tmux send-keys -t test Enter
+sleep 10
+tmux capture-pane -t test -p -S -30              # read last 30 lines
+```
+
+### Paste detection
+
+`mc` uses bracketed paste mode. When `tmux send-keys` delivers text rapidly (even with `-l`), the terminal may wrap it in paste brackets. This causes `mc` to show a `[pasted: "…"]` label instead of echoing the typed text. **This is expected behavior** — real users typing character-by-character won't trigger it.
+
+To work around it in automation:
+
+- **Short prompts**: use `send-keys -l "text"` + `send-keys Enter` — paste label is cosmetic, submission still works.
+- **Slash commands**: same pattern — `/model zen/claude-haiku-4-5` + `Enter`.
+- **Multi-line input**: not supported in the prompt; send one logical prompt per submission.
+
+### Reading output
+
+```sh
+tmux capture-pane -t test -p -S -50              # last 50 lines
+tmux capture-pane -t test -p -S -50 -E -1        # specific range
+```
+
+Capture after a generous `sleep` — tool calls and streaming take time.
+
+### Sending special keys
+
+```sh
+tmux send-keys -t test Escape                    # interrupt response (ESC)
+tmux send-keys -t test C-d                       # graceful exit (Ctrl+D)
+tmux send-keys -t test C-c                       # force exit (Ctrl+C)
+```
+
+### Cleanup
+
+```sh
+tmux send-keys -t test C-d
+sleep 1
+tmux kill-session -t test
+```
+
+### Full example: test a model switch + prompt
+
+```sh
+tmux new-session -d -s test -x 200 -y 50
+tmux send-keys -t test 'mc' Enter
+sleep 3
+
+tmux send-keys -t test -l "/model zen/gemini-3-flash"
+tmux send-keys -t test Enter
+sleep 2
+
+tmux send-keys -t test -l "List the files in the current directory"
+tmux send-keys -t test Enter
+sleep 15
+
+tmux capture-pane -t test -p -S -30   # review output
+
+tmux send-keys -t test C-d
+sleep 1
+tmux kill-session -t test
+```
+
 ## Tips for helping users
 
 - Prefer exact commands the user can paste.
