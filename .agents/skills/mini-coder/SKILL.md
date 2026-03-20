@@ -1,207 +1,123 @@
 ---
 name: mini-coder
-description: How to use the `mc` CLI coding agent
+description: How to use the `mc` CLI coding agent — interactive sessions, one-shot prompts, slash commands, file editing with mc-edit, and orchestrating subagents for complex tasks.
 ---
 
 # mini-coder
 
-Use this skill when you need to help a user operate the `mc` command-line tool.
+Use this skill when you need to help a user operate the `mc` command-line tool, or when you are acting as an `mc` agent yourself.
 
-`mc` is the executable for **mini-coder**, a small CLI coding agent. This skill is about **how to use the tool**, not how the mini-coder repo is implemented.
+`mc` is the executable for **mini-coder**, a small CLI coding agent. This skill covers **how to use the tool**, not how the mini-coder repo is implemented.
 
-## What `mc` does
-
-- Starts an interactive coding session in the terminal
-- Accepts a one-shot prompt from the command line
-- Persists sessions locally so they can be resumed
-- Lets users switch models, manage MCP servers, and load custom agents/skills/commands
-
-## Core command-line usage
+## Command-line usage
 
 ```sh
-mc
-mc "explain this codebase"
-mc -c
-mc -r <session-id>
-mc -l
-mc -m <model-id>
-mc --cwd <path>
-mc -h
+mc                              # interactive session
+mc "explain this codebase"      # one-shot prompt
+mc -c                           # continue most recent session
+mc -r <session-id>              # resume a specific session
+mc -l                           # list recent sessions
+mc -m <model-id>                # pick a model
+mc --cwd <path>                 # run in another directory
+mc -h                           # help
 ```
-
-## Most common flows
-
-### Start an interactive session
-
-```sh
-mc
-```
-
-Use this when the user wants a normal back-and-forth coding session.
-
-### Run a prompt immediately
-
-```sh
-mc "refactor the auth module to use async/await"
-```
-
-Use this when the user already knows the task they want to give `mc`.
-
-### Continue a previous session
-
-```sh
-mc -c
-mc -r <session-id>
-mc -l
-```
-
-- `mc -c` continues the most recent session
-- `mc -r <session-id>` resumes a specific session
-- `mc -l` lists recent sessions so the user can find an ID
-
-### Pick a model
-
-```sh
-mc -m zen/claude-sonnet-4-6
-mc -m ollama/llama3.2
-```
-
-Use `-m` when the user wants a specific provider or local model.
-
-### Run in another directory
-
-```sh
-mc --cwd ~/src/other-project
-```
-
-Useful when the user is not already inside the target repo.
 
 ## Interactive slash commands
 
-Inside `mc`, the user can run slash commands such as:
+Inside `mc`:
 
-- `/help` — show help
-- `/model` — list models
-- `/model <id>` — switch models
-- `/model effort <low|medium|high|xhigh|off>` — set reasoning effort when supported
-- `/reasoning [on|off]` — toggle reasoning display
-- `/undo` — remove the last conversation turn (does not revert filesystem changes)
-- `/new` — start a fresh session
-- `/mcp list` — list configured MCP servers
-- `/mcp add <name> http <url>` — add an HTTP MCP server
-- `/mcp add <name> stdio <cmd> [args...]` — add a stdio MCP server
-- `/mcp remove <name>` — remove an MCP server
-- `/agent [name]` — set or clear an active primary custom agent
-- `/login` — show OAuth login status
-- `/login <provider>` — login via OAuth (opens browser). Currently supports `anthropic`
-- `/logout <provider>` — clear saved OAuth tokens
-- `/exit`, `/quit`, `/q` — leave the session
+| Command                                         | Purpose                                       |
+| ----------------------------------------------- | --------------------------------------------- |
+| `/help`                                         | Show help                                     |
+| `/model`                                        | List models                                   |
+| `/model <id>`                                   | Switch model                                  |
+| `/model effort <low\|medium\|high\|xhigh\|off>` | Set reasoning effort                          |
+| `/reasoning [on\|off]`                          | Toggle reasoning display                      |
+| `/verbose`                                      | Toggle output truncation                      |
+| `/undo`                                         | Remove last turn (does not revert filesystem) |
+| `/new`                                          | Start a fresh session                         |
+| `/review`                                       | Review recent changes                         |
+| `/mcp list`                                     | List MCP servers                              |
+| `/mcp add <name> http <url>`                    | Add HTTP MCP server                           |
+| `/mcp add <name> stdio <cmd> [args...]`         | Add stdio MCP server                          |
+| `/mcp remove <name>`                            | Remove MCP server                             |
+| `/agent [name]`                                 | Set or clear active custom agent              |
+| `/login [provider]`                             | Show or start OAuth login                     |
+| `/logout <provider>`                            | Clear OAuth tokens                            |
+| `/exit`, `/quit`, `/q`                          | Leave the session                             |
 
 ## Prompt input features
 
-### Shell input
-
-If the user starts a prompt with `!`, `mc` runs that shell command inline and can use the result in context.
-
-mini-coder itself is shell-first: repo inspection happens primarily through shell commands, and targeted edits are typically done via `mc-edit` invoked from shell.
-
-### References with `@`
-
-`mc` supports `@` references in prompts for:
-
-- files
-- custom agents
-- skills
-
-This helps users quickly pull relevant context into a prompt.
+- **Shell input** — prefix with `!` to run a shell command inline and feed output to the LLM.
+- **File references** — `@path/to/file` embeds a file into the prompt (autocompletes paths).
+- **Skill / agent refs** — `/` triggers autocomplete for skills and agents.
+- **Images** — paste image data URLs or file paths directly.
+- **ESC** interrupts an in-progress response (preserves partial output). `Ctrl+C` exits forcefully, `Ctrl+D` exits gracefully.
 
 ## File editing with mc-edit
 
-`mc` is shell-first. The preferred workflow for file edits is: inspect with shell → edit with `mc-edit` → verify with shell.
-
-`mc-edit` is a helper command invoked from the shell tool for targeted, exact-text file edits:
+`mc` is shell-first. The preferred workflow is: **inspect → edit → verify**.
 
 ```sh
 mc-edit <path> (--old <text> | --old-file <path>) [--new <text> | --new-file <path>] [--cwd <path>]
 ```
 
-- Applies one exact-text replacement to an existing file
-- The old text must match exactly once (fails on zero or multiple matches)
-- Omit `--new`/`--new-file` to delete the matched text
-- On success: prints a unified diff + metadata (`ok`, `path`, `changed`)
-- On no-op: prints `(no changes)` + metadata
-- Errors go to stderr
+- Applies one exact-text replacement per invocation.
+- Old text must match exactly once (fails on zero or multiple matches).
+- Omit `--new` / `--new-file` to delete matched text.
+- Prints a unified diff + metadata on success; errors go to stderr.
 
 ### Examples
 
-Replace a function signature:
-
 ```sh
 mc-edit src/auth.ts --old "function login(user)" --new "async function login(user)"
-```
 
-Delete a block:
-
-```sh
 mc-edit src/config.ts --old "// TODO: remove this
 const DEBUG = true;"
-```
 
-Use temp files for large edits:
-
-```sh
-mc-edit src/big-file.ts --old-file /tmp/old.txt --new-file /tmp/new.txt
+mc-edit src/big.ts --old-file /tmp/old.txt --new-file /tmp/new.txt
 ```
 
 ## Config locations
 
-mini-coder supports both `.agents` and `.claude` config layouts.
+mini-coder discovers configs from both `.agents` and `.claude` layouts:
 
-### Local config in a repo
+| Scope  | Paths                                                                                  |
+| ------ | -------------------------------------------------------------------------------------- |
+| Local  | `.agents/commands/*.md`, `.agents/agents/*.md`, `.agents/skills/<name>/SKILL.md`       |
+| Global | `~/.agents/commands/*.md`, `~/.agents/agents/*.md`, `~/.agents/skills/<name>/SKILL.md` |
 
-- `.agents/commands/*.md`
-- `.agents/agents/*.md`
-- `.agents/skills/<name>/SKILL.md`
+Same structure applies under `.claude/` and `~/.claude/`.
 
-### Global config in the home directory
+App data (sessions, MCP config, logs) lives in `~/.config/mini-coder/`.
 
-- `~/.agents/commands/*.md`
-- `~/.agents/agents/*.md`
-- `~/.agents/skills/<name>/SKILL.md`
+## Orchestration mode
 
-Same ideas also work under `.claude/` and `~/.claude/`.
+For complex, multi-part tasks you can use `mc` as a subagent coordinator.
 
-## Data and state
+### Core principles
 
-mini-coder stores app data in:
+- **Decompose first.** Break the task into 2–5 independent, self-contained subtasks.
+- **Delegate aggressively.** Spawn focused subagents via `mc "prompt"` in the shell tool — each gets a single precise goal.
+- **Parallelise when possible.** Dispatch independent subtasks concurrently.
+- **Stay the coordinator.** You own the big picture; subagents handle the details. Synthesise their results, resolve conflicts, report back clearly.
+- **Fail fast.** If a subagent fails, stop and reassess before continuing.
 
-```text
-~/.config/mini-coder/
-```
+### Subagent prompt hygiene
 
-This includes session history, MCP server config, and related local metadata.
+- Be explicit about what the agent should produce (a file, a code change, a summary).
+- Include all relevant paths, constraints, and acceptance criteria — subagents have no shared memory.
+- Never give vague briefs; ambiguity leads to rework and wasted tokens.
 
-## How to help users effectively
+### When NOT to delegate
 
-When answering questions about `mc`:
+- Trivial lookups or single-file reads — do them directly.
+- Tasks requiring continuous back-and-forth with the user — handle interactively.
 
-- Prefer giving exact commands the user can paste
-- Distinguish clearly between **shell commands** (run before or around `mc`) and **slash commands** (run inside `mc`)
-- Suggest `mc -h` or `/help` when the user needs command discovery
-- Suggest `mc -l`, `mc -c`, or `mc -r <id>` for session recovery
-- Mention `--cwd` when the problem is about the wrong working directory
-- Mention `-m <model-id>` when the problem is model selection
-- Mention MCP commands only when the user is integrating external tools
+## Tips for helping users
 
-## Examples to suggest
-
-```sh
-mc
-mc "add tests for src/internal/file-edit/exact-text.ts"
-mc -c
-mc -l
-mc -m zen/claude-sonnet-4-6
-mc --cwd ~/src/my-project
-```
-
-If a user asks how to do something in mini-coder, answer in terms of the `mc` CLI and its interactive commands.
+- Prefer exact commands the user can paste.
+- Distinguish **shell commands** (outside `mc`) from **slash commands** (inside `mc`).
+- Suggest `mc -h` or `/help` for discovery.
+- Suggest `mc -l` / `mc -c` / `mc -r <id>` for session recovery.
+- Mention `--cwd` for wrong-directory issues, `-m` for model selection.
