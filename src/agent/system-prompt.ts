@@ -64,7 +64,7 @@ Guidelines:
 - Use temp files to handle large content, prefer scanning over full reads.
 - Prefer small, targeted edits over large file rewrites.
 - For file edits, use shell commands that invoke \`mc-edit\`.
-- Use the skill tools only when you need to inspect available community/project skills or load one skill body.
+- Before starting work, check the available skills list below. If any skill's description/triggers match your current task, load it with \`readSkill\` and follow its instructions before proceeding.
 - Make parallel tool calls when independent searches/lookups can happen concurrently.
 - Keep your context clean and focused on the user request.
 - You are a capable senior engineer. Once given a direction, proactively gather context and implement — don't ask for permission to start.
@@ -106,6 +106,8 @@ Apply one safe exact-text edit to an existing file.
     prompt += "\n\n# Available skills (metadata only)";
     prompt +=
       "\nUse `listSkills` to browse and `readSkill` to load one SKILL.md on demand.";
+    prompt +=
+      "\nMatch skill triggers against your current task. Load and follow matching skills BEFORE writing code or making changes.";
     prompt +=
       "\nWhen a skill references relative paths, resolve them against the skill directory (parent of SKILL.md).";
     prompt +=

@@ -103,9 +103,7 @@ describe("buildSystemPrompt", () => {
       "Inspect code and files primarily through shell commands",
     );
     expect(prompt).toContain("use shell commands that invoke `mc-edit`");
-    expect(prompt).toContain(
-      "Use the skill tools only when you need to inspect available community/project skills",
-    );
+    expect(prompt).toContain("check the available skills list below");
     expect(prompt).not.toContain(
       "Prefer dedicated tools (read, replace, insert) over shell for file operations.",
     );
