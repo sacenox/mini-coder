@@ -262,7 +262,7 @@ export function discoverConnectedProviders(): ConnectedProvider[] {
   else if (process.env.ANTHROPIC_API_KEY)
     result.push({ name: "anthropic", via: "env" });
   if (process.env.OPENAI_API_KEY) result.push({ name: "openai", via: "env" });
-  if (process.env.GOOGLE_API_KEY ?? process.env.GEMINI_API_KEY)
+  if (process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY)
     result.push({ name: "google", via: "env" });
   if (process.env.OLLAMA_BASE_URL) result.push({ name: "ollama", via: "env" });
   return result;
@@ -273,7 +273,7 @@ export function autoDiscoverModel(): string {
   if (process.env.ANTHROPIC_API_KEY || isLoggedIn("anthropic"))
     return "anthropic/claude-sonnet-4-6";
   if (process.env.OPENAI_API_KEY) return "openai/gpt-5.4";
-  if (process.env.GOOGLE_API_KEY ?? process.env.GEMINI_API_KEY)
+  if (process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY)
     return "google/gemini-3.1-pro";
   return "ollama/llama3.2";
 }
