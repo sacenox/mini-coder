@@ -57,97 +57,51 @@ These are the events logged after the noise-reduction pass. Expect ~10 rows per 
 **Recent sessions:**
 
 ```bash
-bun -e "
-import { getDb } from './src/session/db/connection.ts';
-const db = getDb();
-db.prepare('SELECT id, created_at, updated_at FROM sessions ORDER BY updated_at DESC LIMIT 10').all().forEach(r => console.log(r));
-"
+sqlite3 ~/.config/mini-coder/sessions.db "SELECT id, created_at, updated_at FROM sessions ORDER BY updated_at DESC LIMIT 10"
 ```
 
 **Log counts per level for a session:**
 
 ```bash
-SESSION_ID=<id>
-bun -e "
-import { getDb } from './src/session/db/connection.ts';
-const db = getDb();
-const rows = db.prepare('SELECT level, COUNT(*) as n FROM logs WHERE session_id = ? GROUP BY level').all('$SESSION_ID');
-console.log(rows);
-"
+sqlite3 ~/.config/mini-coder/sessions.db "SELECT level, COUNT(*) as n FROM logs WHERE session_id = '<id>' GROUP BY level"
 ```
 
-**All API events for current session (chronological):**
+**All API events for a session (chronological):**
 
 ```bash
-bun -e "
-import { getDb } from './src/session/db/connection.ts';
-const db = getDb();
-const rows = db.prepare('SELECT timestamp, data FROM logs WHERE session_id = ? AND level = ? ORDER BY timestamp ASC').all('<session-id>', 'api');
-for (const r of rows) {
-  const d = JSON.parse(r.data);
-  console.log(new Date(r.timestamp).toISOString(), d.event, JSON.stringify(d.data));
-}
-"
+sqlite3 ~/.config/mini-coder/sessions.db "SELECT datetime(timestamp/1000, 'unixepoch'), json_extract(data, '$.event'), data FROM logs WHERE session_id = '<id>' AND level = 'api' ORDER BY timestamp ASC"
 ```
 
 **Error logs only:**
 
 ```bash
-bun -e "
-import { getDb } from './src/session/db/connection.ts';
-const db = getDb();
-const rows = db.prepare('SELECT timestamp, data FROM logs WHERE session_id = ? AND level = ? ORDER BY timestamp ASC').all('<session-id>', 'error');
-rows.forEach(r => console.log(new Date(r.timestamp).toISOString(), JSON.parse(r.data)));
-"
+sqlite3 ~/.config/mini-coder/sessions.db "SELECT datetime(timestamp/1000, 'unixepoch'), data FROM logs WHERE session_id = '<id>' AND level = 'error' ORDER BY timestamp ASC"
 ```
 
-**Token usage across turns (current session):**
+**Token usage across turns (input/output tokens per turn complete):**
 
 ```bash
-bun -e "
-import { getDb } from './src/session/db/connection.ts';
-const db = getDb();
-const rows = db.prepare(\"SELECT data FROM logs WHERE session_id = ? AND level = 'api' ORDER BY timestamp ASC\").all('<session-id>');
-for (const r of rows) {
-  const d = JSON.parse(r.data);
-  if (d.event === 'turn complete') console.log(d.data);
-}
-"
+sqlite3 ~/.config/mini-coder/sessions.db "SELECT datetime(timestamp/1000, 'unixepoch'), json_extract(data, '$.data.inputTokens'), json_extract(data, '$.data.outputTokens') FROM logs WHERE session_id = '<id>' AND level = 'api' AND json_extract(data, '$.event') = 'turn complete' ORDER BY timestamp ASC"
 ```
 
 **Context pressure (pre vs post prune):**
 
 ```bash
-bun -e "
-import { getDb } from './src/session/db/connection.ts';
-const db = getDb();
-const rows = db.prepare(\"SELECT timestamp, data FROM logs WHERE session_id = ? AND level = 'api' AND data LIKE '%prune%' ORDER BY timestamp ASC\").all('<session-id>');
-rows.forEach(r => console.log(new Date(r.timestamp).toISOString(), JSON.parse(r.data)));
-"
+sqlite3 ~/.config/mini-coder/sessions.db "SELECT datetime(timestamp/1000, 'unixepoch'), json_extract(data, '$.event'), json_extract(data, '$.data.messageCount'), json_extract(data, '$.data.totalBytes') FROM logs WHERE session_id = '<id>' AND data LIKE '%prune%' ORDER BY timestamp ASC"
 ```
 
 **Tool calls in a session:**
 
 ```bash
-bun -e "
-import { getDb } from './src/session/db/connection.ts';
-const db = getDb();
-const rows = db.prepare(\"SELECT timestamp, data FROM logs WHERE session_id = ? AND level = 'api' AND data LIKE '%tool-call%' ORDER BY timestamp ASC\").all('<session-id>');
-rows.forEach(r => { const d = JSON.parse(r.data); console.log(new Date(r.timestamp).toISOString(), d.data.toolName); });
-"
+sqlite3 ~/.config/mini-coder/sessions.db "SELECT datetime(timestamp/1000, 'unixepoch'), json_extract(data, '$.data.toolName') FROM logs WHERE session_id = '<id>' AND level = 'api' AND data LIKE '%tool-call%' ORDER BY timestamp ASC"
 ```
 
 ## Finding the current session ID
 
-The session ID is stored in the `settings` table or you can get the most recently active session:
+Get the most recently active session:
 
 ```bash
-bun -e "
-import { getDb } from './src/session/db/connection.ts';
-const db = getDb();
-const s = db.prepare('SELECT id FROM sessions ORDER BY updated_at DESC LIMIT 1').get();
-console.log(s?.id);
-"
+sqlite3 ~/.config/mini-coder/sessions.db "SELECT id FROM sessions ORDER BY updated_at DESC LIMIT 1"
 ```
 
 ## Integration with mini-coder code
