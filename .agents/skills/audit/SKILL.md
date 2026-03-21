@@ -16,13 +16,20 @@ Audit the codebase against the project's core idea (the source of truth for desi
 4. Check `TODO.md` for known issues already tracked — don't duplicate them.
 5. Verify documentation matches the idea file.
 
-Use `bun run dev` and `tmux` via shell to run one-shot and interactive sessions manually. Analyse console output and UI from a user's perspective.
+Use `bun run dev` and `tmux` via shell to run one-shot and interactive sessions manually. Analyse console output and UI from a user's perspective. Follow the **tmux send-keys rules** in Phase 2 whenever interacting with tmux.
 
 ## Phase 2 — Multi-provider UI probe
 
 Run `mc` sessions across all SDK paths to capture what real users see.
 Do NOT delegate analysis to the models under test.
-Use `tmux` so you can test interactive sessions properly. Remember to send Enter to submit, and be careful with paste handling.
+Use `tmux` so you can test interactive sessions properly.
+
+**tmux send-keys rules** (always follow these to avoid paste/input issues):
+
+- Always use `-l` when sending text: `tmux send-keys -t <session> -l 'your text here'`
+- Send `Enter` as a **separate** call without `-l`: `tmux send-keys -t <session> Enter`
+- Never combine text and `Enter` in a single `send-keys` call — without `-l`, words like `Enter`, `Escape`, `Tab`, `Space` get interpreted as key presses instead of literal text.
+- Pattern: `tmux send-keys -t s -l 'text'` then `tmux send-keys -t s Enter`
 
 ### Models to use (one per SDK path)
 
