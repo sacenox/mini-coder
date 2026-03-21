@@ -3,7 +3,6 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { LanguageModel } from "ai";
-import { logApiEvent } from "../logging/context.ts";
 import { getAccessToken, isLoggedIn } from "../session/oauth/auth-storage.ts";
 import {
   type AvailableModelsSnapshot,
@@ -33,56 +32,10 @@ type GoogleProvider = ReturnType<typeof createGoogleGenerativeAI>;
 type OpenAICompatProvider = ReturnType<typeof createOpenAICompatible>;
 type ModelResolver = (modelId: string) => LanguageModel;
 
-const REDACTED_HEADERS = new Set(["authorization", "x-api-key"]);
-
-function redactHeaders(
-  headers: RequestInit["headers"],
-): Record<string, string> | undefined {
-  if (!headers) return undefined;
-  const h = new Headers(headers as ConstructorParameters<typeof Headers>[0]);
-  const out: Record<string, string> = {};
-  h.forEach((v, k) => {
-    out[k] = REDACTED_HEADERS.has(k) ? "[REDACTED]" : v;
-  });
-  return out;
-}
-
-function createFetchWithLogging(): ProviderFetch {
-  const customFetch = async (
-    input: Parameters<ProviderFetch>[0],
-    init?: Parameters<ProviderFetch>[1],
-  ): Promise<Response> => {
-    if (init?.body) {
-      try {
-        const bodyStr = init.body.toString();
-        const bodyJson = JSON.parse(bodyStr);
-        logApiEvent("Provider Request", {
-          url: input.toString(),
-          method: init.method,
-          headers: redactHeaders(init.headers),
-          body: bodyJson,
-        });
-      } catch {
-        logApiEvent("Provider Request", {
-          url: input.toString(),
-          method: init.method,
-          headers: redactHeaders(init.headers),
-          body: init.body,
-        });
-      }
-    }
-    return fetch(input, init);
-  };
-  return customFetch as ProviderFetch;
-}
-
-const fetchWithLogging = createFetchWithLogging();
-
 /** Betas the AI SDK adds that are not compatible with the OAuth endpoint. */
 const OAUTH_STRIP_BETAS = new Set<string>();
 
 function createOAuthFetch(accessToken: string): ProviderFetch {
-  const baseFetch = createFetchWithLogging();
   const oauthFetch = async (
     input: Parameters<ProviderFetch>[0],
     init?: Parameters<ProviderFetch>[1],
@@ -106,7 +59,7 @@ function createOAuthFetch(accessToken: string): ProviderFetch {
       h.set("x-app", "cli");
       opts = { ...opts, headers: Object.fromEntries(h.entries()) };
     }
-    return baseFetch(input, opts);
+    return fetch(input, opts);
   };
   return oauthFetch as ProviderFetch;
 }
@@ -138,28 +91,28 @@ function lazy<T>(factory: () => T): () => T {
 const zenProviders = {
   anthropic: lazy<AnthropicProvider>(() =>
     createAnthropic({
-      fetch: fetchWithLogging,
+      fetch,
       apiKey: requireEnv("OPENCODE_API_KEY"),
       baseURL: ZEN_BASE,
     }),
   ),
   openai: lazy<OpenAIProvider>(() =>
     createOpenAI({
-      fetch: fetchWithLogging,
+      fetch,
       apiKey: requireEnv("OPENCODE_API_KEY"),
       baseURL: ZEN_BASE,
     }),
   ),
   google: lazy<GoogleProvider>(() =>
     createGoogleGenerativeAI({
-      fetch: fetchWithLogging,
+      fetch,
       apiKey: requireEnv("OPENCODE_API_KEY"),
       baseURL: ZEN_BASE,
     }),
   ),
   compat: lazy<OpenAICompatProvider>(() =>
     createOpenAICompatible({
-      fetch: fetchWithLogging,
+      fetch,
       name: "zen-compat",
       apiKey: requireEnv("OPENCODE_API_KEY"),
       baseURL: ZEN_BASE,
@@ -170,19 +123,19 @@ const zenProviders = {
 const directProviders = {
   anthropic: lazy<AnthropicProvider>(() =>
     createAnthropic({
-      fetch: fetchWithLogging,
+      fetch,
       apiKey: requireEnv("ANTHROPIC_API_KEY"),
     }),
   ),
   openai: lazy<OpenAIProvider>(() =>
     createOpenAI({
-      fetch: fetchWithLogging,
+      fetch,
       apiKey: requireEnv("OPENAI_API_KEY"),
     }),
   ),
   google: lazy<GoogleProvider>(() =>
     createGoogleGenerativeAI({
-      fetch: fetchWithLogging,
+      fetch,
       apiKey: requireAnyEnv(["GOOGLE_API_KEY", "GEMINI_API_KEY"]),
     }),
   ),
@@ -192,7 +145,7 @@ const directProviders = {
       name: "ollama",
       baseURL: `${baseURL}/v1`,
       apiKey: "ollama",
-      fetch: fetchWithLogging,
+      fetch,
     });
   }),
 };

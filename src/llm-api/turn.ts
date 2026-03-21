@@ -1,5 +1,5 @@
 import { streamText } from "ai";
-import { getLogContext, logApiEvent } from "../logging/context.ts";
+import { logApiEvent } from "../logging/context.ts";
 import { normalizeUnknownError } from "./error-utils.ts";
 import type { ThinkingEffort } from "./provider-options.ts";
 import {
@@ -90,12 +90,6 @@ export async function* runTurn(options: {
       };
     }
 
-    if (getLogContext() !== null) {
-      logApiEvent("prompt caching configured", {
-        cacheFamily: providerOptionsResult.cacheFamily,
-      });
-    }
-
     const stepPruneQueue: StepPruneRecord[] = [];
 
     const result = streamText(
@@ -115,14 +109,17 @@ export async function* runTurn(options: {
     for await (const event of mapFullStreamToTurnEvents(result.fullStream, {
       stepPruneQueue,
       onChunk: (streamChunk) => {
-        logApiEvent("stream chunk", {
-          type: streamChunk.type,
-          toolCallId: streamChunk.toolCallId,
-          toolName: streamChunk.toolName,
-          isError: streamChunk.isError,
-          hasArgs: "args" in streamChunk || "input" in streamChunk,
-          hasOutput: "output" in streamChunk || "result" in streamChunk,
-        });
+        if (
+          streamChunk.type === "tool-call" ||
+          streamChunk.type === "tool-result"
+        ) {
+          logApiEvent("stream chunk", {
+            type: streamChunk.type,
+            toolCallId: streamChunk.toolCallId,
+            toolName: streamChunk.toolName,
+            isError: streamChunk.isError,
+          });
+        }
       },
     })) {
       yield event;
