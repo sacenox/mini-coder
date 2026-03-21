@@ -50,7 +50,7 @@ Use `/login` inside the REPL to authenticate via browser-based OAuth (currently 
 
 ## 🛠️ Features
 
-- **Multi-provider** — auto-discovers Anthropic, OpenAI, Gemini, Ollama, or any OpenAI-compatible endpoint
+- **Multi-provider** — auto-discovers Anthropic (direct + OAuth), OpenAI, Gemini, and Ollama via environment variables
 - **Session memory** — SQLite-backed. Resume with `-c` or `-r <id>`
 - **Shell integration** — `!` prefix for inline commands, `@` to reference files with tab completion
 - **Web search** — `webSearch` + `webContent` tools when `EXA_API_KEY` is set

@@ -48,9 +48,26 @@ describe("getThinkingProviderOptions", () => {
     expect(anthropic.effort).toBeUndefined();
   });
 
-  test("direct anthropic claude uses adaptive+effort", () => {
+  test("direct anthropic haiku uses enabled+budgetTokens (no adaptive support)", () => {
     const opts = getThinkingProviderOptions(
       "anthropic/claude-haiku-4-5",
+      "medium",
+    );
+    if (!opts) return;
+    const anthropic = (opts as Record<string, unknown>).anthropic as Record<
+      string,
+      unknown
+    >;
+    expect(anthropic).toBeDefined();
+    const thinking = anthropic.thinking as Record<string, unknown>;
+    expect(thinking.type).toBe("enabled");
+    expect(typeof thinking.budgetTokens).toBe("number");
+    expect(anthropic.effort).toBeUndefined();
+  });
+
+  test("direct anthropic sonnet uses adaptive+effort", () => {
+    const opts = getThinkingProviderOptions(
+      "anthropic/claude-sonnet-4-6",
       "medium",
     );
     if (!opts) return;

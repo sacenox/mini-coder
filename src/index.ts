@@ -1,4 +1,8 @@
 #!/usr/bin/env bun
+// Suppress AI SDK warnings that leak into user-visible CLI output.
+// We handle errors/warnings through our own reporting layer.
+globalThis.AI_SDK_LOG_WARNINGS = false;
+
 import * as c from "yoctocolors";
 import { initAgent } from "./agent/agent.ts";
 import { parseArgs, printHelp } from "./cli/args.ts";

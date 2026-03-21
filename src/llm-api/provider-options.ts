@@ -8,15 +8,17 @@ import {
 
 export type ThinkingEffort = "low" | "medium" | "high" | "xhigh";
 
-// Budget tokens used when routing through Zen (which only supports the
-// legacy `thinking: { type: "enabled", budget_tokens: N }` API, not the
-// newer effort-based API that requires the `effort-2025-11-24` beta).
-const ANTHROPIC_ZEN_BUDGET: Record<ThinkingEffort, number> = {
+// Budget tokens for models that only support `thinking: { type: "enabled" }`
+// (Zen proxy, and Haiku which lacks adaptive thinking support).
+const ANTHROPIC_BUDGET: Record<ThinkingEffort, number> = {
   low: 4_096,
   medium: 8_192,
   high: 16_384,
   xhigh: 32_768,
 };
+
+// Haiku does not support adaptive thinking (only type: "enabled" with budget).
+const ANTHROPIC_NO_ADAPTIVE = /^claude-haiku-/;
 
 type CacheFamily = "google" | "anthropic" | "none";
 
@@ -42,16 +44,14 @@ function getAnthropicThinkingOptions(
   effort: ThinkingEffort,
 ): Record<string, unknown> {
   const { provider, modelId } = parseModelString(modelString);
-  // Zen proxies claude models but only supports the legacy
-  // `thinking: { type: "enabled", budget_tokens: N }` API.
-  // The newer effort-based API adds an `effort-2025-11-24` beta header and
-  // sends `output_config: { effort }` which Zen rejects.
-  if (provider === "zen") {
+  // Zen only supports legacy `thinking: { type: "enabled", budget_tokens }`.
+  // Haiku doesn't support adaptive thinking either — same fallback.
+  if (provider === "zen" || ANTHROPIC_NO_ADAPTIVE.test(modelId)) {
     return {
       anthropic: {
         thinking: {
           type: "enabled",
-          budgetTokens: ANTHROPIC_ZEN_BUDGET[effort],
+          budgetTokens: ANTHROPIC_BUDGET[effort],
         },
       },
     };
