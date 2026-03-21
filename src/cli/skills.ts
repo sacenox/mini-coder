@@ -130,13 +130,39 @@ function listSkillCandidates(
       continue;
     }
     const filePath = join(skillDir, "SKILL.md");
-    if (!existsSync(filePath)) continue;
-    candidates.push({
-      folderName: entry,
-      filePath,
-      rootPath,
-      source,
-    });
+    if (existsSync(filePath)) {
+      candidates.push({
+        folderName: entry,
+        filePath,
+        rootPath,
+        source,
+      });
+      continue;
+    }
+    // Namespace directory: scan one level deeper for skill subdirectories
+    // (e.g., superpowers/brainstorming/SKILL.md)
+    let subEntries: string[];
+    try {
+      subEntries = readdirSync(skillDir).sort((a, b) => a.localeCompare(b));
+    } catch {
+      continue;
+    }
+    for (const subEntry of subEntries) {
+      const subSkillDir = join(skillDir, subEntry);
+      try {
+        if (!statSync(subSkillDir).isDirectory()) continue;
+      } catch {
+        continue;
+      }
+      const subFilePath = join(subSkillDir, "SKILL.md");
+      if (!existsSync(subFilePath)) continue;
+      candidates.push({
+        folderName: subEntry,
+        filePath: subFilePath,
+        rootPath,
+        source,
+      });
+    }
   }
   return candidates;
 }
