@@ -19,7 +19,6 @@ export interface StatusBarData {
   contextTokens: number;
   contextWindow: number | null;
   thinkingEffort?: string | null;
-  showReasoning?: boolean;
 }
 
 export interface AgentReporter {

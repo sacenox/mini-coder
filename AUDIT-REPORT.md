@@ -99,7 +99,7 @@ N/T = Not specifically tested in interactive mode, but one-shot works.
 
 ### Polish
 
-4. **Status bar: merge model + thinking effort** (KNOWN) — The `showReasoning` field in the status bar signature contributes to unnecessary re-renders. The known issues already track this.
+4. ~~**Status bar: `showReasoning` in signature**~~ **FIXED** (`HEAD`) — Removed `showReasoning` from `StatusBarData`, `RunnerStatusInfo`, and `buildStatusBarSignature`. Toggling `/reasoning` no longer triggers a spurious status bar redraw.
 
 5. ~~**Shell tool truncation**~~ **FIXED** (`19a9755`) — Truncation now snaps to the last `\n` in the partial chunk, preventing broken mid-line cuts.
 

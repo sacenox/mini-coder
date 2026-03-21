@@ -45,7 +45,6 @@ interface RunnerStatusInfo {
   model: string;
   sessionId: string;
   thinkingEffort: ThinkingEffort | null;
-  showReasoning: boolean;
   totalIn: number;
   totalOut: number;
   lastContextTokens: number;
@@ -89,7 +88,6 @@ export class SessionRunner {
       model: this.currentModel,
       sessionId: this.session.id,
       thinkingEffort: this.currentThinkingEffort,
-      showReasoning: this.showReasoning,
       totalIn: this.totalIn,
       totalOut: this.totalOut,
       lastContextTokens: this.lastContextTokens,

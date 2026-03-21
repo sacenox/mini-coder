@@ -28,7 +28,6 @@ describe("renderStatusBar", () => {
         contextTokens: 8000,
         contextWindow: 128000,
         thinkingEffort: "medium",
-        showReasoning: true,
       });
     });
 
@@ -57,7 +56,6 @@ describe("renderStatusBar", () => {
         contextTokens: 72000,
         contextWindow: 128000,
         thinkingEffort: "xhigh",
-        showReasoning: true,
       });
     });
 
@@ -84,7 +82,6 @@ describe("renderStatusBar", () => {
         contextTokens: 2048,
         contextWindow: null,
         thinkingEffort: null,
-        showReasoning: false,
       });
     });
 
@@ -105,7 +102,6 @@ describe("renderStatusBar", () => {
       contextWindow: 100,
       thinkingEffort: "medium",
       activeAgent: null,
-      showReasoning: false,
     } as const;
 
     expect(buildStatusBarSignature(base)).toBe(buildStatusBarSignature(base));

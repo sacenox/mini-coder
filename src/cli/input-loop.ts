@@ -67,7 +67,6 @@ export async function runInputLoop(opts: InputLoopOptions): Promise<void> {
       contextTokens: status.lastContextTokens,
       contextWindow,
       thinkingEffort: status.thinkingEffort,
-      showReasoning: status.showReasoning,
     };
     const statusSignature = buildStatusBarSignature(statusData);
     if (statusSignature !== lastStatusSignature) {

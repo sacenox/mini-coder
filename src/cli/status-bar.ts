@@ -47,7 +47,6 @@ export function buildStatusBarSignature(opts: StatusBarData): string {
     contextTokens: opts.contextTokens,
     contextWindow: opts.contextWindow,
     thinkingEffort: opts.thinkingEffort ?? null,
-    showReasoning: opts.showReasoning ?? false,
   });
 }
 

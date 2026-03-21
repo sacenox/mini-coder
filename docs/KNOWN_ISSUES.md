@@ -13,5 +13,3 @@
 - Conversation summary on max context instead of just an error with `/new` suggestion.
 
 ## Refactors
-
-- Status bar: merge model + thinking effort into one field, drop `showReasoning` (already in banner).
