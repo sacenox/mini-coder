@@ -95,19 +95,15 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("You are mini-coder");
     expect(prompt).toContain("Guidelines:");
     expect(prompt).not.toContain("# Project context");
-    expect(prompt).toContain("# Safety and risk boundaries");
-    expect(prompt).toContain("# Workspace guardrails");
-    expect(prompt).toContain("# Progress communication");
-    expect(prompt).toContain("# Final response style");
+    expect(prompt).toContain("# Safety");
+    expect(prompt).toContain("# Communication");
+    expect(prompt).toContain("# Error handling");
     expect(prompt).toContain(
       "Inspect code and files primarily through shell commands",
     );
     expect(prompt).toContain("use shell commands that invoke `mc-edit`");
     expect(prompt).toContain("check the available skills list below");
-    expect(prompt).not.toContain(
-      "Prefer dedicated tools (read, replace, insert) over shell for file operations.",
-    );
-    expect(prompt).toContain("Do not guess unknown facts");
+    expect(prompt).toContain("never guess unknown state");
   });
 
   it("includes local context under # Project context", () => {
