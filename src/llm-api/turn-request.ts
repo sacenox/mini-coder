@@ -137,6 +137,5 @@ export function buildStreamTextRequest(
       // The AI SDK logs errors to stderr by default. We surface failures through
       // streamed turn events so CLI output stays compact and consistent.
     },
-    timeout: { chunkMs: 120_000 },
   } as StreamTextOptions;
 }

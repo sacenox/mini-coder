@@ -10,10 +10,9 @@ const ShellSchema = z.object({
     .number()
     .int()
     .min(1000)
-    .max(300_000)
     .optional()
     .describe(
-      "Timeout in milliseconds (max: 5min). If omitted, the command runs until it exits.",
+      "Timeout in milliseconds. If omitted, the command runs until it exits.",
     ),
   env: z
     .record(z.string(), z.string())
