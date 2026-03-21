@@ -14,7 +14,6 @@
 
 - Conversation summary on max context instead of just an error with `/new` suggestion.
 - Derive `maxOutputTokens` from model info instead of hardcoding 16384.
-- `/_debug` hidden command — snapshot recent logs/db into a report in cwd.
 
 ## Refactors
 
