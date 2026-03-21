@@ -233,9 +233,12 @@ export class SessionRunner {
         lastAssistantText = extractAssistantText(historyMessages);
         this.totalIn += inputTokens;
         this.totalOut += outputTokens;
-        this.lastContextTokens = contextTokens;
+        if (contextTokens > 0) this.lastContextTokens = contextTokens;
         touchActiveSession(this.session);
-        autoTitleSession(this.session.id, text);
+        if (!this.session.titled) {
+          autoTitleSession(this.session.id, text);
+          this.session.titled = true;
+        }
 
         // Prune coreHistory after each turn so the next turn starts lean.
         // The DB retains the full history; this only affects in-memory context.

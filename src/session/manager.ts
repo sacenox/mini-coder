@@ -19,19 +19,26 @@ export interface ActiveSession {
   model: string;
   messages: CoreMessage[];
   createdAt: number;
+  titled: boolean;
 }
 
 export function newSession(model: string, cwd: string): ActiveSession {
   const id = generateSessionId();
   const row = createSession({ id, cwd, model });
-  return { id, model, messages: [], createdAt: row.created_at };
+  return { id, model, messages: [], createdAt: row.created_at, titled: false };
 }
 
 export function resumeSession(id: string): ActiveSession | null {
   const row = getSession(id);
   if (!row) return null;
   const messages = loadMessages(id);
-  return { id: row.id, model: row.model, messages, createdAt: row.created_at };
+  return {
+    id: row.id,
+    model: row.model,
+    messages,
+    createdAt: row.created_at,
+    titled: row.title !== "",
+  };
 }
 
 export function touchActiveSession(session: ActiveSession): void {
