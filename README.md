@@ -10,7 +10,9 @@
 
 A terminal coding agent for developers who want a sharp tool, not a bloated IDE plugin. Shell-first, multi-provider, minimal tool surface. Just you, your terminal, and an AI that keeps up.
 
-![Minicoder Preview](./assets/preview.gif)
+<p align="center">
+  <img src="./assets/preview.gif" alt="Minicoder Preview"/>
+</p>
 
 ---
 
