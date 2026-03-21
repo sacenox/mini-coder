@@ -7,6 +7,7 @@
 - Write minimal tests, focused on our code's logic. Never test dependencies. Never use mocks or stubs.
 - Keep the repo pristine: no failing tests, no lint, no build issues, no `ignore`-style comments. No failing hooks.
 - Verify your changes, you can use the shell tool and `tmux` to test as needed.
+- **tmux send-keys rules**: always use `-l` for text (`tmux send-keys -t s -l 'text'`), then send `Enter` separately without `-l` (`tmux send-keys -t s Enter`). Without `-l`, words like `Enter`, `Escape`, `Tab`, `Space` are interpreted as key presses.
 - Use `bun run format` to fix formatting issues.
 - We care about performance.
 - Do not inline `import` calls. Don't duplicate code. Don't leave dead code behind.
