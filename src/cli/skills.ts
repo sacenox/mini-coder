@@ -109,61 +109,51 @@ function localSearchRoots(cwd: string): string[] {
   return roots;
 }
 
+const MAX_SKILL_SCAN_DEPTH = 5;
+const MAX_SKILL_DIRS_SCANNED = 2000;
+
 function listSkillCandidates(
   skillsDir: string,
   source: "global" | "local",
   rootPath: string,
 ): SkillCandidate[] {
   if (!existsSync(skillsDir)) return [];
-  let entries: string[];
-  try {
-    entries = readdirSync(skillsDir).sort((a, b) => a.localeCompare(b));
-  } catch {
-    return [];
-  }
   const candidates: SkillCandidate[] = [];
-  for (const entry of entries) {
-    const skillDir = join(skillsDir, entry);
+  let dirsScanned = 0;
+
+  function walk(dir: string, depth: number): void {
+    if (depth > MAX_SKILL_SCAN_DEPTH || dirsScanned >= MAX_SKILL_DIRS_SCANNED)
+      return;
+    let entries: string[];
     try {
-      if (!statSync(skillDir).isDirectory()) continue;
+      entries = readdirSync(dir).sort((a, b) => a.localeCompare(b));
     } catch {
-      continue;
+      return;
     }
-    const filePath = join(skillDir, "SKILL.md");
-    if (existsSync(filePath)) {
-      candidates.push({
-        folderName: entry,
-        filePath,
-        rootPath,
-        source,
-      });
-      continue;
-    }
-    // Namespace directory: scan one level deeper for skill subdirectories
-    // (e.g., superpowers/brainstorming/SKILL.md)
-    let subEntries: string[];
-    try {
-      subEntries = readdirSync(skillDir).sort((a, b) => a.localeCompare(b));
-    } catch {
-      continue;
-    }
-    for (const subEntry of subEntries) {
-      const subSkillDir = join(skillDir, subEntry);
+    for (const entry of entries) {
+      if (dirsScanned >= MAX_SKILL_DIRS_SCANNED) return;
+      const entryPath = join(dir, entry);
       try {
-        if (!statSync(subSkillDir).isDirectory()) continue;
+        if (!statSync(entryPath).isDirectory()) continue;
       } catch {
         continue;
       }
-      const subFilePath = join(subSkillDir, "SKILL.md");
-      if (!existsSync(subFilePath)) continue;
-      candidates.push({
-        folderName: subEntry,
-        filePath: subFilePath,
-        rootPath,
-        source,
-      });
+      dirsScanned++;
+      const filePath = join(entryPath, "SKILL.md");
+      if (existsSync(filePath)) {
+        candidates.push({
+          folderName: entry,
+          filePath,
+          rootPath,
+          source,
+        });
+      } else {
+        walk(entryPath, depth + 1);
+      }
     }
   }
+
+  walk(skillsDir, 1);
   return candidates;
 }
 
