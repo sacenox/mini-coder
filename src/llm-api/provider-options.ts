@@ -8,6 +8,16 @@ import {
 
 export type ThinkingEffort = "low" | "medium" | "high" | "xhigh";
 
+// Budget tokens used when routing through Zen (which only supports the
+// legacy `thinking: { type: "enabled", budget_tokens: N }` API, not the
+// newer effort-based API that requires the `effort-2025-11-24` beta).
+const ANTHROPIC_ZEN_BUDGET: Record<ThinkingEffort, number> = {
+  low: 4_096,
+  medium: 8_192,
+  high: 16_384,
+  xhigh: 32_768,
+};
+
 type CacheFamily = "google" | "anthropic" | "none";
 
 const GEMINI_BUDGET: Record<ThinkingEffort, number> = {
@@ -28,9 +38,24 @@ function clampEffort(
 }
 
 function getAnthropicThinkingOptions(
-  modelId: string,
+  modelString: string,
   effort: ThinkingEffort,
 ): Record<string, unknown> {
+  const { provider, modelId } = parseModelString(modelString);
+  // Zen proxies claude models but only supports the legacy
+  // `thinking: { type: "enabled", budget_tokens: N }` API.
+  // The newer effort-based API adds an `effort-2025-11-24` beta header and
+  // sends `output_config: { effort }` which Zen rejects.
+  if (provider === "zen") {
+    return {
+      anthropic: {
+        thinking: {
+          type: "enabled",
+          budgetTokens: ANTHROPIC_ZEN_BUDGET[effort],
+        },
+      },
+    };
+  }
   const isOpus = /^claude-opus-4/.test(modelId);
   const xhighMapping = isOpus ? "max" : "high";
   const mapped = effort === "xhigh" ? xhighMapping : effort;
@@ -38,18 +63,20 @@ function getAnthropicThinkingOptions(
 }
 
 function getOpenAIThinkingOptions(
-  modelId: string,
+  modelString: string,
   effort: ThinkingEffort,
 ): Record<string, unknown> {
+  const { modelId } = parseModelString(modelString);
   const supportsXhigh = /^gpt-5\.[2-9]/.test(modelId) || /^o4/.test(modelId);
   const clamped = supportsXhigh ? effort : clampEffort(effort, "high");
   return { openai: { reasoningEffort: clamped, reasoningSummary: "auto" } };
 }
 
 function getGeminiThinkingOptions(
-  modelId: string,
+  modelString: string,
   effort: ThinkingEffort,
 ): Record<string, unknown> {
+  const { modelId } = parseModelString(modelString);
   if (/^gemini-3/.test(modelId)) {
     return {
       google: {
@@ -73,7 +100,10 @@ function getGeminiThinkingOptions(
 
 interface ThinkingStrategy {
   supports: (modelString: string) => boolean;
-  build: (modelId: string, effort: ThinkingEffort) => Record<string, unknown>;
+  build: (
+    modelString: string,
+    effort: ThinkingEffort,
+  ) => Record<string, unknown>;
 }
 
 const THINKING_STRATEGIES: readonly ThinkingStrategy[] = [
@@ -97,10 +127,9 @@ export function getThinkingProviderOptions(
 ): Record<string, unknown> | null {
   if (!supportsThinking(modelString)) return null;
 
-  const { modelId } = parseModelString(modelString);
   for (const strategy of THINKING_STRATEGIES) {
     if (!strategy.supports(modelString)) continue;
-    return strategy.build(modelId, effort);
+    return strategy.build(modelString, effort);
   }
 
   return null;
