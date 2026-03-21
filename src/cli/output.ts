@@ -6,6 +6,7 @@ import type {
   StatusBarData,
   TurnResult,
 } from "../agent/reporter.ts";
+import { PACKAGE_VERSION } from "../internal/version.ts";
 import type { TurnEvent } from "../llm-api/types.ts";
 import { logError } from "../logging/context.ts";
 import {
@@ -20,9 +21,6 @@ import { renderTurn } from "./stream-render.ts";
 import { terminal } from "./terminal-io.ts";
 
 const HOME = homedir();
-declare const __PACKAGE_VERSION__: string;
-const PACKAGE_VERSION =
-  typeof __PACKAGE_VERSION__ !== "undefined" ? __PACKAGE_VERSION__ : null;
 
 /** Replace the home directory prefix with `~` for display. */
 export function tildePath(p: string): string {

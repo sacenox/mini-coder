@@ -1,4 +1,5 @@
 import * as c from "yoctocolors";
+import { truncateText } from "../internal/text.ts";
 import { G, tildePath, writeln } from "./output.ts";
 import { renderToolResultByName } from "./tool-result-renderers.ts";
 
@@ -70,16 +71,12 @@ function extractFirstCommand(cmd: string): string {
   return tokens[0] ?? "";
 }
 
-function truncate(s: string, max: number): string {
-  return s.length > max ? `${s.slice(0, max - 1)}…` : s;
-}
-
 function formatShellCallLine(cmd: string): string {
   const { cwd, rest } = parseShellCdPrefix(cmd);
   const firstCmd = extractFirstCommand(rest);
   const glyph = shellCmdGlyph(firstCmd, rest);
   const cwdSuffix = cwd ? ` ${c.dim(`in ${cwd}`)}` : "";
-  const display = truncate(rest, 80);
+  const display = truncateText(rest, 80);
   return `${glyph} ${display}${cwdSuffix}`;
 }
 

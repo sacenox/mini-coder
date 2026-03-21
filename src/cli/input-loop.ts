@@ -26,6 +26,8 @@ function buildShellContext(result: ShellOutput): string {
   if (result.stderr) sections.push(`stderr:\n${result.stderr}`);
   if (result.timedOut) sections.push("command timed out");
   if (!result.success) sections.push(`exit code: ${result.exitCode}`);
+  if (sections.length === 0)
+    sections.push(`(no output, exit ${result.exitCode})`);
   return sections.join("\n\n").trim();
 }
 

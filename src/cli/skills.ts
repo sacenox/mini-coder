@@ -10,6 +10,7 @@ import {
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import * as c from "yoctocolors";
+import { parseFrontmatter } from "./frontmatter.ts";
 import { G, writeln } from "./output.ts";
 
 export interface SkillMeta {
@@ -56,25 +57,12 @@ function parseSkillFrontmatter(filePath: string): SkillFrontmatter {
     const chunk = Buffer.allocUnsafe(MAX_FRONTMATTER_BYTES);
     const bytesRead = readSync(fd, chunk, 0, MAX_FRONTMATTER_BYTES, 0);
     const text = chunk.toString("utf8", 0, bytesRead);
-    const lines = text.split("\n");
-    if ((lines[0] ?? "").trim() !== "---") return {};
-
-    const meta: SkillFrontmatter = {};
-    for (let i = 1; i < lines.length; i++) {
-      const line = (lines[i] ?? "").replace(/\r$/, "");
-      if (line.trim() === "---") break;
-      const colon = line.indexOf(":");
-      if (colon === -1) continue;
-      const key = line.slice(0, colon).trim();
-      const value = line
-        .slice(colon + 1)
-        .trim()
-        .replace(/^["']|["']$/g, "");
-      if (key === "name") meta.name = value;
-      if (key === "description") meta.description = value;
-      if (key === "context") meta.context = value;
-    }
-    return meta;
+    const { meta } = parseFrontmatter(text);
+    const result: SkillFrontmatter = {};
+    if (meta.name) result.name = meta.name;
+    if (meta.description) result.description = meta.description;
+    if (meta.context) result.context = meta.context;
+    return result;
   } catch {
     return {};
   } finally {

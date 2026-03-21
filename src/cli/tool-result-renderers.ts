@@ -1,4 +1,5 @@
 import * as c from "yoctocolors";
+import { truncateText } from "../internal/text.ts";
 import { G, writeln } from "./output.ts";
 
 interface ToolResultRenderOptions {
@@ -48,7 +49,7 @@ function truncateOneLine(
   verboseOutput = false,
 ): string {
   if (verboseOutput) return value;
-  return value.length > max ? `${value.slice(0, max - 1)}…` : value;
+  return truncateText(value, max);
 }
 
 function normalizeShellText(value: string): string {

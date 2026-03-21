@@ -147,6 +147,9 @@ export async function* runTurn(options: {
       type: "turn-error",
       error: normalizedError,
       partialMessages: finalState.partialMessages,
+      inputTokens: finalState.inputTokens,
+      outputTokens: finalState.outputTokens,
+      contextTokens: finalState.contextTokens,
     };
   }
 }

@@ -57,6 +57,12 @@ export interface TurnErrorEvent {
   error: Error;
   /** Messages from completed steps before the error/abort occurred. */
   partialMessages: CoreMessage[];
+  /** Accumulated input tokens before the error/abort. */
+  inputTokens: number;
+  /** Accumulated output tokens before the error/abort. */
+  outputTokens: number;
+  /** Context tokens from the last completed step (0 if none completed). */
+  contextTokens: number;
 }
 
 export type TurnEvent =

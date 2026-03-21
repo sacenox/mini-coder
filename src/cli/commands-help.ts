@@ -1,4 +1,5 @@
 import * as c from "yoctocolors";
+import { truncateText } from "../internal/text.ts";
 import { writeln } from "./output.ts";
 import { loadSkillsIndex } from "./skills.ts";
 import type { CommandContext } from "./types.ts";
@@ -51,8 +52,9 @@ export function renderHelpCommand(ctx: CommandContext): void {
     for (const skill of skills.values()) {
       const source =
         skill.source === "local" ? c.dim("local") : c.dim("global");
+      const desc = truncateText(skill.description, 80);
       writeln(
-        `  ${c.green(`/${skill.name}`.padEnd(28))} ${c.dim(skill.description)} ${c.dim("·")} ${source}`,
+        `  ${c.green(`/${skill.name}`.padEnd(28))} ${c.dim(desc)} ${c.dim("·")} ${source}`,
       );
     }
   }

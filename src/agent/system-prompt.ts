@@ -82,6 +82,7 @@ Outputs a diff of the changes and meta information.
 Apply one safe exact-text edit to an existing file.
 - The expected old text must match exactly once.
 - Omit --new / --new-file to delete the matched text.
+- To create new files, use shell commands (e.g. \`cat > file.txt << 'EOF'\\n...\\nEOF\`).
 `;
 
   prompt += AUTONOMY;

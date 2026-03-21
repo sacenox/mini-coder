@@ -3,6 +3,7 @@ import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
+import { PACKAGE_VERSION } from "../internal/version.ts";
 import type { ToolDef } from "../llm-api/types.ts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -28,7 +29,7 @@ interface McpClient {
 export async function connectMcpServer(
   config: McpServerConfig,
 ): Promise<McpClient> {
-  const client = new Client({ name: "mini-coder", version: "0.1.0" });
+  const client = new Client({ name: "mini-coder", version: PACKAGE_VERSION });
 
   if (config.transport === "http") {
     if (!config.url) {

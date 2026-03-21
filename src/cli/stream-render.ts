@@ -153,6 +153,9 @@ export async function renderTurn(
         liveReasoning.finish();
         content.flushOpenContent();
         spinner.stop();
+        inputTokens = event.inputTokens;
+        outputTokens = event.outputTokens;
+        contextTokens = event.contextTokens;
         if (isAbortError(event.error)) {
           newMessages = buildAbortMessages(
             event.partialMessages,

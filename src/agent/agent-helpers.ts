@@ -15,7 +15,8 @@ export function makeInterruptMessage(reason: "user" | "error"): CoreMessage {
 export function isAbortError(error: Error): boolean {
   return (
     error.name === "AbortError" ||
-    (error.name === "Error" && error.message.toLowerCase().includes("abort"))
+    ("code" in error && error.code === "ABORT_ERR") ||
+    (error.name === "Error" && error.message === "aborted")
   );
 }
 

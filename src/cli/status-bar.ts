@@ -1,15 +1,10 @@
 import * as c from "yoctocolors";
 import type { StatusBarData } from "../agent/reporter.ts";
 import { stripAnsi } from "../internal/ansi.ts";
+import { truncateText } from "../internal/text.ts";
 import { terminal } from "./terminal-io.ts";
 
 const STATUS_SEP = c.dim("  ·  ");
-
-function truncatePlainText(value: string, maxLen: number): string {
-  if (value.length <= maxLen) return value;
-  if (maxLen <= 1) return "…";
-  return `${value.slice(0, maxLen - 1)}…`;
-}
 
 function fmtTokens(n: number): string {
   if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
@@ -74,10 +69,10 @@ function fitStatusSegments(
   const plainRequired = required.map((segment) => stripAnsi(segment));
   const sepLen = stripAnsi(STATUS_SEP).length;
   const fixedPrefix = plainRequired[0] ?? "";
-  if (plainRequired.length <= 1) return truncatePlainText(fixedPrefix, cols);
+  if (plainRequired.length <= 1) return truncateText(fixedPrefix, cols);
 
   const maxTailLen = Math.max(8, cols - fixedPrefix.length - sepLen);
-  const truncatedTail = truncatePlainText(plainRequired[1] ?? "", maxTailLen);
+  const truncatedTail = truncateText(plainRequired[1] ?? "", maxTailLen);
   return `${required[0]}${STATUS_SEP}${c.dim(truncatedTail)}`;
 }
 

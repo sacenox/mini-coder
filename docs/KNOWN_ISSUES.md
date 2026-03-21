@@ -8,7 +8,6 @@
 - AI SDK expands `claude-3-5-haiku` → dated variant that Zen doesn't serve (404).
 - Shell tool max-timeout leaves the parent terminal in a broken state.
 - MiniMax sends empty text deltas in one-shot — renders as blank lines.
-- Double prompt glyph after ESC — `turn-complete` newline + input loop prompt collide.
 - Truncated tool commands cut mid-argument (e.g. `--new '{…`). Truncate at argument boundaries instead.
 
 ## Features
@@ -18,6 +17,4 @@
 
 ## Refactors
 
-- Consolidate truncation helpers across cli modules into `cli/truncate.ts`.
-- Consolidate `parseSkillFrontmatter` (skills.ts) with `parseFrontmatter` (frontmatter.ts).
 - Status bar: merge model + thinking effort into one field, drop `showReasoning` (already in banner).

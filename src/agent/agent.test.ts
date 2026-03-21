@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { CoreMessage } from "../llm-api/turn.ts";
 import {
   extractAssistantText,
+  isAbortError,
   makeInterruptMessage,
   sanitizeModelAuthoredMessages,
 } from "./agent-helpers.ts";
@@ -176,5 +177,34 @@ describe("makeInterruptMessage", () => {
     expect(makeInterruptMessage("user").content).not.toBe(
       makeInterruptMessage("error").content,
     );
+  });
+});
+
+// ─── isAbortError ─────────────────────────────────────────────────────────────
+
+describe("isAbortError", () => {
+  test("detects AbortError by name", () => {
+    const err = new DOMException("signal is aborted", "AbortError");
+    expect(isAbortError(err)).toBe(true);
+  });
+
+  test("detects ABORT_ERR code", () => {
+    const err = new DOMException("aborted", "AbortError");
+    expect(isAbortError(err)).toBe(true);
+  });
+
+  test('detects exact "aborted" message', () => {
+    const err = new Error("aborted");
+    expect(isAbortError(err)).toBe(true);
+  });
+
+  test("rejects generic error mentioning abort in text", () => {
+    const err = new Error("Transaction aborted by user");
+    expect(isAbortError(err)).toBe(false);
+  });
+
+  test("rejects unrelated error", () => {
+    const err = new Error("connection timeout");
+    expect(isAbortError(err)).toBe(false);
   });
 });
