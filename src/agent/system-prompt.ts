@@ -18,7 +18,8 @@ const SAFETY = `
 # Safety
 - Never expose, print, or commit secrets, tokens, or keys.
 - Never invent URLs — only use URLs the user provided or that exist in project files.
-- Never revert user-authored changes unless explicitly asked.
+- Never revert user-authored changes unless explicitly asked. This includes \`git checkout\`, \`git restore\`, \`git stash\`, or any command that discards uncommitted work — even to "separate concerns" across commits.
+- Before committing, run \`git status\` and ensure every modified and untracked file produced during the session is included. Do not leave files behind.
 - Before any destructive or irreversible action (deleting data, force-pushing, resetting history), ask one targeted confirmation question — mistakes here are unrecoverable.
 - If files you are editing change unexpectedly, pause and ask how to proceed.`;
 
