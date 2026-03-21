@@ -1,5 +1,6 @@
 import type { streamText } from "ai";
 
+import { logApiEvent } from "../logging/context.ts";
 import { getMaxOutputTokens } from "./model-info.ts";
 import { isAnthropicModelFamily } from "./model-routing.ts";
 import type { ThinkingEffort } from "./provider-options.ts";
@@ -133,9 +134,11 @@ export function buildStreamTextRequest(
         }
       : {}),
     ...(input.signal ? { abortSignal: input.signal } : {}),
-    onError: () => {
+    onError: ({ error }) => {
       // The AI SDK logs errors to stderr by default. We surface failures through
       // streamed turn events so CLI output stays compact and consistent.
+      // Log the error so we can debug silent stream terminations.
+      logApiEvent("streamText onError", { error: String(error) });
     },
   } as StreamTextOptions;
 }

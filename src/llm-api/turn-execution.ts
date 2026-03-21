@@ -6,6 +6,7 @@
 // some providers (OpenAI) emit alongside tool calls, preventing duplicate output.
 import type { FlexibleSchema, StepResult } from "ai";
 import { dynamicTool, jsonSchema, type streamText } from "ai";
+import { logApiEvent } from "../logging/context.ts";
 import { normalizeUnknownError } from "./error-utils.ts";
 import { isRecord } from "./history/shared.ts";
 import { isAnthropicModelFamily } from "./model-routing.ts";
@@ -51,9 +52,16 @@ function toCoreTool(def: ToolDef): ReturnType<typeof dynamicTool> {
     description: def.description,
     inputSchema: schema,
     execute: async (input: unknown) => {
+      logApiEvent("tool execute start", { tool: def.name });
       try {
-        return await def.execute(input);
+        const result = await def.execute(input);
+        logApiEvent("tool execute end", { tool: def.name });
+        return result;
       } catch (err) {
+        logApiEvent("tool execute error", {
+          tool: def.name,
+          error: String(err),
+        });
         throw normalizeUnknownError(err);
       }
     },
@@ -102,6 +110,7 @@ export function annotateToolCaching(
 
 export function createTurnStateTracker(opts: {
   onStepLog: (entry: {
+    stepNumber: number;
     finishReason: string | null | undefined;
     usage: unknown;
   }) => void;
@@ -110,10 +119,13 @@ export function createTurnStateTracker(opts: {
   let outputTokens = 0;
   let contextTokens = 0;
   let partialMessages: CoreMessage[] = [];
+  let stepCount = 0;
 
   return {
     onStepFinish: (step: StepResult<ToolSet>) => {
+      stepCount++;
       opts.onStepLog({
+        stepNumber: stepCount,
         finishReason: step.finishReason,
         usage: step.usage,
       });
