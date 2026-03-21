@@ -13,7 +13,7 @@ function getDbPath(): string {
   return join(dir, "sessions.db");
 }
 
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 
 const SCHEMA = `
   CREATE TABLE IF NOT EXISTS sessions (
@@ -100,6 +100,17 @@ const SCHEMA = `
     expires_at     INTEGER NOT NULL,
     updated_at     INTEGER NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS logs (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id  TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    level       TEXT NOT NULL,
+    timestamp   INTEGER NOT NULL,
+    data        TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_logs_session
+    ON logs(session_id, timestamp DESC);
 `;
 
 let _db: Database | null = null;

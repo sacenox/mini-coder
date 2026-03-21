@@ -3,10 +3,9 @@ import * as c from "yoctocolors";
 import { initAgent } from "./agent/agent.ts";
 import { parseArgs, printHelp } from "./cli/args.ts";
 import { bootstrapGlobalDefaults } from "./cli/bootstrap.ts";
-import { initErrorLog } from "./cli/error-log.ts";
+
 import { resolveFileRefs } from "./cli/file-refs.ts";
 import { runInputLoop } from "./cli/input-loop.ts";
-import { cleanStaleLogs } from "./cli/log-paths.ts";
 import {
   CliReporter,
   RenderedError,
@@ -17,7 +16,7 @@ import {
 } from "./cli/output.ts";
 import { resolvePromptInput } from "./cli/stdin-prompt.ts";
 import { terminal } from "./cli/terminal-io.ts";
-import { initApiLog } from "./llm-api/api-log.ts";
+
 import {
   initModelInfoCache,
   refreshModelInfoInBackground,
@@ -36,9 +35,6 @@ import { getMostRecentSession, printSessionList } from "./session/manager.ts";
 // Register terminal cleanup handlers as early as possible so the cursor is
 // always restored even if the process crashes or is killed.
 registerTerminalCleanup();
-initErrorLog();
-initApiLog();
-cleanStaleLogs();
 initModelInfoCache();
 pruneOldData();
 void refreshModelInfoInBackground().catch(() => {});

@@ -7,11 +7,11 @@ import type {
   TurnResult,
 } from "../agent/reporter.ts";
 import type { TurnEvent } from "../llm-api/types.ts";
+import { logError } from "../logging/context.ts";
 import {
   getPreferredShowReasoning,
   getPreferredVerboseOutput,
 } from "../session/db/index.ts";
-import { logError } from "./error-log.ts";
 import { parseAppError } from "./error-parse.ts";
 import { loadSkillsIndex } from "./skills.ts";
 import { Spinner } from "./spinner.ts";

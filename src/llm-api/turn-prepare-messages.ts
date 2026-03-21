@@ -1,4 +1,4 @@
-import { isApiLogEnabled, logApiEvent } from "./api-log.ts";
+import { getLogContext, logApiEvent } from "../logging/context.ts";
 import {
   normalizeOpenAICompatibleToolCallInputs,
   sanitizeGeminiToolMessagesWithMetadata,
@@ -38,7 +38,7 @@ export function prepareTurnMessages(input: {
 }): PreparedMessages {
   const { messages, modelString, toolCount, systemPrompt } = input;
 
-  const apiLogOn = isApiLogEnabled();
+  const apiLogOn = getLogContext() !== null;
 
   // 1. Strip runtime-only tool input fields before provider-specific sanitisation.
   const strippedRuntimeToolFields = stripToolRuntimeInputFields(messages);

@@ -1,5 +1,5 @@
 import { streamText } from "ai";
-import { isApiLogEnabled, logApiEvent } from "./api-log.ts";
+import { getLogContext, logApiEvent } from "../logging/context.ts";
 import { normalizeUnknownError } from "./error-utils.ts";
 import type { ThinkingEffort } from "./provider-options.ts";
 import {
@@ -90,7 +90,7 @@ export async function* runTurn(options: {
       };
     }
 
-    if (isApiLogEnabled()) {
+    if (getLogContext() !== null) {
       logApiEvent("prompt caching configured", {
         cacheFamily: providerOptionsResult.cacheFamily,
       });
