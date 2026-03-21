@@ -111,7 +111,8 @@ Apply one safe exact-text edit to an existing file.
     prompt +=
       '\nFor complex skills that would clutter your context, consider delegating to a subagent via `mc "prompt"` in the shell tool.\n';
     for (const skill of skills) {
-      prompt += `\n- ${skill.name}: ${skill.description} (${skill.source}, ${skill.filePath})`;
+      const compat = skill.compatibility ? ` [${skill.compatibility}]` : "";
+      prompt += `\n- ${skill.name}: ${skill.description}${compat} (${skill.source}, ${skill.filePath})`;
     }
   }
 

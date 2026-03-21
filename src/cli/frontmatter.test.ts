@@ -45,4 +45,29 @@ describe("parseFrontmatter", () => {
       body: raw,
     });
   });
+
+  test("parses nested metadata as a sub-object", () => {
+    const raw =
+      '---\nname: pdf-tool\ndescription: Handles PDFs\nmetadata:\n  author: example-org\n  version: "1.0"\n---\n\nBody';
+    expect(parseFrontmatter(raw)).toEqual({
+      meta: {
+        name: "pdf-tool",
+        description: "Handles PDFs",
+        metadata: { author: "example-org", version: "1.0" },
+      },
+      body: "Body",
+    });
+  });
+
+  test("handles empty nested block followed by a top-level key", () => {
+    const raw =
+      "---\nmetadata:\n  key: val\ncompatibility: Requires git\n---\n\nEnd";
+    expect(parseFrontmatter(raw)).toEqual({
+      meta: {
+        metadata: { key: "val" },
+        compatibility: "Requires git",
+      },
+      body: "End",
+    });
+  });
 });

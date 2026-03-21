@@ -287,4 +287,27 @@ describe("skills loader", () => {
     expect(skill).toBeDefined();
     expect(skill?.context).toBeUndefined();
   });
+
+  test("parses compatibility field from frontmatter", () => {
+    writeSkill(
+      dir,
+      ".agents",
+      "deploy-skill",
+      "---\nname: deploy-skill\ndescription: Deploy things\ncompatibility: Requires docker and git\n---\ncontent",
+    );
+    const index = loadSkillsIndex(dir, fakeHome);
+    const skill = index.get("deploy-skill");
+    expect(skill?.compatibility).toBe("Requires docker and git");
+  });
+
+  test("compatibility is undefined when not specified", () => {
+    writeSkill(
+      dir,
+      ".agents",
+      "plain-skill",
+      "---\nname: plain-skill\ndescription: No compat\n---\ncontent",
+    );
+    const index = loadSkillsIndex(dir, fakeHome);
+    expect(index.get("plain-skill")?.compatibility).toBeUndefined();
+  });
 });

@@ -11,7 +11,12 @@ const ListSkillsSchema = z.object({});
 type ListSkillsInput = { cwd?: string };
 
 interface ListSkillsOutput {
-  skills: Array<Pick<SkillMeta, "name" | "description" | "source" | "context">>;
+  skills: Array<
+    Pick<
+      SkillMeta,
+      "name" | "description" | "source" | "context" | "compatibility"
+    >
+  >;
 }
 
 export const listSkillsTool: ToolDef<ListSkillsInput, ListSkillsOutput> = {
@@ -26,6 +31,7 @@ export const listSkillsTool: ToolDef<ListSkillsInput, ListSkillsOutput> = {
       description: skill.description,
       source: skill.source,
       ...(skill.context && { context: skill.context }),
+      ...(skill.compatibility && { compatibility: skill.compatibility }),
     }));
     return { skills };
   },

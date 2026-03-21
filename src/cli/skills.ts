@@ -20,6 +20,7 @@ export interface SkillMeta {
   rootPath: string;
   filePath: string;
   context?: "fork";
+  compatibility?: string;
 }
 
 export interface LoadedSkillContent {
@@ -48,6 +49,7 @@ type SkillFrontmatter = {
   name?: string;
   description?: string;
   context?: string;
+  compatibility?: string;
 };
 
 function parseSkillFrontmatter(filePath: string): SkillFrontmatter {
@@ -59,9 +61,13 @@ function parseSkillFrontmatter(filePath: string): SkillFrontmatter {
     const text = chunk.toString("utf8", 0, bytesRead);
     const { meta } = parseFrontmatter(text);
     const result: SkillFrontmatter = {};
-    if (meta.name) result.name = meta.name;
-    if (meta.description) result.description = meta.description;
-    if (meta.context) result.context = meta.context;
+    if (typeof meta.name === "string" && meta.name) result.name = meta.name;
+    if (typeof meta.description === "string" && meta.description)
+      result.description = meta.description;
+    if (typeof meta.context === "string" && meta.context)
+      result.context = meta.context;
+    if (typeof meta.compatibility === "string" && meta.compatibility)
+      result.compatibility = meta.compatibility;
     return result;
   } catch {
     return {};
@@ -233,6 +239,7 @@ function validateSkill(candidate: SkillCandidate): SkillMeta | null {
     rootPath: candidate.rootPath,
     filePath: candidate.filePath,
     ...(meta.context === "fork" && { context: "fork" as const }),
+    ...(meta.compatibility && { compatibility: meta.compatibility }),
   };
 }
 
