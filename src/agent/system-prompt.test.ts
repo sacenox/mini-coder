@@ -102,7 +102,6 @@ describe("buildSystemPrompt", () => {
       "Inspect code and files primarily through shell commands",
     );
     expect(prompt).toContain("invoke `mc-edit` via shell");
-    expect(prompt).toContain("scan the skills list below");
     expect(prompt).toContain("never guess unknown state");
   });
 
@@ -168,12 +167,16 @@ describe("buildSystemPrompt", () => {
     );
 
     const prompt = buildSystemPrompt("mock", tmpDir, fakeHome);
-    expect(prompt).toContain("# Available skills (metadata only)");
+    expect(prompt).toContain("# Skills");
     expect(prompt).toContain(
-      "Use `listSkills` to browse and `readSkill` to load one SKILL.md on demand.",
+      "call `readSkill` with that skill name before doing anything else",
     );
-    expect(prompt).toContain("- deploy: Deploy safely (local,");
-    expect(prompt).toContain(".agents/skills/deploy/SKILL.md)");
+    expect(prompt).toContain("Check ALL skills against the current task");
+    expect(prompt).toContain("<available_skills>");
+    expect(prompt).toContain("<name>deploy</name>");
+    expect(prompt).toContain("<description>Deploy safely</description>");
+    expect(prompt).toContain(".agents/skills/deploy/SKILL.md</location>");
+    expect(prompt).toContain("<source>local</source>");
     expect(prompt).not.toContain("Detailed body");
   });
 
@@ -186,7 +189,9 @@ describe("buildSystemPrompt", () => {
     );
 
     const prompt = buildSystemPrompt("mock", tmpDir, fakeHome);
-    expect(prompt).toContain("- release: Ship releases (global,");
+    expect(prompt).toContain("<name>release</name>");
+    expect(prompt).toContain("<description>Ship releases</description>");
+    expect(prompt).toContain("<source>global</source>");
     expect(prompt).not.toContain("Release body");
   });
 });

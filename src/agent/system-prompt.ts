@@ -84,21 +84,22 @@ Usage: mc-edit <path> (--old <text> | --old-file <path>) [--new <text> | --new-f
 
   const skills = Array.from(loadSkillsIndex(cwd, homeDir).values());
   if (skills.length > 0) {
-    prompt += "\n\n# Available skills (metadata only)";
+    prompt += "\n\n# Skills";
     prompt +=
-      "\nUse `listSkills` to browse and `readSkill` to load one SKILL.md on demand.";
-    prompt +=
-      "\nMatch skill triggers against your current task. Load and follow matching skills BEFORE writing code or making changes.";
-    prompt +=
-      "\nWhen a skill references relative paths, resolve them against the skill directory (parent of SKILL.md).";
-    prompt +=
-      '\nFor complex skills that would clutter your context, consider delegating to a subagent via `mc "prompt"` in the shell tool.';
-    prompt +=
-      "\nDo NOT rationalize skipping skills. If a skill's description overlaps with your task at all, load it. When in doubt, load it.\n";
+      "\nSkills provide specialized instructions for specific tasks. When a task matches a skill description, call `readSkill` with that skill name before doing anything else — including asking clarifying questions. Check ALL skills against the current task, not just the first match. When a skill references relative paths, resolve them against the skill directory (parent of SKILL.md).";
+    prompt += "\n\n<available_skills>";
     for (const skill of skills) {
-      const compat = skill.compatibility ? ` [${skill.compatibility}]` : "";
-      prompt += `\n- ${skill.name}: ${skill.description}${compat} (${skill.source}, ${skill.filePath})`;
+      const compat = skill.compatibility
+        ? `\n    <compatibility>${skill.compatibility}</compatibility>`
+        : "";
+      prompt += `\n  <skill>`;
+      prompt += `\n    <name>${skill.name}</name>`;
+      prompt += `\n    <description>${skill.description}</description>`;
+      prompt += `\n    <location>${skill.filePath}</location>`;
+      prompt += `\n    <source>${skill.source}</source>${compat}`;
+      prompt += `\n  </skill>`;
     }
+    prompt += "\n</available_skills>";
   }
 
   return prompt;
