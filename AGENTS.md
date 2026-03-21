@@ -36,7 +36,7 @@ An augmented shell prompt coding agent — small, fast, stays out of the way.
 **Performance first, style second.** Instant feedback, shell-like output.
 
 Focused on dev flow — minimal setup, fast to coding.
-Output is a scrolling chronological log with strict hierarchy: actions → results → reasoning → responses. No redraws, no clearing — append-only like a terminal.
+Output is a scrolling chronological log with strict hierarchy: actions → results → reasoning → responses. No redraws, no clearing — append-only like a terminal. Exception: `/new` clears the screen for a fresh start.
 Core features must be correct and fast before adding new ones.
 Community oriented — support AGENTS.md and agentskills.io specs, don't introduce new config formats.
 
@@ -52,7 +52,7 @@ Community oriented — support AGENTS.md and agentskills.io specs, don't introdu
 
 - Session management and command to create new/resume/list with local sqlite file.
   - `/session` command to interactively manage sessions as well as cli flags.
-  - `/new` starts a new session with empty message history and resets the status bar.
+  - `/new` starts a new session with empty message history, clears the screen, and redraws the banner.
 
 - Enriched user prompt:
   - Rich line editing/history/image paste. Enter submits.
