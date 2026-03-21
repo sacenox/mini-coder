@@ -20,11 +20,11 @@ Reviewed all ~15K lines of TypeScript across 90 source files. Ran `bun run check
 
 1. ~~**`supportsThinking()` + haiku = 400 error**~~ **FIXED** (`24592bc`) — Zen claude models were sent the `effort-2025-11-24` beta format (`output_config: { effort }`) which Zen's proxy crashes on (HTTP 500: `"Cannot read properties of undefined (reading input_tokens)"`). Confirmed via direct curl probes: the legacy `thinking: { type: "enabled", budget_tokens: N }` format returns HTTP 200 on Zen. Fix: detect `zen/claude-*` models in `getAnthropicThinkingOptions` and use the legacy format with mapped budgets (low=4K, medium=8K, high=16K, xhigh=32K). Note: the `effort-2025-11-24` beta format still works correctly on `api.anthropic.com`.
 
-2. **`autoTitleSession` overwrites title on every turn** — `setSessionTitle` is called on every `processUserInput`, not just the first. Looking at the DB layer, it likely uses `INSERT OR REPLACE` or always updates. This means the session title changes to match the latest user message instead of staying as the first message. Should check if already titled.
+2. ~~**`autoTitleSession` overwrites title on every turn**~~ **NON-ISSUE** — `setSessionTitle` in the DB layer uses `AND title = ''` in the UPDATE predicate, so it only writes when the title is empty. The session title correctly stays as the first message.
 
-3. **`maxOutputTokens` hardcoded to 16384** (KNOWN) — In `turn-request.ts` line `maxOutputTokens: 16384`. The model-info cache already has context window data; deriving max output from model info would be more accurate, especially for models with larger output limits.
+3. ~~**`maxOutputTokens` hardcoded to 16384**~~ **FIXED** (`19a9755`) — Added `max_output_tokens` column to `model_capabilities` (DB v6), parsing `limit.output` from models.dev. Propagated through `ModelCapabilityRow` → `RuntimeCapability` → `ModelInfo`. `buildStreamTextRequest` now calls `getMaxOutputTokens(modelString) ?? 16384`.
 
-4. **DB lock during concurrent access** — The settings restore command failed with `database is locked` because the WAL wasn't fully checkpointed. The `busy_timeout=1000` is set, but external sqlite3 CLI access can still conflict. Not a bug per se, but the WAL file grows large (4MB observed).
+4. ~~**DB lock / WAL file growth**~~ **FIXED** (`19a9755`) — Upgraded the startup checkpoint from `PASSIVE` to `TRUNCATE`, which zeroes the WAL file after applying writes. Same busy-safe wrapper; external readers still won't block startup.
 
 ### Architecture Alignment with Core Idea
 
@@ -93,14 +93,14 @@ N/T = Not specifically tested in interactive mode, but one-shot works.
 
 1. ~~**Guard `supportsThinking()` more conservatively**~~ **RESOLVED** — Fixed by detecting `zen/claude-*` models and switching to the legacy `budget_tokens` API format, confirmed correct via curl probes against `opencode.ai/zen/v1`.
 
-2. **Derive `maxOutputTokens` from model info** — The model-info cache already stores capabilities. Use it instead of the 16384 hardcode.
+2. ~~**Derive `maxOutputTokens` from model info**~~ **FIXED** (`19a9755`) — See item 3 above.
 
-3. **Add a brief architecture comment at the top of `turn-execution.ts`** — The stream normalization logic is the most complex part of the codebase. A 5-line comment explaining why synthetic tool call IDs and phase tracking exist would help future contributors.
+3. ~~**Add a brief architecture comment at the top of `turn-execution.ts`**~~ **FIXED** (`19a9755`) — 6-line block comment added explaining `StreamToolCallTracker` and `StreamTextPhaseTracker`.
 
 ### Polish
 
 4. **Status bar: merge model + thinking effort** (KNOWN) — The `showReasoning` field in the status bar signature contributes to unnecessary re-renders. The known issues already track this.
 
-5. **Shell tool truncation** — The `MAX_OUTPUT_BYTES = 10_000` truncation cuts mid-stream. The known issue about truncating at argument boundaries applies here too — truncated outputs can lose important trailing context.
+5. ~~**Shell tool truncation**~~ **FIXED** (`19a9755`) — Truncation now snaps to the last `\n` in the partial chunk, preventing broken mid-line cuts.
 
-6. **WAL file growth** — The sessions.db WAL file was 4MB. The `PASSIVE` checkpoint at startup may not always succeed. Consider a more aggressive checkpoint strategy or periodic forced checkpoints.
+6. ~~**WAL file growth**~~ **FIXED** (`19a9755`) — See item 4 above.
