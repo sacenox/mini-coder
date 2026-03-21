@@ -273,7 +273,11 @@ export async function readline(opts: { cwd?: string }): Promise<InputResult> {
   try {
     while (true) {
       const raw = await readKey(reader);
-      if (!raw) continue;
+      if (!raw) {
+        // Stream closed (stdin "end") — treat as EOF to avoid infinite spin.
+        process.stdout.write("\n");
+        return { type: "eof" };
+      }
 
       // ── Search mode ────────────────────────────────────────────────────────
       if (searchMode) {

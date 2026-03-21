@@ -148,9 +148,12 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err) => {
-  if (!(err instanceof RenderedError)) {
-    renderError(err, "main");
-  }
-  process.exit(1);
-});
+main().then(
+  () => process.exit(0),
+  (err) => {
+    if (!(err instanceof RenderedError)) {
+      renderError(err, "main");
+    }
+    process.exit(1);
+  },
+);
