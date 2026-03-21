@@ -82,13 +82,16 @@ Overall: the module split is clean, the tool surface stays small, tests are heal
 2. **Stop leaking SDK warnings into the CLI stream**  
    Suppress raw AI SDK warning output and surface only intentional mini-coder messages. If a warning matters, render it once in the app’s own format.
 
-3. **Remove the `/new` terminal clear**  
-   Reset session state, but keep the transcript append-only.
+3. ~~**Stream timeout kills long-running tool calls after 120 seconds**~~  
+   ✅ **Resolved.** The AI SDK `streamText` had `timeout: { chunkMs: 120_000 }` which killed the stream when tools took >120s (no chunks flow while waiting for tool results). Removed the timeout entirely — users can interrupt with ESC at any time.
+
+4. ~~**Remove the `/new` terminal clear**~~  
+   ✅ **Resolved.** Screen clearing on `/new` is intentional — AGENTS.md updated to document this as an explicit exception to append-only output.
 
 ### Code changes
 
-1. **Render provider status explicitly in the banner and status bar**  
-   This should come from actual detected provider availability/login state, not just the selected model string.
+1. ~~**Render provider status explicitly in the banner and status bar**~~  
+   ✅ **Resolved.** Banner now shows connected providers (with oauth annotation) and MCP server count. Example: `zen · anthropic (oauth) · 2 mcp`.
 
 2. **Move review-skill bootstrapping off the unconditional startup path**  
    Better options: create it lazily on first `/review`, or ship the default behavior without mutating `~/.agents` until the user opts in.
