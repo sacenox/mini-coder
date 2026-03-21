@@ -24,12 +24,14 @@ Run `mc` sessions across all SDK paths to capture what real users see.
 Do NOT delegate analysis to the models under test.
 Use `tmux` so you can test interactive sessions properly.
 
-**tmux send-keys rules** (always follow these to avoid paste/input issues):
+**tmux rules** (always follow these):
 
+- **Session naming**: always prefix tmux session names with `mc-audit-` (e.g. `mc-audit-haiku`, `mc-audit-gemini`). Never use generic names like `audit`, `test`, or `s` — they may collide with the host tmux session and kill the running mc process.
 - Always use `-l` when sending text: `tmux send-keys -t <session> -l 'your text here'`
 - Send `Enter` as a **separate** call without `-l`: `tmux send-keys -t <session> Enter`
 - Never combine text and `Enter` in a single `send-keys` call — without `-l`, words like `Enter`, `Escape`, `Tab`, `Space` get interpreted as key presses instead of literal text.
-- Pattern: `tmux send-keys -t s -l 'text'` then `tmux send-keys -t s Enter`
+- Pattern: `tmux send-keys -t mc-audit-test -l 'text'` then `tmux send-keys -t mc-audit-test Enter`
+- Before creating a session, never run `tmux kill-session` or `tmux kill-server` — just use unique names.
 
 ### Models to use (one per SDK path)
 
