@@ -1,6 +1,6 @@
 ---
 name: mini-coder
-description: How to use the `mc` CLI coding agent — interactive sessions, one-shot prompts, slash commands, file editing with mc-edit, and orchestrating subagents for complex tasks.
+description: "How to use the `mc` CLI coding agent — interactive sessions, one-shot prompts, slash commands, file editing with mc-edit, and orchestrating subagents for complex tasks. Use when helping users operate mc, or when acting as an mc agent yourself."
 ---
 
 # mini-coder

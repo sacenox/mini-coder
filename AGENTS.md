@@ -13,7 +13,7 @@
 - Do not inline `import` calls. Don't duplicate code. Don't leave dead code behind.
 - Don't re-implement helpers/functionality that already exists, always consolidate.
 - Don't add complexity for backwards compatibility, it's preferable to break compatibility and keep the code simple.
-- Don't make random test files, if you need to test something, write a propper unit test.
+- Don't make random test files, if you need to test something, write a proper unit test.
 - If you make temp files, clean them up when you are done.
 - Use Conventional Commits formatting for commit messages. When you commit, include the whole diff unless told otherwise.
 - Always use your superpowers skills effectively.
@@ -22,24 +22,23 @@
 
 mini-coder - `mc`
 
-A coding agent via a augmented shell prompt, small and fast that doesn't get in the way
+An augmented shell prompt coding agent — small, fast, stays out of the way.
 
-### Inpirations:
+### Inspirations:
 
-- Pi agent: https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent amazing tool, like a swiss army knife of coding agents.
-- Claude Code: https://claude.com/product/claude-code clean UI, propertary software
-- Codex: https://github.com/openai/codex Powerful and open source, focused on heavy open-ai integration
-- Opencode: https://opencode.ai/ The open source standard. Similar to oh-my-pi but with a different aesthetic
+- Pi agent: https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent
+- Claude Code: https://claude.com/product/claude-code
+- Codex: https://github.com/openai/codex
+- Opencode: https://opencode.ai/
 
 ### Philosophy:
 
-**Fast and performant**, instant feedback shell like output. Performance first style second.
+**Performance first, style second.** Instant feedback, shell-like output.
 
-Very focused on dev flow, simple setup steps and fast to coding.
-Elegant output that focus on the conversation with the agent and their actions. Ensure an accurate cronological conversation log that is very readable for the user. Keep a visible hierchy of actions -> results and assistant reasoning and responses.
-Accurate and reliable and fast core set of features.
-Community oriented, all of the inspirations have their own dotfile format, try to follow the existing
-conventions and not introduce more specs.
+Focused on dev flow — simple setup, fast to coding.
+Elegant output focused on the conversation and agent actions. Accurate chronological log with clear hierarchy: actions → results → reasoning → responses.
+Accurate, reliable, fast core features.
+Community oriented — follow existing dotfile conventions, don't introduce new specs.
 
 ### Features:
 
@@ -51,7 +50,7 @@ conventions and not introduce more specs.
 
 - Auto discovery of providers via ENV (Example: OPENCODE_API_KEY), or local servers (Example: ollama)
   - `/login` shows OAuth login status. `/login <provider>` starts browser-based OAuth login. `/logout <provider>` clears saved tokens. Currently supports Anthropic. (Both pi and opencode support this too)
-  - `/model` (alias `/models`) command allows the user to pick a model from connected providers. As well as thinking effort for the model if supported. Selection persists accross sessions. Must have autocomplete support for ease of use when changing models
+  - `/model` (alias `/models`) picks a model from connected providers, including thinking effort if supported. Selection persists across sessions with autocomplete.
 
 - Session management and command to create new/resume/list with local sqlite file.
   - `/session` command to interactively manage sessions as well as cli flags.
@@ -66,24 +65,21 @@ conventions and not introduce more specs.
   - Shell like autocomplete for filepaths, `@` embeds a file into the prompt and autocompletes filepaths
 
 - Context handling:
-  - Elegantly handles hitting max context size for the model using regular per step pruning. Stops with a conversation summary if max context is reached.
-  - No max steps or max tool calls. user can interrupt, this is not needed.
-  - Support prompt caching via the used sdks.
-  - Rolling context pruning with a balanced default. (Must not break caching!)
-  - Clear and accurate token tracking.
-  - Recover from errors returning the user to the prompt with clear messaging
-  - `/undo` removes the last turn from conversation history, it does not restore filesystem state.
+  - Rolling context pruning per step; stops with a conversation summary at max context. Must not break prompt caching.
+  - No max steps or tool call limits — user can interrupt.
+  - Clear, accurate token tracking.
+  - Recover from errors gracefully, returning user to the prompt.
+  - `/undo` removes the last turn from history (does not restore filesystem).
 
-- Shell-first tool surface for LLMs: `shell`, `listSkills`, and `readSkill`, plus connected MCP tools and optional web tools when configured. Keep the core surface small and easy to use so it actually reduces friction for the LLMs.
-  - File work should follow a simple flow: inspect with shell, mutate with `mc-edit`, verify with shell.
-  - Large shell outputs should be truncated automatically for the llm, to avoid context explosions and encourage targetted reads.
-  - `mc-edit` should stay narrow and reliable: exact-text edits only, deterministic failures on stale or ambiguous state, diff and machine-friendly output while staying human readable.
-  - Optional `webSearch` and `webContent` tools when `EXA_API_KEY` is set.
-  - Cross model system prompt with clear descriptions of the expected dev flow and guidance as a code agent focused on shell first.
+- Shell-first tool surface: `shell`, `listSkills`, `readSkill`, plus connected MCP tools and optional web tools (`EXA_API_KEY`). Keep it small.
+  - Inspect with shell → mutate with `mc-edit` → verify with shell.
+  - Auto-truncate large shell outputs for the LLM to avoid context explosions.
+  - `mc-edit`: exact-text edits only, deterministic failures on stale/ambiguous state.
+  - Cross-model system prompt with clear dev flow guidance.
 
 - Other Commands in CLI prompt:
   - `/reasoning` toggles display of model reasoning output.
-  - `/verbose` toggles output truncation. Tuncates large outputs keeping start and end sections and truncating the rest when verbose is off. This controls truncation for the user output, it's a visibility UI concern
+  - `/verbose` toggles output truncation. When off, large outputs keep start/end sections and truncate the middle. UI-only visibility concern.
   - `/review` reviews recent changes via a global custom skill installed at app start (`~/.agents/skills/review.md`), and can be customized or shadowed locally.
 
 - Connect to MCP servers over Streamable HTTP / SSE fallback or stdio.
@@ -91,7 +87,7 @@ conventions and not introduce more specs.
 
 ### UI/Output
 
-- Use the 16 ANSII colors so the coloring is allways inherited from the terminal theme (https://jvns.ca/blog/2024/10/01/terminal-colours/)
+- Use the 16 ANSI colors so coloring is always inherited from the terminal theme (https://jvns.ca/blog/2024/10/01/terminal-colours/)
 - Use pi and claude code as visual inspirations.
 - Banner at app start, show found configs and context files
 - history log (like a terminal output scrolls away, pushing the input prompt down)
@@ -105,7 +101,7 @@ conventions and not introduce more specs.
 
 - All things Bun.js, runtime, package manager. https://bun.com/docs
 - Multiprovider support via https://ai-sdk.dev/docs/introduction
-- Colored output with https://github.com/sindresorhus/yoctocolors limitted but fast!
+- Colored output with https://github.com/sindresorhus/yoctocolors — limited but fast.
 
 ### Repo structure
 

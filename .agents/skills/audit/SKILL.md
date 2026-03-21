@@ -1,6 +1,6 @@
 ---
 name: audit
-description: "Full codebase audit — code review, multi-provider UI testing, and combined report. Use when the user asks to audit, test across providers, or validate the full implementation."
+description: "Full codebase audit — code review, multi-provider UI testing, and combined report. Use when the user asks to audit, test across providers, or validate the full implementation. Triggers on: audit, full review, test providers, validate implementation."
 compatibility: "Requires tmux, bun, git, and active provider credentials (Anthropic OAuth and/or Opencode zen)"
 ---
 

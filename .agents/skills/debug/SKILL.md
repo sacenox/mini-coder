@@ -1,6 +1,6 @@
 ---
 name: debug
-description: Debug mini-coder issues by analyzing session logs and database entries. Access error logs, API call logs, and session history from the database.
+description: "Debug mini-coder issues by analyzing session logs and database entries. Use when investigating errors, API failures, token usage, or session history. Triggers on: debug, logs, errors, API logs, session history, token usage."
 allowed-tools: shell
 ---
 

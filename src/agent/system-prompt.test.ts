@@ -101,7 +101,7 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain(
       "Inspect code and files primarily through shell commands",
     );
-    expect(prompt).toContain("use shell commands that invoke `mc-edit`");
+    expect(prompt).toContain("invoke `mc-edit` via shell");
     expect(prompt).toContain("check the available skills list below");
     expect(prompt).toContain("never guess unknown state");
   });

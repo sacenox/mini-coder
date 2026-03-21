@@ -1,6 +1,6 @@
 ---
 name: release
-description: "Create a new tagged npm release (patch/minor/major). Use when the user asks to release, publish, bump version, or cut a new version."
+description: "Create a new tagged npm release (patch/minor/major). Use when the user asks to release, publish, bump version, or cut a new version. Triggers on: release, publish, bump, version, tag."
 compatibility: "Requires git, bun, and npm with publish credentials"
 ---
 
