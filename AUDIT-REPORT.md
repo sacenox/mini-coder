@@ -18,7 +18,7 @@ Reviewed all ~15K lines of TypeScript across 90 source files. Ran `bun run check
 
 ### Correctness Issues
 
-1. **`supportsThinking()` + haiku = 400 error** (KNOWN) — When `preferred_thinking_effort` is set in the DB, all models get thinking options sent, including haiku models that reject adaptive thinking. The user hits a 400 on first use with a stored thinking preference. Root cause: `supportsThinking()` trusts models.dev `reasoning` flag, which is `true` for haiku models even though Zen's haiku endpoint rejects the `thinking` parameter.
+1. ~~**`supportsThinking()` + haiku = 400 error**~~ **FIXED** (`24592bc`) — Zen claude models were sent the `effort-2025-11-24` beta format (`output_config: { effort }`) which Zen's proxy crashes on (HTTP 500: `"Cannot read properties of undefined (reading input_tokens)"`). Confirmed via direct curl probes: the legacy `thinking: { type: "enabled", budget_tokens: N }` format returns HTTP 200 on Zen. Fix: detect `zen/claude-*` models in `getAnthropicThinkingOptions` and use the legacy format with mapped budgets (low=4K, medium=8K, high=16K, xhigh=32K). Note: the `effort-2025-11-24` beta format still works correctly on `api.anthropic.com`.
 
 2. **`autoTitleSession` overwrites title on every turn** — `setSessionTitle` is called on every `processUserInput`, not just the first. Looking at the DB layer, it likely uses `INSERT OR REPLACE` or always updates. This means the session title changes to match the latest user message instead of staying as the first message. Should check if already titled.
 
@@ -91,7 +91,7 @@ N/T = Not specifically tested in interactive mode, but one-shot works.
 
 ### Code Changes
 
-1. **Guard `supportsThinking()` more conservatively** — The models.dev `reasoning: true` flag is too broad. Either maintain a local allowlist of models that accept adaptive thinking, or catch the 400 and retry without thinking options. This is the most impactful known issue — it breaks the first-run experience when a thinking preference is stored.
+1. ~~**Guard `supportsThinking()` more conservatively**~~ **RESOLVED** — Fixed by detecting `zen/claude-*` models and switching to the legacy `budget_tokens` API format, confirmed correct via curl probes against `opencode.ai/zen/v1`.
 
 2. **Derive `maxOutputTokens` from model info** — The model-info cache already stores capabilities. Use it instead of the 16384 hardcode.
 
