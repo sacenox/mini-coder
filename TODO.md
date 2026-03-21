@@ -1,3 +1,3 @@
 # mini-coder TODO
 
-Nothing pending.
+- [ ] Review AUDIT-REPORT.md findings with the user

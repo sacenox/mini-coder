@@ -7,12 +7,14 @@ import type {
   TurnResult,
 } from "../agent/reporter.ts";
 import { PACKAGE_VERSION } from "../internal/version.ts";
+import { discoverConnectedProviders } from "../llm-api/providers.ts";
 import type { TurnEvent } from "../llm-api/types.ts";
 import { logError } from "../logging/context.ts";
 import {
   getPreferredShowReasoning,
   getPreferredVerboseOutput,
 } from "../session/db/index.ts";
+import { listMcpServers } from "../session/db/mcp-repo.ts";
 import { parseAppError } from "./error-parse.ts";
 import { loadSkillsIndex } from "./skills.ts";
 import { Spinner } from "./spinner.ts";
@@ -127,6 +129,16 @@ export function renderBanner(model: string, cwd: string): void {
 
   if (items.length > 0) {
     writeln(`  ${c.dim(items.join("  ·  "))}`);
+  }
+
+  const connParts: string[] = [];
+  for (const p of discoverConnectedProviders()) {
+    connParts.push(p.via === "oauth" ? `${p.name} (oauth)` : p.name);
+  }
+  const mcpCount = listMcpServers().length;
+  if (mcpCount > 0) connParts.push(`${mcpCount} mcp`);
+  if (connParts.length > 0) {
+    writeln(`  ${c.dim(connParts.join(" · "))}`);
   }
 
   writeln();

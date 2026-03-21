@@ -249,6 +249,25 @@ export function isAnthropicOAuth(): boolean {
   return isLoggedIn("anthropic");
 }
 
+interface ConnectedProvider {
+  name: string;
+  via: "env" | "oauth";
+}
+
+/** Returns providers that have credentials available (env key or OAuth token). */
+export function discoverConnectedProviders(): ConnectedProvider[] {
+  const result: ConnectedProvider[] = [];
+  if (process.env.OPENCODE_API_KEY) result.push({ name: "zen", via: "env" });
+  if (isLoggedIn("anthropic")) result.push({ name: "anthropic", via: "oauth" });
+  else if (process.env.ANTHROPIC_API_KEY)
+    result.push({ name: "anthropic", via: "env" });
+  if (process.env.OPENAI_API_KEY) result.push({ name: "openai", via: "env" });
+  if (process.env.GOOGLE_API_KEY ?? process.env.GEMINI_API_KEY)
+    result.push({ name: "google", via: "env" });
+  if (process.env.OLLAMA_BASE_URL) result.push({ name: "ollama", via: "env" });
+  return result;
+}
+
 export function autoDiscoverModel(): string {
   if (process.env.OPENCODE_API_KEY) return "zen/claude-sonnet-4-6";
   if (process.env.ANTHROPIC_API_KEY || isLoggedIn("anthropic"))
