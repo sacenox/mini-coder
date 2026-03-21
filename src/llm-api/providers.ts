@@ -33,7 +33,7 @@ type GoogleProvider = ReturnType<typeof createGoogleGenerativeAI>;
 type OpenAICompatProvider = ReturnType<typeof createOpenAICompatible>;
 type ModelResolver = (modelId: string) => LanguageModel;
 
-const REDACTED_HEADERS = new Set(["authorization"]);
+const REDACTED_HEADERS = new Set(["authorization", "x-api-key"]);
 
 function redactHeaders(
   headers: RequestInit["headers"],

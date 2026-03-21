@@ -36,7 +36,7 @@ export class LogsRepo {
                WHERE session_id = ?`;
 
     if (level) {
-      sql += ` AND level = ?`;
+      sql += ` AND level = ? ORDER BY timestamp ASC`;
       const params: [string, string] = [sessionId, level];
       return this.db
         .query<Omit<Log, "data"> & { data: string }, [string, string]>(sql)
