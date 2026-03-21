@@ -20,6 +20,7 @@ import {
   resumeSession,
   touchActiveSession,
 } from "../session/manager.ts";
+import { resetActivatedSkills } from "../tools/skills.ts";
 import {
   extractAssistantText,
   makeInterruptMessage,
@@ -118,6 +119,7 @@ export class SessionRunner {
   public startNewSession() {
     this.session = newSession(this.currentModel, this.cwd);
     this.coreHistory.length = 0;
+    resetActivatedSkills();
     this.turnIndex = 1;
     this.totalIn = 0;
     this.totalOut = 0;

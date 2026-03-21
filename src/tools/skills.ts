@@ -50,6 +50,10 @@ interface ReadSkillOutput {
 
 const activatedSkills = new Set<string>();
 
+export function resetActivatedSkills(): void {
+  activatedSkills.clear();
+}
+
 export const readSkillTool: ToolDef<ReadSkillInput, ReadSkillOutput> = {
   name: "readSkill",
   description: "Load full SKILL.md content for one skill by name.",
