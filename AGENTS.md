@@ -78,7 +78,7 @@ Community oriented — support AGENTS.md and agentskills.io specs, don't introdu
 - Other Commands in CLI prompt:
   - `/reasoning` toggles display of model reasoning output.
   - `/verbose` toggles output truncation. When off, large outputs keep start/end sections and truncate the middle. UI-only visibility concern.
-  - `/review` runs the review skill (`~/.agents/skills/review/SKILL.md`). A local `.agents/skills/review/SKILL.md` in the project overrides the global one.
+  - `/review` runs the review skill (`~/.agents/skills/review/SKILL.md`). A local `.agents/skills/review/SKILL.md` in the project overrides the global one. On first run, the global default is auto-created so `/review` works out of the box — users can edit it to customise.
 
 - Connect to MCP servers over Streamable HTTP / SSE fallback or stdio.
   - `/mcp` list/add/remove mcp servers. servers are stored in sqlite
