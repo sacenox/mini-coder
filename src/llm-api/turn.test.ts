@@ -834,10 +834,10 @@ describe("applyStepPruning", () => {
     expect(reasoning?.text).toBe("I should read the file first");
   });
 
-  test("falls back to full pruning past threshold", () => {
-    const huge = buildHistory(70); // 211 messages > 200 threshold
+  test("prunes stale tool calls from large histories", () => {
+    const huge = buildHistory(70); // 211 messages
     const pruned = applyStepPruning(huge, huge.length);
-    // Full context pruning removes old tool calls
+    // Tool-call window (before-last-40) removes old tool calls
     expect(pruned.length).toBeLessThan(huge.length);
   });
 

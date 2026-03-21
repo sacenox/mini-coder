@@ -155,20 +155,11 @@ export function applyContextPruning(messages: CoreMessage[]): CoreMessage[] {
  *    that boundary fixed: the initial prefix stays byte-identical across
  *    steps, so the Anthropic cache hit covers the full conversation history
  *    up to the user's message.
- *
- * Falls back to full context pruning when the conversation grows past
- * STEP_PRUNE_FALLBACK_THRESHOLD to prevent context-window overflow on
- * very long turns.
  */
-const STEP_PRUNE_FALLBACK_THRESHOLD = 200;
-
 export function applyStepPruning(
   messages: CoreMessage[],
   initialMessageCount: number,
 ): CoreMessage[] {
-  if (messages.length > STEP_PRUNE_FALLBACK_THRESHOLD) {
-    return applyContextPruning(messages);
-  }
   const newMessageCount = Math.max(0, messages.length - initialMessageCount);
   return pruneMessages({
     messages,

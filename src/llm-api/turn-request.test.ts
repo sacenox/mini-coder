@@ -180,18 +180,6 @@ describe("buildStreamTextRequest", () => {
     expect(withCache.length).toBeGreaterThan(0);
   });
 
-  test("prepareStep falls back to full pruning on very long turns", () => {
-    // Build a history that exceeds the step prune fallback threshold (200)
-    const huge = buildToolHistory(70); // 70*3 + 1 = 211 messages
-    const request = buildStreamTextRequest(makeDefaultInput(huge));
-
-    const result = callPrepareStep(request, 1, huge);
-
-    // Full context pruning kicks in — old tool calls removed
-    expect(result.messages).toBeDefined();
-    expect(result.messages?.length).toBeLessThan(huge.length);
-  });
-
   test("prepareStep preserves messages across growing steps", () => {
     // Pre-prune to simulate real prepareTurnMessages flow
     const raw = buildToolHistory(20); // 61 messages
