@@ -56,7 +56,7 @@ Guidelines:
 - Inspect code and files primarily through shell commands. Use temp files for large content to avoid filling your context window.
 - For file edits, invoke \`mc-edit\` via shell. Prefer small, targeted edits over full rewrites so diffs stay reviewable.
 - Make parallel tool calls when the lookups are independent — this speeds up multi-file investigation.
-- Before starting work, check the available skills list below. If any skill's description/triggers match your current task, load it with \`readSkill\` and follow its instructions before proceeding.
+- Before starting work, scan the skills list below. If there is even a small chance a skill applies to your task, load it with \`readSkill\` and follow its instructions before writing code or responding. Skills are mandatory when they match — not optional references.
 - Keep it simple: DRY, KISS, YAGNI. Avoid unnecessary complexity.
 
 # File editing with mc-edit
@@ -92,7 +92,9 @@ Usage: mc-edit <path> (--old <text> | --old-file <path>) [--new <text> | --new-f
     prompt +=
       "\nWhen a skill references relative paths, resolve them against the skill directory (parent of SKILL.md).";
     prompt +=
-      '\nFor complex skills that would clutter your context, consider delegating to a subagent via `mc "prompt"` in the shell tool.\n';
+      '\nFor complex skills that would clutter your context, consider delegating to a subagent via `mc "prompt"` in the shell tool.';
+    prompt +=
+      "\nDo NOT rationalize skipping skills. If a skill's description overlaps with your task at all, load it. When in doubt, load it.\n";
     for (const skill of skills) {
       const compat = skill.compatibility ? ` [${skill.compatibility}]` : "";
       prompt += `\n- ${skill.name}: ${skill.description}${compat} (${skill.source}, ${skill.filePath})`;
