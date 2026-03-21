@@ -26,8 +26,8 @@ const COMMUNICATION = `
 
 # Communication
 - Be concise: short bullets or a brief paragraph. No ceremonial preambles.
-- For long tasks, send a one-sentence progress update every few tool batches.
-- For code changes, state what changed, where, and why. Reference files with line numbers when helpful.
+- For long tasks, send a one-sentence progress update every 3-5 tool calls.
+- For code changes, state what changed, where, and why. Reference files with line numbers.
 - Do not paste large file contents unless asked.`;
 
 const ERROR_HANDLING = `

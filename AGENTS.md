@@ -2,7 +2,7 @@
 
 - App data folder is in `~/.config/mini-coder/`. It includes sqlite db file and logs.
 - README.md is cosmetic for users, don't edit unless asked to.
-- Known issues are in `docs` as well as the other man-like document about mini-coder.
+- `docs/KNOWN_ISSUES.md` tracks known issues. `docs/mini-coder.1.md` is the man page.
 - Create or reuse the `TODO.md` file to track your progress in long tasks. Remove completed items, keep it clean, concise, and up to date at all times. Track it in git.
 - Write minimal tests, focused on our code's logic. Never test dependencies. Never use mocks or stubs.
 - Keep the repo pristine: no failing tests, no lint, no build issues, no `ignore`-style comments. No failing hooks.
@@ -16,7 +16,7 @@
 - Don't make random test files, if you need to test something, write a proper unit test.
 - If you make temp files, clean them up when you are done.
 - Use Conventional Commits formatting for commit messages. When you commit, include the whole diff unless told otherwise.
-- Always use your superpowers skills effectively.
+- Before starting work, check superpowers skills (`listSkills`) and load any that match the task.
 
 ## Core idea, treat this as the source of truth for the design/implementation.
 
@@ -35,26 +35,24 @@ An augmented shell prompt coding agent — small, fast, stays out of the way.
 
 **Performance first, style second.** Instant feedback, shell-like output.
 
-Focused on dev flow — simple setup, fast to coding.
-Elegant output focused on the conversation and agent actions. Accurate chronological log with clear hierarchy: actions → results → reasoning → responses.
-Accurate, reliable, fast core features.
-Community oriented — follow existing dotfile conventions, don't introduce new specs.
+Focused on dev flow — minimal setup, fast to coding.
+Output is a scrolling chronological log with strict hierarchy: actions → results → reasoning → responses. No redraws, no clearing — append-only like a terminal.
+Core features must be correct and fast before adding new ones.
+Community oriented — support AGENTS.md and agentskills.io specs, don't introduce new config formats.
 
 ### Features:
 
-- We want to do our best to support and autodiscover community config standards:
-  - AGENTS.md -> https://agents.md/
-    - CLAUDE.md (same as AGENTS.md)
-  - Skills -> https://agentskills.io/client-implementation/adding-skills-support (and https://agentskills.io/client-implementation/adding-skills-support.md, https://agentskills.io/llms.txt)
-    - Claude skills too. They claim to follow the spec, we should only need to discover them too.
+- Autodiscover and load community config standards on startup:
+  - AGENTS.md / CLAUDE.md → https://agents.md/
+  - Skills (`.agents/skills/` and `.claude/skills/`) → https://agentskills.io/client-implementation/adding-skills-support
 
 - Auto discovery of providers via ENV (Example: OPENCODE_API_KEY), or local servers (Example: ollama)
-  - `/login` shows OAuth login status. `/login <provider>` starts browser-based OAuth login. `/logout <provider>` clears saved tokens. Currently supports Anthropic. (Both pi and opencode support this too)
+  - `/login` shows OAuth login status. `/login <provider>` starts browser-based OAuth login. `/logout <provider>` clears saved tokens. Currently supports Anthropic.
   - `/model` (alias `/models`) picks a model from connected providers, including thinking effort if supported. Selection persists across sessions with autocomplete.
 
 - Session management and command to create new/resume/list with local sqlite file.
   - `/session` command to interactively manage sessions as well as cli flags.
-  - `/new` starts a new session with clean context. Clean UI and fresh session display
+  - `/new` starts a new session with empty message history and resets the status bar.
 
 - Enriched user prompt:
   - Rich line editing/history/image paste. Enter submits.
@@ -68,19 +66,19 @@ Community oriented — follow existing dotfile conventions, don't introduce new 
   - Rolling context pruning per step; stops with a conversation summary at max context. Must not break prompt caching.
   - No max steps or tool call limits — user can interrupt.
   - Clear, accurate token tracking.
-  - Recover from errors gracefully, returning user to the prompt.
+  - On error, log it, display a one-line summary to the user, and return to the input prompt.
   - `/undo` removes the last turn from history (does not restore filesystem).
 
 - Shell-first tool surface: `shell`, `listSkills`, `readSkill`, plus connected MCP tools and optional web tools (`EXA_API_KEY`). Keep it small.
   - Inspect with shell → mutate with `mc-edit` → verify with shell.
   - Auto-truncate large shell outputs for the LLM to avoid context explosions.
   - `mc-edit`: exact-text edits only, deterministic failures on stale/ambiguous state.
-  - Cross-model system prompt with clear dev flow guidance.
+  - Single system prompt that works across all supported models (no provider-specific branches).
 
 - Other Commands in CLI prompt:
   - `/reasoning` toggles display of model reasoning output.
   - `/verbose` toggles output truncation. When off, large outputs keep start/end sections and truncate the middle. UI-only visibility concern.
-  - `/review` reviews recent changes via a global custom skill installed at app start (`~/.agents/skills/review.md`), and can be customized or shadowed locally.
+  - `/review` runs the review skill (`~/.agents/skills/review/SKILL.md`). A local `.agents/skills/review/SKILL.md` in the project overrides the global one.
 
 - Connect to MCP servers over Streamable HTTP / SSE fallback or stdio.
   - `/mcp` list/add/remove mcp servers. servers are stored in sqlite
@@ -89,13 +87,13 @@ Community oriented — follow existing dotfile conventions, don't introduce new 
 
 - Use the 16 ANSI colors so coloring is always inherited from the terminal theme (https://jvns.ca/blog/2024/10/01/terminal-colours/)
 - Use pi and claude code as visual inspirations.
-- Banner at app start, show found configs and context files
-- history log (like a terminal output scrolls away, pushing the input prompt down)
-  - Skill tools show compact metadata-oriented output
-  - Shell tool shows the command called and its output
-  - MCP tools stay clearly distinguishable from shell work
-- status bar like prompt, with current model/provider/session/git branch/thinking effort/context usage/token input/token output information grouped logically and human readable.
-- some prompt colored animation when a turn is processing. Needs to be carefully done, so it shows correctly in wait times and with clear labels
+- Banner at app start listing discovered AGENTS.md files, context files, and provider status.
+- Append-only scrolling log (new output pushes the input prompt down, nothing is redrawn):
+  - Skill tools: one-line name + description, no body content.
+  - Shell tool: the command, then its stdout/stderr.
+  - MCP tools: prefixed with server name to distinguish from built-in tools.
+- Status bar above the input prompt showing: model, provider, session id, git branch, thinking effort, context %, input tokens, output tokens.
+- Inline spinner with a label (e.g. "thinking", "running shell") while waiting for LLM or tool responses. Must not interfere with scrollback or leave artifacts on interrupt.
 
 ### Tech stack
 
@@ -105,5 +103,5 @@ Community oriented — follow existing dotfile conventions, don't introduce new 
 
 ### Repo structure
 
-Clean separation of concerns, use modules to organize the app. Group logical features together for best browsability and readability of the code. Use subdirectories to group files logically.
-No mocked/offline-servers type of tests. Focused tests on _our_ logic. Do not test our dependencies.
+One directory per module (e.g. `cli/`, `agent/`, `session/`, `tools/`, `llm-api/`). Each directory owns its types, logic, and tests — no cross-module circular imports.
+Tests live next to the code they test (`foo.test.ts` beside `foo.ts`). No mock servers, no dependency tests — test only our logic.
