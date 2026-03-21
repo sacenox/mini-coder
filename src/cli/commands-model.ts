@@ -1,6 +1,8 @@
 import * as c from "yoctocolors";
+import { select } from "yoctoselect";
 import type { ThinkingEffort } from "../llm-api/providers.ts";
 import { fetchAvailableModels } from "../llm-api/providers.ts";
+import { setStdinGated } from "./input.ts";
 import { PREFIX, writeln } from "./output.ts";
 import type { CommandContext } from "./types.ts";
 
@@ -106,7 +108,7 @@ function handleModelEffort(ctx: CommandContext, effortArg: string): void {
   writeln(`${PREFIX.success} thinking effort → ${c.cyan(effort)}`);
 }
 
-async function renderModelList(ctx: CommandContext): Promise<void> {
+async function handleModelSelect(ctx: CommandContext): Promise<void> {
   ctx.startSpinner("fetching models");
   const snapshot = await fetchAvailableModels();
   ctx.stopSpinner();
@@ -133,46 +135,27 @@ async function renderModelList(ctx: CommandContext): Promise<void> {
     );
   }
 
-  const modelsByProvider = new Map<string, typeof snapshot.models>();
-  for (const model of snapshot.models) {
-    const providerModels = modelsByProvider.get(model.provider);
-    if (providerModels) {
-      providerModels.push(model);
-    } else {
-      modelsByProvider.set(model.provider, [model]);
-    }
-  }
+  const items = snapshot.models.map((model) => {
+    const isCurrent = ctx.currentModel === model.id;
+    const freeTag = model.free ? c.green(" free") : "";
+    const contextTag = model.context
+      ? c.dim(` ${Math.round(model.context / 1000)}k`)
+      : "";
+    const currentTag = isCurrent ? c.cyan(" ◀") : "";
+    return {
+      label: `${model.displayName}${freeTag}${contextTag}${currentTag}`,
+      value: model.id,
+      filterText: `${model.id} ${model.displayName} ${model.provider}`,
+    };
+  });
 
-  writeln();
-  for (const [provider, providerModels] of modelsByProvider) {
-    writeln(c.bold(`  ${provider}`));
-    for (const model of providerModels) {
-      const isCurrent = ctx.currentModel === model.id;
-      const freeTag = model.free ? c.green(" free") : "";
-      const contextTag = model.context
-        ? c.dim(` ${Math.round(model.context / 1000)}k`)
-        : "";
-      const effortTag =
-        isCurrent && ctx.thinkingEffort
-          ? c.dim(` ✦ ${ctx.thinkingEffort}`)
-          : "";
-      const currentTag = isCurrent ? c.cyan(" ◀") : "";
-      writeln(
-        `    ${c.dim("·")} ${model.displayName}${freeTag}${contextTag}${currentTag}${effortTag}`,
-      );
-      writeln(`      ${c.dim(model.id)}`);
-    }
-  }
+  setStdinGated(true);
+  const picked = await select({ items, placeholder: "search models..." });
+  setStdinGated(false);
+  if (!picked) return;
 
-  writeln();
-  writeln(
-    c.dim("  /model <id>  to switch  ·  e.g. /model zen/claude-sonnet-4-6"),
-  );
-  writeln(
-    c.dim(
-      "  /model effort <low|medium|high|xhigh|off>  to set thinking effort",
-    ),
-  );
+  ctx.setModel(picked);
+  renderModelUpdatedMessage(ctx, picked);
 }
 
 export async function handleModelCommand(
@@ -181,7 +164,7 @@ export async function handleModelCommand(
 ): Promise<void> {
   const parts = args.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) {
-    await renderModelList(ctx);
+    await handleModelSelect(ctx);
     return;
   }
 

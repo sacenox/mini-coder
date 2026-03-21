@@ -83,7 +83,7 @@ export async function handleCommand(
 
     case "session":
     case "sessions":
-      handleSessionCommand(ctx, args);
+      await handleSessionCommand(ctx, args);
       return { type: "handled" };
 
     case "new":

@@ -1,9 +1,14 @@
 import * as c from "yoctocolors";
-import { renderSessionTable } from "../session/manager.ts";
-import { PREFIX, writeln } from "./output.ts";
+import { select } from "yoctoselect";
+import { listSessions } from "../session/db/index.ts";
+import { setStdinGated } from "./input.ts";
+import { PREFIX, tildePath, writeln } from "./output.ts";
 import type { CommandContext } from "./types.ts";
 
-export function handleSessionCommand(ctx: CommandContext, args: string): void {
+export async function handleSessionCommand(
+  ctx: CommandContext,
+  args: string,
+): Promise<void> {
   const id = args.trim();
   if (id) {
     ctx.startSpinner("switching session");
@@ -19,10 +24,35 @@ export function handleSessionCommand(ctx: CommandContext, args: string): void {
     return;
   }
 
-  const shown = renderSessionTable(
-    `${c.dim("Use")} /session <id> ${c.dim("to switch to a session.")}`,
-  );
-  if (!shown) {
+  const sessions = listSessions(50);
+  if (sessions.length === 0) {
     writeln(`${PREFIX.info} ${c.dim("no sessions found")}`);
+    return;
+  }
+
+  const items = sessions.map((s) => {
+    const title = s.title || "(untitled)";
+    const model = s.model.split("/").pop() ?? s.model;
+    const cwd = tildePath(s.cwd);
+    const date = new Date(s.updated_at).toLocaleDateString();
+    return {
+      label: `${c.dim(s.id)}  ${title}  ${c.cyan(model)}  ${c.dim(cwd)}  ${c.dim(date)}`,
+      value: s.id,
+      filterText: `${s.id} ${s.title} ${s.model} ${s.cwd}`,
+    };
+  });
+
+  setStdinGated(true);
+  const picked = await select({ items, placeholder: "search sessions..." });
+  setStdinGated(false);
+  if (!picked) return;
+
+  const ok = ctx.switchSession(picked);
+  if (ok) {
+    writeln(
+      `${PREFIX.success} switched to session ${c.cyan(picked)} (${c.cyan(ctx.currentModel)})`,
+    );
+  } else {
+    writeln(`${PREFIX.error} session ${c.cyan(picked)} not found`);
   }
 }

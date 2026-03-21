@@ -84,7 +84,7 @@ let _stdinGated = false;
  * Gate stdin: while gated, the shared ReadableStream drops incoming data
  * so that watchForCancel's own listener is the sole consumer.
  */
-function setStdinGated(gated: boolean): void {
+export function setStdinGated(gated: boolean): void {
   _stdinGated = gated;
 }
 

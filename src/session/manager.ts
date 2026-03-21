@@ -48,7 +48,7 @@ export function autoTitleSession(sessionId: string, userText: string): void {
 
 // ─── List sessions (for --list flag) ─────────────────────────────────────────
 
-export function renderSessionTable(footer: string): boolean {
+function renderSessionTable(footer: string): boolean {
   const sessions = listSessions(20);
   if (sessions.length === 0) return false;
 
