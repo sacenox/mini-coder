@@ -129,7 +129,7 @@ async function main(): Promise<void> {
         refImages,
       );
       if (responseText) {
-        writeln(responseText);
+        writeln(responseText.trimStart());
       }
       return;
     }

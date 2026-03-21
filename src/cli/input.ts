@@ -78,12 +78,22 @@ type StreamReader = {
 };
 
 let _stdinReader: StreamReader | null = null;
+let _stdinGated = false;
+
+/**
+ * Gate stdin: while gated, the shared ReadableStream drops incoming data
+ * so that watchForCancel's own listener is the sole consumer.
+ */
+function setStdinGated(gated: boolean): void {
+  _stdinGated = gated;
+}
 
 function getStdinReader(): StreamReader {
   if (!_stdinReader) {
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
         process.stdin.on("data", (chunk: Buffer) => {
+          if (_stdinGated) return;
           try {
             controller.enqueue(new Uint8Array(chunk));
           } catch {
@@ -136,6 +146,8 @@ function exitOnCtrlC(opts?: {
 export function watchForCancel(abortController: AbortController): () => void {
   if (!terminal.isTTY) return () => {};
 
+  setStdinGated(true);
+
   const onCancel = () => {
     cleanup();
     abortController.abort();
@@ -159,6 +171,7 @@ export function watchForCancel(abortController: AbortController): () => void {
     process.stdin.removeListener("data", onData);
     terminal.setRawMode(false);
     process.stdin.pause();
+    setStdinGated(false);
   };
 
   terminal.setRawMode(true);

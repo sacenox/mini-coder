@@ -15,6 +15,7 @@ import { getDb, getMaxTurnIndex, saveMessages } from "../session/db/index.ts";
 import { LogsRepo } from "../session/db/logs-repo.ts";
 import type { ActiveSession } from "../session/manager.ts";
 import {
+  autoTitleSession,
   newSession,
   resumeSession,
   touchActiveSession,
@@ -236,6 +237,7 @@ export class SessionRunner {
         this.totalOut += outputTokens;
         this.lastContextTokens = contextTokens;
         touchActiveSession(this.session);
+        autoTitleSession(this.session.id, text);
 
         // Prune coreHistory after each turn so the next turn starts lean.
         // The DB retains the full history; this only affects in-memory context.

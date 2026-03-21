@@ -8,6 +8,7 @@ import {
   listSessions,
   loadMessages,
   type SessionRow,
+  setSessionTitle,
   touchSession,
 } from "./db/index.ts";
 
@@ -35,6 +36,14 @@ export function resumeSession(id: string): ActiveSession | null {
 
 export function touchActiveSession(session: ActiveSession): void {
   touchSession(session.id, session.model);
+}
+
+/** Set the session title from the first user message (only if untitled). */
+export function autoTitleSession(sessionId: string, userText: string): void {
+  const line = userText.split("\n")[0]?.trim() ?? "";
+  if (!line) return;
+  const title = line.length > 60 ? `${line.slice(0, 57)}...` : line;
+  setSessionTitle(sessionId, title);
 }
 
 // ─── List sessions (for --list flag) ─────────────────────────────────────────

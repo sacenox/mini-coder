@@ -45,6 +45,13 @@ export function touchSession(id: string, model: string): void {
   ]);
 }
 
+export function setSessionTitle(id: string, title: string): void {
+  getDb().run("UPDATE sessions SET title = ? WHERE id = ? AND title = ''", [
+    title,
+    id,
+  ]);
+}
+
 export function listSessions(limit = 20): SessionRow[] {
   return getDb()
     .query<

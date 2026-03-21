@@ -3,7 +3,12 @@ import {
   isZenOpenAICompatibleChatModel,
 } from "../model-routing.ts";
 import type { CoreMessage } from "../turn.ts";
-import { getPartProviderOptions, isRecord, isToolCallPart } from "./shared.ts";
+import {
+  getPartProviderOptions,
+  isRecord,
+  isToolCallPart,
+  mapAssistantParts,
+} from "./shared.ts";
 
 function stripOpenAIItemIdFromPart(part: unknown): {
   part: unknown;
@@ -55,44 +60,23 @@ export function normalizeOpenAICompatibleToolCallInputs(
 ): CoreMessage[] {
   if (!isZenOpenAICompatibleChatModel(modelString)) return messages;
 
-  let mutated = false;
-  const result = messages.map((message) => {
-    if (message.role !== "assistant" || !Array.isArray(message.content)) {
-      return message;
+  return mapAssistantParts(messages, (part) => {
+    if (
+      !isToolCallPart(part) ||
+      !("input" in part) ||
+      typeof part.input !== "string"
+    ) {
+      return part;
     }
 
-    let contentMutated = false;
-    const nextContent = message.content.map((part) => {
-      if (
-        !isToolCallPart(part) ||
-        !("input" in part) ||
-        typeof part.input !== "string"
-      ) {
-        return part;
-      }
-
-      try {
-        const parsed = JSON.parse(part.input);
-        if (!isRecord(parsed) || Array.isArray(parsed)) return part;
-        contentMutated = true;
-        return {
-          ...part,
-          input: parsed,
-        };
-      } catch {
-        return part;
-      }
-    });
-
-    if (!contentMutated) return message;
-    mutated = true;
-    return {
-      ...message,
-      content: nextContent as CoreMessage["content"],
-    } as CoreMessage;
+    try {
+      const parsed = JSON.parse(part.input);
+      if (!isRecord(parsed) || Array.isArray(parsed)) return part;
+      return { ...part, input: parsed };
+    } catch {
+      return part;
+    }
   });
-
-  return mutated ? result : messages;
 }
 
 function stripOpenAIHistory(

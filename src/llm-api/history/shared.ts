@@ -54,10 +54,13 @@ function hasObjectToolCallInput(
   );
 }
 
-const TOOL_RUNTIME_INPUT_KEYS = new Set(["cwd"]);
-
-export function stripToolRuntimeInputFields(
+/**
+ * Map over assistant messages' content parts, applying a transform to each.
+ * Returns the original array when nothing changed (reference-stable).
+ */
+export function mapAssistantParts(
   messages: CoreMessage[],
+  transform: (part: unknown) => unknown,
 ): CoreMessage[] {
   let mutated = false;
   const result = messages.map((message) => {
@@ -67,23 +70,9 @@ export function stripToolRuntimeInputFields(
 
     let contentMutated = false;
     const nextContent = message.content.map((part) => {
-      if (!hasObjectToolCallInput(part)) {
-        return part;
-      }
-
-      let inputMutated = false;
-      const nextInput = { ...part.input };
-      for (const key of TOOL_RUNTIME_INPUT_KEYS) {
-        if (!(key in nextInput)) continue;
-        delete nextInput[key];
-        inputMutated = true;
-      }
-      if (!inputMutated) return part;
-      contentMutated = true;
-      return {
-        ...part,
-        input: nextInput,
-      };
+      const next = transform(part);
+      if (next !== part) contentMutated = true;
+      return next;
     });
 
     if (!contentMutated) return message;
@@ -95,4 +84,23 @@ export function stripToolRuntimeInputFields(
   });
 
   return mutated ? result : messages;
+}
+
+const TOOL_RUNTIME_INPUT_KEYS = new Set(["cwd"]);
+
+export function stripToolRuntimeInputFields(
+  messages: CoreMessage[],
+): CoreMessage[] {
+  return mapAssistantParts(messages, (part) => {
+    if (!hasObjectToolCallInput(part)) return part;
+
+    let inputMutated = false;
+    const nextInput = { ...part.input };
+    for (const key of TOOL_RUNTIME_INPUT_KEYS) {
+      if (!(key in nextInput)) continue;
+      delete nextInput[key];
+      inputMutated = true;
+    }
+    return inputMutated ? { ...part, input: nextInput } : part;
+  });
 }
