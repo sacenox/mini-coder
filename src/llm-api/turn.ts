@@ -106,11 +106,9 @@ export async function* runTurn(options: {
     ) as StreamTextResultFull;
     result.response.catch(() => {});
 
-    let lastChunkType: string | undefined;
     for await (const event of mapFullStreamToTurnEvents(result.fullStream, {
       stepPruneQueue,
       onChunk: (streamChunk) => {
-        lastChunkType = streamChunk.type;
         if (
           streamChunk.type === "tool-call" ||
           streamChunk.type === "tool-result"
@@ -129,7 +127,6 @@ export async function* runTurn(options: {
 
     const finalState = turnState.getState();
     logApiEvent("turn complete", {
-      lastChunkType,
       newMessagesCount: finalState.partialMessages.length,
       inputTokens: finalState.inputTokens,
       outputTokens: finalState.outputTokens,
