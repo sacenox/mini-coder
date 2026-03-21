@@ -3,6 +3,7 @@ import { getDb } from "./connection.ts";
 export interface ModelCapabilityRow {
   canonical_model_id: string;
   context_window: number | null;
+  max_output_tokens: number | null;
   reasoning: number;
   source_provider: string | null;
   raw_json: string | null;
@@ -24,7 +25,7 @@ export function listModelCapabilities(): ModelCapabilityRow[] {
     .query<
       ModelCapabilityRow,
       []
-    >("SELECT canonical_model_id, context_window, reasoning, source_provider, raw_json, updated_at FROM model_capabilities")
+    >("SELECT canonical_model_id, context_window, max_output_tokens, reasoning, source_provider, raw_json, updated_at FROM model_capabilities")
     .all();
 }
 
@@ -34,11 +35,12 @@ export function replaceModelCapabilities(rows: ModelCapabilityRow[]): void {
     `INSERT INTO model_capabilities (
 			canonical_model_id,
 			context_window,
+			max_output_tokens,
 			reasoning,
 			source_provider,
 			raw_json,
 			updated_at
-		) VALUES (?, ?, ?, ?, ?, ?)`,
+		) VALUES (?, ?, ?, ?, ?, ?, ?)`,
   );
   const run = db.transaction(() => {
     db.run("DELETE FROM model_capabilities");
@@ -46,6 +48,7 @@ export function replaceModelCapabilities(rows: ModelCapabilityRow[]): void {
       insertStmt.run(
         row.canonical_model_id,
         row.context_window,
+        row.max_output_tokens,
         row.reasoning,
         row.source_provider,
         row.raw_json,

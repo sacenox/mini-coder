@@ -264,6 +264,10 @@ export function getContextWindow(modelString: string): number | null {
   return resolveModelInfo(modelString)?.contextWindow ?? null;
 }
 
+export function getMaxOutputTokens(modelString: string): number | null {
+  return resolveModelInfo(modelString)?.maxOutputTokens ?? null;
+}
+
 export function supportsThinking(modelString: string): boolean {
   return resolveModelInfo(modelString)?.reasoning ?? false;
 }

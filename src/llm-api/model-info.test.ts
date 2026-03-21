@@ -99,12 +99,31 @@ describe("parseModelsDevCapabilities", () => {
       {
         canonical_model_id: "gemini-2.5-pro",
         context_window: 128,
+        max_output_tokens: null,
         reasoning: 1,
         source_provider: "google",
         raw_json: JSON.stringify({ id: "models/models/Gemini-2.5-Pro" }),
         updated_at: 456,
       },
     ]);
+  });
+
+  test("parses max_output_tokens from limit.output", () => {
+    const rows = parseModelsDevCapabilities(
+      {
+        openai: {
+          models: {
+            "gpt-5.2": {
+              id: "gpt-5.2",
+              limit: { context: 400_000, output: 32_768 },
+            },
+          },
+        },
+      },
+      123,
+    );
+    expect(rows[0]?.max_output_tokens).toBe(32_768);
+    expect(rows[0]?.context_window).toBe(400_000);
   });
 
   test("sanitizes invalid context window values", () => {
@@ -169,6 +188,7 @@ describe("resolveModelInfoFromRows", () => {
     {
       canonical_model_id: "gpt-5.2",
       context_window: 400_000,
+      max_output_tokens: 16_384,
       reasoning: 1,
       source_provider: "openai",
       raw_json: null,
@@ -212,6 +232,7 @@ describe("resolveModelInfoFromRows", () => {
     ).toEqual({
       canonicalModelId: "gpt-5.2",
       contextWindow: 400_000,
+      maxOutputTokens: 16_384,
       reasoning: true,
     });
 
@@ -220,6 +241,7 @@ describe("resolveModelInfoFromRows", () => {
     ).toEqual({
       canonicalModelId: null,
       contextWindow: 32_768,
+      maxOutputTokens: null,
       reasoning: false,
     });
   });
@@ -238,6 +260,7 @@ describe("resolveModelInfoFromRows", () => {
 
     expect(openaiInfo).toEqual(zenInfo);
     expect(openaiInfo?.contextWindow).toBe(400_000);
+    expect(openaiInfo?.maxOutputTokens).toBe(16_384);
     expect(openaiInfo?.reasoning).toBe(true);
   });
 
@@ -248,6 +271,7 @@ describe("resolveModelInfoFromRows", () => {
         {
           canonical_model_id: "gpt-5.2",
           context_window: null,
+          max_output_tokens: null,
           reasoning: 1,
           source_provider: "openai",
           raw_json: null,
@@ -270,6 +294,7 @@ describe("resolveModelInfoFromRows", () => {
     expect(info).toEqual({
       canonicalModelId: "gpt-5.2",
       contextWindow: 200_000,
+      maxOutputTokens: null,
       reasoning: true,
     });
   });

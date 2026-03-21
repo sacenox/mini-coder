@@ -13,7 +13,7 @@ function getDbPath(): string {
   return join(dir, "sessions.db");
 }
 
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 
 const SCHEMA = `
   CREATE TABLE IF NOT EXISTS sessions (
@@ -65,6 +65,7 @@ const SCHEMA = `
   CREATE TABLE IF NOT EXISTS model_capabilities (
     canonical_model_id TEXT PRIMARY KEY,
     context_window     INTEGER,
+    max_output_tokens  INTEGER,
     reasoning          INTEGER NOT NULL,
     source_provider    TEXT,
     raw_json           TEXT,
@@ -208,9 +209,9 @@ export function pruneOldData(): void {
     });
   }
 
-  // Passive checkpoint keeps startup opportunistic: if another process is using
-  // the database, we skip shrinking the WAL instead of failing the whole CLI.
+  // TRUNCATE checkpoint shrinks the WAL file to zero after writes are applied.
+  // Falls back gracefully if another process holds a read lock (busy-safe).
   runBestEffortMaintenance(() => {
-    db.exec("PRAGMA wal_checkpoint(PASSIVE);");
+    db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
   });
 }

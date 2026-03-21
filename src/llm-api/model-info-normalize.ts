@@ -4,6 +4,7 @@ import { isRecord } from "./history/shared.ts";
 interface ModelsDevEntry {
   canonicalModelId: string;
   contextWindow: number | null;
+  maxOutputTokens: number | null;
   reasoning: boolean;
   sourceProvider: string;
   rawJson: string | null;
@@ -35,6 +36,14 @@ function parseContextWindow(model: Record<string, unknown>): number | null {
   return Math.max(0, Math.trunc(context));
 }
 
+function parseMaxOutputTokens(model: Record<string, unknown>): number | null {
+  const limit = model.limit;
+  if (!isRecord(limit)) return null;
+  const output = limit.output;
+  if (typeof output !== "number" || !Number.isFinite(output)) return null;
+  return Math.max(0, Math.trunc(output));
+}
+
 export function parseModelsDevCapabilities(
   payload: unknown,
   updatedAt: number,
@@ -55,6 +64,7 @@ export function parseModelsDevCapabilities(
       const canonicalModelId = normalizeModelId(explicitId);
       if (!canonicalModelId) continue;
       const contextWindow = parseContextWindow(modelValue);
+      const maxOutputTokens = parseMaxOutputTokens(modelValue);
       const reasoning = modelValue.reasoning === true;
       const rawJson = JSON.stringify(modelValue);
       const prev = merged.get(canonicalModelId);
@@ -62,6 +72,7 @@ export function parseModelsDevCapabilities(
         merged.set(canonicalModelId, {
           canonicalModelId,
           contextWindow,
+          maxOutputTokens,
           reasoning,
           sourceProvider: provider,
           rawJson,
@@ -71,6 +82,7 @@ export function parseModelsDevCapabilities(
       merged.set(canonicalModelId, {
         canonicalModelId,
         contextWindow: prev.contextWindow ?? contextWindow,
+        maxOutputTokens: prev.maxOutputTokens ?? maxOutputTokens,
         reasoning: prev.reasoning || reasoning,
         sourceProvider: prev.sourceProvider,
         rawJson: prev.rawJson ?? rawJson,
@@ -81,6 +93,7 @@ export function parseModelsDevCapabilities(
   return Array.from(merged.values()).map((entry) => ({
     canonical_model_id: entry.canonicalModelId,
     context_window: entry.contextWindow,
+    max_output_tokens: entry.maxOutputTokens,
     reasoning: entry.reasoning ? 1 : 0,
     source_provider: entry.sourceProvider,
     raw_json: entry.rawJson,

@@ -12,6 +12,7 @@ import {
 export interface ModelInfo {
   canonicalModelId: string | null;
   contextWindow: number | null;
+  maxOutputTokens: number | null;
   reasoning: boolean;
 }
 
@@ -26,6 +27,7 @@ export interface LiveModel {
 interface RuntimeCapability {
   canonicalModelId: string;
   contextWindow: number | null;
+  maxOutputTokens: number | null;
   reasoning: boolean;
   sourceProvider: string | null;
 }
@@ -91,6 +93,7 @@ export function buildRuntimeCache(
     capabilitiesByCanonical.set(canonical, {
       canonicalModelId: canonical,
       contextWindow: row.context_window,
+      maxOutputTokens: row.max_output_tokens,
       reasoning: row.reasoning === 1,
       sourceProvider: row.source_provider,
     });
@@ -146,6 +149,7 @@ function resolveFromProviderRow(
       return {
         canonicalModelId: capability.canonicalModelId,
         contextWindow: capability.contextWindow ?? row.contextWindow,
+        maxOutputTokens: capability.maxOutputTokens,
         reasoning: capability.reasoning,
       };
     }
@@ -153,6 +157,7 @@ function resolveFromProviderRow(
   return {
     canonicalModelId: row.canonicalModelId,
     contextWindow: row.contextWindow,
+    maxOutputTokens: null,
     reasoning: false,
   };
 }
@@ -179,6 +184,7 @@ export function resolveModelInfoInCache(
       return {
         canonicalModelId: capability.canonicalModelId,
         contextWindow: capability.contextWindow,
+        maxOutputTokens: capability.maxOutputTokens,
         reasoning: capability.reasoning,
       };
     }

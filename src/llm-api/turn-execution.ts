@@ -1,3 +1,9 @@
+// Stream normalization strategy:
+// Providers emit tool calls and text in inconsistent ways. StreamToolCallTracker
+// collects fragmented tool-call deltas into complete calls before yielding events,
+// and synthesises missing tool-call IDs (OpenAI streaming sometimes omits them).
+// StreamTextPhaseTracker filters out non-reasoning "commentary" text phases that
+// some providers (OpenAI) emit alongside tool calls, preventing duplicate output.
 import type { FlexibleSchema, StepResult } from "ai";
 import { dynamicTool, jsonSchema, type streamText } from "ai";
 import { normalizeUnknownError } from "./error-utils.ts";

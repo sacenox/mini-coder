@@ -1,5 +1,6 @@
 import type { streamText } from "ai";
 
+import { getMaxOutputTokens } from "./model-info.ts";
 import { isAnthropicModelFamily } from "./model-routing.ts";
 import type { ThinkingEffort } from "./provider-options.ts";
 import {
@@ -79,7 +80,7 @@ export function buildStreamTextRequest(
 
   return {
     model: input.model,
-    maxOutputTokens: 16384,
+    maxOutputTokens: getMaxOutputTokens(input.modelString) ?? 16384,
     messages: input.prepared.messages,
     tools: input.toolSet,
     stopWhen: continueUntilModelStops,

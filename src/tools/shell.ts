@@ -110,7 +110,10 @@ export async function runShellCommand(input: ShellInput): Promise<ShellOutput> {
         if (!value) continue;
 
         if (totalBytes + value.length > MAX_OUTPUT_BYTES) {
-          chunks.push(value.slice(0, MAX_OUTPUT_BYTES - totalBytes));
+          const partial = value.slice(0, MAX_OUTPUT_BYTES - totalBytes);
+          // Snap to the last newline so we never cut mid-line.
+          const lastNl = partial.lastIndexOf(10); // 0x0a = "\n"
+          chunks.push(lastNl >= 0 ? partial.slice(0, lastNl + 1) : partial);
           truncated = true;
           reader.cancel().catch(() => {});
           break;
