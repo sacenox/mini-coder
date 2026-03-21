@@ -43,8 +43,12 @@ export async function handleSessionCommand(
   });
 
   setStdinGated(true);
-  const picked = await select({ items, placeholder: "search sessions..." });
-  setStdinGated(false);
+  let picked: string | null;
+  try {
+    picked = await select({ items, placeholder: "search sessions..." });
+  } finally {
+    setStdinGated(false);
+  }
   if (!picked) return;
 
   const ok = ctx.switchSession(picked);

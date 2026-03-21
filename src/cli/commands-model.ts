@@ -150,8 +150,12 @@ async function handleModelSelect(ctx: CommandContext): Promise<void> {
   });
 
   setStdinGated(true);
-  const picked = await select({ items, placeholder: "search models..." });
-  setStdinGated(false);
+  let picked: string | null;
+  try {
+    picked = await select({ items, placeholder: "search models..." });
+  } finally {
+    setStdinGated(false);
+  }
   if (!picked) return;
 
   ctx.setModel(picked);
