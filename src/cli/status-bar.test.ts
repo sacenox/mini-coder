@@ -32,7 +32,7 @@ describe("renderStatusBar", () => {
     });
 
     const line = stripAnsi(stdout).trim();
-    expect(line).toContain("zen/gpt-5.3-codex");
+    expect(line).toContain("zen/gpt-5.3-codex ✦  medium");
     expect(line).toContain("#12345678");
     expect(line).toContain("tok 1.2k/3.4k");
     expect(line).toContain("ctx 8.0k/128.0k");
@@ -61,6 +61,7 @@ describe("renderStatusBar", () => {
 
     const line = stripAnsi(stdout).trim();
     expect(line).toContain("zen/gpt-5.3-codex");
+    expect(line).toContain("xhigh");
     expect(line).toContain("#abcdef12");
     expect(line).not.toContain("~/src/");
     expect(line).not.toContain("ctx 72.0k");

@@ -77,10 +77,12 @@ function fitStatusSegments(
 
 export function renderStatusBar(opts: StatusBarData): void {
   const cols = Math.max(20, terminal.stdoutColumns || 80);
-  const required = [c.cyan(opts.model), c.dim(`#${opts.sessionId}`)];
+  const modelSegment = opts.thinkingEffort
+    ? `${c.cyan(opts.model)} ${c.magenta(c.italic(`✦  ${opts.thinkingEffort}`))}`
+    : c.cyan(opts.model);
+  const required = [modelSegment, c.dim(`#${opts.sessionId}`)];
   const optional: string[] = [];
 
-  if (opts.thinkingEffort) optional.push(c.dim(`✦ ${opts.thinkingEffort}`));
   if (opts.gitBranch) optional.push(c.dim(`⎇ ${opts.gitBranch}`));
 
   if (opts.inputTokens > 0 || opts.outputTokens > 0) {
