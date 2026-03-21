@@ -41,7 +41,6 @@ Inside `mc`:
 | `/mcp add <name> http <url>`                    | Add HTTP MCP server                           |
 | `/mcp add <name> stdio <cmd> [args...]`         | Add stdio MCP server                          |
 | `/mcp remove <name>`                            | Remove MCP server                             |
-| `/agent [name]`                                 | Set or clear active custom agent              |
 | `/login [provider]`                             | Show or start OAuth login                     |
 | `/logout <provider>`                            | Clear OAuth tokens                            |
 | `/exit`, `/quit`, `/q`                          | Leave the session                             |
