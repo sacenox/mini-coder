@@ -10,7 +10,7 @@ import {
   compactToolResultPayloads,
 } from "../llm-api/turn-context.ts";
 import type { ToolDef } from "../llm-api/types.ts";
-import { setLogContext } from "../logging/context.ts";
+import { logError, setLogContext } from "../logging/context.ts";
 import { getDb, getMaxTurnIndex, saveMessages } from "../session/db/index.ts";
 import { LogsRepo } from "../session/db/logs-repo.ts";
 import type { ActiveSession } from "../session/manager.ts";
@@ -242,6 +242,9 @@ export class SessionRunner {
         this.coreHistory = compactToolResultPayloads(
           applyContextPruning(this.coreHistory),
         );
+      } catch (err) {
+        logError(err, "processUserInput turn failed");
+        throw err;
       } finally {
         setLogContext(null);
       }
