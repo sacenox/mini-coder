@@ -52,12 +52,6 @@ export interface TurnCompleteEvent {
   messages: CoreMessage[];
 }
 
-export interface FileGeneratedEvent {
-  type: "file-generated";
-  filePath: string;
-  mediaType: string;
-}
-
 export interface TurnErrorEvent {
   type: "turn-error";
   error: Error;
@@ -77,7 +71,6 @@ export type TurnEvent =
   | ToolCallStartEvent
   | ToolResultEvent
   | ContextPrunedEvent
-  | FileGeneratedEvent
   | TurnCompleteEvent
   | TurnErrorEvent;
 

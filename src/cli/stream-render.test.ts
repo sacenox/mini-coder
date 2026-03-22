@@ -349,24 +349,4 @@ describe("renderTurn", () => {
     const plain = stripAnsi(getCapturedStdout());
     expect(countOccurrences(plain, "$ printf ok")).toBe(1);
   });
-
-  test("renders file-generated events as a one-liner", async () => {
-    captureStdout();
-
-    await renderTurn(
-      eventsFrom([
-        {
-          type: "file-generated",
-          filePath: "/home/user/project/generated-1.png",
-          mediaType: "image/png",
-        },
-        done(),
-      ]),
-      new Spinner(),
-    );
-
-    const plain = stripAnsi(getCapturedStdout());
-    expect(plain).toContain("image/png");
-    expect(plain).toContain("generated-1.png");
-  });
 });

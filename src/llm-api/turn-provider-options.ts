@@ -1,6 +1,5 @@
 import { isRecord } from "./history/shared.ts";
 import { isOpenAIGPT } from "./history-transforms.ts";
-import { isGeminiModelFamily } from "./model-routing.ts";
 import {
   getCacheFamily,
   getThinkingProviderOptions,
@@ -35,17 +34,6 @@ export function buildTurnProviderOptions(
 
   const cacheFamily = getCacheFamily(modelString);
 
-  const googleOpts = isGeminiModelFamily(modelString)
-    ? {
-        google: {
-          responseModalities: ["TEXT", "IMAGE"],
-          ...(isRecord(thinkingOpts?.google)
-            ? (thinkingOpts.google as object)
-            : {}),
-        },
-      }
-    : {};
-
   const providerOptions = {
     ...(thinkingOpts ?? {}),
     ...(isOpenAIGPT(modelString)
@@ -58,7 +46,6 @@ export function buildTurnProviderOptions(
           },
         }
       : {}),
-    ...googleOpts,
   };
 
   return {

@@ -37,7 +37,6 @@ export async function* runTurn(options: {
   systemPrompt?: string;
   signal?: AbortSignal;
   thinkingEffort?: ThinkingEffort;
-  cwd?: string;
 }): AsyncGenerator<TurnEvent> {
   const {
     model,
@@ -47,7 +46,6 @@ export async function* runTurn(options: {
     systemPrompt,
     signal,
     thinkingEffort,
-    cwd,
   } = options;
 
   const rawToolSet = buildToolSet(tools);
@@ -110,7 +108,6 @@ export async function* runTurn(options: {
 
     for await (const event of mapFullStreamToTurnEvents(result.fullStream, {
       stepPruneQueue,
-      ...(cwd ? { cwd } : {}),
       onChunk: (streamChunk) => {
         if (
           streamChunk.type === "tool-call" ||

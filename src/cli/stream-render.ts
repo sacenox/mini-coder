@@ -1,4 +1,3 @@
-import { basename } from "node:path";
 import * as c from "yoctocolors";
 import { buildAbortMessages, isAbortError } from "../agent/agent-helpers.ts";
 import type { CoreMessage } from "../llm-api/turn.ts";
@@ -132,20 +131,6 @@ export async function renderTurn(
           const removedKb = (event.removedBytes / 1024).toFixed(1);
           writeln(
             `${G.info} ${c.dim("context pruned")}  ${c.dim(`–${event.removedMessageCount} messages`)}  ${c.dim(`–${removedKb} KB`)}`,
-          );
-          renderedVisibleOutput = true;
-        }
-        break;
-      }
-
-      case "file-generated": {
-        liveReasoning.finish();
-        content.flushOpenContent();
-        if (!quiet) {
-          spinner.stop();
-          if (renderedVisibleOutput) writeln();
-          writeln(
-            `${G.info} ${c.dim("file")}  ${c.dim(event.mediaType)}  ${c.dim("→")}  ${basename(event.filePath)}`,
           );
           renderedVisibleOutput = true;
         }

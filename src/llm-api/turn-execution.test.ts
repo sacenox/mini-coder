@@ -14,12 +14,9 @@ function chunksFrom(
 
 async function collectEvents(
   chunks: Array<{ type?: string; [key: string]: unknown }>,
-  opts?: { cwd?: string },
 ): Promise<TurnEvent[]> {
   const events: TurnEvent[] = [];
-  for await (const event of mapFullStreamToTurnEvents(chunksFrom(chunks), {
-    ...(opts?.cwd ? { cwd: opts.cwd } : {}),
-  })) {
+  for await (const event of mapFullStreamToTurnEvents(chunksFrom(chunks), {})) {
     events.push(event);
   }
   return events;
@@ -256,37 +253,5 @@ describe("mapFullStreamToTurnEvents", () => {
       { type: "reasoning-delta", delta: "first thought" },
       { type: "text-delta", delta: " visible" },
     ]);
-  });
-
-  test("handles file stream chunks by saving to disk and yielding file-generated event", async () => {
-    const { join } = await import("node:path");
-    const { rm } = await import("node:fs/promises");
-    const dir = join(import.meta.dir, "../../.test-tmp-file-chunks");
-    await Bun.write(join(dir, ".gitkeep"), "");
-
-    const events = await collectEvents(
-      [
-        {
-          type: "file",
-          file: {
-            mediaType: "image/png",
-            uint8Array: new Uint8Array([137, 80, 78, 71]),
-            base64: "",
-          },
-        },
-      ],
-      { cwd: dir },
-    );
-
-    expect(events).toHaveLength(1);
-    expect(events[0]).toMatchObject({
-      type: "file-generated",
-      mediaType: "image/png",
-    });
-    const evt = events[0] as Extract<TurnEvent, { type: "file-generated" }>;
-    expect(evt.filePath).toMatch(/generated-\d+\.png$/);
-    expect(await Bun.file(evt.filePath).exists()).toBe(true);
-
-    await rm(dir, { recursive: true });
   });
 });
