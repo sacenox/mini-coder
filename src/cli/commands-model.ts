@@ -142,8 +142,9 @@ async function handleModelSelect(ctx: CommandContext): Promise<void> {
       ? c.dim(` ${Math.round(model.context / 1000)}k`)
       : "";
     const currentTag = isCurrent ? c.cyan(" ◀") : "";
+    const providerTag = c.dim(` [${model.provider}]`);
     return {
-      label: `${model.displayName}${freeTag}${contextTag}${currentTag}`,
+      label: `${model.displayName}${freeTag}${contextTag}${currentTag}${providerTag}`,
       value: model.id,
       filterText: `${model.id} ${model.displayName} ${model.provider}`,
     };
