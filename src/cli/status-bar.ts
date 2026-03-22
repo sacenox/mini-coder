@@ -36,20 +36,6 @@ function renderStatusLine(segments: string[]): string {
   return segments.join(STATUS_SEP);
 }
 
-export function buildStatusBarSignature(opts: StatusBarData): string {
-  return JSON.stringify({
-    model: opts.model,
-    cwd: opts.cwd,
-    gitBranch: opts.gitBranch,
-    sessionId: opts.sessionId,
-    inputTokens: opts.inputTokens,
-    outputTokens: opts.outputTokens,
-    contextTokens: opts.contextTokens,
-    contextWindow: opts.contextWindow,
-    thinkingEffort: opts.thinkingEffort ?? null,
-  });
-}
-
 function fitStatusSegments(
   required: string[],
   optional: string[],

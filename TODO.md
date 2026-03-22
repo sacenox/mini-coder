@@ -1,11 +1,5 @@
 # mini-coder TODO
 
-- Continue with testing receiving images from models:
-
-```
-What's left: the `file` chunk handling code and Gemini `responseModalities` are implemented and pass all 319 tests. The untested part is the live end-to-end path — a model actually emitting a `file` stream chunk.
-```
-
 - Add a line to global agents to avoid the repeated apologies:
 
 ```

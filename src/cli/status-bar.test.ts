@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { buildStatusBarSignature, renderStatusBar } from "./status-bar.ts";
+import { renderStatusBar } from "./status-bar.ts";
 import { terminal } from "./terminal-io.ts";
 import { stripAnsi, withTerminalColumns } from "./test-helpers.ts";
 
@@ -89,28 +89,5 @@ describe("renderStatusBar", () => {
     const line = stripAnsi(stdout).trim();
     expect(line).toContain("ctx 2.0k");
     expect(line).not.toContain("ctx 2.0k/");
-  });
-
-  test("buildStatusBarSignature is stable and reflects changed fields", () => {
-    const base = {
-      model: "zen/gpt-5.3-codex",
-      cwd: "~/src/mini-coder",
-      gitBranch: "main",
-      sessionId: "1234567890",
-      inputTokens: 1,
-      outputTokens: 2,
-      contextTokens: 3,
-      contextWindow: 100,
-      thinkingEffort: "medium",
-      activeAgent: null,
-    } as const;
-
-    expect(buildStatusBarSignature(base)).toBe(buildStatusBarSignature(base));
-    expect(
-      buildStatusBarSignature({
-        ...base,
-        outputTokens: 9,
-      }),
-    ).not.toBe(buildStatusBarSignature(base));
   });
 });

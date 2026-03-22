@@ -8,7 +8,6 @@ import { handleCommand } from "./commands.ts";
 import { resolveFileRefs } from "./file-refs.ts";
 import { type InputResult, readline } from "./input.ts";
 import { renderUserMessage, tildePath } from "./output.ts";
-import { buildStatusBarSignature } from "./status-bar.ts";
 import { buildToolCallLine, renderToolResult } from "./tool-render.ts";
 
 import type { CommandContext } from "./types.ts";
@@ -50,14 +49,12 @@ async function getGitBranch(cwd: string): Promise<string | null> {
 export async function runInputLoop(opts: InputLoopOptions): Promise<void> {
   const { cwd, reporter, cmdCtx, runner } = opts;
 
-  let lastStatusSignature: string | null = null;
-
   while (true) {
     const branch = await getGitBranch(cwd);
     const status = runner.getStatusInfo();
     const cwdDisplay = tildePath(cwd);
     const contextWindow = getContextWindow(status.model);
-    const statusData = {
+    reporter.renderStatusBar({
       model: status.model,
       cwd: cwdDisplay,
       gitBranch: branch,
@@ -67,12 +64,7 @@ export async function runInputLoop(opts: InputLoopOptions): Promise<void> {
       contextTokens: status.lastContextTokens,
       contextWindow,
       thinkingEffort: status.thinkingEffort,
-    };
-    const statusSignature = buildStatusBarSignature(statusData);
-    if (statusSignature !== lastStatusSignature) {
-      reporter.renderStatusBar(statusData);
-      lastStatusSignature = statusSignature;
-    }
+    });
 
     let input: InputResult;
     try {
