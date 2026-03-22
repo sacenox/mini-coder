@@ -1,4 +1,4 @@
-import type { ToolDef } from "../llm-api/types.ts";
+import type { ToolDef, ToolExecuteOptions } from "../llm-api/types.ts";
 import { webContentTool, webSearchTool } from "../tools/exa.ts";
 import type { ShellOutput } from "../tools/shell.ts";
 import { shellTool } from "../tools/shell.ts";
@@ -11,12 +11,12 @@ function withCwdDefault(tool: ToolDef, cwd: string): ToolDef {
   const originalExecute = tool.execute;
   return {
     ...tool,
-    execute: async (input: unknown) => {
+    execute: async (input: unknown, options?: ToolExecuteOptions) => {
       const patched = (
         typeof input === "object" && input !== null ? input : {}
       ) as Record<string, unknown>;
       if (patched.cwd === undefined) patched.cwd = cwd;
-      return originalExecute(patched);
+      return originalExecute(patched, options);
     },
   };
 }

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { restoreTerminal } from "../cli/output.ts";
 import { stripAnsi } from "../internal/ansi.ts";
 import { buildFileEditShellPrelude } from "../internal/file-edit/command.ts";
-import type { ToolDef } from "../llm-api/types.ts";
+import type { ToolDef, ToolExecuteOptions } from "../llm-api/types.ts";
 
 const ShellSchema = z.object({
   command: z.string().describe("Shell command to execute"),
@@ -41,7 +41,10 @@ export interface ShellOutput {
 
 const MAX_OUTPUT_BYTES = 10_000; // 10KB per stream
 
-export async function runShellCommand(input: ShellInput): Promise<ShellOutput> {
+export async function runShellCommand(
+  input: ShellInput,
+  options?: ToolExecuteOptions,
+): Promise<ShellOutput> {
   const cwd = input.cwd ?? process.cwd();
   const timeout = input.timeout ?? undefined;
   const inputEnv = input.env ?? undefined;
@@ -75,26 +78,40 @@ export async function runShellCommand(input: ShellInput): Promise<ShellOutput> {
     },
   );
 
+  function killProc(): void {
+    try {
+      proc.kill("SIGTERM");
+      setTimeout(() => {
+        try {
+          proc.kill("SIGKILL");
+        } catch {
+          /* already dead */
+        }
+      }, 2000);
+    } catch {
+      /* already done */
+    }
+    for (const reader of readers) {
+      reader.cancel().catch(() => {});
+    }
+  }
+
   const timer = timeout
     ? setTimeout(() => {
         timedOut = true;
-        try {
-          proc.kill("SIGTERM");
-          setTimeout(() => {
-            try {
-              proc.kill("SIGKILL");
-            } catch {
-              /* already dead */
-            }
-          }, 2000);
-        } catch {
-          /* already done */
-        }
-        for (const reader of readers) {
-          reader.cancel().catch(() => {});
-        }
+        killProc();
       }, timeout)
     : undefined;
+
+  const abortSignal = options?.signal;
+  const onAbort = () => {
+    killProc();
+  };
+  if (abortSignal?.aborted) {
+    onAbort();
+  } else {
+    abortSignal?.addEventListener("abort", onAbort, { once: true });
+  }
 
   async function collectStream(
     stream: ReadableStream<Uint8Array>,
@@ -144,6 +161,7 @@ export async function runShellCommand(input: ShellInput): Promise<ShellOutput> {
     exitCode = await proc.exited;
   } finally {
     if (timer) clearTimeout(timer);
+    abortSignal?.removeEventListener("abort", onAbort);
     restoreTerminal();
     if (wasRaw) {
       try {
@@ -175,5 +193,5 @@ export const shellTool: ToolDef<ShellInput, ShellOutput> = {
     "Use this for reading/searching code, running tests, builds, git commands, and invoking `mc-edit` for partial file edits. " +
     "Prefer non-interactive commands. Avoid commands that run indefinitely.",
   schema: ShellSchema,
-  execute: runShellCommand,
+  execute: (input, options) => runShellCommand(input, options),
 };

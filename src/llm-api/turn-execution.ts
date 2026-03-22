@@ -50,9 +50,12 @@ function toCoreTool(def: ToolDef): ReturnType<typeof dynamicTool> {
   return dynamicTool({
     description: def.description,
     inputSchema: schema,
-    execute: async (input: unknown) => {
+    execute: async (input: unknown, { abortSignal }) => {
       try {
-        return await def.execute(input);
+        return await def.execute(
+          input,
+          abortSignal ? { signal: abortSignal } : undefined,
+        );
       } catch (err) {
         throw normalizeUnknownError(err);
       }

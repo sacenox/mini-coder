@@ -76,10 +76,14 @@ export type TurnEvent =
 
 // ─── Tool definition ──────────────────────────────────────────────────────────
 
+export interface ToolExecuteOptions {
+  signal?: AbortSignal;
+}
+
 export interface ToolDef<TInput = unknown, TOutput = unknown> {
   name: string;
   description: string;
   /** Zod schema — typed as unknown here, cast at call sites */
   schema: unknown;
-  execute: (input: TInput) => Promise<TOutput>;
+  execute: (input: TInput, options?: ToolExecuteOptions) => Promise<TOutput>;
 }
