@@ -10,17 +10,20 @@ const ShellSchema = z.object({
     .number()
     .int()
     .min(1000)
-    .optional()
+    .nullable()
     .describe(
       "Timeout in milliseconds. If omitted, the command runs until it exits.",
     ),
   env: z
     .record(z.string(), z.string())
-    .optional()
+    .nullable()
     .describe("Additional environment variables to set"),
 });
 
-type ShellInput = z.infer<typeof ShellSchema> & {
+type ShellInput = {
+  command: string;
+  timeout?: number | null;
+  env?: Record<string, string> | null;
   cwd?: string;
 };
 
@@ -40,11 +43,11 @@ const MAX_OUTPUT_BYTES = 10_000; // 10KB per stream
 
 export async function runShellCommand(input: ShellInput): Promise<ShellOutput> {
   const cwd = input.cwd ?? process.cwd();
-  const timeout = input.timeout;
+  const timeout = input.timeout ?? undefined;
+  const inputEnv = input.env ?? undefined;
   const existingGitCount =
-    Number(
-      input.env?.GIT_CONFIG_COUNT ?? process.env.GIT_CONFIG_COUNT ?? "0",
-    ) || 0;
+    Number(inputEnv?.GIT_CONFIG_COUNT ?? process.env.GIT_CONFIG_COUNT ?? "0") ||
+    0;
   const gitIdx = String(existingGitCount);
   const env: Record<string, string | undefined> = Object.assign(
     {},
@@ -55,7 +58,7 @@ export async function runShellCommand(input: ShellInput): Promise<ShellOutput> {
       [`GIT_CONFIG_KEY_${gitIdx}`]: "color.ui",
       [`GIT_CONFIG_VALUE_${gitIdx}`]: "always",
     },
-    input.env ?? {},
+    inputEnv ?? {},
   );
 
   let timedOut = false;
