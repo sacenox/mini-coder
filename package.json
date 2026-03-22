@@ -31,7 +31,7 @@
     "diff": "^8.0.3",
     "yoctocolors": "^2.1.2",
     "yoctomarkdown": "^0.0.7",
-    "yoctoselect": "0.0.2",
+    "yoctoselect": "0.0.3",
     "zod": "^4.3.6"
   },
   "devDependencies": {
