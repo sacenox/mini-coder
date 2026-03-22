@@ -311,6 +311,88 @@ describe("renderTurn", () => {
     expect(stripAnsi(getCapturedStdout())).toContain("hello");
   });
 
+  test("streams tool input deltas as composing line, then renders clean line", async () => {
+    captureStdout();
+
+    await renderTurn(
+      eventsFrom([
+        {
+          type: "tool-input-delta",
+          toolName: "shell",
+          toolCallId: "tool-stream",
+          inputTextDelta: "echo ",
+        },
+        {
+          type: "tool-input-delta",
+          toolName: "shell",
+          toolCallId: "tool-stream",
+          inputTextDelta: "hello",
+        },
+        {
+          type: "tool-call-start",
+          toolName: "shell",
+          toolCallId: "tool-stream",
+          args: { command: "echo hello" },
+        },
+        {
+          type: "tool-result",
+          toolName: "shell",
+          toolCallId: "tool-stream",
+          isError: false,
+          result: {
+            stdout: "hello",
+            stderr: "",
+            exitCode: 0,
+            success: true,
+            timedOut: false,
+          },
+        },
+        done(),
+      ]),
+      new Spinner(),
+    );
+
+    const plain = stripAnsi(getCapturedStdout());
+    // The composing line is overwritten by the final tool call line
+    expect(plain).toContain("$ echo hello");
+    // Should only show one tool call on stdout
+    expect(countOccurrences(plain, "$ echo hello")).toBe(1);
+  });
+
+  test("renders full tool-call-start when no deltas preceded it", async () => {
+    captureStdout();
+
+    await renderTurn(
+      eventsFrom([
+        {
+          type: "tool-call-start",
+          toolName: "shell",
+          toolCallId: "tool-no-delta",
+          args: { command: "ls -la" },
+        },
+        {
+          type: "tool-result",
+          toolName: "shell",
+          toolCallId: "tool-no-delta",
+          isError: false,
+          result: {
+            stdout: "file.txt",
+            stderr: "",
+            exitCode: 0,
+            success: true,
+            timedOut: false,
+          },
+        },
+        done(),
+      ]),
+      new Spinner(),
+    );
+
+    const plain = stripAnsi(getCapturedStdout());
+    expect(plain).toContain("ls -la");
+    expect(plain).toContain("done exit 0");
+  });
+
   test("deduplicates repeated tool-call-start events for the same toolCallId", async () => {
     captureStdout();
 

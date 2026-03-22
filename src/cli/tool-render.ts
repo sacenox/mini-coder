@@ -1,5 +1,4 @@
 import * as c from "yoctocolors";
-import { truncateText } from "../internal/text.ts";
 import { G, tildePath, writeln } from "./output.ts";
 import { renderToolResultByName } from "./tool-result-renderers.ts";
 
@@ -76,8 +75,7 @@ function formatShellCallLine(cmd: string): string {
   const firstCmd = extractFirstCommand(rest);
   const glyph = shellCmdGlyph(firstCmd, rest);
   const cwdSuffix = cwd ? ` ${c.dim(`in ${cwd}`)}` : "";
-  const display = truncateText(rest, 80);
-  return `${glyph} ${display}${cwdSuffix}`;
+  return `${glyph} ${rest}${cwdSuffix}`;
 }
 
 export function buildToolCallLine(name: string, args: unknown): string {
@@ -101,8 +99,7 @@ export function buildToolCallLine(name: string, args: unknown): string {
 
   if (name === "webSearch") {
     const query = typeof a.query === "string" ? a.query : "";
-    const short = query.length > 60 ? `${query.slice(0, 57)}…` : query;
-    return `${G.search} ${c.dim("search")}${short ? ` ${short}` : ""}`;
+    return `${G.search} ${c.dim("search")}${query ? ` ${query}` : ""}`;
   }
 
   if (name === "webContent") {
@@ -111,8 +108,7 @@ export function buildToolCallLine(name: string, args: unknown): string {
       urls.length === 1
         ? String(urls[0])
         : `${urls.length} url${urls.length !== 1 ? "s" : ""}`;
-    const short = label.length > 60 ? `${label.slice(0, 57)}…` : label;
-    return `${G.read} ${c.dim("fetch")} ${short}`;
+    return `${G.read} ${c.dim("fetch")} ${label}`;
   }
 
   if (name.startsWith("mcp_")) {
@@ -122,8 +118,27 @@ export function buildToolCallLine(name: string, args: unknown): string {
   return `${toolGlyph(name)} ${c.dim(name)}`;
 }
 
-export function renderToolCall(toolName: string, args: unknown): void {
-  writeln(`  ${buildToolCallLine(toolName, args)}`);
+export function renderToolCall(
+  toolName: string,
+  args: unknown,
+  opts?: { verboseOutput?: boolean },
+): void {
+  const line = buildToolCallLine(toolName, args);
+  if (opts?.verboseOutput) {
+    writeln(line);
+    return;
+  }
+  const lines = line.split("\n");
+  if (lines.length <= 6) {
+    writeln(line);
+    return;
+  }
+  const head = lines.slice(0, 3);
+  const tail = lines.slice(-2);
+  const hidden = lines.length - head.length - tail.length;
+  for (const l of head) writeln(l);
+  writeln(c.dim(`… +${hidden} lines`));
+  for (const l of tail) writeln(l);
 }
 
 function formatErrorBadge(result: unknown): string {
@@ -146,7 +161,7 @@ export function renderToolResult(
   opts?: ToolResultRenderOptions,
 ): void {
   if (isError) {
-    writeln(`    ${formatErrorBadge(result)}`);
+    writeln(formatErrorBadge(result));
     return;
   }
 
@@ -156,8 +171,8 @@ export function renderToolResult(
 
   const text = JSON.stringify(result);
   if (opts?.verboseOutput || text.length <= 120) {
-    writeln(`    ${c.dim(text)}`);
+    writeln(c.dim(text));
     return;
   }
-  writeln(`    ${c.dim(`${text.slice(0, 117)}…`)}`);
+  writeln(c.dim(`${text.slice(0, 117)}…`));
 }

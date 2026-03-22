@@ -8,7 +8,8 @@ export function shouldLogStreamChunk(c: StreamChunk): boolean {
   return (
     c.type !== "text-delta" &&
     c.type !== "reasoning" &&
-    c.type !== "reasoning-delta"
+    c.type !== "reasoning-delta" &&
+    c.type !== "tool-input-delta"
   );
 }
 
@@ -52,6 +53,21 @@ export function mapStreamChunkToTurnEvent(c: StreamChunk): TurnEvent | null {
         toolCallId: String(c.toolCallId ?? ""),
         toolName: String(c.toolName ?? ""),
         args,
+      };
+    }
+    case "tool-input-delta": {
+      let delta = "";
+      if (typeof c.inputTextDelta === "string") {
+        delta = c.inputTextDelta;
+      } else if (typeof c.delta === "string") {
+        delta = c.delta;
+      }
+      if (!delta) return null;
+      return {
+        type: "tool-input-delta",
+        toolCallId: String(c.toolCallId ?? c.id ?? ""),
+        toolName: String(c.toolName ?? ""),
+        inputTextDelta: delta,
       };
     }
     case "tool-call": {

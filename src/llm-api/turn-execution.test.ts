@@ -115,6 +115,12 @@ describe("mapFullStreamToTurnEvents", () => {
 
     expect(events).toEqual([
       {
+        type: "tool-input-delta",
+        toolCallId: "",
+        toolName: "shell",
+        inputTextDelta: '{"command":"echo hi"}',
+      },
+      {
         type: "tool-call-start",
         toolCallId: "call-2b",
         toolName: "shell",

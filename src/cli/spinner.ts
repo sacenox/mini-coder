@@ -32,10 +32,6 @@ export class Spinner {
     terminal.stderrWrite("\r\x1B[2K\x1B[?25h");
   }
 
-  update(label: string): void {
-    this.label = label;
-  }
-
   private _tick(): void {
     const f = SPINNER_FRAMES[this.frame++ % SPINNER_FRAMES.length] ?? "⣾";
     const label = this.label ? c.dim(` ${this.label}`) : "";

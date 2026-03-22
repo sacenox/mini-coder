@@ -5,10 +5,11 @@ import {
 } from "./turn-stream-events.ts";
 
 describe("shouldLogStreamChunk", () => {
-  test("suppresses text and reasoning deltas", () => {
+  test("suppresses text, reasoning, and tool-input deltas", () => {
     expect(shouldLogStreamChunk({ type: "text-delta" })).toBe(false);
     expect(shouldLogStreamChunk({ type: "reasoning" })).toBe(false);
     expect(shouldLogStreamChunk({ type: "reasoning-delta" })).toBe(false);
+    expect(shouldLogStreamChunk({ type: "tool-input-delta" })).toBe(false);
     expect(shouldLogStreamChunk({ type: "tool-call" })).toBe(true);
   });
 });
@@ -117,6 +118,33 @@ describe("mapStreamChunkToTurnEvent", () => {
     expect(() =>
       mapStreamChunkToTurnEvent({ type: "error", error: new Error("boom") }),
     ).toThrow("boom");
+  });
+
+  test("maps tool-input-delta to tool-input-delta event", () => {
+    expect(
+      mapStreamChunkToTurnEvent({
+        type: "tool-input-delta",
+        toolCallId: "id-delta",
+        toolName: "shell",
+        inputTextDelta: "echo hi",
+      }),
+    ).toEqual({
+      type: "tool-input-delta",
+      toolCallId: "id-delta",
+      toolName: "shell",
+      inputTextDelta: "echo hi",
+    });
+  });
+
+  test("ignores tool-input-delta with empty inputTextDelta", () => {
+    expect(
+      mapStreamChunkToTurnEvent({
+        type: "tool-input-delta",
+        toolCallId: "id-delta",
+        toolName: "shell",
+        inputTextDelta: "",
+      }),
+    ).toBeNull();
   });
 
   test("throws nested provider message for object error chunks", () => {

@@ -246,6 +246,7 @@ class StreamToolCallTracker {
   private syntheticCount = 0;
   private pendingByTool = new Map<string, string[]>();
   private deferredStartsByTool = new Map<string, number>();
+  private toolNameById = new Map<string, string>();
 
   prepare(chunk: StreamToolChunk): {
     chunk: StreamToolChunk;
@@ -259,6 +260,7 @@ class StreamToolCallTracker {
     if (type === "tool-input-start") {
       const toolName = normalizeToolName(chunk.toolName);
       const toolCallId = normalizeStringId(chunk.toolCallId);
+      if (toolCallId && toolName) this.toolNameById.set(toolCallId, toolName);
       const args = extractToolArgs(chunk);
       if (!hasRenderableToolArgs(args)) {
         if (!toolCallId) {
@@ -299,6 +301,17 @@ class StreamToolCallTracker {
         chunk: { ...chunk, toolCallId: nextToolCallId },
         suppressTurnEvent: false,
       };
+    }
+
+    if (type === "tool-input-delta") {
+      const id = normalizeStringId(chunk.id ?? chunk.toolCallId);
+      const toolName = id ? this.toolNameById.get(id) : undefined;
+      if (toolName) {
+        return {
+          chunk: { ...chunk, toolName, toolCallId: id },
+          suppressTurnEvent: false,
+        };
+      }
     }
 
     return { chunk, suppressTurnEvent: false };

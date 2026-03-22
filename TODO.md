@@ -1,3 +1,1 @@
 # mini-coder TODO
-
-- Expose tool input lifecycle hooks (`onInputStart`, `onInputDelta`, `onInputAvailable`) from AI SDK to the UI. Currently we only see tool results after execution. With these hooks we can show the user what the LLM is typing as tool input in real-time (e.g. stream the shell command as it's being generated, show mc-edit old/new text building up). `onInputStart`/`onInputDelta` are streaming-only (`streamText`). `onInputAvailable` fires when input is validated and ready — useful for both streaming and non-streaming. Wire them through `ToolDef` or as callbacks on the turn/stream layer.
