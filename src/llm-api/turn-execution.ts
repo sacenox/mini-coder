@@ -7,6 +7,7 @@
 import type { FlexibleSchema, StepResult } from "ai";
 import { dynamicTool, jsonSchema, type streamText } from "ai";
 import { normalizeUnknownError } from "./error-utils.ts";
+import { saveGeneratedFile } from "./generated-files.ts";
 import { isRecord } from "./history/shared.ts";
 import { isAnthropicModelFamily } from "./model-routing.ts";
 import {
@@ -370,6 +371,7 @@ export async function* mapFullStreamToTurnEvents(
       beforeTotalBytes: number;
       afterTotalBytes: number;
     }[];
+    cwd?: string;
   },
 ): AsyncGenerator<TurnEvent> {
   const toolCallTracker = new StreamToolCallTracker();
@@ -380,6 +382,21 @@ export async function* mapFullStreamToTurnEvents(
     if (originalChunk.type === "start-step" && opts.stepPruneQueue) {
       for (const rec of opts.stepPruneQueue.splice(0)) {
         yield { type: "context-pruned", ...rec };
+      }
+    }
+    // Handle file chunks from multimodal models (e.g. inline image generation)
+    if (originalChunk.type === "file" && opts.cwd) {
+      const fileData = originalChunk.file as
+        | { mediaType: string; uint8Array: Uint8Array }
+        | undefined;
+      if (fileData?.uint8Array) {
+        const filePath = await saveGeneratedFile(fileData, opts.cwd);
+        yield {
+          type: "file-generated",
+          filePath,
+          mediaType: fileData.mediaType,
+        };
+        continue;
       }
     }
     const prepared = toolCallTracker.prepare(originalChunk);

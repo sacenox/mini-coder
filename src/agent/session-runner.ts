@@ -214,6 +214,7 @@ export class SessionRunner {
           ...(this.currentThinkingEffort
             ? { thinkingEffort: this.currentThinkingEffort }
             : {}),
+          cwd: this.cwd,
         });
 
         const { inputTokens, outputTokens, contextTokens, newMessages } =
