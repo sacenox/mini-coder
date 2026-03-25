@@ -37,11 +37,16 @@ describe("provider sync policy", () => {
   });
 
   test("snapshot visibility tracks configured providers", () => {
-    expect(isProviderVisibleInSnapshot("openai", {})).toBe(false);
+    // openai visibility depends on env key OR active OAuth login
     expect(isProviderVisibleInSnapshot("openai", { OPENAI_API_KEY: "x" })).toBe(
       true,
     );
     expect(isProviderVisibleInSnapshot("ollama", {})).toBe(true);
+    // Without env or OAuth, zen should not be visible (zen has no OAuth)
+    expect(isProviderVisibleInSnapshot("zen", {})).toBe(false);
+    expect(isProviderVisibleInSnapshot("zen", { OPENCODE_API_KEY: "x" })).toBe(
+      true,
+    );
   });
 });
 

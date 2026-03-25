@@ -33,7 +33,7 @@ import {
 const MODELS_DEV_SYNC_KEY = "last_models_dev_sync_at";
 const PROVIDER_SYNC_KEY_PREFIX = "last_provider_sync_at:";
 const CACHE_VERSION_KEY = "model_info_cache_version";
-const CACHE_VERSION = 3;
+const CACHE_VERSION = 5;
 export const MODEL_INFO_TTL_MS = 24 * 60 * 60 * 1000;
 
 export {
@@ -117,8 +117,10 @@ export function getRemoteProvidersFromEnv(
   ).map((entry) => entry.provider);
 
   // Include providers with OAuth login even without env keys
-  if (!providers.includes("anthropic") && isLoggedIn("anthropic")) {
-    providers.push("anthropic");
+  for (const p of ["anthropic", "openai"] as const) {
+    if (!providers.includes(p) && isLoggedIn(p)) {
+      providers.push(p);
+    }
   }
 
   return providers;

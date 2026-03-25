@@ -128,21 +128,61 @@ async function fetchZenModels(): Promise<ProviderModelCandidate[] | null> {
 }
 
 async function fetchOpenAIModels(): Promise<ProviderModelCandidate[] | null> {
-  const key = process.env.OPENAI_API_KEY;
-  if (!key) return null;
-  return fetchPaginatedModelsList(
-    `${OPENAI_BASE}/v1/models`,
-    { headers: { Authorization: `Bearer ${key}` } },
-    6_000,
-    "data",
-    "id",
-    (_item, modelId) => ({
-      providerModelId: modelId,
-      displayName: modelId,
-      contextWindow: null,
-      free: false,
-    }),
-  );
+  const envKey = process.env.OPENAI_API_KEY;
+  if (envKey) {
+    return fetchPaginatedModelsList(
+      `${OPENAI_BASE}/v1/models`,
+      { headers: { Authorization: `Bearer ${envKey}` } },
+      6_000,
+      "data",
+      "id",
+      (_item, modelId) => ({
+        providerModelId: modelId,
+        displayName: modelId,
+        contextWindow: null,
+        free: false,
+      }),
+    );
+  }
+  if (isLoggedIn("openai")) {
+    const token = await getAccessToken("openai");
+    if (!token) return null;
+    return fetchCodexOAuthModels(token);
+  }
+  return null;
+}
+
+const CODEX_MODELS_URL =
+  "https://chatgpt.com/backend-api/codex/models?client_version=1.0.0";
+
+async function fetchCodexOAuthModels(
+  token: string,
+): Promise<ProviderModelCandidate[] | null> {
+  try {
+    const res = await fetch(CODEX_MODELS_URL, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(6_000),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      models: Array<{
+        slug: string;
+        display_name: string;
+        context_window: number | null;
+        visibility: string;
+      }>;
+    };
+    return (data.models ?? [])
+      .filter((m) => m.visibility === "list")
+      .map((m) => ({
+        providerModelId: m.slug,
+        displayName: m.display_name || m.slug,
+        contextWindow: m.context_window,
+        free: false,
+      }));
+  } catch {
+    return null;
+  }
 }
 
 async function getAnthropicAuth(): Promise<{

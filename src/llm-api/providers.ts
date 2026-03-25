@@ -4,6 +4,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { LanguageModel } from "ai";
 import { getAccessToken, isLoggedIn } from "../session/oauth/auth-storage.ts";
+import { extractAccountId } from "../session/oauth/openai.ts";
 import {
   type AvailableModelsSnapshot,
   fetchAvailableModelsSnapshot,
@@ -163,7 +164,79 @@ function resolveZenModel(modelId: string): LanguageModel {
   return ZEN_BACKEND_RESOLVERS[getZenBackend(modelId)](modelId);
 }
 
-function resolveOpenAIModel(modelId: string): LanguageModel {
+function createOAuthOpenAIProvider(token: string): OpenAIProvider {
+  const accountId = extractAccountId(token);
+  return createOpenAI({
+    apiKey: "oauth",
+    baseURL: OPENAI_CODEX_BASE_URL,
+    fetch: ((
+      input: Parameters<ProviderFetch>[0],
+      init?: Parameters<ProviderFetch>[1],
+    ) => {
+      const h = new Headers(
+        init?.headers as ConstructorParameters<typeof Headers>[0],
+      );
+      h.delete("OpenAI-Organization");
+      h.delete("OpenAI-Project");
+      h.set("Authorization", `Bearer ${token}`);
+      if (accountId) h.set("chatgpt-account-id", accountId);
+
+      // Transform request body for Codex backend compatibility:
+      // 1. Move developer/system message from input[] to top-level `instructions`
+      // 2. Strip unsupported parameters (max_output_tokens, store)
+      let body = init?.body;
+      if (typeof body === "string") {
+        try {
+          const parsed = JSON.parse(body);
+          if (parsed.input && Array.isArray(parsed.input)) {
+            if (!parsed.instructions) {
+              const sysIdx = parsed.input.findIndex(
+                (m: Record<string, string>) =>
+                  m.role === "developer" || m.role === "system",
+              );
+              if (sysIdx !== -1) {
+                const sysMsg = parsed.input[sysIdx];
+                parsed.instructions =
+                  typeof sysMsg.content === "string"
+                    ? sysMsg.content
+                    : JSON.stringify(sysMsg.content);
+                parsed.input.splice(sysIdx, 1);
+              }
+            }
+            delete parsed.max_output_tokens;
+            parsed.store = false;
+            parsed.stream = true;
+            body = JSON.stringify(parsed);
+          }
+        } catch {
+          // not JSON, pass through
+        }
+      }
+
+      return fetch(input, {
+        ...init,
+        body,
+        headers: Object.fromEntries(h.entries()),
+      });
+    }) as ProviderFetch,
+  });
+}
+
+async function resolveOpenAIModel(modelId: string): Promise<LanguageModel> {
+  // OAuth token takes priority over env var
+  if (isLoggedIn("openai")) {
+    const token = await getAccessToken("openai");
+    if (token) {
+      if (!oauthOpenAICache || oauthOpenAICache.token !== token) {
+        oauthOpenAICache = {
+          token,
+          provider: createOAuthOpenAIProvider(token),
+        };
+      }
+      return oauthOpenAICache.provider.responses(modelId);
+    }
+  }
+  // Fallback to OPENAI_API_KEY env var
   return modelId.startsWith("gpt-")
     ? directProviders.openai().responses(modelId)
     : directProviders.openai()(modelId);
@@ -173,9 +246,14 @@ type AsyncModelResolver = (
   modelId: string,
 ) => LanguageModel | Promise<LanguageModel>;
 
+const OPENAI_CODEX_BASE_URL = "https://chatgpt.com/backend-api/codex";
+
 /** Cache the OAuth-backed Anthropic provider keyed by access token. */
 let oauthAnthropicCache: { token: string; provider: AnthropicProvider } | null =
   null;
+
+/** Cache the OAuth-backed OpenAI Codex provider keyed by access token. */
+let oauthOpenAICache: { token: string; provider: OpenAIProvider } | null = null;
 
 function createOAuthAnthropicProvider(token: string): AnthropicProvider {
   return createAnthropic({
@@ -261,7 +339,9 @@ export function discoverConnectedProviders(): ConnectedProvider[] {
   if (isLoggedIn("anthropic")) result.push({ name: "anthropic", via: "oauth" });
   else if (process.env.ANTHROPIC_API_KEY)
     result.push({ name: "anthropic", via: "env" });
-  if (process.env.OPENAI_API_KEY) result.push({ name: "openai", via: "env" });
+  if (isLoggedIn("openai")) result.push({ name: "openai", via: "oauth" });
+  else if (process.env.OPENAI_API_KEY)
+    result.push({ name: "openai", via: "env" });
   if (process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY)
     result.push({ name: "google", via: "env" });
   if (process.env.OLLAMA_BASE_URL) result.push({ name: "ollama", via: "env" });
@@ -272,7 +352,8 @@ export function autoDiscoverModel(): string {
   if (process.env.OPENCODE_API_KEY) return "zen/claude-sonnet-4-6";
   if (process.env.ANTHROPIC_API_KEY || isLoggedIn("anthropic"))
     return "anthropic/claude-sonnet-4-6";
-  if (process.env.OPENAI_API_KEY) return "openai/gpt-5.4";
+  if (process.env.OPENAI_API_KEY || isLoggedIn("openai"))
+    return "openai/gpt-5.4";
   if (process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY)
     return "google/gemini-3.1-pro";
   return "ollama/llama3.2";

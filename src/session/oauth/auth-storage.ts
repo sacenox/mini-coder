@@ -6,6 +6,7 @@
 
 import { getDb } from "../db/connection.ts";
 import { anthropicOAuth } from "./anthropic.ts";
+import { openaiOAuth } from "./openai.ts";
 import type {
   OAuthCredentials,
   OAuthLoginCallbacks,
@@ -22,6 +23,7 @@ interface OAuthTokenRow {
 
 const PROVIDERS: ReadonlyMap<string, OAuthProviderConfig> = new Map([
   [anthropicOAuth.id, anthropicOAuth],
+  [openaiOAuth.id, openaiOAuth],
 ]);
 
 export function getOAuthProviders(): OAuthProviderConfig[] {
