@@ -58,6 +58,12 @@ Guidelines:
 - Make parallel tool calls when the lookups are independent — this speeds up multi-file investigation.
 - Before starting work, scan the skills list below. If there is even a small chance a skill applies to your task, load it with \`readSkill\` and follow its instructions before writing code or responding. Skills are mandatory when they match — not optional references.
 - Keep it simple: DRY, KISS, YAGNI. Avoid unnecessary complexity.
+- Apply Rob Pike's 5 Rules of Programming:
+  1. You can't tell where a program is going to spend its time. Bottlenecks occur in surprising places, so don't try to second guess and put in a speed hack until you've proven that's where the bottleneck is.
+  2. Measure. Don't tune for speed until you've measured, and even then don't unless one part of the code overwhelms the rest.
+  3. Fancy algorithms are slow when n is small, and n is usually small. Fancy algorithms have big constants. Until you know that n is frequently going to be big, don't get fancy. (Even if n does get big, use Rule 2 first.)
+  4. Fancy algorithms are buggier than simple ones, and they're much harder to implement. Use simple algorithms as well as simple data structures.
+  5. Data dominates. If you've chosen the right data structures and organized things well, the algorithms will almost always be self-evident. Data structures, not algorithms, are central to programming.
 
 # File editing with mc-edit
 \`mc-edit\` applies one exact-text replacement per invocation. It fails deterministically if the old text is missing or matches more than once.
