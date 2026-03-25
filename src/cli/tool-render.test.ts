@@ -211,4 +211,21 @@ describe("renderToolResult", () => {
     expect(plain).toContain("deploy  ·  local  ·  Deploy safely");
     expect(plain).toContain("release  ·  global  ·  Ship releases");
   });
+
+  test("renders duplicate readSkill loads as already loaded instead of not found", () => {
+    captureStdout();
+
+    renderToolResult(
+      "readSkill",
+      {
+        skill: null,
+        note: 'Skill "deploy" is already loaded in this session.',
+      },
+      false,
+    );
+
+    const plain = stripAnsi(getCapturedStdout());
+    expect(plain).toContain("already loaded in this session");
+    expect(plain).not.toContain("(not found)");
+  });
 });

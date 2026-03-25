@@ -231,10 +231,15 @@ function renderReadSkillResult(
       name?: string;
       description?: string;
       source?: "local" | "global";
-    };
+    } | null;
+    note?: string;
   };
   if (!r || typeof r !== "object") return false;
   if (!r.skill) {
+    if (typeof r.note === "string" && r.note.trim().length > 0) {
+      writeln(`${G.info} ${c.dim("skill")}  ${c.dim(r.note.trim())}`);
+      return true;
+    }
     writeln(`${G.info} ${c.dim("skill")}  ${c.dim("(not found)")}`);
     return true;
   }
@@ -242,6 +247,9 @@ function renderReadSkillResult(
     label: "skill",
     verboseOutput: _opts?.verboseOutput === true,
   });
+  if (typeof r.note === "string" && r.note.trim().length > 0) {
+    writeln(c.dim(r.note.trim()));
+  }
   return true;
 }
 

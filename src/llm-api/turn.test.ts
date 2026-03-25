@@ -725,6 +725,83 @@ describe("applyContextPruning", () => {
     expect(pruned.length).toBeLessThan(messages.length);
     expect(pruned.at(-1)?.role).toBe("user");
   });
+
+  test("keeps readSkill history while pruning other stale tool results", () => {
+    const messages: CoreMessage[] = [];
+
+    for (let i = 0; i < 10; i++) {
+      messages.push({ role: "user", content: `skill user ${i}` });
+      messages.push({
+        role: "assistant",
+        content: [
+          {
+            type: "tool-call",
+            toolCallId: `skill-${i}`,
+            toolName: "readSkill",
+            input: { name: `skill-${i}` },
+          },
+        ],
+      } as unknown as CoreMessage);
+      messages.push({
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: `skill-${i}`,
+            toolName: "readSkill",
+            output: { skill: { name: `skill-${i}`, content: `body ${i}` } },
+          },
+        ],
+      } as unknown as CoreMessage);
+    }
+
+    for (let i = 0; i < 20; i++) {
+      messages.push({ role: "user", content: `shell user ${i}` });
+      messages.push({
+        role: "assistant",
+        content: [
+          {
+            type: "tool-call",
+            toolCallId: `shell-${i}`,
+            toolName: "shell",
+            input: { command: `echo ${i}` },
+          },
+        ],
+      } as unknown as CoreMessage);
+      messages.push({
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: `shell-${i}`,
+            toolName: "shell",
+            output: { stdout: `${i}` },
+          },
+        ],
+      } as unknown as CoreMessage);
+    }
+
+    messages.push({ role: "user", content: "final" });
+
+    const pruned = applyContextPruning(messages);
+    const toolCallIds = new Set(
+      pruned.flatMap((message) =>
+        Array.isArray(message.content)
+          ? message.content.flatMap((part) =>
+              typeof part === "object" &&
+              part !== null &&
+              "toolCallId" in part &&
+              typeof part.toolCallId === "string"
+                ? [part.toolCallId]
+                : [],
+            )
+          : [],
+      ),
+    );
+
+    expect(toolCallIds.has("skill-0")).toBe(true);
+    expect(toolCallIds.has("shell-0")).toBe(false);
+  });
 });
 
 describe("applyStepPruning", () => {

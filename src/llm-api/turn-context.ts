@@ -129,11 +129,42 @@ export function getMessageDiagnostics(
   };
 }
 
+type ToolCallPruneType =
+  | "all"
+  | "before-last-message"
+  | `before-last-${number}-messages`;
+
+function collectPrunableToolNames(messages: CoreMessage[]): string[] {
+  const names = new Set<string>();
+
+  for (const message of messages) {
+    if (!Array.isArray(message.content)) continue;
+    for (const part of message.content) {
+      if (!isRecord(part)) continue;
+      const partRecord = part as Record<string, unknown>;
+      const toolName = partRecord.toolName;
+      if (typeof toolName !== "string" || toolName.length === 0) continue;
+      if (toolName === "readSkill") continue;
+      names.add(toolName);
+    }
+  }
+
+  return [...names].sort((a, b) => a.localeCompare(b));
+}
+
+function buildToolCallPruning(
+  messages: CoreMessage[],
+  type: ToolCallPruneType,
+): "none" | Array<{ type: ToolCallPruneType; tools: string[] }> {
+  const tools = collectPrunableToolNames(messages);
+  return tools.length === 0 ? "none" : [{ type, tools }];
+}
+
 export function applyContextPruning(messages: CoreMessage[]): CoreMessage[] {
   return pruneMessages({
     messages,
     reasoning: "before-last-message",
-    toolCalls: "before-last-40-messages",
+    toolCalls: buildToolCallPruning(messages, "before-last-40-messages"),
     emptyMessages: "remove",
   }) as CoreMessage[];
 }
@@ -164,7 +195,10 @@ export function applyStepPruning(
   return pruneMessages({
     messages,
     reasoning: "none",
-    toolCalls: `before-last-${40 + newMessageCount}-messages`,
+    toolCalls: buildToolCallPruning(
+      messages,
+      `before-last-${40 + newMessageCount}-messages`,
+    ),
     emptyMessages: "remove",
   }) as CoreMessage[];
 }
