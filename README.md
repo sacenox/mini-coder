@@ -46,13 +46,13 @@ Useful flags: `-c` continue last session, `-r <id>` resume, `-l` list sessions, 
 
 ## 🔑 OAuth Login
 
-Use `/login` inside the REPL to authenticate via browser-based OAuth (currently Anthropic). No need to manage API keys manually.
+Use `/login` inside the REPL to authenticate via browser-based OAuth. Supported providers: `anthropic` and `openai` (`/login openai` uses the Codex / ChatGPT Plus/Pro flow). No need to manage API keys manually.
 
 ---
 
 ## 🛠️ Features
 
-- **Multi-provider** — auto-discovers Anthropic (direct + OAuth), OpenAI, Gemini, and Ollama via environment variables
+- **Multi-provider** — supports Anthropic and OpenAI (direct + OAuth), plus Gemini and Ollama
 - **Session memory** — SQLite-backed. Resume with `-c` or `-r <id>`
 - **Shell integration** — `!` prefix for inline commands, `@` to reference files with tab completion
 - **Web search** — `webSearch` + `webContent` tools when `EXA_API_KEY` is set

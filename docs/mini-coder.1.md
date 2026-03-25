@@ -80,7 +80,7 @@ _prompt_
 : Show OAuth login status.
 
 `/login` _provider_
-: Login via OAuth (opens browser for device flow). Currently supports `anthropic`.
+: Login via OAuth (opens browser for device flow). Currently supports `anthropic` and `openai` (`openai` uses the Codex / ChatGPT Plus/Pro flow).
 
 `/logout` _provider_
 : Clear saved OAuth tokens.
