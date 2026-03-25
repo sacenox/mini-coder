@@ -39,7 +39,7 @@ export interface ShellOutput {
   rawStderr?: string | undefined;
 }
 
-const MAX_OUTPUT_BYTES = 10_000; // 10KB per stream
+const MAX_OUTPUT_BYTES = 24_000; // 24KB per stream
 
 export async function runShellCommand(
   input: ShellInput,

@@ -21,6 +21,27 @@ describe("shellTool", () => {
     expect(result.success).toBe(true);
     expect(result.exitCode).toBe(0);
   });
+
+  it("does not truncate normal code-sized stdout under 24KB", async () => {
+    const result = await shellTool.execute({
+      command: "head -c 15000 /dev/zero | tr '\\0' a",
+      timeout: 30_000,
+    });
+
+    expect(result.stdout).toHaveLength(15_000);
+    expect(result.stdout).not.toContain("[output truncated]");
+    expect(result.success).toBe(true);
+  });
+
+  it("still truncates very large stdout above 24KB", async () => {
+    const result = await shellTool.execute({
+      command: "head -c 30000 /dev/zero | tr '\\0' a",
+      timeout: 30_000,
+    });
+
+    expect(result.stdout).toContain("[output truncated]");
+    expect(result.success).toBe(true);
+  });
 });
 
 it("kills the process when abort signal fires", async () => {
