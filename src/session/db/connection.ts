@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { existsSync, mkdirSync, unlinkSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -138,31 +138,37 @@ function configureDb(db: Database): void {
   db.exec("PRAGMA busy_timeout=1000;");
 }
 
+function rotateDbFiles(dbPath: string, version: number): void {
+  const backupBase = `${dbPath}.bak-v${version}-${Date.now()}`;
+  for (const suffix of ["", "-wal", "-shm"]) {
+    const path = `${dbPath}${suffix}`;
+    if (!existsSync(path)) continue;
+    renameSync(path, `${backupBase}${suffix}`);
+  }
+}
+
 export function getDb(): Database {
   if (!_db) {
     const dbPath = getDbPath();
+    const dbExists = existsSync(dbPath);
     let db = new Database(dbPath, { create: true });
     configureDb(db);
 
     const version =
       db.query<{ user_version: number }, []>("PRAGMA user_version").get()
         ?.user_version ?? 0;
-    if (version !== DB_VERSION) {
+    if (dbExists && version !== DB_VERSION) {
       try {
         db.close();
       } catch {
         // ignore
       }
-      for (const path of [dbPath, `${dbPath}-wal`, `${dbPath}-shm`]) {
-        if (existsSync(path)) unlinkSync(path);
-      }
+      rotateDbFiles(dbPath, version);
       db = new Database(dbPath, { create: true });
       configureDb(db);
-      db.exec(SCHEMA);
-      db.exec(`PRAGMA user_version = ${DB_VERSION};`);
-    } else {
-      db.exec(SCHEMA);
     }
+    db.exec(SCHEMA);
+    db.exec(`PRAGMA user_version = ${DB_VERSION};`);
     _db = db;
   }
   return _db;

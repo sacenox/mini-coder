@@ -5,7 +5,7 @@ import {
   stripOpenAIHistoryTransforms,
   stripToolRuntimeInputFields,
 } from "./history-transforms.ts";
-import { isAnthropicModelFamily } from "./model-routing.ts";
+import { parseModelString } from "./model-routing.ts";
 import { isAnthropicOAuth } from "./providers.ts";
 import type { CoreMessage } from "./turn.ts";
 import {
@@ -110,8 +110,9 @@ export function prepareTurnMessages(input: {
   //    SDK sends them in the correct order on the wire.
   let finalMessages = compacted;
   let finalSystemPrompt = systemPrompt;
+  const { provider } = parseModelString(modelString);
 
-  if (isAnthropicModelFamily(modelString) && isAnthropicOAuth()) {
+  if (provider === "anthropic" && isAnthropicOAuth()) {
     const ccIdentity =
       "You are Claude Code, Anthropic's official CLI for Claude.";
     const systemMessages: CoreMessage[] = [
