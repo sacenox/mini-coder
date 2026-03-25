@@ -20,7 +20,7 @@ A coding agent runs dozens of shell commands per task. Requiring approval for ea
 
 ### Isolation is a separate concern
 
-Sandboxing is a real need, but it belongs at the OS/container level — not inside the agent. Tools like [nono](https://nono.sh/) provide proper filesystem and network isolation that the LLM cannot circumvent. This is defense in depth done right: the agent runs unrestricted inside a sandbox that enforces actual boundaries.
+Sandboxing is a real need, but it belongs at the OS/container level — not inside the agent. Tools like [Anthropic Sandbox Runtime (`srt`)](https://github.com/anthropic-experimental/sandbox-runtime) and [nono](https://nono.sh/) provide proper filesystem and network isolation that the LLM cannot circumvent. This is defense in depth done right: the agent runs unrestricted inside a sandbox that enforces actual boundaries.
 
 ### Our approach
 

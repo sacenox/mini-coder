@@ -1,3 +1,3 @@
 # mini-coder TODO
 
-No open items.
+Investigate implementing https://github.com/anthropic-experimental/sandbox-runtime behind a `--sandbox` cli flag.
