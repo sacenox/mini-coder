@@ -73,14 +73,11 @@ _prompt_
 `/mcp remove` _name_
 : Remove MCP server.
 
-`/review`
-: Review recent changes (global skill, auto-created at first run).
-
 `/login`
 : Show OAuth login status.
 
 `/login` _provider_
-: Login via OAuth (opens browser for device flow). Currently supports `anthropic` and `openai` (`openai` uses the Codex / ChatGPT Plus/Pro flow).
+: Login via OAuth (opens browser for device flow). Currently supports `anthropic` and `openai`.
 
 `/logout` _provider_
 : Clear saved OAuth tokens.
@@ -169,14 +166,12 @@ Skills are reusable instruction files at `.agents/skills/<name>/SKILL.md`.
 `description`
 : Help text.
 
-Skills are never auto-loaded. Load explicitly:
+Skills are auto discovered. To load explicitly:
 
 - `/skill-name` in prompts (injects body as a user message).
 - **listSkills** / **readSkill** tools at runtime.
 
 Local discovery walks up from cwd to the git worktree root.
-
-A default **review** skill is created at `~/.agents/skills/review/SKILL.md` on first run if it doesn't exist. It can be customized or shadowed locally.
 
 ## CONFIGURATION
 
@@ -216,7 +211,7 @@ Config roots: `.agents/`, `.claude/` — local (repo) or global (`~/`).
 ## FILES
 
 `~/.config/mini-coder/`
-: App data directory (sessions.db, api.log, errors.log).
+: App data directory (sessions.db, with tables for error and other logs).
 
 `.agents/` or `.claude/`
 : Config directories for skills and context files.

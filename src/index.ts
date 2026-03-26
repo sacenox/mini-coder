@@ -6,7 +6,6 @@ globalThis.AI_SDK_LOG_WARNINGS = false;
 import * as c from "yoctocolors";
 import { initAgent } from "./agent/agent.ts";
 import { parseArgs, printHelp } from "./cli/args.ts";
-import { bootstrapGlobalDefaults } from "./cli/bootstrap.ts";
 
 import { resolveFileRefs } from "./cli/file-refs.ts";
 import { runInputLoop } from "./cli/input-loop.ts";
@@ -104,8 +103,6 @@ async function main(): Promise<void> {
 
   // Determine model: CLI flag > persisted user preference > auto-discover
   const model = args.model ?? getPreferredModel() ?? autoDiscoverModel();
-
-  bootstrapGlobalDefaults();
 
   if (!prompt) {
     // Only show banner for interactive sessions, not piped/one-shot
