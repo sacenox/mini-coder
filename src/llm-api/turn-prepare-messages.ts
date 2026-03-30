@@ -5,8 +5,6 @@ import {
   stripOpenAIHistoryTransforms,
   stripToolRuntimeInputFields,
 } from "./history-transforms.ts";
-import { parseModelString } from "./model-routing.ts";
-import { isAnthropicOAuth } from "./providers.ts";
 import type { CoreMessage } from "./turn.ts";
 import {
   applyContextPruning,
@@ -104,35 +102,11 @@ export function prepareTurnMessages(input: {
     });
   }
 
-  // 5. OAuth identity: Anthropic OAuth requires the Claude Code identity as
-  //    the first system block so the API recognises the client. We inline
-  //    both identity and system prompt as messages (identity first) so the
-  //    SDK sends them in the correct order on the wire.
-  let finalMessages = compacted;
-  let finalSystemPrompt = systemPrompt;
-  const { provider } = parseModelString(modelString);
-
-  if (provider === "anthropic" && isAnthropicOAuth()) {
-    const ccIdentity =
-      "You are Claude Code, Anthropic's official CLI for Claude.";
-    const systemMessages: CoreMessage[] = [
-      { role: "system", content: ccIdentity } as CoreMessage,
-    ];
-    if (finalSystemPrompt) {
-      systemMessages.push({
-        role: "system",
-        content: finalSystemPrompt,
-      } as CoreMessage);
-      finalSystemPrompt = undefined;
-    }
-    finalMessages = [...systemMessages, ...finalMessages];
-  }
-
   const wasPruned = postStats.messageCount < preStats.messageCount;
 
   return {
-    messages: finalMessages,
-    systemPrompt: finalSystemPrompt,
+    messages: compacted,
+    systemPrompt,
     pruned: wasPruned,
     prePruneMessageCount: preStats.messageCount,
     prePruneTotalBytes: preStats.totalBytes,

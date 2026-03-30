@@ -5,7 +5,6 @@
  */
 
 import { getDb } from "../db/connection.ts";
-import { anthropicOAuth } from "./anthropic.ts";
 import { openaiOAuth } from "./openai.ts";
 import type {
   OAuthCredentials,
@@ -22,7 +21,6 @@ interface OAuthTokenRow {
 }
 
 const PROVIDERS: ReadonlyMap<string, OAuthProviderConfig> = new Map([
-  [anthropicOAuth.id, anthropicOAuth],
   [openaiOAuth.id, openaiOAuth],
 ]);
 
@@ -73,7 +71,7 @@ function isAuthError(err: unknown): boolean {
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 export function isLoggedIn(provider: string): boolean {
-  return getStoredToken(provider) !== null;
+  return PROVIDERS.has(provider) && getStoredToken(provider) !== null;
 }
 
 export function listLoggedInProviders(): string[] {
@@ -82,7 +80,8 @@ export function listLoggedInProviders(): string[] {
       "SELECT provider FROM oauth_tokens ORDER BY provider",
     )
     .all()
-    .map((r) => r.provider);
+    .map((r) => r.provider)
+    .filter((provider) => PROVIDERS.has(provider));
 }
 
 export async function login(

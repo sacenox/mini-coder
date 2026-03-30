@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { isLoggedIn } from "../session/oauth/auth-storage.ts";
 import { autoDiscoverModel, resolveModel } from "./providers.ts";
 
-const anthropicOAuth = isLoggedIn("anthropic");
+const openAIOAuth = isLoggedIn("openai");
 
 const ENV_KEYS = [
   "OPENCODE_API_KEY",
@@ -49,20 +49,17 @@ describe("autoDiscoverModel", () => {
     delete process.env.GOOGLE_API_KEY;
     delete process.env.GEMINI_API_KEY;
 
-    // With OAuth login, anthropic is discovered even without env key
     expect(autoDiscoverModel()).toBe(
-      anthropicOAuth ? "anthropic/claude-sonnet-4-6" : "ollama/llama3.2",
+      openAIOAuth ? "openai/gpt-5.4" : "ollama/llama3.2",
     );
 
     process.env.GEMINI_API_KEY = "gem";
     expect(autoDiscoverModel()).toBe(
-      anthropicOAuth ? "anthropic/claude-sonnet-4-6" : "google/gemini-3.1-pro",
+      openAIOAuth ? "openai/gpt-5.4" : "google/gemini-3.1-pro",
     );
 
     process.env.OPENAI_API_KEY = "openai";
-    expect(autoDiscoverModel()).toBe(
-      anthropicOAuth ? "anthropic/claude-sonnet-4-6" : "openai/gpt-5.4",
-    );
+    expect(autoDiscoverModel()).toBe("openai/gpt-5.4");
 
     process.env.ANTHROPIC_API_KEY = "anthropic";
     expect(autoDiscoverModel()).toBe("anthropic/claude-sonnet-4-6");

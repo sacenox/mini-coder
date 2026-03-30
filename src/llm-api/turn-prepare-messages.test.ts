@@ -39,7 +39,7 @@ function runInHome(
   }
 }
 
-describe("prepareTurnMessages Anthropic OAuth identity handling", () => {
+describe("prepareTurnMessages ignores stale Anthropic OAuth rows", () => {
   let fakeHome = "";
 
   beforeEach(() => {
@@ -51,7 +51,7 @@ describe("prepareTurnMessages Anthropic OAuth identity handling", () => {
     rmSync(fakeHome, { recursive: true, force: true });
   });
 
-  test("keeps Claude Code identity on direct Anthropic OAuth, but not on zen/claude", () => {
+  test("treats direct anthropic and zen/claude the same when an old anthropic oauth row exists", () => {
     const result = runInHome(
       fakeHome,
       `
@@ -89,15 +89,8 @@ describe("prepareTurnMessages Anthropic OAuth identity handling", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe("");
     expect(JSON.parse(result.stdout)).toEqual({
-      anthropicMessages: [
-        {
-          role: "system",
-          content: "You are Claude Code, Anthropic's official CLI for Claude.",
-        },
-        { role: "system", content: "sys" },
-        { role: "user", content: "hi" },
-      ],
-      anthropicSystemPrompt: undefined,
+      anthropicMessages: [{ role: "user", content: "hi" }],
+      anthropicSystemPrompt: "sys",
       zenMessages: [{ role: "user", content: "hi" }],
       zenSystemPrompt: "sys",
     });

@@ -49,7 +49,7 @@ Community oriented — support AGENTS.md and agentskills.io specs, don't introdu
   - Skills (`.agents/skills/` and `.claude/skills/`) → https://agentskills.io/client-implementation/adding-skills-support
 
 - Auto discovery of providers via ENV (Example: OPENCODE_API_KEY), or local servers (Example: ollama)
-  - `/login` shows OAuth login status. `/login <provider>` starts browser-based OAuth login. `/logout <provider>` clears saved tokens. Currently supports Anthropic and OpenAI (`openai` uses the Codex / ChatGPT Plus/Pro flow).
+  - `/login` shows OAuth login status. `/login <provider>` starts browser-based OAuth login. `/logout <provider>` clears saved tokens. Currently supports OpenAI (`openai` uses the Codex / ChatGPT Plus/Pro flow). Anthropic support was removed to comply to their TOS, we can't impersonate claude.
   - `/model` (alias `/models`) picks a model from connected providers, including thinking effort if supported. Selection persists across sessions with autocomplete.
 
 - Session management and command to create new/resume/list with local sqlite file.

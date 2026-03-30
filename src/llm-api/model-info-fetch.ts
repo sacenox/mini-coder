@@ -185,38 +185,20 @@ async function fetchCodexOAuthModels(
   }
 }
 
-async function getAnthropicAuth(): Promise<{
-  key: string;
-  oauth: boolean;
-} | null> {
-  const envKey = process.env.ANTHROPIC_API_KEY;
-  if (envKey) return { key: envKey, oauth: false };
-  if (isLoggedIn("anthropic")) {
-    const token = await getAccessToken("anthropic");
-    if (token) return { key: token, oauth: true };
-  }
-  return null;
-}
-
 async function fetchAnthropicModels(): Promise<
   ProviderModelCandidate[] | null
 > {
-  const auth = await getAnthropicAuth();
-  if (!auth) return null;
-
-  const headers: Record<string, string> = {
-    "anthropic-version": "2023-06-01",
-  };
-  if (auth.oauth) {
-    headers.Authorization = `Bearer ${auth.key}`;
-    headers["anthropic-beta"] = "oauth-2025-04-20";
-  } else {
-    headers["x-api-key"] = auth.key;
-  }
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key) return null;
 
   const payload = await fetchJson(
     `${ANTHROPIC_BASE}/v1/models`,
-    { headers },
+    {
+      headers: {
+        "anthropic-version": "2023-06-01",
+        "x-api-key": key,
+      },
+    },
     6_000,
   );
   return processModelsList(payload, "data", "id", (item, modelId) => {

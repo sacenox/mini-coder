@@ -33,38 +33,6 @@ type GoogleProvider = ReturnType<typeof createGoogleGenerativeAI>;
 type OpenAICompatProvider = ReturnType<typeof createOpenAICompatible>;
 type ModelResolver = (modelId: string) => LanguageModel;
 
-/** Betas the AI SDK adds that are not compatible with the OAuth endpoint. */
-const OAUTH_STRIP_BETAS = new Set<string>();
-
-function createOAuthFetch(accessToken: string): ProviderFetch {
-  const oauthFetch = async (
-    input: Parameters<ProviderFetch>[0],
-    init?: Parameters<ProviderFetch>[1],
-  ): Promise<Response> => {
-    let opts = init;
-    if (opts?.headers) {
-      const h = new Headers(
-        opts.headers as ConstructorParameters<typeof Headers>[0],
-      );
-      const beta = h.get("anthropic-beta");
-      if (beta) {
-        const filtered = beta
-          .split(",")
-          .filter((b) => !OAUTH_STRIP_BETAS.has(b))
-          .join(",");
-        h.set("anthropic-beta", filtered);
-      }
-      h.delete("x-api-key");
-      h.set("authorization", `Bearer ${accessToken}`);
-      h.set("user-agent", "claude-cli/2.1.75");
-      h.set("x-app", "cli");
-      opts = { ...opts, headers: Object.fromEntries(h.entries()) };
-    }
-    return fetch(input, opts);
-  };
-  return oauthFetch as ProviderFetch;
-}
-
 function requireEnv(name: string): string {
   const value = process.env[name];
   if (!value) throw new Error(`${name} is not set`);
@@ -248,41 +216,10 @@ type AsyncModelResolver = (
 
 const OPENAI_CODEX_BASE_URL = "https://chatgpt.com/backend-api/codex";
 
-/** Cache the OAuth-backed Anthropic provider keyed by access token. */
-let oauthAnthropicCache: { token: string; provider: AnthropicProvider } | null =
-  null;
-
 /** Cache the OAuth-backed OpenAI Codex provider keyed by access token. */
 let oauthOpenAICache: { token: string; provider: OpenAIProvider } | null = null;
 
-function createOAuthAnthropicProvider(token: string): AnthropicProvider {
-  return createAnthropic({
-    // Use empty apiKey + custom fetch (like opencode) instead of authToken.
-    // The SDK sends x-api-key for apiKey, which we override to Authorization
-    // Bearer in the OAuth fetch wrapper.
-    apiKey: "",
-    fetch: createOAuthFetch(token),
-    headers: {
-      "anthropic-beta": "claude-code-20250219,oauth-2025-04-20",
-    },
-  });
-}
-
 async function resolveAnthropicModel(modelId: string): Promise<LanguageModel> {
-  // OAuth token takes priority over env var
-  if (isLoggedIn("anthropic")) {
-    const token = await getAccessToken("anthropic");
-    if (token) {
-      if (!oauthAnthropicCache || oauthAnthropicCache.token !== token) {
-        oauthAnthropicCache = {
-          token,
-          provider: createOAuthAnthropicProvider(token),
-        };
-      }
-      return oauthAnthropicCache.provider(modelId);
-    }
-  }
-  // Fallback to ANTHROPIC_API_KEY env var
   return directProviders.anthropic()(modelId);
 }
 
@@ -322,11 +259,6 @@ export async function resolveModel(
   return PROVIDER_MODEL_RESOLVERS[provider](modelId);
 }
 
-/** Returns true when the Anthropic provider is using an OAuth token. */
-export function isAnthropicOAuth(): boolean {
-  return isLoggedIn("anthropic");
-}
-
 interface ConnectedProvider {
   name: string;
   via: "env" | "oauth";
@@ -336,8 +268,7 @@ interface ConnectedProvider {
 export function discoverConnectedProviders(): ConnectedProvider[] {
   const result: ConnectedProvider[] = [];
   if (process.env.OPENCODE_API_KEY) result.push({ name: "zen", via: "env" });
-  if (isLoggedIn("anthropic")) result.push({ name: "anthropic", via: "oauth" });
-  else if (process.env.ANTHROPIC_API_KEY)
+  if (process.env.ANTHROPIC_API_KEY)
     result.push({ name: "anthropic", via: "env" });
   if (isLoggedIn("openai")) result.push({ name: "openai", via: "oauth" });
   else if (process.env.OPENAI_API_KEY)
@@ -350,8 +281,7 @@ export function discoverConnectedProviders(): ConnectedProvider[] {
 
 export function autoDiscoverModel(): string {
   if (process.env.OPENCODE_API_KEY) return "zen/claude-sonnet-4-6";
-  if (process.env.ANTHROPIC_API_KEY || isLoggedIn("anthropic"))
-    return "anthropic/claude-sonnet-4-6";
+  if (process.env.ANTHROPIC_API_KEY) return "anthropic/claude-sonnet-4-6";
   if (process.env.OPENAI_API_KEY || isLoggedIn("openai"))
     return "openai/gpt-5.4";
   if (process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY)

@@ -116,11 +116,9 @@ export function getRemoteProvidersFromEnv(
     hasAnyEnvKey(env, entry.envKeys),
   ).map((entry) => entry.provider);
 
-  // Include providers with OAuth login even without env keys
-  for (const p of ["anthropic", "openai"] as const) {
-    if (!providers.includes(p) && isLoggedIn(p)) {
-      providers.push(p);
-    }
+  // Include providers with OAuth login even without env keys.
+  if (!providers.includes("openai") && isLoggedIn("openai")) {
+    providers.push("openai");
   }
 
   return providers;

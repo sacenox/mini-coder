@@ -13,36 +13,40 @@ import {
   resolveModelInfoFromRows,
 } from "./model-info.ts";
 
-const anthropicOAuth = isLoggedIn("anthropic");
+const openAIOAuth = isLoggedIn("openai");
 
 describe("provider sync policy", () => {
   test("freshness providers exclude ollama", () => {
-    const expected = ["openai", "google"];
-    if (anthropicOAuth) expected.push("anthropic");
     expect(
       getRemoteProvidersFromEnv({
         OPENAI_API_KEY: "x",
         GOOGLE_API_KEY: "y",
       }),
-    ).toEqual(expected);
+    ).toEqual(["openai", "google"]);
   });
 
-  test("refresh providers include ollama", () => {
-    const expected = ["openai"];
-    if (anthropicOAuth) expected.push("anthropic");
-    expected.push("ollama");
-    expect(getProvidersToRefreshFromEnv({ OPENAI_API_KEY: "x" })).toEqual(
-      expected,
-    );
+  test("refresh providers include anthropic only from env", () => {
+    expect(getProvidersToRefreshFromEnv({ OPENAI_API_KEY: "x" })).toEqual([
+      "openai",
+      "ollama",
+    ]);
+
+    expect(getProvidersToRefreshFromEnv({ ANTHROPIC_API_KEY: "x" })).toEqual([
+      "anthropic",
+      ...(openAIOAuth ? ["openai"] : []),
+      "ollama",
+    ]);
   });
 
   test("snapshot visibility tracks configured providers", () => {
-    // openai visibility depends on env key OR active OAuth login
     expect(isProviderVisibleInSnapshot("openai", { OPENAI_API_KEY: "x" })).toBe(
       true,
     );
+    expect(isProviderVisibleInSnapshot("anthropic", {})).toBe(false);
+    expect(
+      isProviderVisibleInSnapshot("anthropic", { ANTHROPIC_API_KEY: "x" }),
+    ).toBe(true);
     expect(isProviderVisibleInSnapshot("ollama", {})).toBe(true);
-    // Without env or OAuth, zen should not be visible (zen has no OAuth)
     expect(isProviderVisibleInSnapshot("zen", {})).toBe(false);
     expect(isProviderVisibleInSnapshot("zen", { OPENCODE_API_KEY: "x" })).toBe(
       true,

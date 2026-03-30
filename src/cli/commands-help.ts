@@ -31,7 +31,7 @@ export function renderHelpCommand(ctx: CommandContext): void {
     ["/mcp list", "list MCP servers"],
     ["/mcp add <n> <t> [u]", "add an MCP server"],
     ["/mcp remove <name>", "remove an MCP server"],
-    ["/login [provider]", "login via OAuth (e.g. anthropic)"],
+    ["/login [provider]", "login via OAuth (e.g. openai)"],
     ["/logout <provider>", "clear OAuth tokens"],
     ["/help", "show this help"],
   ]);

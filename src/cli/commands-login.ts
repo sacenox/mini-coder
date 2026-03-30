@@ -119,11 +119,21 @@ export function handleLogoutCommand(_ctx: CommandContext, args: string): void {
     return;
   }
 
+  const provider = getOAuthProvider(providerId);
+  if (!provider) {
+    writeln(
+      `${PREFIX.error} unknown provider "${providerId}" — available: ${getOAuthProviders()
+        .map((p) => p.id)
+        .join(", ")}`,
+    );
+    return;
+  }
+
   if (!isLoggedIn(providerId)) {
     writeln(`${PREFIX.info} ${c.dim("not logged in to")} ${providerId}`);
     return;
   }
 
   logout(providerId);
-  writeln(`${PREFIX.success} logged out of ${c.cyan(providerId)}`);
+  writeln(`${PREFIX.success} logged out of ${c.cyan(provider.id)}`);
 }
