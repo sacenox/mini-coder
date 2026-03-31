@@ -7,6 +7,7 @@ import type {
   TurnResult,
 } from "../agent/reporter.ts";
 import { PACKAGE_VERSION } from "../internal/version.ts";
+import type { ConnectedProvider } from "../llm-api/provider-discovery.ts";
 import { discoverConnectedProviders } from "../llm-api/providers.ts";
 import type { TurnEvent } from "../llm-api/types.ts";
 import { logError } from "../logging/context.ts";
@@ -108,7 +109,11 @@ export function renderError(err: unknown, context = "render"): void {
 
 // ─── Banner ───────────────────────────────────────────────────────────────────
 
-export function renderBanner(model: string, cwd: string): void {
+export async function renderBanner(
+  model: string,
+  cwd: string,
+  connectedProviders?: ConnectedProvider[],
+): Promise<void> {
   writeln();
   const title = PACKAGE_VERSION
     ? `mini-coder · v${PACKAGE_VERSION}`
@@ -132,8 +137,10 @@ export function renderBanner(model: string, cwd: string): void {
   }
 
   const connParts: string[] = [];
-  for (const p of discoverConnectedProviders()) {
-    connParts.push(p.via === "oauth" ? `${p.name} (oauth)` : p.name);
+  for (const p of connectedProviders ?? (await discoverConnectedProviders())) {
+    if (p.via === "oauth") connParts.push(`${p.name} (oauth)`);
+    else if (p.via === "local") connParts.push(`${p.name} (local)`);
+    else connParts.push(p.name);
   }
   const mcpCount = listMcpServers().length;
   if (mcpCount > 0) connParts.push(`${mcpCount} mcp`);

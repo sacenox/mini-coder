@@ -1,3 +1,3 @@
 # mini-coder TODO
 
-Nothing pending.
+_No open items._

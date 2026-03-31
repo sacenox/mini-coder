@@ -32,10 +32,12 @@ describe("renderUserMessage", () => {
 });
 
 describe("renderBanner", () => {
-  test("uses a tilde path in the header", () => {
+  test("uses a tilde path in the header", async () => {
     captureStdout();
 
-    renderBanner("zen/gpt-5.4", `${process.env.HOME}/src/mini-coder`);
+    await renderBanner("zen/gpt-5.4", `${process.env.HOME}/src/mini-coder`, [
+      { name: "zen", via: "env" },
+    ]);
 
     expect(stripAnsi(getCapturedStdout())).toContain(
       "zen/gpt-5.4  ·  ~/src/mini-coder",

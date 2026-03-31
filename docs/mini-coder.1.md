@@ -177,16 +177,17 @@ Local discovery walks up from cwd to the git worktree root.
 
 Config roots: `.agents/`, `.claude/` — local (repo) or global (`~/`).
 
-**Context files** (one global + one local loaded into the system prompt):
+**Context files** (global files first, then the nearest local directory with context files):
 
-- Global: `~/.agents/AGENTS.md` → `~/.agents/CLAUDE.md`
-- Local: `./.agents/AGENTS.md` → `./CLAUDE.md` → `./AGENTS.md`
+- Global files concatenate in this order: `~/.agents/AGENTS.md` → `~/.agents/CLAUDE.md` → `~/.claude/CLAUDE.md`
+- Local files concatenate in this order within the nearest matching directory: `./.agents/AGENTS.md` → `./.agents/CLAUDE.md` → `./.claude/CLAUDE.md` → `./CLAUDE.md` → `./AGENTS.md`
 
 **Precedence:**
 
-1. Local overrides global.
-2. Same scope: `.agents` wins over `.claude`.
-3. Skills: nearest ancestor directory wins.
+1. Local context is loaded from the nearest directory between cwd and the git root.
+2. Within one scope, matching files are concatenated in the order above.
+3. Global context appears before local context in the system prompt.
+4. Skills: nearest ancestor directory wins.
 
 ## ENVIRONMENT
 

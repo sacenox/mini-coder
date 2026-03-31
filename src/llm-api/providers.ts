@@ -10,6 +10,10 @@ import {
   fetchAvailableModelsSnapshot,
 } from "./model-info.ts";
 import { getZenBackend } from "./model-routing.ts";
+import {
+  type ConnectedProvider,
+  discoverProviderConnections,
+} from "./provider-discovery.ts";
 
 export { getContextWindow } from "./model-info.ts";
 export type { ThinkingEffort } from "./provider-options.ts";
@@ -259,24 +263,13 @@ export async function resolveModel(
   return PROVIDER_MODEL_RESOLVERS[provider](modelId);
 }
 
-interface ConnectedProvider {
-  name: string;
-  via: "env" | "oauth";
-}
-
-/** Returns providers that have credentials available (env key or OAuth token). */
-export function discoverConnectedProviders(): ConnectedProvider[] {
-  const result: ConnectedProvider[] = [];
-  if (process.env.OPENCODE_API_KEY) result.push({ name: "zen", via: "env" });
-  if (process.env.ANTHROPIC_API_KEY)
-    result.push({ name: "anthropic", via: "env" });
-  if (isLoggedIn("openai")) result.push({ name: "openai", via: "oauth" });
-  else if (process.env.OPENAI_API_KEY)
-    result.push({ name: "openai", via: "env" });
-  if (process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY)
-    result.push({ name: "google", via: "env" });
-  if (process.env.OLLAMA_BASE_URL) result.push({ name: "ollama", via: "env" });
-  return result;
+/** Returns providers that are available via env, OAuth, or local-server discovery. */
+export async function discoverConnectedProviders(): Promise<
+  ConnectedProvider[]
+> {
+  return discoverProviderConnections(process.env, {
+    openaiLoggedIn: isLoggedIn("openai"),
+  });
 }
 
 export function autoDiscoverModel(): string {

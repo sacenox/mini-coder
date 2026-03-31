@@ -25,6 +25,7 @@ export interface SkillMeta {
 
 export interface LoadedSkillContent {
   name: string;
+  description: string;
   content: string;
   source: "global" | "local";
   skillDir: string;
@@ -339,6 +340,7 @@ export function loadSkillContentFromMeta(
     const skillDir = dirname(skill.filePath);
     return {
       name: skill.name,
+      description: skill.description,
       content,
       source: skill.source,
       skillDir,

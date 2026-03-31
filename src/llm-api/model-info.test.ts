@@ -11,6 +11,7 @@ import {
   normalizeModelId,
   parseModelsDevCapabilities,
   resolveModelInfoFromRows,
+  shouldBlockOnMissingVisibleProviderModels,
 } from "./model-info.ts";
 
 const openAIOAuth = isLoggedIn("openai");
@@ -25,20 +26,20 @@ describe("provider sync policy", () => {
     ).toEqual(["openai", "google"]);
   });
 
-  test("refresh providers include anthropic only from env", () => {
+  test("refresh providers include reachable local providers only when discovered", () => {
     expect(getProvidersToRefreshFromEnv({ OPENAI_API_KEY: "x" })).toEqual([
       "openai",
-      "ollama",
     ]);
 
-    expect(getProvidersToRefreshFromEnv({ ANTHROPIC_API_KEY: "x" })).toEqual([
-      "anthropic",
-      ...(openAIOAuth ? ["openai"] : []),
-      "ollama",
-    ]);
+    expect(
+      getProvidersToRefreshFromEnv(
+        { ANTHROPIC_API_KEY: "x" },
+        { localProviders: ["ollama"] },
+      ),
+    ).toEqual(["anthropic", ...(openAIOAuth ? ["openai"] : []), "ollama"]);
   });
 
-  test("snapshot visibility tracks configured providers", () => {
+  test("snapshot visibility tracks configured and discovered providers", () => {
     expect(isProviderVisibleInSnapshot("openai", { OPENAI_API_KEY: "x" })).toBe(
       true,
     );
@@ -46,11 +47,29 @@ describe("provider sync policy", () => {
     expect(
       isProviderVisibleInSnapshot("anthropic", { ANTHROPIC_API_KEY: "x" }),
     ).toBe(true);
-    expect(isProviderVisibleInSnapshot("ollama", {})).toBe(true);
+    expect(isProviderVisibleInSnapshot("ollama", {})).toBe(false);
+    expect(
+      isProviderVisibleInSnapshot("ollama", {}, { localProviders: ["ollama"] }),
+    ).toBe(true);
     expect(isProviderVisibleInSnapshot("zen", {})).toBe(false);
     expect(isProviderVisibleInSnapshot("zen", { OPENCODE_API_KEY: "x" })).toBe(
       true,
     );
+  });
+
+  test("blocks when visible providers are missing cached models", () => {
+    expect(
+      shouldBlockOnMissingVisibleProviderModels({
+        hasAnyCachedModels: true,
+        hasCachedModelsForAllVisibleProviders: false,
+      }),
+    ).toBe(true);
+    expect(
+      shouldBlockOnMissingVisibleProviderModels({
+        hasAnyCachedModels: true,
+        hasCachedModelsForAllVisibleProviders: true,
+      }),
+    ).toBe(false);
   });
 });
 

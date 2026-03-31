@@ -36,9 +36,10 @@ describe("skills tools", () => {
     ).toBeUndefined();
   });
 
-  test("readSkill returns full content for one skill", async () => {
+  test("readSkill returns full content and summary metadata for one skill", async () => {
     const result = await readSkillTool.execute({ cwd, name: "deploy" });
     expect(result.skill?.name).toBe("deploy");
+    expect(result.skill?.description).toBe("Deploy app");
     expect(result.skill?.content).toContain("Full body");
   });
 

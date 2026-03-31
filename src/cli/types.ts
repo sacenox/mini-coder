@@ -9,8 +9,8 @@ export interface CommandContext {
   verboseOutput: boolean;
   setVerboseOutput: (verbose: boolean) => void;
   undoLastTurn: () => Promise<boolean>;
-  startNewSession: () => void;
-  switchSession: (id: string) => boolean;
+  startNewSession: () => Promise<void>;
+  switchSession: (id: string) => Promise<boolean>;
 
   connectMcpServer: (name: string) => Promise<void>;
 

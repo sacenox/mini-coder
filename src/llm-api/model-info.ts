@@ -29,6 +29,13 @@ import {
   matchCanonicalModelId,
   parseModelsDevCapabilities,
 } from "./model-info-normalize.ts";
+import {
+  getKnownLocalProviders,
+  getRemoteConfiguredProviders,
+  getVisibleProviders,
+  isLocalProviderConnectionStateStale,
+  refreshLocalProviderConnections,
+} from "./provider-discovery.ts";
 
 const MODELS_DEV_SYNC_KEY = "last_models_dev_sync_at";
 const PROVIDER_SYNC_KEY_PREFIX = "last_provider_sync_at:";
@@ -43,16 +50,6 @@ export {
   parseModelsDevCapabilities,
 } from "./model-info-normalize.ts";
 export type { LiveModel };
-
-const REMOTE_PROVIDER_ENV_KEYS: ReadonlyArray<{
-  provider: string;
-  envKeys: readonly string[];
-}> = [
-  { provider: "zen", envKeys: ["OPENCODE_API_KEY"] },
-  { provider: "openai", envKeys: ["OPENAI_API_KEY"] },
-  { provider: "anthropic", envKeys: ["ANTHROPIC_API_KEY"] },
-  { provider: "google", envKeys: ["GOOGLE_API_KEY", "GEMINI_API_KEY"] },
-];
 
 export interface AvailableModelsSnapshot {
   models: LiveModel[];
@@ -99,52 +96,53 @@ function parseStateInt(key: string): number | null {
   return value;
 }
 
-function hasAnyEnvKey(
-  env: Record<string, string | undefined>,
-  keys: readonly string[],
-): boolean {
-  for (const key of keys) {
-    if (env[key]) return true;
-  }
-  return false;
-}
-
 export function getRemoteProvidersFromEnv(
   env: Record<string, string | undefined>,
 ): string[] {
-  const providers = REMOTE_PROVIDER_ENV_KEYS.filter((entry) =>
-    hasAnyEnvKey(env, entry.envKeys),
-  ).map((entry) => entry.provider);
-
-  // Include providers with OAuth login even without env keys.
-  if (!providers.includes("openai") && isLoggedIn("openai")) {
-    providers.push("openai");
-  }
-
-  return providers;
+  return getRemoteConfiguredProviders(env, {
+    openaiLoggedIn: isLoggedIn("openai"),
+  });
 }
 
 export function getProvidersToRefreshFromEnv(
   env: Record<string, string | undefined>,
+  opts?: { localProviders?: readonly string[] },
 ): string[] {
-  return [...getRemoteProvidersFromEnv(env), "ollama"];
+  const localProviders = opts?.localProviders;
+  return getVisibleProviders(env, {
+    openaiLoggedIn: isLoggedIn("openai"),
+    ...(localProviders ? { localProviders } : {}),
+  });
 }
 
 function getVisibleProvidersForSnapshotFromEnv(
   env: Record<string, string | undefined>,
+  opts?: { localProviders?: readonly string[] },
 ): ReadonlySet<string> {
-  return new Set(getProvidersToRefreshFromEnv(env));
+  const localProviders = opts?.localProviders;
+  return new Set(
+    getProvidersToRefreshFromEnv(
+      env,
+      localProviders ? { localProviders } : undefined,
+    ),
+  );
 }
 
 export function isProviderVisibleInSnapshot(
   provider: string,
   env: Record<string, string | undefined>,
+  opts?: { localProviders?: readonly string[] },
 ): boolean {
-  return getVisibleProvidersForSnapshotFromEnv(env).has(provider);
+  return getVisibleProvidersForSnapshotFromEnv(env, opts).has(provider);
 }
 
-function getConfiguredProvidersForSync(): string[] {
-  return getProvidersToRefreshFromEnv(process.env);
+function getConfiguredProvidersForSync(
+  localProviders?: readonly string[],
+): string[] {
+  return getProvidersToRefreshFromEnv(
+    process.env,
+    localProviders ? { localProviders } : undefined,
+  );
 }
 
 function getProvidersRequiredForFreshness(): string[] {
@@ -159,6 +157,7 @@ function isModelInfoStale(now = Date.now()): boolean {
   ensureLoaded();
   if (parseStateInt(CACHE_VERSION_KEY) !== CACHE_VERSION) return true;
   if (isStaleTimestamp(parseStateInt(MODELS_DEV_SYNC_KEY), now)) return true;
+  if (isLocalProviderConnectionStateStale(now)) return true;
   for (const provider of getProvidersRequiredForFreshness()) {
     const providerSync = parseStateInt(getProviderSyncKey(provider));
     if (isStaleTimestamp(providerSync, now)) return true;
@@ -193,10 +192,14 @@ function providerRowsFromCandidates(
   }));
 }
 
-async function refreshModelInfoInternal(): Promise<void> {
+async function refreshModelInfoInternal(
+  localProviders?: readonly string[],
+): Promise<void> {
   ensureLoaded();
   const now = Date.now();
-  const providers = getConfiguredProvidersForSync();
+  const discoveredLocalProviders =
+    localProviders ?? (await refreshLocalProviderConnections(process.env));
+  const providers = getConfiguredProvidersForSync(discoveredLocalProviders);
   const providerResults = await Promise.all(
     providers.map(async (provider) => ({
       provider,
@@ -230,14 +233,27 @@ async function refreshModelInfoInternal(): Promise<void> {
 
 export function refreshModelInfoInBackground(opts?: {
   force?: boolean;
+  localProviders?: readonly string[];
 }): Promise<void> {
   ensureLoaded();
   const force = opts?.force ?? false;
-  if (!force && !isModelInfoStale()) return Promise.resolve();
+  if (
+    !force &&
+    !isModelInfoStale() &&
+    !shouldBlockOnMissingVisibleProviderModels({
+      hasAnyCachedModels: runtimeCache.providerModelsByKey.size > 0,
+      hasCachedModelsForAllVisibleProviders:
+        hasCachedModelsForAllVisibleProviders(),
+    })
+  ) {
+    return Promise.resolve();
+  }
   if (refreshInFlight) return refreshInFlight;
-  refreshInFlight = refreshModelInfoInternal().finally(() => {
-    refreshInFlight = null;
-  });
+  refreshInFlight = refreshModelInfoInternal(opts?.localProviders).finally(
+    () => {
+      refreshInFlight = null;
+    },
+  );
   return refreshInFlight;
 }
 
@@ -275,7 +291,9 @@ export function supportsThinking(modelString: string): boolean {
 /** Return cached model IDs synchronously (for Tab-completion). */
 export function getCachedModelIds(): string[] {
   ensureLoaded();
-  const visible = getVisibleProvidersForSnapshotFromEnv(process.env);
+  const visible = getVisibleProvidersForSnapshotFromEnv(process.env, {
+    localProviders: getKnownLocalProviders(),
+  });
   const ids: string[] = [];
   for (const row of runtimeCache.providerModelsByKey.values()) {
     if (visible.has(row.provider)) {
@@ -287,7 +305,9 @@ export function getCachedModelIds(): string[] {
 }
 
 function hasCachedModelsForAllVisibleProviders(): boolean {
-  const visible = getVisibleProvidersForSnapshotFromEnv(process.env);
+  const visible = getVisibleProvidersForSnapshotFromEnv(process.env, {
+    localProviders: getKnownLocalProviders(),
+  });
   for (const provider of visible) {
     let found = false;
     for (const row of runtimeCache.providerModelsByKey.values()) {
@@ -301,24 +321,36 @@ function hasCachedModelsForAllVisibleProviders(): boolean {
   return true;
 }
 
+export function shouldBlockOnMissingVisibleProviderModels(opts: {
+  hasAnyCachedModels: boolean;
+  hasCachedModelsForAllVisibleProviders: boolean;
+}): boolean {
+  return (
+    !opts.hasAnyCachedModels || !opts.hasCachedModelsForAllVisibleProviders
+  );
+}
+
 export async function fetchAvailableModelsSnapshot(): Promise<AvailableModelsSnapshot> {
   ensureLoaded();
-  if (isModelInfoStale() && !isModelInfoRefreshing()) {
-    // Block when the cache is empty or a visible provider has no cached models
-    // (e.g. user just logged in via OAuth). Otherwise refresh in background.
-    if (
-      runtimeCache.providerModelsByKey.size === 0 ||
-      !hasCachedModelsForAllVisibleProviders()
-    ) {
-      await refreshModelInfoInBackground({ force: true });
-    } else {
-      void refreshModelInfoInBackground();
-    }
+  const stale = isModelInfoStale();
+  const shouldBlock = shouldBlockOnMissingVisibleProviderModels({
+    hasAnyCachedModels: runtimeCache.providerModelsByKey.size > 0,
+    hasCachedModelsForAllVisibleProviders:
+      hasCachedModelsForAllVisibleProviders(),
+  });
+
+  if (shouldBlock) {
+    await refreshModelInfoInBackground({ force: true });
+  } else if (stale && !isModelInfoRefreshing()) {
+    void refreshModelInfoInBackground();
   }
+
   return {
     models: readLiveModelsFromCache(
       runtimeCache,
-      getVisibleProvidersForSnapshotFromEnv(process.env),
+      getVisibleProvidersForSnapshotFromEnv(process.env, {
+        localProviders: getKnownLocalProviders(),
+      }),
     ),
     stale: isModelInfoStale(),
     refreshing: isModelInfoRefreshing(),

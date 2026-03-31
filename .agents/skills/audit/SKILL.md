@@ -1,7 +1,7 @@
 ---
 name: audit
 description: "Full codebase audit — code review, multi-provider UI testing, and combined report. Use when the user asks to audit, test across providers, or validate the full implementation. Triggers on: audit, full review, test providers, validate implementation."
-compatibility: "Requires tmux, bun, git, and active provider credentials (Anthropic OAuth and/or Opencode zen)"
+compatibility: "Requires tmux, bun, git, and active provider credentials (OpenAI OAuth and/or Opencode zen)"
 ---
 
 Run a complete audit of the mini-coder implementation.
@@ -35,7 +35,7 @@ Use `tmux` so you can test interactive sessions properly.
 
 ### Models to use (one per SDK path)
 
-Opencode zen and Anthropic login are available in this environment.
+Opencode zen and Openai login are available in this environment.
 Pick cheap options. Verify available models at https://opencode.ai/docs/zen/, then choose:
 
 - `@ai-sdk/anthropic` path → a `zen/claude-*` haiku-class model
@@ -44,7 +44,7 @@ Pick cheap options. Verify available models at https://opencode.ai/docs/zen/, th
 - `@ai-sdk/openai-compatible` path → `zen/*` or similar small low-cost model
 
 Avoid free models due to rate limit issues.
-Also use an Anthropic OAuth model for completeness.
+Also use an Openai OAuth model for completeness.
 
 ### Prompts
 

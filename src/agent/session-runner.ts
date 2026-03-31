@@ -40,6 +40,7 @@ interface SessionRunnerOptions {
   initialShowReasoning: boolean;
   initialVerboseOutput: boolean;
   sessionId?: string | undefined;
+  onTeardown?: () => Promise<void>;
 }
 
 interface RunnerStatusInfo {
@@ -71,6 +72,7 @@ export class SessionRunner {
   private totalOut = 0;
   private lastContextTokens = 0;
   private _systemPrompt: string | undefined;
+  private readonly onTeardown: (() => Promise<void>) | undefined;
 
   constructor(opts: SessionRunnerOptions) {
     this.cwd = opts.cwd;
@@ -81,6 +83,7 @@ export class SessionRunner {
     this.currentThinkingEffort = opts.initialThinkingEffort;
     this.showReasoning = opts.initialShowReasoning;
     this.verboseOutput = opts.initialVerboseOutput;
+    this.onTeardown = opts.onTeardown;
     this.initSession(opts.sessionId);
   }
 
@@ -134,6 +137,7 @@ export class SessionRunner {
     this.session = resumed;
     this.currentModel = resumed.model;
     this.coreHistory = [...resumed.messages];
+    resetActivatedSkills();
     this.turnIndex = getMaxTurnIndex(resumed.id) + 1;
     this.totalIn = 0;
     this.totalOut = 0;
@@ -141,6 +145,10 @@ export class SessionRunner {
     this.sessionTimeAnchor = new Date(resumed.createdAt).toISOString();
     this.rebuildSystemPrompt();
     return true;
+  }
+
+  public async teardown(): Promise<void> {
+    await this.onTeardown?.();
   }
 
   public addShellContext(command: string, output: string): void {

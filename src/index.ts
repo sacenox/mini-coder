@@ -5,6 +5,7 @@ globalThis.AI_SDK_LOG_WARNINGS = false;
 
 import * as c from "yoctocolors";
 import { initAgent } from "./agent/agent.ts";
+import { runWithTeardown } from "./agent/run-with-teardown.ts";
 import { parseArgs, printHelp } from "./cli/args.ts";
 
 import { resolveFileRefs } from "./cli/file-refs.ts";
@@ -24,7 +25,11 @@ import {
   initModelInfoCache,
   refreshModelInfoInBackground,
 } from "./llm-api/model-info.ts";
-import { autoDiscoverModel } from "./llm-api/providers.ts";
+import { getLocalProviderNames } from "./llm-api/provider-discovery.ts";
+import {
+  autoDiscoverModel,
+  discoverConnectedProviders,
+} from "./llm-api/providers.ts";
 
 import {
   getPreferredModel,
@@ -40,7 +45,6 @@ import { getMostRecentSession, printSessionList } from "./session/manager.ts";
 registerTerminalCleanup();
 initModelInfoCache();
 pruneOldData();
-void refreshModelInfoInBackground().catch(() => {});
 
 type AgentInitOptions = Parameters<typeof initAgent>[0];
 
@@ -103,50 +107,68 @@ async function main(): Promise<void> {
 
   // Determine model: CLI flag > persisted user preference > auto-discover
   const model = args.model ?? getPreferredModel() ?? autoDiscoverModel();
+  const connectedProviders = prompt
+    ? undefined
+    : await discoverConnectedProviders();
+
+  const startupLocalProviders = connectedProviders
+    ? getLocalProviderNames(connectedProviders)
+    : undefined;
+  void refreshModelInfoInBackground(
+    startupLocalProviders
+      ? { localProviders: startupLocalProviders }
+      : undefined,
+  ).catch(() => {});
 
   if (!prompt) {
     // Only show banner for interactive sessions, not piped/one-shot
-    renderBanner(model, args.cwd);
+    await renderBanner(model, args.cwd, connectedProviders);
   }
 
-  try {
-    const oneShot = !!prompt;
-    const agentOpts = buildAgentOptions({
-      model,
-      cwd: args.cwd,
-      reporter: new CliReporter(oneShot),
-      sessionId,
-    });
+  let runner: Awaited<ReturnType<typeof initAgent>>["runner"] | null = null;
+  const oneShot = !!prompt;
+  const agentOpts = buildAgentOptions({
+    model,
+    cwd: args.cwd,
+    reporter: new CliReporter(oneShot),
+    sessionId,
+  });
 
-    const { runner, cmdCtx } = await initAgent(agentOpts);
+  await runWithTeardown({
+    run: async () => {
+      const init = await initAgent(agentOpts);
+      runner = init.runner;
+      const { cmdCtx } = init;
 
-    if (oneShot) {
-      const { text: resolvedText, images: refImages } = await resolveFileRefs(
-        prompt,
-        args.cwd,
-      );
-      const responseText = await runner.processUserInput(
-        resolvedText,
-        refImages,
-      );
-      if (responseText) {
-        writeln(responseText.trimStart());
+      if (oneShot) {
+        const { text: resolvedText, images: refImages } = await resolveFileRefs(
+          prompt,
+          args.cwd,
+        );
+        const responseText = await runner.processUserInput(
+          resolvedText,
+          refImages,
+        );
+        if (responseText) {
+          writeln(responseText.trimStart());
+        }
+        return;
       }
-      return;
-    }
 
-    await runInputLoop({
-      cwd: args.cwd,
-      reporter: agentOpts.reporter,
-      cmdCtx,
-      runner,
-    });
-  } catch (err) {
-    if (!(err instanceof RenderedError)) {
-      renderError(err, "agent");
-    }
-    process.exit(1);
-  }
+      await runInputLoop({
+        cwd: args.cwd,
+        reporter: agentOpts.reporter,
+        cmdCtx,
+        runner,
+      });
+    },
+    teardown: () => runner?.teardown() ?? Promise.resolve(),
+    renderError: (err) => {
+      if (!(err instanceof RenderedError)) {
+        renderError(err, "agent");
+      }
+    },
+  });
 }
 
 main().then(

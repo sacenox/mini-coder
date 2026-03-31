@@ -3,6 +3,8 @@ import type { CommandContext } from "../cli/types.ts";
 import type { ThinkingEffort } from "../llm-api/providers.ts";
 import type { ToolDef } from "../llm-api/types.ts";
 import { connectMcpServer } from "../mcp/client.ts";
+import { McpClientRegistry } from "../mcp/client-registry.ts";
+import { reconnectMcpTools } from "../mcp/tool-sync.ts";
 import {
   listMcpServers,
   setPreferredModel,
@@ -31,8 +33,9 @@ export async function initAgent(opts: AgentOptions): Promise<{
   const cwd = opts.cwd;
   const tools: ToolDef[] = buildToolSet({ cwd });
   const mcpTools: ToolDef[] = [];
+  const mcpClients = new McpClientRegistry();
 
-  async function connectAndAddMcp(name: string): Promise<void> {
+  async function connectMcpClient(name: string) {
     const rows = listMcpServers();
     const row = rows.find((r) => r.name === name);
     if (!row) throw new Error(`MCP server "${name}" not found in DB`);
@@ -44,9 +47,27 @@ export async function initAgent(opts: AgentOptions): Promise<{
       ...(row.args ? { args: JSON.parse(row.args) } : {}),
       ...(row.env ? { env: JSON.parse(row.env) } : {}),
     };
-    const client = await connectMcpServer(cfg);
+    return connectMcpServer(cfg);
+  }
+
+  async function connectAndAddMcp(name: string): Promise<void> {
+    const client = await connectMcpClient(name);
+    mcpClients.add(client);
     tools.push(...client.tools);
     mcpTools.push(...client.tools);
+  }
+
+  async function reconnectConfiguredMcpServers(): Promise<void> {
+    await reconnectMcpTools({
+      tools,
+      mcpTools,
+      clients: mcpClients,
+      names: listMcpServers().map((row) => row.name),
+      connectByName: connectMcpClient,
+      onError: (name, error) => {
+        opts.reporter.error(`MCP: failed to connect ${name}: ${String(error)}`);
+      },
+    });
   }
 
   for (const row of listMcpServers()) {
@@ -68,6 +89,7 @@ export async function initAgent(opts: AgentOptions): Promise<{
     initialShowReasoning: opts.initialShowReasoning,
     initialVerboseOutput: opts.initialVerboseOutput,
     sessionId: opts.sessionId,
+    onTeardown: () => mcpClients.closeAll(),
   });
 
   const cmdCtx: CommandContext = {
@@ -105,8 +127,16 @@ export async function initAgent(opts: AgentOptions): Promise<{
     connectMcpServer: connectAndAddMcp,
     startSpinner: (label?: string) => opts.reporter.startSpinner(label),
     stopSpinner: () => opts.reporter.stopSpinner(),
-    startNewSession: () => runner.startNewSession(),
-    switchSession: (id: string) => runner.switchSession(id),
+    startNewSession: async () => {
+      runner.startNewSession();
+      await reconnectConfiguredMcpServers();
+    },
+    switchSession: async (id: string) => {
+      const switched = runner.switchSession(id);
+      if (!switched) return false;
+      await reconnectConfiguredMcpServers();
+      return true;
+    },
   };
 
   return { runner, cmdCtx };

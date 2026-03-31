@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { isLoggedIn } from "../session/oauth/auth-storage.ts";
-import { autoDiscoverModel, resolveModel } from "./providers.ts";
+import {
+  autoDiscoverModel,
+  discoverConnectedProviders,
+  resolveModel,
+} from "./providers.ts";
 
 const openAIOAuth = isLoggedIn("openai");
 
@@ -10,6 +14,7 @@ const ENV_KEYS = [
   "OPENAI_API_KEY",
   "GOOGLE_API_KEY",
   "GEMINI_API_KEY",
+  "OLLAMA_BASE_URL",
 ] as const;
 
 const initialEnv = new Map<string, string | undefined>(
@@ -38,6 +43,35 @@ describe("resolveModel", () => {
     await expect(resolveModel("foo/bar")).rejects.toThrow(
       'Unknown provider "foo". Supported: zen, anthropic, openai, google, ollama',
     );
+  });
+});
+
+describe("discoverConnectedProviders", () => {
+  test("includes reachable ollama as a local discovery provider", async () => {
+    delete process.env.OPENCODE_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.GOOGLE_API_KEY;
+    delete process.env.GEMINI_API_KEY;
+    const server = Bun.serve({
+      port: 0,
+      fetch(req) {
+        if (new URL(req.url).pathname === "/api/tags") {
+          return Response.json({ models: [] });
+        }
+        return new Response("not found", { status: 404 });
+      },
+    });
+    process.env.OLLAMA_BASE_URL = server.url.origin;
+
+    try {
+      await expect(discoverConnectedProviders()).resolves.toContainEqual({
+        name: "ollama",
+        via: "local",
+      });
+    } finally {
+      server.stop();
+    }
   });
 });
 

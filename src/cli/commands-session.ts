@@ -12,7 +12,7 @@ export async function handleSessionCommand(
   const id = args.trim();
   if (id) {
     ctx.startSpinner("switching session");
-    const ok = ctx.switchSession(id);
+    const ok = await ctx.switchSession(id);
     ctx.stopSpinner();
     if (ok) {
       writeln(
@@ -51,7 +51,7 @@ export async function handleSessionCommand(
   }
   if (!picked) return;
 
-  const ok = ctx.switchSession(picked);
+  const ok = await ctx.switchSession(picked);
   if (ok) {
     writeln(
       `${PREFIX.success} switched to session ${c.cyan(picked)} (${c.cyan(ctx.currentModel)})`,

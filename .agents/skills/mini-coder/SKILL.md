@@ -36,7 +36,6 @@ Inside `mc`:
 | `/verbose`                                      | Toggle output truncation                      |
 | `/undo`                                         | Remove last turn (does not revert filesystem) |
 | `/new`                                          | Start a fresh session                         |
-| `/review`                                       | Review recent changes                         |
 | `/mcp list`                                     | List MCP servers                              |
 | `/mcp add <name> http <url>`                    | Add HTTP MCP server                           |
 | `/mcp add <name> stdio <cmd> [args...]`         | Add stdio MCP server                          |

@@ -37,11 +37,11 @@ async function handleUndo(ctx: CommandContext): Promise<void> {
   }
 }
 
-function handleNew(ctx: CommandContext): void {
-  ctx.startNewSession();
+async function handleNew(ctx: CommandContext): Promise<void> {
+  await ctx.startNewSession();
   // Clear terminal and reprint banner for a fresh session feel
   process.stdout.write("\x1b[2J\x1b[H");
-  renderBanner(ctx.currentModel, ctx.cwd);
+  await renderBanner(ctx.currentModel, ctx.cwd);
 }
 
 // ─── Dispatch ─────────────────────────────────────────────────────────────────
@@ -87,7 +87,7 @@ export async function handleCommand(
       return { type: "handled" };
 
     case "new":
-      handleNew(ctx);
+      await handleNew(ctx);
       return { type: "handled" };
 
     case "help":
