@@ -4,15 +4,15 @@ description: "Create a new tagged npm release (patch/minor/major). Use when the 
 compatibility: "Requires git, bun, and npm with publish credentials"
 ---
 
-Create a new npm release for this repo. The bump type is: $1 (default to "patch" if not provided).
+Create a new npm release for this repo. Complete all steps in sequence.
 
 ## Steps
 
-1. **Normalize** the bump type to one of `patch | minor | major`. Default to `patch` if empty.
+1. **Normalize** the bump type to one of `patch | minor | major`. Default to `patch` if the user didn't specify.
 2. **Verify git state** before mutating anything:
    - Current branch must be `main`.
    - Working tree must be clean (`git status --porcelain` is empty).
-   - Run `git fetch origin --tags` and ensure `HEAD` equals `origin/main`.
+   - Run `git fetch origin --tags` and ensure `HEAD` equals `origin/main`. Update the origin as needed.
    - If any check fails, stop and report.
 3. **Run checks** — execute the full repo check suite. Stop and report on failures.
 4. **Read `package.json`** and capture `name` and current `version`.
