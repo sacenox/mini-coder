@@ -53,6 +53,17 @@ describe("skills loader", () => {
     expect(loadSkillContent("test-skill", dir, fakeHome)?.content).toBe(raw);
   });
 
+  test("loads folded multiline descriptions from skill frontmatter", () => {
+    const raw =
+      "---\nname: multiline-skill\ndescription: >\n  Diagnose and fix bugs\n  using a structured process.\n---\n\nDo the thing.";
+    writeSkill(dir, ".agents", "multiline-skill", raw);
+
+    const index = loadSkillsIndex(dir, fakeHome);
+    expect(index.get("multiline-skill")?.description).toBe(
+      "Diagnose and fix bugs using a structured process.",
+    );
+  });
+
   test("discovers skills from parent directories when cwd is nested", () => {
     writeSkill(
       dir,

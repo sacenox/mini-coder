@@ -70,4 +70,28 @@ describe("parseFrontmatter", () => {
       body: "End",
     });
   });
+  test("parses folded block scalar values", () => {
+    const raw =
+      "---\nname: debugger\ndescription: >\n  Diagnose bugs methodically\n  and keep an audit trail.\ncompatibility: Requires git\n---\n\nBody";
+    expect(parseFrontmatter(raw)).toEqual({
+      meta: {
+        name: "debugger",
+        description: "Diagnose bugs methodically and keep an audit trail.",
+        compatibility: "Requires git",
+      },
+      body: "Body",
+    });
+  });
+
+  test("parses literal block scalar values", () => {
+    const raw =
+      "---\nname: reviewer\ndescription: |\n  Line one\n\n  Line two\n---\n\nBody";
+    expect(parseFrontmatter(raw)).toEqual({
+      meta: {
+        name: "reviewer",
+        description: "Line one\n\nLine two",
+      },
+      body: "Body",
+    });
+  });
 });
