@@ -17,7 +17,7 @@
 - If you make temp files, clean them up when you are done.
 - Before committing, run `git status` and ensure every modified and untracked file produced during the session is included. Do not leave files behind.
 - Use Conventional Commits formatting for commit messages.
-- Only commit with explicit user approval. When you are allowed to commit, include the whole diff unless told otherwise.
+- Before committing code changes, review the diff with the user and get explicit approval for the commit. Do not treat this as a requirement to pause before every git command in a requested workflow. When you are allowed to commit, include the whole diff unless told otherwise.
 - Before starting work, check superpowers skills (`listSkills`) and load any that match the task.
 
 ## Core idea, treat this as the source of truth for the design/implementation.
