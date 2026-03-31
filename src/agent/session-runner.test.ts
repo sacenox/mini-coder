@@ -58,6 +58,57 @@ describe("SessionRunner session switching", () => {
     rmSync(fakeHome, { recursive: true, force: true });
   });
 
+  test("throws when asked to resume a missing session", () => {
+    const result = runInHome(
+      fakeHome,
+      cwd,
+      `
+        import { SessionRunner } from ${JSON.stringify(sessionRunnerModuleUrl)};
+
+        const reporter = {
+          info() {},
+          error() {},
+          warn() {},
+          writeText() {},
+          startSpinner() {},
+          stopSpinner() {},
+          async renderTurn() {
+            throw new Error("renderTurn should not be called in this test");
+          },
+          renderStatusBar() {},
+          restoreTerminal() {},
+        };
+
+        try {
+          new SessionRunner({
+            cwd: ${JSON.stringify(cwd)},
+            reporter,
+            tools: [],
+            mcpTools: [],
+            initialModel: "ollama/llama3.2",
+            initialThinkingEffort: null,
+            initialShowReasoning: false,
+            initialVerboseOutput: false,
+            sessionId: "missing-session",
+          });
+          console.log("no-error");
+        } catch (error) {
+          console.log(JSON.stringify({
+            name: error instanceof Error ? error.name : typeof error,
+            message: error instanceof Error ? error.message : String(error),
+          }));
+        }
+      `,
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(JSON.parse(result.stdout)).toEqual({
+      name: "Error",
+      message: 'Session "missing-session" not found.',
+    });
+  });
+
   test("switchSession resets activated skill state", () => {
     const result = runInHome(
       fakeHome,

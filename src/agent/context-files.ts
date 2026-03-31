@@ -49,16 +49,34 @@ function dirContextCandidates(dir: string): ContextCandidate[] {
   ];
 }
 
+function existingCandidates(
+  candidates: ContextCandidate[],
+): ContextCandidate[] {
+  return candidates.filter((candidate) => existsSync(candidate.abs));
+}
+
+function nearestLocalContextCandidates(cwd: string): ContextCandidate[] {
+  let current = resolve(cwd);
+  while (true) {
+    const matches = existingCandidates(dirContextCandidates(current));
+    if (matches.length > 0) return matches;
+    if (existsSync(join(current, ".git"))) break;
+    const parent = dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+  return [];
+}
+
 /**
- * All context file candidates: global + local directory.
- * For the banner (cwd only, no parent walking).
+ * Active context file labels: global files plus the nearest local context
+ * directory between cwd and the git root.
  */
 export function discoverContextFiles(cwd: string, homeDir?: string): string[] {
-  const candidates = [
-    ...globalContextCandidates(homeDir),
-    ...dirContextCandidates(cwd),
+  return [
+    ...existingCandidates(globalContextCandidates(homeDir)).map((c) => c.label),
+    ...nearestLocalContextCandidates(cwd).map((c) => c.label),
   ];
-  return candidates.filter((c) => existsSync(c.abs)).map((c) => c.label);
 }
 
 // ─── Content loading (for system prompt) ─────────────────────────────────────
@@ -90,14 +108,5 @@ export function loadGlobalContextFile(homeDir?: string): string | null {
  * returning content from the nearest directory with context files.
  */
 export function loadLocalContextFile(cwd: string): string | null {
-  let current = resolve(cwd);
-  while (true) {
-    const content = readCandidates(dirContextCandidates(current));
-    if (content) return content;
-    if (existsSync(join(current, ".git"))) break;
-    const parent = dirname(current);
-    if (parent === current) break;
-    current = parent;
-  }
-  return null;
+  return readCandidates(nearestLocalContextCandidates(cwd));
 }

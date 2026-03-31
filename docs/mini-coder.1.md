@@ -40,8 +40,14 @@ _prompt_
 `/model`
 : List all available models.
 
+`/models`
+: Alias for `/model`.
+
 `/model` _id_
 : Switch model.
+
+`/models` _id_
+: Alias for `/model` _id_.
 
 `/model effort` _low|medium|high|xhigh|off_
 : Set reasoning effort.
@@ -180,7 +186,7 @@ Config roots: `.agents/`, `.claude/` — local (repo) or global (`~/`).
 **Context files** (global files first, then the nearest local directory with context files):
 
 - Global files concatenate in this order: `~/.agents/AGENTS.md` → `~/.agents/CLAUDE.md` → `~/.claude/CLAUDE.md`
-- Local files concatenate in this order within the nearest matching directory: `./.agents/AGENTS.md` → `./.agents/CLAUDE.md` → `./.claude/CLAUDE.md` → `./CLAUDE.md` → `./AGENTS.md`
+- Local files concatenate in this order within the nearest matching directory (the same nearest-directory precedence applies to both `AGENTS.md` and `CLAUDE.md`): `./.agents/AGENTS.md` → `./.agents/CLAUDE.md` → `./.claude/CLAUDE.md` → `./CLAUDE.md` → `./AGENTS.md`
 
 **Precedence:**
 

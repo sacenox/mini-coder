@@ -102,8 +102,7 @@ export class SessionRunner {
     if (sessionId) {
       const resumed = resumeSession(sessionId);
       if (!resumed) {
-        this.reporter.error(`Session "${sessionId}" not found.`);
-        process.exit(1);
+        throw new Error(`Session "${sessionId}" not found.`);
       }
       this.session = resumed;
       this.currentModel = this.session.model;

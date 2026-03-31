@@ -26,6 +26,7 @@ export function renderHelpCommand(ctx: CommandContext): void {
   writeln(`  ${c.dim("model + context")}`);
   renderEntries([
     ["/model [id]", "list or switch models"],
+    ["/models [id]", "alias for /model"],
     ["/reasoning [on|off]", "toggle reasoning display"],
     ["/verbose [on|off]", "toggle output truncation"],
     ["/mcp list", "list MCP servers"],

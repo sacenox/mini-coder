@@ -1,5 +1,5 @@
-import { renderError } from "../../cli/output.ts";
 import type { CoreMessage } from "../../llm-api/turn.ts";
+import { logError } from "../../logging/context.ts";
 import { getDb } from "./connection.ts";
 
 // Hoist prepared statements to module-level lazy singletons so hot-path calls
@@ -105,10 +105,11 @@ export function loadMessages(sessionId: string): CoreMessage[] {
     try {
       messages.push(JSON.parse(row.payload) as CoreMessage);
     } catch (_err) {
-      renderError(
+      logError(
         new Error(
           `Failed to parse message ID ${row.id} for session ${sessionId}`,
         ),
+        "message-repo.loadMessages",
       );
     }
   }
