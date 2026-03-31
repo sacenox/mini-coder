@@ -1,8 +1,8 @@
-import * as c from "yoctocolors";
 import type { AgentReporter } from "../agent/reporter.ts";
 import type { SessionRunner } from "../agent/session-runner.ts";
 
 import { getContextWindow } from "../llm-api/providers.ts";
+import { buildSessionExitMessage } from "../session/resume-command.ts";
 import { runShellCommand, type ShellOutput } from "../tools/shell.ts";
 import { handleCommand } from "./commands.ts";
 import { resolveFileRefs } from "./file-refs.ts";
@@ -75,7 +75,7 @@ export async function runInputLoop(opts: InputLoopOptions): Promise<void> {
 
     switch (input.type) {
       case "eof":
-        reporter.writeText(c.dim("Goodbye."));
+        reporter.writeText(buildSessionExitMessage(runner.session.id));
         return;
 
       case "interrupt":
@@ -84,7 +84,7 @@ export async function runInputLoop(opts: InputLoopOptions): Promise<void> {
       case "command": {
         const result = await handleCommand(input.command, input.args, cmdCtx);
         if (result.type === "exit") {
-          reporter.writeText(c.dim("Goodbye."));
+          reporter.writeText(buildSessionExitMessage(runner.session.id));
           return;
         }
         if (result.type === "inject-user-message") {

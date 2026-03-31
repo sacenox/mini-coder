@@ -11,6 +11,7 @@ import {
   setSessionTitle,
   touchSession,
 } from "./db/index.ts";
+import { buildResumeSessionHint } from "./resume-command.ts";
 
 // ─── Active session ───────────────────────────────────────────────────────────
 
@@ -74,7 +75,7 @@ function renderSessionTable(footer: string): boolean {
 
 export function printSessionList(): void {
   const shown = renderSessionTable(
-    `${c.dim("Use")} mc --resume <id> ${c.dim("to continue a session.")}`,
+    buildResumeSessionHint("<id>", "to continue a session."),
   );
   if (!shown) writeln(c.dim("No sessions found."));
 }
