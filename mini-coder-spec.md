@@ -85,7 +85,7 @@ Community-oriented: support `AGENTS.md` and `agentskills.io` specs, and do not i
 ### Tech stack
 
 - Bun.js for runtime and package management. https://bun.com/docs
-- Multiprovider support via https://ai-sdk.dev/docs/introduction or by re-using Pi's: https://github.com/badlogic/pi-mono/tree/main/packages/ai (this looks better, it saves us a lot of headaches by already having oauth baked in.)
+- Multiprovider support via Pi's: https://github.com/badlogic/pi-mono/tree/main/packages/ai (it saves us a lot of headaches by already having oauth baked in.)
 - MCP via the official SDK: `@modelcontextprotocol/sdk`
 - Colored output with https://github.com/sindresorhus/yoctocolors - limited but fast.
 - Our own helper packages: `@yoctomarkdown` for streamed Markdown rendering and `@yoctoselect` for a simple, fully featured interactive selector.
