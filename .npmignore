@@ -1,7 +1,3 @@
-# Source & tests
-src/
-scripts/
-
 # Config & tooling
 biome.json
 tsconfig.json
@@ -13,11 +9,12 @@ tsconfig.json
 .DS_Store
 
 # Dev/repo files
+src/
 .agents/
 assets/
 TODO.md
 SHARE.md
-mini-coder-idea.md
+mini-coder-spec.md
 AGENTS.md
 bun.lock
 node_modules/
