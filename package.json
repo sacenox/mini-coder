@@ -10,13 +10,16 @@
   "scripts": {
     "prepare": "lefthook install",
     "dev": "bun run src/index.ts",
-    "format": "prettier --write --log-level warn .",
-    "check": "bun run prettier -c . && bun run typecheck && bun run lint",
+    "check": "biome check src",
+    "check:fix": "biome check --write src",
+    "format": "prettier --check .",
+    "format:fix": "prettier --write .",
     "typecheck": "tsc --noEmit",
-    "lint": "biome check src",
     "test": "bun test"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@mariozechner/pi-ai": "^0.65.0"
+  },
   "devDependencies": {
     "@biomejs/biome": "^2.4.6",
     "@types/bun": "latest",

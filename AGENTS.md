@@ -7,9 +7,9 @@
 
 ## Repo
 
-- Runtime: Bun. Use `bun run` for scripts, `bun test` for tests, `bun install` for deps.
-- `bun run check` runs the pre-commit checks (prettier, typecheck, biome lint).
-- `bun run format` fixes formatting.
+- Runtime: Bun. Use `bun run` for scripts, `bun test` for tests, `bun install` for deps, `bunx` instead of `npx`.
+- `bun run check` runs biome (lint + format + organize imports). `bun run format` checks prettier. `bun run typecheck` runs tsc. `bun test` runs tests. The lefthook pre-commit runs all four.
+- `bun run check:fix` and `bun run format:fix` auto-fix issues.
 - App data directory: `~/.config/mini-coder/`.
 - Key dependency source code for reference:
   - pi-ai: `~/src/pi-mono/packages/ai/` — LLM provider SDK. See `src/types.ts` for core types, `src/stream.ts` for streaming API, `src/utils/oauth/` for OAuth, `src/providers/faux.ts` for test provider.

@@ -1,60 +1,22 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.4.6/schema.json",
-  "vcs": {
-    "enabled": true,
-    "clientKind": "git",
-    "useIgnoreFile": true
-  },
-  "formatter": {
-    "enabled": false
-  },
+  "$schema": "https://biomejs.dev/schemas/2.4.10/schema.json",
   "assist": {
-    "enabled": true,
     "actions": {
       "source": {
         "organizeImports": "on"
       }
     }
   },
+  "formatter": {
+    "enabled": false
+  },
   "linter": {
     "enabled": true,
-    "domains": {
-      "test": "all"
-    },
     "rules": {
-      "recommended": true,
-      "style": {
-        "noNonNullAssertion": "error",
-        "noParameterAssign": "error",
-        "noShoutyConstants": "error",
-        "noEnum": "error",
-        "noNestedTernary": "error",
-        "useConst": "error",
-        "useCollapsedIf": "error",
-        "useThrowNewError": "error",
-        "useThrowOnlyError": "error",
-        "useNumberNamespace": "error",
-        "useAtIndex": "error"
-      },
-      "complexity": {
-        "noUselessCatch": "error",
-        "noUselessStringConcat": "error",
-        "noForEach": "error"
-      },
-      "suspicious": {
-        "noDebugger": "error",
-        "noExplicitAny": "error",
-        "noConsole": "off",
-        "noEvolvingTypes": "error"
-      },
-      "correctness": {
-        "noUnusedVariables": "error",
-        "noUnusedImports": "error",
-        "noUndeclaredVariables": "error"
-      }
+      "recommended": true
     }
   },
-  "javascript": {
-    "globals": ["Bun", "Timer"]
+  "files": {
+    "includes": ["src/**/*.ts"]
   }
 }
