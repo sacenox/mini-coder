@@ -4,8 +4,8 @@
 
 - [x] `session.ts` — SQLite schema, CRUD, turn numbering, undo, fork, cumulative stats
 - [x] `session.test.ts` — 20 tests against real in-memory bun:sqlite
-- [ ] `tools.ts` — `edit` (exact-text replace, new file creation) and `shell` (exec, output truncation)
-- [ ] `tools.test.ts` — pure function tests per AGENTS.md testing strategy
+- [x] `tools.ts` — `edit` (exact-text replace, new file creation) and `shell` (exec, output truncation)
+- [x] `tools.test.ts` — 27 tests: edit (13), shell (8), truncateOutput (6)
 - [ ] `git.ts` — branch, dirty counts, ahead/behind, repo root detection
 
 ### Notes from Phase 1
