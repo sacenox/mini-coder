@@ -6,13 +6,17 @@
 - [x] `session.test.ts` — 20 tests against real in-memory bun:sqlite
 - [x] `tools.ts` — `edit` (exact-text replace, new file creation) and `shell` (exec, output truncation)
 - [x] `tools.test.ts` — 27 tests: edit (13), shell (8), truncateOutput (6)
-- [ ] `git.ts` — branch, dirty counts, ahead/behind, repo root detection
+- [x] `git.ts` — branch, dirty counts, ahead/behind, repo root detection (10 tests)
 
 ### Notes from Phase 1
 
 - `session.ts` exports: `openDatabase`, `createSession`, `getSession`, `listSessions`, `deleteSession`, `appendMessage`, `loadMessages`, `undoLastTurn`, `forkSession`, `computeStats`.
 - Internal row types (`SessionRow`, `MaxTurnRow`, `DataRow`) and a `SQL` constants object keep queries centralized and avoid formatter conflicts.
 - `@mariozechner/pi-ai` is the only runtime dependency so far. Its `Message`, `AssistantMessage`, `UserMessage`, `ToolResultMessage` types are used for session persistence.
+- `tools.ts` exports: `executeEdit`, `executeShell`, `truncateOutput`, `editTool`, `shellTool` (pi-ai `Tool` definitions with TypeBox schemas). `ToolResult` type (`{ text, isError }`) is the common return shape.
+- `git.ts` exports: `getGitState` → `GitState | null`. Runs 4 git commands in parallel. Internal `parseStatus` parses porcelain v1 format (uses `trim=false` to preserve leading-space column).
+- biome `noNonNullAssertion` rule disabled globally — non-null assertions after explicit null checks are idiomatic in tests.
+- 57 tests total across 3 files (session: 20, tools: 27, git: 10).
 
 ## Phase 2 — Context assembly
 
@@ -22,8 +26,7 @@
 ### Phase 2 entry points
 
 - `skills.ts` depends on nothing from Phase 1. It scans directories for `SKILL.md` files, parses YAML frontmatter (name, description), resolves name collisions (project-level wins over user-level), and generates the XML catalog string for the system prompt. See spec.md "Agent Skills" section.
-- `prompt.ts` depends on `skills.ts` and `git.ts`. It walks from CWD to scan root collecting `AGENTS.md`/`CLAUDE.md` files, assembles the full system prompt in construction order (base → AGENTS.md → skills catalog → plugin suffixes → session footer with date/cwd/git). See spec.md "System prompt" section.
-- `git.ts` (from Phase 1) is needed by `prompt.ts` for the session footer git line.
+- `prompt.ts` depends on `skills.ts` and `git.ts` (both done). It walks from CWD to scan root collecting `AGENTS.md`/`CLAUDE.md` files, assembles the full system prompt in construction order (base → AGENTS.md → skills catalog → plugin suffixes → session footer with date/cwd/git). See spec.md "System prompt" section.
 
 ## Phase 3 — Agent loop
 
@@ -35,5 +38,9 @@
 
 - [ ] `ui.ts` — cel-tui layout (log + input + status bar), state management, message rendering
 - [ ] `index.ts` — entry point, provider discovery, startup sequence, command routing
-- [ ] Commands — `/model`, `/session`, `/new`, `/fork`, `/undo`, `/reasoning`, `/verbose`, `/login`, `/logout`, `/help`
+- [ ] Commands — `/model`, `/session`, `/new`, `/fork`, `/undo`, `/reasoning`, `/verbose`, `/login`, `/logout`, `/help`, `/effort`
 - [ ] Input handling — `/skill:name` parsing, image path detection, Tab file autocomplete
+
+## Open questions
+
+- **`/effort` command**: we need a command to control model reasoning effort at runtime (similar to `/model` for model switching). This is missing from `spec.md` — update the spec before implementing. Consider: should it cycle through levels (`low` → `med` → `high` → `xhigh`), show a selector, or accept an argument (`/effort high`)? How does it interact with the session's `effort` field? Status bar already shows effort — just needs the command wired up.

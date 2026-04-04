@@ -32,12 +32,16 @@
 
 We test our logic at the boundaries. Never test dependencies (pi-ai, cel-tui, bun:sqlite). Never use mocks or stubs.
 
-**Tools** (`shell`, `edit`, `readImage`):
+**Tools** (`tools.ts` — `shell`, `edit`; `readImage` deferred to Phase 3):
 
-- `edit`: exact-text match/replace, multi-match failure, missing text failure, new file creation, line ending preservation, UTF-8 handling.
-- `shell`: output truncation logic (head + tail with marker), exit code passthrough.
-- `readImage`: base64 encoding, mime type detection, unsupported format rejection, missing file handling.
-- Pure functions with clear inputs/outputs.
+- `edit`: exact-text match/replace, multi-match failure, missing text failure, new file creation, parent dir creation, existing-file guard, line ending preservation (LF/CRLF), UTF-8 handling, relative/absolute path resolution.
+- `shell`: stdout/stderr capture, exit code passthrough, output truncation (head + tail with marker), abort signal, cwd propagation.
+- `truncateOutput`: pure function — within limit, head+tail+marker, no overlap, empty/single-line/exact-limit edge cases.
+- `readImage` (Phase 3): base64 encoding, mime type detection, unsupported format rejection, missing file handling.
+
+**Git** (`git.ts`):
+
+- Real temp git repos (no mocks). Tests: outside-repo null, repo root, branch name, untracked/modified/staged counts, mixed states, ahead/behind with local bare remote, subdirectory support.
 
 **Session persistence** (`session.ts`):
 
