@@ -5,9 +5,26 @@
 - Use Conventional Commits formatting for commit messages.
 - Before committing code changes, review the diff with the user and get approval for the commit.
 
+## Repo
+
+- Runtime: Bun. Use `bun run` for scripts, `bun test` for tests, `bun install` for deps.
+- `bun run check` runs the pre-commit checks (prettier, typecheck, biome lint).
+- `bun run format` fixes formatting.
+- App data directory: `~/.config/mini-coder/`.
+- Key dependency source code for reference:
+  - pi-ai: `~/src/pi-mono/packages/ai/` — LLM provider SDK. See `src/types.ts` for core types, `src/stream.ts` for streaming API, `src/utils/oauth/` for OAuth, `src/providers/faux.ts` for test provider.
+  - cel-tui: `~/src/cel-tui/` — TUI framework. See `spec.md` for full API, `examples/chat.ts` for the chat UI pattern, `packages/components/src/markdown.ts` for Markdown component.
+
+## Code style
+
+- Do not inline `import` calls. Don't duplicate code. Don't leave dead code behind.
+- Don't re-implement helpers that already exist, always consolidate.
+- Keep it minimal — don't add abstractions for hypothetical futures.
+- Performance matters. Prefer fast paths.
+
 ## Testing strategy
 
-We test our logic at the boundaries. Never test dependencies (pi-ai, cel-tui, bun:sqlite).
+We test our logic at the boundaries. Never test dependencies (pi-ai, cel-tui, bun:sqlite). Never use mocks or stubs.
 
 **Tools** (`shell`, `edit`, `readImage`):
 
