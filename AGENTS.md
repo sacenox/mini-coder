@@ -8,9 +8,15 @@
 ## Repo
 
 - Runtime: Bun. Use `bun run` for scripts, `bun test` for tests, `bun install` for deps, `bunx` instead of `npx`.
-- `bun run check` runs biome (lint + format + organize imports). `bun run format` checks prettier. `bun run typecheck` runs tsc. `bun test` runs tests. The lefthook pre-commit runs all four.
-- `bun run check:fix` and `bun run format:fix` auto-fix issues.
+- Toolchain split: **prettier** owns all formatting, **biome** owns linting + import sorting (formatter disabled to avoid conflicts). Both fail CI on violations.
+  - `bun run check` — biome: lint rules + organize imports.
+  - `bun run format` — prettier: check formatting.
+  - `bun run typecheck` — tsc --noEmit.
+  - `bun test` — bun test runner.
+  - `bun run check:fix` / `bun run format:fix` — auto-fix.
+- Lefthook pre-commit runs all four steps sequentially (`--silent`, `parallel: false`).
 - App data directory: `~/.config/mini-coder/`.
+- All exports should have JSDoc comments (descriptions, `@param`, `@returns`). Interface fields get single-line JSDoc. See `session.ts` for the established pattern.
 - Key dependency source code for reference:
   - pi-ai: `~/src/pi-mono/packages/ai/` — LLM provider SDK. See `src/types.ts` for core types, `src/stream.ts` for streaming API, `src/utils/oauth/` for OAuth, `src/providers/faux.ts` for test provider.
   - cel-tui: `~/src/cel-tui/` — TUI framework. See `spec.md` for full API, `examples/chat.ts` for the chat UI pattern, `packages/components/src/markdown.ts` for Markdown component.
