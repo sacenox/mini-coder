@@ -1,80 +1,33 @@
-<p align="center">
-  <img src="assets/icon-5-community-badge.svg" alt="mini-coder logo" width="100" height="100"/>
-</p>
+# mini-coder
 
-# 👾 mini-coder
+A CLI coding agent. Small, fast, focused.
 
-> _Small. Fast. Gets out of your way._
+## What is it?
 
-[📖 Read the Full Manual](docs/mini-coder.1.md)
+mini-coder (`mc`) is a terminal-based coding agent that reads your codebase, makes changes, and verifies them — all through natural conversation. It runs in your terminal, connects to your preferred LLM provider, and gets work done.
 
-A terminal coding agent for developers who want a sharp tool, not a bloated IDE plugin. Shell-first, multi-provider, minimal tool surface. Just you, your terminal, and an AI that keeps up.
+## Features
 
-<p align="center">
-  <img src="./assets/preview.gif" alt="Minicoder Preview"/>
-</p>
+- **Two core tools**: `shell` and `edit` — inspect, mutate, verify.
+- **Multi-provider**: Anthropic, OpenAI, Google, and many more via [pi-ai](https://github.com/badlogic/pi-mono/tree/main/packages/ai).
+- **Rich TUI**: Streamed markdown, scrollable conversation log, status bar — powered by [cel-tui](https://github.com/sacenox/cel-tui).
+- **Sessions**: Persistent conversation history, fork, undo.
+- **Community standards**: [AGENTS.md](https://agents.md) and [Agent Skills](https://agentskills.io) support.
+- **Plugins**: Extend with custom tools, MCP servers, and more.
 
----
-
-## ⚡ Quick Start
-
-I run on [Bun](https://bun.com) — install me via bun or npm, but Bun needs to be on your machine.
+## Install
 
 ```bash
-# Install
-bun add -g mini-coder   # or: npm install -g mini-coder
+# coming soon
+bun install -g mini-coder
+```
 
-# Set one API key (pick any)
-export OPENCODE_API_KEY=your-key     # recommended
-export ANTHROPIC_API_KEY=your-key    # direct Anthropic
-export OPENAI_API_KEY=your-key       # direct OpenAI
-export GOOGLE_API_KEY=your-key       # direct Gemini (or GEMINI_API_KEY)
+## Usage
 
-# Optional
-export OLLAMA_BASE_URL=http://localhost:11434   # local models
-export EXA_API_KEY=your-key                     # web search tools
-
-# Go
+```bash
 mc
 ```
 
-One-shot mode: `mc "refactor auth to use async/await"` — runs once, then exits.
+## License
 
-Useful flags: `-c` continue last session, `-r <id>` resume, `-l` list sessions, `-m <model>` pick a model, `-h` help.
-
----
-
-## 🔑 OAuth Login
-
-Use `/login` inside the REPL to authenticate via browser-based OAuth. Currently supported: `openai` (`/login openai` uses the Codex / ChatGPT Plus/Pro flow). No need to manage API keys manually.
-
----
-
-## 🛠️ Features
-
-- **Multi-provider** — supports Anthropic, OpenAI (direct + OAuth), Gemini, and Ollama
-- **Session memory** — SQLite-backed. Resume with `-c` or `-r <id>`
-- **Shell integration** — `!` prefix for inline commands, `@` to reference files with tab completion
-- **Web search** — `webSearch` + `webContent` tools when `EXA_API_KEY` is set
-- **MCP support** — connect external tool servers over HTTP or stdio
-- **Skills** — `.agents/skills/<name>/SKILL.md`, invoke with `/skill-name` in the prompt
-- **`mc-edit`** — safe, exact-text file editing (no full-file rewrites)
-- **16 ANSI colors** — inherits your terminal theme. Always looks right.
-
----
-
-## 📚 Getting Deeper
-
-The README is the highlight reel. For the full story — slash commands, config folders, context files, app data, and everything else:
-
-**[📖 Read the Full Manual](docs/mini-coder.1.md)**
-
----
-
-## 🔮 Tech Stack
-
-[Bun.js](https://bun.com) · [AI SDK](https://ai-sdk.dev) · [yoctocolors](https://github.com/sindresorhus/yoctocolors)
-
-## 📄 License
-
-MIT — [github.com/sacenox/mini-coder](https://github.com/sacenox/mini-coder)
+MIT

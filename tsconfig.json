@@ -13,12 +13,7 @@
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
     "allowImportingTsExtensions": true,
-    "noEmit": true,
-    "rootDir": "./src",
-    "baseUrl": ".",
-    "paths": {
-      "~/*": ["src/*"]
-    }
+    "noEmit": true
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
