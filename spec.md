@@ -1,6 +1,6 @@
 # mini-coder — spec
 
-A CLI coding agent. Small, fast, focused.
+👾 Lightning fast coding agent for your terminal.
 
 ## Motivation for rewrite
 
@@ -186,23 +186,10 @@ Plugins are declared in a config file (`~/.config/mini-coder/plugins.json` or si
 }
 ```
 
-Built-in plugins (like MCP) can ship with mini-coder and be enabled by default.
-
-### MCP as a plugin
-
-MCP support is implemented as a plugin, not baked into the core. The MCP plugin:
-
-- Connects to configured MCP servers (stdio or HTTP).
-- Converts MCP tools into mini-coder tools, prefixed with the server name.
-- Adds server descriptions to the system prompt.
-- Manages server lifecycle (connect on init, disconnect on destroy).
-
-This keeps the core agent loop clean — it only knows about `Tool[]`, regardless of where tools come from.
-
 ### Why plugins
 
-- **Separation of concerns**: the agent loop doesn't know about MCP, OAuth flows, or any specific integration.
-- **Optional complexity**: users who don't need MCP don't pay for it in startup time or code complexity.
+- **Separation of concerns**: the agent loop doesn't know about specific integrations — it only sees `Tool[]`.
+- **Optional complexity**: capabilities are opt-in. Users only pay for what they use.
 - **Extensibility without bloat**: third-party tools, custom integrations, project-specific helpers — all through the same interface.
 
 ## Agent loop
@@ -405,7 +392,7 @@ Three zones, top to bottom:
 │  ▷ Agent: I'll check the test suite...       │
 │    ┌─────────────────────────────┐           │
 │    │ $ bun test                  │           │
-│    │ 3 passed, 1 failed         │           │
+│    │ 3 passed, 1 failed          │           │
 │    └─────────────────────────────┘           │
 │    Fixed the assertion in...                 │
 │                                              │
@@ -479,11 +466,6 @@ While the agent is working, an inline spinner with an activity label ("thinking"
 
 Multi-line text input. Intrinsic height (1 line when empty, grows with content) up to `maxHeight: 10`, then scrolls internally. cel-tui's `TextInput` with `submitKey: "enter"` (Enter submits, Shift+Enter adds newlines).
 
-The `>` prompt glyph is styled to indicate state:
-
-- Ready for input (normal)
-- Agent is working (dimmed/different color, input is not focused)
-
 Supports:
 
 - `Tab` for file path autocomplete.
@@ -518,9 +500,10 @@ Supports:
 | `/verbose`   | Toggle full output display (disables truncation in the UI).                                                                                                                                                                                                                                                                                              |
 | `/login`     | Interactive OAuth login. Shows a selector with available OAuth providers and their login status (logged in / not logged in). Selecting a provider starts the browser-based OAuth flow. Uses pi-ai's OAuth registry. Credentials are persisted to the app data directory and used for provider discovery on subsequent launches.                          |
 | `/logout`    | Interactive OAuth logout. Shows a selector with logged-in OAuth providers. Selecting one clears its saved credentials.                                                                                                                                                                                                                                   |
+| `/effort`    | Interactive effort selector. Shows the four reasoning levels (`low`, `med`, `high`, `xhigh`) with the current level highlighted. Updates the status bar immediately. Does not update the session record's `effort` field (it reflects the initial choice, like `/model`).                                                                                |
 | `/help`      | List available commands, loaded AGENTS.md files, discovered skills, and active plugins.                                                                                                                                                                                                                                                                  |
 
-Commands are discoverable via `/` + Tab autocomplete in the input area.
+Commands are discoverable via `/` + Tab to interactively select/filter in the input area.
 
 ### Startup
 

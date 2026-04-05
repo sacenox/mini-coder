@@ -40,7 +40,3 @@
 - [ ] `index.ts` — entry point, provider discovery, startup sequence, command routing
 - [ ] Commands — `/model`, `/session`, `/new`, `/fork`, `/undo`, `/reasoning`, `/verbose`, `/login`, `/logout`, `/help`, `/effort`
 - [ ] Input handling — `/skill:name` parsing, image path detection, Tab file autocomplete
-
-## Open questions
-
-- **`/effort` command**: we need a command to control model reasoning effort at runtime (similar to `/model` for model switching). This is missing from `spec.md` — update the spec before implementing. Consider: should it cycle through levels (`low` → `med` → `high` → `xhigh`), show a selector, or accept an argument (`/effort high`)? How does it interact with the session's `effort` field? Status bar already shows effort — just needs the command wired up.
