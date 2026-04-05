@@ -18,7 +18,7 @@ import { Type } from "@mariozechner/pi-ai";
 // Result type
 // ---------------------------------------------------------------------------
 
-/** Result returned by a tool execution. */
+/** Result returned by a text-only tool execution. */
 export interface ToolResult {
   /** Human-readable result text. */
   text: string;
@@ -111,7 +111,7 @@ export interface ShellArgs {
 
 /** Options for shell execution. */
 export interface ShellOpts {
-  /** Maximum output lines before truncation. Default: 500. */
+  /** Maximum output lines before truncation. Default: 1000. */
   maxLines?: number;
   /** Abort signal to cancel the command. */
   signal?: AbortSignal;

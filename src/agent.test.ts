@@ -10,14 +10,25 @@ import {
   fauxToolCall,
   registerFauxProvider,
 } from "@mariozechner/pi-ai";
-import { type AgentEvent, type AgentTool, runAgentLoop } from "./agent.ts";
+import {
+  type AgentEvent,
+  type AgentTool,
+  runAgentLoop,
+  type ToolExecResult,
+} from "./agent.ts";
 import {
   appendMessage,
   createSession,
   loadMessages,
   openDatabase,
 } from "./session.ts";
-import { editTool, executeEdit, executeShell, shellTool } from "./tools.ts";
+import {
+  editTool,
+  executeEdit,
+  executeShell,
+  shellTool,
+  type ToolResult,
+} from "./tools.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -43,24 +54,33 @@ function makeUser(text: string): UserMessage {
   return { role: "user", content: text, timestamp: Date.now() };
 }
 
+/** Wrap a text-only ToolResult into a ToolExecResult with content blocks. */
+function wrapResult(r: ToolResult): ToolExecResult {
+  return { content: [{ type: "text", text: r.text }], isError: r.isError };
+}
+
 /** Create standard built-in tools for tests. */
 function builtinTools(): AgentTool[] {
   return [
     {
       definition: shellTool,
-      execute: (args, cwd) =>
-        executeShell({ command: args.command as string }, cwd),
+      execute: async (args, cwd) =>
+        wrapResult(
+          await executeShell({ command: args.command as string }, cwd),
+        ),
     },
     {
       definition: editTool,
       execute: (args, cwd) =>
-        executeEdit(
-          {
-            path: args.path as string,
-            oldText: args.oldText as string,
-            newText: args.newText as string,
-          },
-          cwd,
+        wrapResult(
+          executeEdit(
+            {
+              path: args.path as string,
+              oldText: args.oldText as string,
+              newText: args.newText as string,
+            },
+            cwd,
+          ),
         ),
     },
   ];

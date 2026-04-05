@@ -40,8 +40,8 @@ export interface AgentTool {
 
 /** Result from executing a tool. */
 export interface ToolExecResult {
-  /** Text result. */
-  text: string;
+  /** Content blocks for the tool result (text and/or images). */
+  content: (TextContent | ImageContent)[];
   /** Whether the execution encountered an error. */
   isError: boolean;
 }
@@ -209,7 +209,7 @@ export async function runAgentLoop(
         });
 
         const result = await tool.execute(toolCall.arguments, cwd, signal);
-        resultContent = [{ type: "text", text: result.text }];
+        resultContent = result.content;
         isError = result.isError;
 
         onEvent?.({ type: "tool_end", name: toolCall.name, result });

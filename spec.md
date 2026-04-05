@@ -102,7 +102,7 @@ There is no formal spec — AGENTS.md is a de facto convention established by Co
 
 Our discovery:
 
-- Walk from CWD toward the **scan root**, collecting every `AGENTS.md` (and `CLAUDE.md`) found.
+- Walk from CWD toward the **scan root**, collecting every `AGENTS.md` found.
 - Scan root, in priority order: **git root** (if in a repo) → **home directory** (fallback) → filesystem root (only if `MC_AGENTS_ROOT=/` is set).
 - Also check `~/.agents/` for global agent instructions (cross-client convention).
 - All files are additive, ordered root-to-leaf (general → specific).
