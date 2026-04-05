@@ -69,7 +69,7 @@
 - `theme.ts` (also implemented here): `Theme` interface, `DEFAULT_THEME`, `mergeThemes(base, ...overrides)`. Uses terminal palette colors (`color01`–`color08`) for automatic light/dark adaptation. 5 tests in `theme.test.ts`.
 - 158 tests total across 9 files (session: 20, tools: 36, git: 10, skills: 14, prompt: 21, agent: 12, plugins: 10, input: 30, theme: 5).
 
-### Notes from Phase 4b (in progress)
+### Notes from Phase 4b
 
 - `index.ts` exports: `AppState` (all mutable app state), `init()`, `buildPrompt(state)`, `buildToolList(state)`, `shutdown(state)`. Also re-exports OAuth helpers (`loadOAuthCredentials`, `saveOAuthCredentials`, `DATA_DIR`, `AUTH_PATH`) for `/login` and `/logout` commands.
 - Provider discovery checks env-based API keys first, then saved OAuth tokens (`~/.config/mini-coder/auth.json`). Refreshes expired tokens and persists updates.
@@ -81,11 +81,24 @@
 
 ### 4b — App shell (running app, no commands)
 
-- [x] `index.ts` — entry point: provider discovery (env + OAuth), model selection (first available, null if none), startup sequence
-- [ ] `ui.ts` — cel-tui layout: conversation log (scrollable, stick-to-bottom), input area (TextInput, submit/newline), status bar (2 lines: cwd+git, model+usage), animated divider
-- [ ] Wire agent loop: submit → build context → stream → render events → tool results → loop
-- [ ] Message rendering: user (bg color), assistant (streamed Markdown), tool calls (shell: bordered output, edit: path + unified diff), errors
-- [ ] Interrupt: Escape during streaming aborts via AbortSignal
+- [x] `index.ts` — entry point: provider discovery (env + OAuth), model selection (first available, null if none), startup sequence, `main()` wires init → startUI
+- [x] `ui.ts` — cel-tui layout: conversation log (scrollable, stick-to-bottom), input area (TextInput, submit/newline), status bar (2 lines: cwd+git, model+usage), animated divider
+- [x] Wire agent loop: submit → build context → stream → render events → tool results → loop
+- [x] Message rendering: user (bg color), assistant (streamed Markdown), tool calls (shell: bordered output, edit: path + unified diff), errors
+- [x] Interrupt: Escape during streaming aborts via AbortSignal
+
+### Notes from Phase 4b (ui.ts)
+
+- `ui.ts` exports: `startUI(state)`. Single entry point that owns the cel-tui lifecycle (`cel.init` / `cel.stop`).
+- Layout matches the spec diagram: scrollable conversation log (flex: 1) → animated divider → TextInput (maxHeight: 10) → static divider → status bar (height: 2).
+- Animated divider: scanning pulse (bright `═` segment sweeps across dimmed `─` line) via `setInterval` at 60ms. Starts on agent loop start, stops on completion.
+- Message rendering: user messages get `bgColor` from theme, assistant messages use `Markdown()` component, tool calls get left border (`│`) with dimmed text. Edit tool calls show unified diff via `structuredPatch` from the `diff` package. Streaming response rendered from accumulation buffers + pending tool call list.
+- Agent loop wiring: `submitMessage` appends user message to DB (turn auto-assigned by `appendMessage`), refreshes git state, builds prompt + tools, runs `runAgentLoop` with `onEvent` callback. Events update streaming buffers and trigger `cel.render()`.
+- Key bindings: Enter submits (returns `false` in `onKeyPress` to prevent newline), Escape interrupts running agent, Ctrl+C / Ctrl+D graceful exit.
+- `Theme` type changed from `string` values to cel-tui `Color` type — eliminates `as any` casts throughout the UI.
+- `tsconfig.json`: removed `noImplicitReturns` for cel-tui compatibility (their `onKeyPress` callbacks return `false | void`).
+- `spec.md`: removed `submitKey: "enter"` reference — cel-tui uses the `onKeyPress` return-false pattern instead.
+- 158 tests still pass across 9 files.
 
 ### 4c — Commands
 

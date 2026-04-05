@@ -416,3 +416,18 @@ export async function shutdown(state: AppState): Promise<void> {
 // ---------------------------------------------------------------------------
 
 export { AUTH_PATH, DATA_DIR, loadOAuthCredentials, saveOAuthCredentials };
+
+// ---------------------------------------------------------------------------
+// Main
+// ---------------------------------------------------------------------------
+
+async function main(): Promise<void> {
+  const state = await init();
+  const { startUI } = await import("./ui.ts");
+  startUI(state);
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

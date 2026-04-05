@@ -6,7 +6,6 @@
     "lib": ["ESNext"],
     "types": ["bun"],
     "strict": true,
-    "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,

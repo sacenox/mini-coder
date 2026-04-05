@@ -21,8 +21,8 @@ describe("theme", () => {
   });
 
   test("mergeThemes applies a single partial override", () => {
-    const result = mergeThemes(DEFAULT_THEME, { error: "#ff0000" });
-    expect(result.error).toBe("#ff0000");
+    const result = mergeThemes(DEFAULT_THEME, { error: "color05" });
+    expect(result.error).toBe("color05");
     // Other values preserved
     expect(result.userMsgBg).toBe(DEFAULT_THEME.userMsgBg);
     expect(result.divider).toBe(DEFAULT_THEME.divider);
@@ -31,18 +31,18 @@ describe("theme", () => {
   test("mergeThemes applies multiple overrides left-to-right", () => {
     const result = mergeThemes(
       DEFAULT_THEME,
-      { error: "first", divider: "plugin1" },
-      { error: "second" },
+      { error: "color03", divider: "color05" },
+      { error: "color04" },
     );
     // Last override wins for error
-    expect(result.error).toBe("second");
+    expect(result.error).toBe("color04");
     // First override preserved for divider (not overridden by second)
-    expect(result.divider).toBe("plugin1");
+    expect(result.divider).toBe("color05");
   });
 
   test("mergeThemes does not mutate the base theme", () => {
     const baseCopy = { ...DEFAULT_THEME };
-    mergeThemes(DEFAULT_THEME, { error: "modified" });
+    mergeThemes(DEFAULT_THEME, { error: "color09" });
     expect(DEFAULT_THEME).toEqual(baseCopy);
   });
 });

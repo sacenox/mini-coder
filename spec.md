@@ -497,7 +497,7 @@ While the agent is working, the top divider (above the input area) animates with
 
 ### Input area
 
-Multi-line text input with no prompt prefix — the blinking cursor is the affordance. Intrinsic height (1 line when empty, grows with content) up to `maxHeight: 10`, then scrolls internally. cel-tui's `TextInput` with `submitKey: "enter"` (Enter submits, Shift+Enter adds newlines).
+Multi-line text input with no prompt prefix — the blinking cursor is the affordance. Intrinsic height (1 line when empty, grows with content) up to `maxHeight: 10`, then scrolls internally. Enter submits, Shift+Enter adds newlines (via cel-tui's `TextInput` `onKeyPress` pattern).
 
 Supports:
 

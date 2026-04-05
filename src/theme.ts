@@ -5,10 +5,12 @@
  * never hardcodes colors. Plugins can return a `Partial<Theme>` in their
  * result to override any color. Multiple overrides are merged left-to-right.
  *
- * Theme values are cel-tui color strings (e.g., `"color08"`, `"#ff0000"`).
+ * Theme values are cel-tui {@link Color} palette references.
  *
  * @module
  */
+
+import type { Color } from "@cel-tui/types";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -22,23 +24,23 @@
  */
 export interface Theme {
   /** User message background. */
-  userMsgBg: string;
+  userMsgBg: Color;
   /** Tool output left border and text. */
-  toolBorder: string;
+  toolBorder: Color;
   /** Tool output text. */
-  toolText: string;
+  toolText: Color;
   /** Diff added line color (green). */
-  diffAdded: string;
+  diffAdded: Color;
   /** Diff removed line color (red). */
-  diffRemoved: string;
+  diffRemoved: Color;
   /** Divider line color (idle state). */
-  divider: string;
+  divider: Color;
   /** Divider scanning pulse highlight color (active state). */
-  dividerPulse: string;
+  dividerPulse: Color;
   /** Status bar foreground. */
-  statusText: string;
+  statusText: Color;
   /** Error text. */
-  error: string;
+  error: Color;
 }
 
 // ---------------------------------------------------------------------------

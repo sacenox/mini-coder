@@ -43,6 +43,9 @@
 - **Dead guards are lies.** Type guards for impossible types (e.g., `typeof c !== "string"` when the type is `TextContent | ThinkingContent | ToolCall`) suggest the type can contain those values. They mislead readers and should not exist.
 - **Event APIs must carry their data.** When an event handler needs data from the event source (e.g., tool call arguments), the event must carry that data. Walking external state to reconstruct it is fragile and breaks with duplicate entries.
 - **Async callbacks must handle errors.** When a sync callback invokes an async function, the returned promise must be caught. Dropping it silently turns errors into unhandled rejections.
+- **Respect the phased plan.** Each TODO.md phase has explicit scope. Do not implement features from later phases — even if they feel "easy" or "related." Scope creep wastes review time, introduces bugs from untested code paths, and erodes trust. If something isn't listed in the current phase, it doesn't exist yet.
+- **Understand callback return semantics.** In cel-tui's `onKeyPress`, returning `false` means "prevent the default action" — returning it unconditionally blocks all typing. Only return `false` for keys you explicitly intercept. Let all other keys fall through with no return.
+- **Use the dependency's types, not weaker ones.** If a dependency defines a specific type (e.g., cel-tui's `Color`), use it in your own interfaces. Don't weaken to `string` and then cast with `as any` everywhere — that defeats type safety and creates lint noise.
 
 ## Testing strategy
 
