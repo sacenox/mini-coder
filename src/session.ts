@@ -93,7 +93,8 @@ type DataRow = { data: string };
 // ---------------------------------------------------------------------------
 
 const SQL = {
-  listSessions: "SELECT * FROM sessions WHERE cwd = ? ORDER BY updated_at DESC",
+  listSessions:
+    "SELECT * FROM sessions WHERE cwd = ? ORDER BY updated_at DESC, rowid DESC",
   maxTurn: "SELECT MAX(turn) as max_turn FROM messages WHERE session_id = ?",
   loadMessages: "SELECT data FROM messages WHERE session_id = ? ORDER BY id",
 } as const;
@@ -236,6 +237,32 @@ export function listSessions(db: Database, cwd: string): Session[] {
  */
 export function deleteSession(db: Database, id: string): void {
   db.run("DELETE FROM sessions WHERE id = ?", [id]);
+}
+
+/**
+ * Keep only the most recent sessions for a CWD, deleting the rest.
+ *
+ * Sessions are ordered by `updated_at DESC`; those beyond `keep` are
+ * deleted (cascade removes their messages too). No-op if the count is
+ * already within the limit.
+ *
+ * @param db - Open database handle.
+ * @param cwd - Working directory to scope the truncation to.
+ * @param keep - Maximum number of sessions to retain.
+ */
+export function truncateSessions(
+  db: Database,
+  cwd: string,
+  keep: number,
+): void {
+  db.run(
+    `DELETE FROM sessions WHERE id IN (
+       SELECT id FROM sessions WHERE cwd = ?
+       ORDER BY updated_at DESC, rowid DESC
+       LIMIT -1 OFFSET ?
+     )`,
+    [cwd, keep],
+  );
 }
 
 // ---------------------------------------------------------------------------

@@ -41,6 +41,7 @@ import {
   openDatabase,
   type Session,
   type SessionStats,
+  truncateSessions,
 } from "./session.ts";
 import { discoverSkills, type Skill } from "./skills.ts";
 import { DEFAULT_THEME, mergeThemes, type Theme } from "./theme.ts";
@@ -71,6 +72,9 @@ const AUTH_PATH = join(DATA_DIR, "auth.json");
 
 /** Default effort level. */
 const DEFAULT_EFFORT: ThinkingLevel = "medium";
+
+/** Maximum sessions to keep per CWD. */
+const MAX_SESSIONS_PER_CWD = 20;
 
 // ---------------------------------------------------------------------------
 // OAuth credential persistence
@@ -334,6 +338,7 @@ export async function init(): Promise<AppState> {
     model: modelLabel,
     effort,
   });
+  truncateSessions(db, cwd, MAX_SESSIONS_PER_CWD);
   const messages = loadMessages(db, session.id);
   const stats = computeStats(messages);
 

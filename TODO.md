@@ -137,6 +137,7 @@
 ## Future ideas
 
 - [ ] User preferences persistence (model, effort) — not in spec, currently resets to defaults on launch
+- [ ] Session list preview — show first user message snippet in `/session` selector for easier identification
 - [ ] Divider theme plugin — customizable divider animations. Candidates designed during Phase 4 UI exploration:
   - **Scanning pulse** (current default): bright segment sweeps across the dimmed divider
   - **Breathing**: divider alternates between two dim levels, subtle pulse

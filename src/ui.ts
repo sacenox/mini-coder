@@ -40,7 +40,12 @@ import {
   shutdown,
 } from "./index.ts";
 import { parseInput } from "./input.ts";
-import { appendMessage, computeStats } from "./session.ts";
+import {
+  appendMessage,
+  computeStats,
+  listSessions,
+  loadMessages,
+} from "./session.ts";
 import { truncateOutput } from "./tools.ts";
 
 // ---------------------------------------------------------------------------
@@ -676,6 +681,66 @@ function handleEffortCommand(state: AppState): void {
   cel.render();
 }
 
+/** Handle the /session command: list and resume sessions. */
+function handleSessionCommand(state: AppState): void {
+  const sessions = listSessions(state.db, state.cwd);
+  if (sessions.length === 0) {
+    return;
+  }
+
+  const items = sessions.map((s) => {
+    const date = new Date(s.updatedAt);
+    const dateStr = formatSessionDate(date);
+    const model = s.model ?? "no model";
+    const current = s.id === state.session.id ? " (current)" : "";
+    return {
+      label: `${dateStr}  ${model}${current}`,
+      value: s.id,
+      filterText: `${dateStr} ${model}`,
+    };
+  });
+
+  const select = Select({
+    items,
+    maxVisible: OVERLAY_MAX_VISIBLE,
+    placeholder: "type to filter sessions...",
+    focused: true,
+    highlightColor: "color06",
+    onSelect: (sessionId) => {
+      if (sessionId !== state.session.id) {
+        const picked = sessions.find((s) => s.id === sessionId);
+        if (picked) {
+          state.session = picked;
+          state.messages = loadMessages(state.db, picked.id);
+          state.stats = computeStats(state.messages);
+          stickToBottom = true;
+        }
+      }
+      dismissOverlay();
+    },
+    onBlur: dismissOverlay,
+  });
+
+  inputFocused = false;
+  activeOverlay = { select, title: "Resume a session" };
+  cel.render();
+}
+
+/** Format a session date for display. */
+function formatSessionDate(date: Date): string {
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60_000);
+  const diffHours = Math.floor(diffMs / 3_600_000);
+  const diffDays = Math.floor(diffMs / 86_400_000);
+
+  if (diffMins < 1) return "just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return date.toLocaleDateString();
+}
+
 /** Dispatch a parsed command. Returns true if handled. */
 function handleCommand(command: string, state: AppState): boolean {
   switch (command) {
@@ -684,6 +749,9 @@ function handleCommand(command: string, state: AppState): boolean {
       return true;
     case "effort":
       handleEffortCommand(state);
+      return true;
+    case "session":
+      handleSessionCommand(state);
       return true;
     default:
       return false;

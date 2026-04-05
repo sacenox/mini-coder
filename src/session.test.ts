@@ -15,6 +15,7 @@ import {
   listSessions,
   loadMessages,
   openDatabase,
+  truncateSessions,
   undoLastTurn,
 } from "./session.ts";
 
@@ -117,12 +118,15 @@ describe("session persistence", () => {
     const s2 = createSession(db, { cwd: "/tmp/a" });
     createSession(db, { cwd: "/tmp/b" }); // different cwd
 
-    // Touch s1 so it becomes more recent
-    appendMessage(db, s1.id, makeUser("hello"));
+    // Explicitly bump s1's updated_at so it sorts first
+    db.run("UPDATE sessions SET updated_at = ? WHERE id = ?", [
+      Date.now() + 1000,
+      s1.id,
+    ]);
 
     const list = listSessions(db, "/tmp/a");
     expect(list).toHaveLength(2);
-    // s1 was updated more recently (message appended)
+    // s1 was updated more recently
     expect(list[0]?.id).toBe(s1.id);
     expect(list[1]?.id).toBe(s2.id);
     db.close();
@@ -377,5 +381,68 @@ describe("cumulative stats", () => {
     expect(stats.totalInput).toBe(0);
     expect(stats.totalOutput).toBe(0);
     expect(stats.totalCost).toBe(0);
+  });
+});
+
+describe("truncateSessions", () => {
+  test("deletes oldest sessions beyond the keep limit for a CWD", () => {
+    const db = openDatabase(":memory:");
+    const ids: string[] = [];
+    for (let i = 0; i < 5; i++) {
+      const s = createSession(db, { cwd: "/tmp/test" });
+      ids.push(s.id);
+    }
+
+    truncateSessions(db, "/tmp/test", 3);
+
+    const remaining = listSessions(db, "/tmp/test");
+    expect(remaining).toHaveLength(3);
+    // Most recent 3 survive (listSessions returns newest first)
+    expect(remaining.map((s) => s.id)).toEqual([ids[4], ids[3], ids[2]]);
+    db.close();
+  });
+
+  test("no-op when session count is within the limit", () => {
+    const db = openDatabase(":memory:");
+    for (let i = 0; i < 3; i++) {
+      createSession(db, { cwd: "/tmp/test" });
+    }
+
+    truncateSessions(db, "/tmp/test", 5);
+
+    const remaining = listSessions(db, "/tmp/test");
+    expect(remaining).toHaveLength(3);
+    db.close();
+  });
+
+  test("does not affect sessions in other CWDs", () => {
+    const db = openDatabase(":memory:");
+    for (let i = 0; i < 5; i++) {
+      createSession(db, { cwd: "/tmp/a" });
+    }
+    for (let i = 0; i < 3; i++) {
+      createSession(db, { cwd: "/tmp/b" });
+    }
+
+    truncateSessions(db, "/tmp/a", 2);
+
+    expect(listSessions(db, "/tmp/a")).toHaveLength(2);
+    expect(listSessions(db, "/tmp/b")).toHaveLength(3);
+    db.close();
+  });
+
+  test("cascades to delete messages of truncated sessions", () => {
+    const db = openDatabase(":memory:");
+    const old = createSession(db, { cwd: "/tmp/test" });
+    appendMessage(db, old.id, makeUser("hello"));
+    const keep = createSession(db, { cwd: "/tmp/test" });
+    appendMessage(db, keep.id, makeUser("world"));
+
+    truncateSessions(db, "/tmp/test", 1);
+
+    expect(listSessions(db, "/tmp/test")).toHaveLength(1);
+    expect(loadMessages(db, old.id)).toHaveLength(0);
+    expect(loadMessages(db, keep.id)).toHaveLength(1);
+    db.close();
   });
 });
