@@ -403,6 +403,23 @@ export function buildToolList(state: AppState): {
   return buildTools(state.model, state.plugins);
 }
 
+/**
+ * Get all models from authenticated providers.
+ *
+ * Returns a flat list of models from providers the user has credentials
+ * for, suitable for the `/model` selector.
+ */
+export function getAvailableModels(state: AppState): Model<string>[] {
+  const result: Model<string>[] = [];
+  for (const provider of state.providers.keys()) {
+    const models = getModels(provider as KnownProvider);
+    for (const model of models) {
+      result.push(model);
+    }
+  }
+  return result;
+}
+
 /** Clean up resources on shutdown. */
 export async function shutdown(state: AppState): Promise<void> {
   await destroyPlugins(state.plugins, (entry, err) => {

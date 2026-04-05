@@ -9,7 +9,8 @@
  */
 
 import { homedir } from "node:os";
-import { Divider, Markdown, Spacer } from "@cel-tui/components";
+import type { SelectInstance } from "@cel-tui/components";
+import { Divider, Markdown, Select, Spacer } from "@cel-tui/components";
 import {
   cel,
   HStack,
@@ -24,6 +25,7 @@ import type {
   Message,
   TextContent,
   ThinkingContent,
+  ThinkingLevel,
   ToolCall,
 } from "@mariozechner/pi-ai";
 import { structuredPatch } from "diff";
@@ -31,7 +33,13 @@ import type { AgentEvent } from "./agent.ts";
 import { runAgentLoop } from "./agent.ts";
 import { getGitState } from "./git.ts";
 import type { AppState } from "./index.ts";
-import { buildPrompt, buildToolList, shutdown } from "./index.ts";
+import {
+  buildPrompt,
+  buildToolList,
+  getAvailableModels,
+  shutdown,
+} from "./index.ts";
+import { parseInput } from "./input.ts";
 import { appendMessage, computeStats } from "./session.ts";
 import { truncateOutput } from "./tools.ts";
 
@@ -98,6 +106,24 @@ interface PendingToolCall {
 
 /** Tool calls collected during the current streaming turn. */
 let pendingToolCalls: PendingToolCall[] = [];
+
+// ---------------------------------------------------------------------------
+// Overlay state
+// ---------------------------------------------------------------------------
+
+/** Max visible items in the overlay Select. */
+const OVERLAY_MAX_VISIBLE = 15;
+
+/** Horizontal padding around the overlay modal. */
+const OVERLAY_PADDING_X = 4;
+
+/** Active overlay for interactive commands (/model, /effort, etc.). */
+let activeOverlay: {
+  /** The Select component instance. */
+  select: SelectInstance;
+  /** Title displayed above the Select. */
+  title: string;
+} | null = null;
 
 // ---------------------------------------------------------------------------
 // Divider animation
@@ -532,8 +558,162 @@ function buildConversationLog(state: AppState): Node[] {
 }
 
 // ---------------------------------------------------------------------------
+// Overlay rendering
+// ---------------------------------------------------------------------------
+
+/** Dismiss the active overlay and return focus to the input. */
+function dismissOverlay(): void {
+  activeOverlay = null;
+  inputFocused = true;
+  cel.render();
+}
+
+/** Render the overlay layer (transparent background, centered modal). */
+function renderOverlay(state: AppState): Node {
+  // Fixed height: 1 (title) + 1 (search) + maxVisible items + 1 (overflow)
+  const modalHeight = OVERLAY_MAX_VISIBLE + 3;
+
+  return VStack(
+    {
+      height: "100%",
+      justifyContent: "center",
+      padding: { x: OVERLAY_PADDING_X },
+    },
+    [
+      VStack(
+        {
+          height: modalHeight,
+          bgColor: state.theme.overlayBg,
+          padding: { x: 1 },
+        },
+        [
+          Text(activeOverlay!.title, { bold: true, fgColor: "color06" }),
+          activeOverlay!.select(),
+        ],
+      ),
+    ],
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Command handlers
+// ---------------------------------------------------------------------------
+
+/** Handle the /model command: show interactive model selector. */
+function handleModelCommand(state: AppState): void {
+  const models = getAvailableModels(state);
+  if (models.length === 0) {
+    // No providers — nothing to show
+    return;
+  }
+
+  const currentValue = state.model
+    ? `${state.model.provider}/${state.model.id}`
+    : null;
+
+  const items = models.map((m) => {
+    const value = `${m.provider}/${m.id}`;
+    const current = value === currentValue ? " (current)" : "";
+    return {
+      label: `${m.provider}/${m.id}${current}`,
+      value,
+      filterText: `${m.provider} ${m.id}`,
+    };
+  });
+
+  const select = Select({
+    items,
+    maxVisible: OVERLAY_MAX_VISIBLE,
+    placeholder: "type to filter models...",
+    focused: true,
+    highlightColor: "color06",
+    onSelect: (value) => {
+      const picked = models.find((m) => `${m.provider}/${m.id}` === value);
+      if (picked) {
+        state.model = picked;
+      }
+      dismissOverlay();
+    },
+    onBlur: dismissOverlay,
+  });
+
+  inputFocused = false;
+  activeOverlay = { select, title: "Select a model" };
+  cel.render();
+}
+
+/** Effort levels available for selection. */
+const EFFORT_LEVELS: { label: string; value: ThinkingLevel }[] = [
+  { label: "low", value: "low" },
+  { label: "medium", value: "medium" },
+  { label: "high", value: "high" },
+  { label: "xhigh", value: "xhigh" },
+];
+
+/** Handle the /effort command: show effort level selector. */
+function handleEffortCommand(state: AppState): void {
+  const items = EFFORT_LEVELS.map((e) => ({
+    label: e.value === state.effort ? `${e.label} (current)` : e.label,
+    value: e.value,
+    filterText: e.label,
+  }));
+
+  const select = Select({
+    items,
+    maxVisible: OVERLAY_MAX_VISIBLE,
+    placeholder: "type to filter...",
+    focused: true,
+    highlightColor: "color06",
+    onSelect: (value) => {
+      state.effort = value as ThinkingLevel;
+      dismissOverlay();
+    },
+    onBlur: dismissOverlay,
+  });
+
+  inputFocused = false;
+  activeOverlay = { select, title: "Select effort level" };
+  cel.render();
+}
+
+/** Dispatch a parsed command. Returns true if handled. */
+function handleCommand(command: string, state: AppState): boolean {
+  switch (command) {
+    case "model":
+      handleModelCommand(state);
+      return true;
+    case "effort":
+      handleEffortCommand(state);
+      return true;
+    default:
+      return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Agent loop wiring
 // ---------------------------------------------------------------------------
+
+/** Route raw user input through parseInput and dispatch accordingly. */
+function handleInput(raw: string, state: AppState): void {
+  const parsed = parseInput(raw);
+
+  switch (parsed.type) {
+    case "command":
+      if (!handleCommand(parsed.command, state)) {
+        // Unimplemented command — ignore for now
+      }
+      break;
+    case "text":
+      if (parsed.text) {
+        submitMessage(parsed.text, state).catch((err) => {
+          console.error("Submit error:", err);
+        });
+      }
+      break;
+    // skill and image handling will be added in Phase 4d
+  }
+}
 
 /** Send a plain text message and run the agent loop. */
 async function submitMessage(text: string, state: AppState): Promise<void> {
@@ -688,7 +868,7 @@ export function startUI(state: AppState): void {
   cel.viewport(() => {
     const cols = terminal.columns;
 
-    return VStack(
+    const base = VStack(
       {
         height: "100%",
         onKeyPress: (key) => {
@@ -749,11 +929,10 @@ export function startUI(state: AppState): void {
             },
             onKeyPress: (key) => {
               if (key === "enter") {
-                submitMessage(inputValue, state).catch((err) => {
-                  console.error("Submit error:", err);
-                });
+                const raw = inputValue;
                 inputValue = "";
                 cel.render();
+                handleInput(raw, state);
                 return false;
               }
             },
@@ -785,5 +964,10 @@ export function startUI(state: AppState): void {
         ),
       ],
     );
+
+    if (activeOverlay) {
+      return [base, renderOverlay(state)];
+    }
+    return base;
   });
 }

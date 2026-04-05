@@ -41,6 +41,8 @@ export interface Theme {
   statusText: Color;
   /** Error text. */
   error: Color;
+  /** Overlay modal background. */
+  overlayBg: Color;
 }
 
 // ---------------------------------------------------------------------------
@@ -63,6 +65,7 @@ export const DEFAULT_THEME: Theme = {
   dividerPulse: "color07",
   statusText: "color07",
   error: "color01",
+  overlayBg: "color08",
 };
 
 // ---------------------------------------------------------------------------
