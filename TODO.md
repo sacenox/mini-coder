@@ -53,10 +53,42 @@
 
 ## Phase 4 — UI
 
-- [ ] `ui.ts` — cel-tui layout (log + input + status bar), state management, message rendering
-- [ ] `index.ts` — entry point, provider discovery, startup sequence, command routing
-- [ ] Commands — `/model`, `/session`, `/new`, `/fork`, `/undo`, `/reasoning`, `/verbose`, `/login`, `/logout`, `/help`, `/effort`
-- [ ] Input handling — `/skill:name` parsing, image path detection, Tab file autocomplete
+### 4a — Input parsing (TDD, no UI)
+
+- [ ] `input.ts` — pure logic for parsing user input:
+  - `/command` detection and routing (extract command name + args)
+  - `/skill:name rest of message` → skill body + user text
+  - Image path detection (entire input is an existing image path with valid extension)
+- [ ] `input.test.ts` — tests for all parsing cases
+
+### 4b — App shell (running app, no commands)
+
+- [ ] `index.ts` — entry point: provider discovery (env + OAuth), register built-in API providers, model selection, startup sequence
+- [ ] `ui.ts` — cel-tui layout: conversation log (scrollable, stick-to-bottom), input area (TextInput, submit/newline), status bar (2 lines: cwd+git, model+usage), animated divider
+- [ ] Wire agent loop: submit → build context → stream → render events → tool results → loop
+- [ ] Message rendering: user (bg color), assistant (streamed Markdown), tool calls (shell: bordered output, edit: path + unified diff), errors
+- [ ] Interrupt: Escape during streaming aborts via AbortSignal
+
+### 4c — Commands
+
+- [ ] `/model` — interactive model selector (Select component, available providers/models)
+- [ ] `/session` — session manager (list, resume, delete)
+- [ ] `/new` — new session, reset counters
+- [ ] `/fork` — fork current session
+- [ ] `/undo` — remove last turn
+- [ ] `/reasoning` — toggle thinking display
+- [ ] `/verbose` — toggle full output (disable truncation)
+- [ ] `/login` / `/logout` — OAuth flows via pi-ai
+- [ ] `/effort` — effort level selector
+- [ ] `/help` — list commands, AGENTS.md files, skills, plugins
+- [ ] `/` + Tab — command autocomplete in input
+
+### 4d — Polish
+
+- [ ] Tab file path autocomplete in input
+- [ ] `/skill:name` input handling (strip prefix, prepend skill body)
+- [ ] Image embedding (entire input is image path → embed as ImageContent)
+- [ ] Conditional `readImage` tool registration (only for vision-capable models, re-evaluated on `/model`)
 
 ## Future ideas
 
