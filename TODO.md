@@ -55,11 +55,17 @@
 
 ### 4a — Input parsing (TDD, no UI)
 
-- [ ] `input.ts` — pure logic for parsing user input:
+- [x] `input.ts` — pure logic for parsing user input:
   - `/command` detection and routing (extract command name + args)
   - `/skill:name rest of message` → skill body + user text
   - Image path detection (entire input is an existing image path with valid extension)
-- [ ] `input.test.ts` — tests for all parsing cases
+- [x] `input.test.ts` — 30 tests: command detection (6), skill references (6), image paths (12), plain text (4), priority (2)
+
+### Notes from Phase 4a
+
+- `input.ts` exports: `COMMANDS` (const tuple), `Command` type, `ParsedInput` discriminated union, `ParseInputOpts`, `parseInput(raw, opts?)`. Pure logic — no IO beyond `existsSync` for image path validation.
+- `theme.ts` (also implemented here): `Theme` interface, `DEFAULT_THEME`, `mergeThemes(base, ...overrides)`. Uses terminal palette colors (`color01`–`color08`) for automatic light/dark adaptation. 5 tests in `theme.test.ts`.
+- 158 tests total across 9 files (session: 20, tools: 36, git: 10, skills: 14, prompt: 21, agent: 12, plugins: 10, input: 30, theme: 5).
 
 ### 4b — App shell (running app, no commands)
 
@@ -89,6 +95,7 @@
 - [ ] `/skill:name` input handling (strip prefix, prepend skill body)
 - [ ] Image embedding (entire input is image path → embed as ImageContent)
 - [ ] Conditional `readImage` tool registration (only for vision-capable models, re-evaluated on `/model`)
+- [ ] Context limit compaction (threshold detection, model-generated summary, prompt cache preservation)
 
 ## Future ideas
 

@@ -48,12 +48,12 @@
 
 We test our logic at the boundaries. Never test dependencies (pi-ai, cel-tui, bun:sqlite). Never use mocks or stubs.
 
-**Tools** (`tools.ts` — `shell`, `edit`; `readImage` deferred to Phase 3):
+**Tools** (`tools.ts` — `shell`, `edit`, `readImage`):
 
 - `edit`: exact-text match/replace, multi-match failure, missing text failure, new file creation, parent dir creation, existing-file guard, line ending preservation (LF/CRLF), UTF-8 handling, relative/absolute path resolution.
 - `shell`: stdout/stderr capture, exit code passthrough, output truncation (head + tail with marker), abort signal, cwd propagation.
 - `truncateOutput`: pure function — within limit, head+tail+marker, no overlap, empty/single-line/exact-limit edge cases.
-- `readImage` (Phase 3): base64 encoding, mime type detection, unsupported format rejection, missing file handling.
+- `readImage`: base64 encoding, mime type detection, unsupported format rejection, missing file handling, relative/absolute path resolution.
 
 **Git** (`git.ts`):
 
@@ -83,10 +83,16 @@ We test our logic at the boundaries. Never test dependencies (pi-ai, cel-tui, bu
 **Agent loop** (`agent.ts`):
 
 - Use pi-ai's `faux` provider for end-to-end loop tests.
-- Verify: tool calls are executed, messages are appended in correct order, turns are numbered, interrupt preserves partial response, context limit triggers compaction.
+- Verify: tool calls are executed, messages are appended in correct order, turns are numbered, interrupt preserves partial response, error handling, unknown tool self-correction, length stop reason.
 
-**Input parsing**:
+**Input parsing** (`input.ts`):
 
-- `/skill:name rest of message` → skill body + "rest of message".
-- `/command` detection and routing.
-- Image path detection (entire input is an image path that exists and has a valid extension).
+- `/command` detection and routing (all 11 commands, case-sensitive, unknown commands fall through).
+- `/skill:name rest of message` → skill name + user text extraction.
+- Image path detection (entire input is an existing image path with valid extension, requires `supportsImages` opt-in).
+- Priority ordering: commands > skills > images > plain text.
+
+**Theme** (`theme.ts`):
+
+- Default theme has all required keys (9 terminal palette colors).
+- `mergeThemes` applies partial overrides left-to-right without mutating the base.
