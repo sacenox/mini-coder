@@ -105,15 +105,18 @@
 - [x] `/model` — interactive model selector (Select component, available providers/models)
 - [x] `/effort` — effort level selector
 - [x] `/session` — session manager (list, resume). Scoped to CWD.
+- [x] `/login` — OAuth login via pi-ai (browser-based flow, no manual code input)
 - [x] Overlay layer system for interactive Select commands
 - [x] Wire `parseInput()` into Enter handler, route commands vs text
 - [x] Session truncation — keep max 20 per CWD, runs on init
+- [x] Fix: pass `apiKey` from `state.providers` through `RunAgentOpts` to `streamSimple` (OAuth providers failed without this)
+- [x] Fix: pass `effort` (reasoning level) to `streamSimple` (was silently ignored)
+- [ ] `/logout` — OAuth logout (clear saved credentials)
 - [ ] `/new` — new session, reset counters
 - [ ] `/fork` — fork current session
 - [ ] `/undo` — remove last turn
 - [ ] `/reasoning` — toggle thinking display
 - [ ] `/verbose` — toggle full output (disable truncation)
-- [ ] `/login` / `/logout` — OAuth flows via pi-ai
 - [ ] `/help` — list commands, AGENTS.md files, skills, plugins
 - [ ] `/` + Tab — command autocomplete in input
 
@@ -125,20 +128,26 @@
 - `/effort` shows 4 levels (low/medium/high/xhigh), marks current.
 - `/session` lists sessions via `listSessions(db, cwd)`, labels show relative timestamp (`formatSessionDate`) + model + `(current)` marker. Resume swaps `state.session`, reloads messages and stats.
 - `truncateSessions(db, cwd, keep)` in `session.ts` — deletes oldest beyond limit per CWD. `listSessions` SQL uses `rowid DESC` tiebreaker for deterministic ordering.
+- `/login` shows OAuth providers from `getOAuthProviders()` with login status. `performLogin()` calls `provider.login()` with `onAuth` (opens browser via `xdg-open`/`open`), `onProgress` (status in log). `onPrompt` rejects (no manual code input). On success: persists creds, registers API key in `state.providers`, auto-selects model if none.
+- `apiKey` added to `RunAgentOpts` and passed to `streamSimple` — required for OAuth providers (env vars not set). `effort` also passed as `reasoning` option.
 - `handleInput()` routes through `parseInput()` → `handleCommand()` for commands, `submitMessage()` for text. Skill and image cases are stubs for Phase 4d.
 - `Theme` gained `overlayBg: Color` (default `"color08"`).
+- `appendInfoMessage()` helper for system status messages in the log (login progress, etc.).
 - 162 tests across 9 files (session: 24, tools: 36, git: 10, skills: 14, prompt: 21, agent: 12, plugins: 10, input: 30, theme: 5).
 
 ### Spec review findings (Phase 4c checkpoint)
 
-**Bugs / missing behavior:**
+**Bugs (from earlier phases, deferred):**
 
-- `agent.ts` never passes `reasoning` (effort level) to `streamSimple()`. The `/effort` command updates `state.effort` but it has no effect on the LLM call. `RunAgentOpts` needs an `effort` field, and the `streamSimple` call needs `{ signal, reasoning: effort }`.
-- Assistant messages not visibly streaming — text appears as full blocks instead of incrementally, causing jarring scroll jumps. Likely a rendering or event issue in `ui.ts` streaming path.
-- Shell tool rendering doesn't show exit code (spec: "Shows the command, head + tail truncated output with a visual marker, and exit code"). `ToolExecResult` carries `isError` but not the numeric exit code.
-- Status bar CWD truncation from the left (`…/mini-coder`) on narrow terminals — not implemented, just shows full abbreviated path.
-- `Ctrl+Z` suspend/background — not implemented (spec lists it in key bindings).
-- `/session` spec says "list, resume, delete" — we intentionally deferred delete (design decision).
+- Assistant messages not visibly streaming — text appears as full blocks instead of incrementally, causing jarring scroll jumps. Likely a rendering or event issue in `ui.ts` streaming path (Phase 4b).
+- Shell tool rendering doesn't show exit code (spec: "Shows the command, head + tail truncated output with a visual marker, and exit code"). `ToolExecResult` carries `isError` but not the numeric exit code (Phase 4b).
+- Status bar CWD truncation from the left (`…/mini-coder`) on narrow terminals — not implemented, just shows full abbreviated path (Phase 4b).
+- `Ctrl+Z` suspend/background — not implemented (spec lists it in key bindings) (Phase 4b).
+
+**Design decisions:**
+
+- `/session` delete deferred — spec says "list, resume, delete" but Select component doesn't expose highlighted item for secondary actions.
+- `/login` has no manual code input fallback — `onPrompt` rejects. Browser callback has always worked in practice.
 
 ### 4d — Polish
 
