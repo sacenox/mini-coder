@@ -111,12 +111,13 @@
 - [x] Session truncation — keep max 20 per CWD, runs on init
 - [x] Fix: pass `apiKey` from `state.providers` through `RunAgentOpts` to `streamSimple` (OAuth providers failed without this)
 - [x] Fix: pass `effort` (reasoning level) to `streamSimple` (was silently ignored)
-- [ ] `/logout` — OAuth logout (clear saved credentials)
-- [ ] `/new` — new session, reset counters
-- [ ] `/fork` — fork current session
-- [ ] `/undo` — remove last turn
-- [ ] `/reasoning` — toggle thinking display
-- [ ] `/verbose` — toggle full output (disable truncation)
+- [x] `/logout` — OAuth logout (Select of logged-in providers, clear creds, nullify model if needed)
+- [x] `/new` — new session, reset messages/stats
+- [x] `/fork` — fork current session, info message
+- [x] `/undo` — interrupt if running, then remove last turn
+- [x] `/reasoning` — toggle `showReasoning`
+- [x] `/verbose` — toggle `verbose`
+- [x] Info messages separated from `state.messages` — display-only `infoMessages` array, not sent to LLM, cleared on session switch
 - [ ] `/help` — list commands, AGENTS.md files, skills, plugins
 - [ ] `/` + Tab — command autocomplete in input
 
@@ -129,10 +130,15 @@
 - `/session` lists sessions via `listSessions(db, cwd)`, labels show relative timestamp (`formatSessionDate`) + model + `(current)` marker. Resume swaps `state.session`, reloads messages and stats.
 - `truncateSessions(db, cwd, keep)` in `session.ts` — deletes oldest beyond limit per CWD. `listSessions` SQL uses `rowid DESC` tiebreaker for deterministic ordering.
 - `/login` shows OAuth providers from `getOAuthProviders()` with login status. `performLogin()` calls `provider.login()` with `onAuth` (opens browser via `xdg-open`/`open`), `onProgress` (status in log). `onPrompt` rejects (no manual code input). On success: persists creds, registers API key in `state.providers`, auto-selects model if none.
+- `/logout` filters `getOAuthProviders()` to those with saved creds. On select: deletes creds, removes from `state.providers`, clears model if it belonged to the provider.
+- `/new` creates session via `createSession`, clears messages/stats/infoMessages. Guards against running state.
+- `/fork` calls `forkSession`, reloads messages/stats, shows info message. Guards against running state.
+- `/undo` aborts agent if running, then `undoLastTurn`, reloads messages/stats.
+- `/reasoning` and `/verbose` toggle their respective `AppState` booleans and re-render.
 - `apiKey` added to `RunAgentOpts` and passed to `streamSimple` — required for OAuth providers (env vars not set). `effort` also passed as `reasoning` option.
 - `handleInput()` routes through `parseInput()` → `handleCommand()` for commands, `submitMessage()` for text. Skill and image cases are stubs for Phase 4d.
 - `Theme` gained `overlayBg: Color` (default `"color08"`).
-- `appendInfoMessage()` helper for system status messages in the log (login progress, etc.).
+- `appendInfoMessage()` helper for display-only status messages. Uses separate `infoMessages` array (not `state.messages`) so info text is never sent to the LLM. Cleared on `/new`, `/session` resume, `/fork`.
 - 162 tests across 9 files (session: 24, tools: 36, git: 10, skills: 14, prompt: 21, agent: 12, plugins: 10, input: 30, theme: 5).
 
 ### Spec review findings (Phase 4c checkpoint)

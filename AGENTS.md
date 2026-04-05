@@ -46,6 +46,9 @@
 - **Respect the phased plan.** Each TODO.md phase has explicit scope. Do not implement features from later phases — even if they feel "easy" or "related." Scope creep wastes review time, introduces bugs from untested code paths, and erodes trust. If something isn't listed in the current phase, it doesn't exist yet.
 - **Understand callback return semantics.** In cel-tui's `onKeyPress`, returning `false` means "prevent the default action" — returning it unconditionally blocks all typing. Only return `false` for keys you explicitly intercept. Let all other keys fall through with no return.
 - **Use the dependency's types, not weaker ones.** If a dependency defines a specific type (e.g., cel-tui's `Color`), use it in your own interfaces. Don't weaken to `string` and then cast with `as any` everywhere — that defeats type safety and creates lint noise.
+- **Read the framework's key dispatch code.** cel-tui intercepts Escape at the framework level (unfocuses before `onKeyPress` fires). Use `onBlur` for dismiss-on-Escape instead of `onKeyPress`. Don't assume events reach component handlers without checking the framework's dispatch order.
+- **Pass all required options through the call chain.** pi-ai's `streamSimple` needs `apiKey` in options for OAuth providers (env vars aren't set). When adding a new field to a dependency's options, trace the full call path from UI → agent loop → provider to ensure it arrives.
+- **Display-only state must not leak into model context.** Info messages (login progress, fork confirmation) belong in a separate display array, not `state.messages`. Anything in `state.messages` gets sent to the LLM as conversation history.
 
 ## Testing strategy
 
@@ -68,6 +71,7 @@ We test our logic at the boundaries. Never test dependencies (pi-ai, cel-tui, bu
 - Turn numbering: user message gets MAX+1, subsequent messages share the turn.
 - Undo: deletes correct turn, leaves others intact.
 - Fork: copies all messages, new session id, preserves turn order.
+- Truncation: keeps most recent N sessions per CWD, cascades to messages.
 - Cumulative stats computation from message history.
 
 **System prompt construction** (`prompt.ts`):
@@ -98,5 +102,5 @@ We test our logic at the boundaries. Never test dependencies (pi-ai, cel-tui, bu
 
 **Theme** (`theme.ts`):
 
-- Default theme has all required keys (9 terminal palette colors).
+- Default theme has all required keys (10 themed colors including `overlayBg`).
 - `mergeThemes` applies partial overrides left-to-right without mutating the base.

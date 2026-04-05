@@ -47,8 +47,11 @@ import { parseInput } from "./input.ts";
 import {
   appendMessage,
   computeStats,
+  createSession,
+  forkSession,
   listSessions,
   loadMessages,
+  undoLastTurn,
 } from "./session.ts";
 import { truncateOutput } from "./tools.ts";
 
@@ -115,6 +118,9 @@ interface PendingToolCall {
 
 /** Tool calls collected during the current streaming turn. */
 let pendingToolCalls: PendingToolCall[] = [];
+
+/** Display-only info messages (not persisted, not sent to LLM). */
+let infoMessages: Message[] = [];
 
 // ---------------------------------------------------------------------------
 // Overlay state
@@ -547,6 +553,18 @@ function buildConversationLog(state: AppState): Node[] {
     nodes.push(...renderStreamingResponse(state));
   }
 
+  // Append display-only info messages
+  for (const msg of infoMessages) {
+    nodes.push(
+      VStack({ padding: { x: 1 } }, [
+        Text(typeof msg.content === "string" ? msg.content : "", {
+          fgColor: "color08",
+          italic: true,
+        }),
+      ]),
+    );
+  }
+
   // Empty state
   if (nodes.length === 0) {
     nodes.push(Spacer());
@@ -717,6 +735,7 @@ function handleSessionCommand(state: AppState): void {
           state.session = picked;
           state.messages = loadMessages(state.db, picked.id);
           state.stats = computeStats(state.messages);
+          infoMessages = [];
           stickToBottom = true;
         }
       }
@@ -757,14 +776,70 @@ function openInBrowser(url: string): void {
  * Used for login progress/status messages that aren't part of the
  * agent conversation. Rendered as dimmed italic text.
  */
-function appendInfoMessage(text: string, state: AppState): void {
+function appendInfoMessage(text: string, _state: AppState): void {
   const msg: Message = {
     role: "user",
     content: `[${text}]`,
     timestamp: Date.now(),
   };
-  state.messages.push(msg);
+  infoMessages.push(msg);
   stickToBottom = true;
+  cel.render();
+}
+
+/** Handle the /new command: start a new session. */
+function handleNewCommand(state: AppState): void {
+  if (state.running) return;
+  const modelLabel = state.model
+    ? `${state.model.provider}/${state.model.id}`
+    : undefined;
+  state.session = createSession(state.db, {
+    cwd: state.cwd,
+    model: modelLabel,
+    effort: state.effort,
+  });
+  state.messages = [];
+  state.stats = { totalInput: 0, totalOutput: 0, totalCost: 0 };
+  infoMessages = [];
+  stickToBottom = true;
+  cel.render();
+}
+
+/** Handle the /fork command: fork the current session. */
+function handleForkCommand(state: AppState): void {
+  if (state.running) return;
+  const forked = forkSession(state.db, state.session.id);
+  state.session = forked;
+  state.messages = loadMessages(state.db, forked.id);
+  state.stats = computeStats(state.messages);
+  infoMessages = [];
+  appendInfoMessage(`Forked session.`, state);
+}
+
+/** Handle the /undo command: remove the last turn. */
+function handleUndoCommand(state: AppState): void {
+  // Interrupt first if the agent is running
+  if (state.running && state.abortController) {
+    state.abortController.abort();
+  }
+  const removed = undoLastTurn(state.db, state.session.id);
+  if (removed) {
+    state.messages = loadMessages(state.db, state.session.id);
+    state.stats = computeStats(state.messages);
+    stickToBottom = true;
+    cel.render();
+  }
+}
+
+/** Handle the /reasoning command: toggle thinking display. */
+function handleReasoningCommand(state: AppState): void {
+  state.showReasoning = !state.showReasoning;
+  cel.render();
+}
+
+/** Handle the /verbose command: toggle full output display. */
+function handleVerboseCommand(state: AppState): void {
+  state.verbose = !state.verbose;
   cel.render();
 }
 
@@ -853,6 +928,52 @@ async function performLogin(
   appendInfoMessage(`Logged in to ${provider.name}.`, state);
 }
 
+/** Handle the /logout command: clear OAuth credentials for a provider. */
+function handleLogoutCommand(state: AppState): void {
+  const loggedInProviders = getOAuthProviders().filter(
+    (p) => state.oauthCredentials[p.id] != null,
+  );
+  if (loggedInProviders.length === 0) {
+    return;
+  }
+
+  const items = loggedInProviders.map((p) => ({
+    label: p.name,
+    value: p.id,
+    filterText: p.name,
+  }));
+
+  const select = Select({
+    items,
+    maxVisible: OVERLAY_MAX_VISIBLE,
+    placeholder: "type to filter providers...",
+    focused: true,
+    highlightColor: "color06",
+    onSelect: (providerId) => {
+      delete state.oauthCredentials[providerId];
+      saveOAuthCredentials(state.oauthCredentials);
+      state.providers.delete(providerId);
+
+      // Clear model if it belonged to the logged-out provider
+      if (state.model && state.model.provider === providerId) {
+        state.model = null;
+      }
+
+      const provider = loggedInProviders.find((p) => p.id === providerId);
+      dismissOverlay();
+      appendInfoMessage(
+        `Logged out of ${provider?.name ?? providerId}.`,
+        state,
+      );
+    },
+    onBlur: dismissOverlay,
+  });
+
+  inputFocused = false;
+  activeOverlay = { select, title: "Logout from a provider" };
+  cel.render();
+}
+
 /** Dispatch a parsed command. Returns true if handled. */
 function handleCommand(command: string, state: AppState): boolean {
   switch (command) {
@@ -867,6 +988,24 @@ function handleCommand(command: string, state: AppState): boolean {
       return true;
     case "login":
       handleLoginCommand(state);
+      return true;
+    case "logout":
+      handleLogoutCommand(state);
+      return true;
+    case "new":
+      handleNewCommand(state);
+      return true;
+    case "fork":
+      handleForkCommand(state);
+      return true;
+    case "undo":
+      handleUndoCommand(state);
+      return true;
+    case "reasoning":
+      handleReasoningCommand(state);
+      return true;
+    case "verbose":
+      handleVerboseCommand(state);
       return true;
     default:
       return false;
