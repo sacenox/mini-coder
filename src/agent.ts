@@ -11,40 +11,33 @@
 import type { Database } from "bun:sqlite";
 import type {
   AssistantMessage,
-  ImageContent,
   Message,
   Model,
-  TextContent,
   Tool,
   ToolCall,
   ToolResultMessage,
 } from "@mariozechner/pi-ai";
 import { streamSimple } from "@mariozechner/pi-ai";
 import { appendMessage } from "./session.ts";
+import type { ToolExecResult } from "./tools.ts";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-/** A registered tool with its definition and execute function. */
-export interface AgentTool {
-  /** pi-ai tool definition (name, description, parameters schema). */
-  definition: Tool;
-  /** Execute the tool and return content for the tool result message. */
-  execute: (
-    args: Record<string, unknown>,
-    cwd: string,
-    signal?: AbortSignal,
-  ) => Promise<ToolExecResult> | ToolExecResult;
-}
+/**
+ * A tool execution handler.
+ *
+ * Called by the agent loop when the model invokes a tool. Arguments are
+ * the JSON object parsed by pi-ai from the model's tool call.
+ */
+export type ToolHandler = (
+  args: Record<string, unknown>,
+  cwd: string,
+  signal?: AbortSignal,
+) => Promise<ToolExecResult> | ToolExecResult;
 
-/** Result from executing a tool. */
-export interface ToolExecResult {
-  /** Content blocks for the tool result (text and/or images). */
-  content: (TextContent | ImageContent)[];
-  /** Whether the execution encountered an error. */
-  isError: boolean;
-}
+export type { ToolExecResult };
 
 /** Events emitted during the agent loop for UI updates. */
 export type AgentEvent =
@@ -68,8 +61,10 @@ export interface RunAgentOpts {
   model: Model<string>;
   /** The assembled system prompt. */
   systemPrompt: string;
-  /** Registered tools (built-in + plugin). */
-  tools: AgentTool[];
+  /** Tool definitions sent to the model. */
+  tools: Tool[];
+  /** Tool name → handler map for executing tool calls. */
+  toolHandlers: Map<string, ToolHandler>;
   /** Current message history (mutated in-place as messages are appended). */
   messages: Message[];
   /** Working directory for tool execution. */
@@ -113,20 +108,18 @@ export async function runAgentLoop(
     model,
     systemPrompt,
     tools,
+    toolHandlers,
     messages,
     cwd,
     signal,
     onEvent,
   } = opts;
 
-  const toolDefs = tools.map((t) => t.definition);
-  const toolMap = new Map(tools.map((t) => [t.definition.name, t]));
-
   while (true) {
     // Build context for this iteration
     const context =
-      toolDefs.length > 0
-        ? { systemPrompt, messages, tools: toolDefs }
+      tools.length > 0
+        ? { systemPrompt, messages, tools }
         : { systemPrompt, messages };
 
     // Stream to LLM
@@ -188,19 +181,15 @@ export async function runAgentLoop(
     );
 
     for (const toolCall of toolCalls) {
-      const tool = toolMap.get(toolCall.name);
+      const handler = toolHandlers.get(toolCall.name);
 
-      let resultContent: (TextContent | ImageContent)[];
-      let isError: boolean;
+      let result: ToolExecResult;
 
-      if (!tool) {
-        resultContent = [
-          {
-            type: "text",
-            text: `Unknown tool: ${toolCall.name}`,
-          },
-        ];
-        isError = true;
+      if (!handler) {
+        result = {
+          content: [{ type: "text", text: `Unknown tool: ${toolCall.name}` }],
+          isError: true,
+        };
       } else {
         onEvent?.({
           type: "tool_start",
@@ -208,9 +197,7 @@ export async function runAgentLoop(
           args: toolCall.arguments,
         });
 
-        const result = await tool.execute(toolCall.arguments, cwd, signal);
-        resultContent = result.content;
-        isError = result.isError;
+        result = await handler(toolCall.arguments, cwd, signal);
 
         onEvent?.({ type: "tool_end", name: toolCall.name, result });
       }
@@ -219,8 +206,8 @@ export async function runAgentLoop(
         role: "toolResult",
         toolCallId: toolCall.id,
         toolName: toolCall.name,
-        content: resultContent,
-        isError,
+        content: result.content,
+        isError: result.isError,
         timestamp: Date.now(),
       };
 

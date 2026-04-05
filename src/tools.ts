@@ -18,12 +18,22 @@ import { Type } from "@mariozechner/pi-ai";
 // Result type
 // ---------------------------------------------------------------------------
 
-/** Result returned by a text-only tool execution. */
-export interface ToolResult {
-  /** Human-readable result text. */
-  text: string;
+/**
+ * Result from executing a tool.
+ *
+ * Content blocks carry either text or image data. The agent loop
+ * maps these directly into {@link ToolResultMessage.content}.
+ */
+export interface ToolExecResult {
+  /** Content blocks for the tool result (text and/or images). */
+  content: (TextContent | ImageContent)[];
   /** Whether the execution encountered an error. */
   isError: boolean;
+}
+
+/** Convenience: build a text-only {@link ToolExecResult}. */
+function textResult(text: string, isError: boolean): ToolExecResult {
+  return { content: [{ type: "text", text }], isError };
 }
 
 // ---------------------------------------------------------------------------
@@ -51,24 +61,24 @@ export interface EditArgs {
  *
  * @param args - Edit arguments (path, oldText, newText).
  * @param cwd - Working directory for resolving relative paths.
- * @returns A {@link ToolResult} with confirmation or error message.
+ * @returns A {@link ToolExecResult} with confirmation or error message.
  */
-export function executeEdit(args: EditArgs, cwd: string): ToolResult {
+export function executeEdit(args: EditArgs, cwd: string): ToolExecResult {
   const filePath = isAbsolute(args.path) ? args.path : join(cwd, args.path);
 
   // Create new file
   if (args.oldText === "") {
     if (existsSync(filePath)) {
-      return { text: `File already exists: ${args.path}`, isError: true };
+      return textResult(`File already exists: ${args.path}`, true);
     }
     mkdirSync(dirname(filePath), { recursive: true });
     writeFileSync(filePath, args.newText, "utf-8");
-    return { text: `Created ${args.path}`, isError: false };
+    return textResult(`Created ${args.path}`, false);
   }
 
   // Replace in existing file
   if (!existsSync(filePath)) {
-    return { text: `File not found: ${args.path}`, isError: true };
+    return textResult(`File not found: ${args.path}`, true);
   }
 
   const content = readFileSync(filePath, "utf-8");
@@ -84,19 +94,19 @@ export function executeEdit(args: EditArgs, cwd: string): ToolResult {
   }
 
   if (count === 0) {
-    return { text: `Old text not found in ${args.path}`, isError: true };
+    return textResult(`Old text not found in ${args.path}`, true);
   }
   if (count > 1) {
-    return {
-      text: `Old text matches multiple locations (${count}) in ${args.path}`,
-      isError: true,
-    };
+    return textResult(
+      `Old text matches multiple locations (${count}) in ${args.path}`,
+      true,
+    );
   }
 
   // Exactly one match — replace
   const updated = content.replace(args.oldText, args.newText);
   writeFileSync(filePath, updated, "utf-8");
-  return { text: `Edited ${args.path}`, isError: false };
+  return textResult(`Edited ${args.path}`, false);
 }
 
 // ---------------------------------------------------------------------------
@@ -129,13 +139,13 @@ const DEFAULT_MAX_LINES = 1000;
  * @param args - Shell arguments (command).
  * @param cwd - Working directory to run the command in.
  * @param opts - Optional execution options (maxLines, signal).
- * @returns A {@link ToolResult} with the command output.
+ * @returns A {@link ToolExecResult} with the command output.
  */
 export async function executeShell(
   args: ShellArgs,
   cwd: string,
   opts?: ShellOpts,
-): Promise<ToolResult> {
+): Promise<ToolExecResult> {
   const shell = process.env.SHELL || "/bin/sh";
   const maxLines = opts?.maxLines ?? DEFAULT_MAX_LINES;
 
@@ -172,10 +182,10 @@ export async function executeShell(
     const prefix = isError ? `Command failed with exit code ${exitCode}\n` : "";
     const text = prefix + output;
 
-    return { text: text || "(no output)", isError };
+    return textResult(text || "(no output)", isError);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return { text: `Shell error: ${message}`, isError: true };
+    return textResult(`Shell error: ${message}`, true);
   }
 }
 
@@ -266,14 +276,6 @@ export interface ReadImageArgs {
   path: string;
 }
 
-/** Result returned by readImage — supports image content in tool results. */
-export interface ReadImageResult {
-  /** Content blocks for the tool result (text for errors, image for success). */
-  content: (TextContent | ImageContent)[];
-  /** Whether the execution encountered an error. */
-  isError: boolean;
-}
-
 /**
  * Read an image file and return it as base64-encoded content.
  *
@@ -283,33 +285,25 @@ export interface ReadImageResult {
  *
  * @param args - ReadImage arguments (path).
  * @param cwd - Working directory for resolving relative paths.
- * @returns A {@link ReadImageResult} with image content or error message.
+ * @returns A {@link ToolExecResult} with image content or error message.
  */
 export function executeReadImage(
   args: ReadImageArgs,
   cwd: string,
-): ReadImageResult {
+): ToolExecResult {
   const filePath = isAbsolute(args.path) ? args.path : join(cwd, args.path);
   const ext = extname(filePath).toLowerCase();
 
   const mimeType = IMAGE_MIME_TYPES[ext];
   if (!mimeType) {
-    return {
-      content: [
-        {
-          type: "text",
-          text: `Unsupported image format: ${ext || "(no extension)"}`,
-        },
-      ],
-      isError: true,
-    };
+    return textResult(
+      `Unsupported image format: ${ext || "(no extension)"}`,
+      true,
+    );
   }
 
   if (!existsSync(filePath)) {
-    return {
-      content: [{ type: "text", text: `File not found: ${args.path}` }],
-      isError: true,
-    };
+    return textResult(`File not found: ${args.path}`, true);
   }
 
   const data = readFileSync(filePath);

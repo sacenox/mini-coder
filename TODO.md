@@ -13,10 +13,11 @@
 - `session.ts` exports: `openDatabase`, `createSession`, `getSession`, `listSessions`, `deleteSession`, `appendMessage`, `loadMessages`, `undoLastTurn`, `forkSession`, `computeStats`.
 - Internal row types (`SessionRow`, `MaxTurnRow`, `DataRow`) and a `SQL` constants object keep queries centralized and avoid formatter conflicts.
 - `@mariozechner/pi-ai` is the only runtime dependency so far. Its `Message`, `AssistantMessage`, `UserMessage`, `ToolResultMessage` types are used for session persistence.
-- `tools.ts` exports: `executeEdit`, `executeShell`, `truncateOutput`, `editTool`, `shellTool` (pi-ai `Tool` definitions with TypeBox schemas). `ToolResult` type (`{ text, isError }`) is the common return shape.
+- `tools.ts` exports: `ToolExecResult`, `EditArgs`, `executeEdit`, `ShellArgs`, `ShellOpts`, `executeShell`, `truncateOutput`, `editTool`, `shellTool`, `ReadImageArgs`, `executeReadImage`, `readImageTool`. All execute functions return `ToolExecResult` (`{ content: (TextContent | ImageContent)[], isError }`). pi-ai `Tool` definitions use TypeBox schemas.
 - `git.ts` exports: `getGitState` → `GitState | null`. Runs 4 git commands in parallel. Internal `parseStatus` parses porcelain v1 format (uses `trim=false` to preserve leading-space column).
 - biome `noNonNullAssertion` rule disabled globally — non-null assertions after explicit null checks are idiomatic in tests.
 - 57 tests total across 3 files (session: 20, tools: 27, git: 10).
+- `diff` package added as dependency for unified diffs in edit tool output (Phase 4 UI).
 
 ## Phase 2 — Context assembly
 
@@ -44,11 +45,12 @@
 
 ### Notes from Phase 3
 
-- `readImage` in `tools.ts` exports: `ReadImageArgs`, `ReadImageResult`, `executeReadImage`, `readImageTool`. Returns `ImageContent` on success (base64 + mimeType) or `TextContent` error. Separate result type from `ToolResult` since it carries image content — the agent loop handles mapping both into `ToolResultMessage`.
-- `agent.ts` exports: `AgentTool`, `ToolExecResult`, `AgentEvent`, `RunAgentOpts`, `AgentLoopResult`, `runAgentLoop`. The loop streams via `streamSimple`, dispatches tool calls through a name→handler map, appends all messages to DB with the same turn number, and emits events for UI updates. Unknown tools produce error results so the model can self-correct.
-- `plugins.ts` exports: `AgentContext`, `PluginResult`, `Plugin`, `PluginEntry`, `LoadedPlugin`, `loadPluginConfig`, `initPlugins`, `destroyPlugins`. Plugins are real modules loaded via dynamic `import()` — tested with actual `.ts` files in temp dirs (no mocks).
+- `readImage` in `tools.ts`: `ReadImageArgs`, `executeReadImage`, `readImageTool`. Returns `ImageContent` on success (base64 + mimeType) or text error, both via `ToolExecResult`.
+- `agent.ts` exports: `ToolHandler` (function type), `ToolExecResult` (re-exported from `tools.ts`), `AgentEvent`, `RunAgentOpts`, `AgentLoopResult`, `runAgentLoop`. `RunAgentOpts` takes `tools: Tool[]` (definitions for the model) and `toolHandlers: Map<string, ToolHandler>` (dispatch map). The loop streams via `streamSimple`, dispatches tool calls through the handler map, appends all messages to DB with the same turn number, and emits events for UI updates. Unknown tools produce error results so the model can self-correct.
+- `plugins.ts` exports: `AgentContext`, `PluginResult`, `Plugin`, `PluginEntry`, `LoadedPlugin`, `loadPluginConfig`, `initPlugins`, `destroyPlugins`. `PluginResult.tools` is `Tool[]` (pi-ai definitions), `PluginResult.toolHandlers` is `Map<string, ToolHandler>` (optional). Plugins are real modules loaded via dynamic `import()` — tested with actual `.ts` files in temp dirs (no mocks).
 - Context limit compaction is deferred — the spec notes "the specifics will be refined during development." The agent loop structure supports adding it as a pre-stream check.
 - Conditional `readImage` registration (only for vision-capable models) will be handled by the caller (`index.ts`) checking `Model.input.includes("image")`.
+- `cel-tui` (`@cel-tui/core`, `@cel-tui/components`) added as dependencies for the TUI.
 - 123 tests total across 7 files.
 
 ## Phase 4 — UI
@@ -67,9 +69,19 @@
 - `theme.ts` (also implemented here): `Theme` interface, `DEFAULT_THEME`, `mergeThemes(base, ...overrides)`. Uses terminal palette colors (`color01`–`color08`) for automatic light/dark adaptation. 5 tests in `theme.test.ts`.
 - 158 tests total across 9 files (session: 20, tools: 36, git: 10, skills: 14, prompt: 21, agent: 12, plugins: 10, input: 30, theme: 5).
 
+### Notes from Phase 4b (in progress)
+
+- `index.ts` exports: `AppState` (all mutable app state), `init()`, `buildPrompt(state)`, `buildToolList(state)`, `shutdown(state)`. Also re-exports OAuth helpers (`loadOAuthCredentials`, `saveOAuthCredentials`, `DATA_DIR`, `AUTH_PATH`) for `/login` and `/logout` commands.
+- Provider discovery checks env-based API keys first, then saved OAuth tokens (`~/.config/mini-coder/auth.json`). Refreshes expired tokens and persists updates.
+- Model selection picks the first model from the first provider with models, or `null` if none. No `process.exit` — the TUI starts regardless so the user can `/login`.
+- Tool wiring: `buildTools` returns `{ tools: Tool[], toolHandlers: Map<string, ToolHandler> }`. Built-in handlers are a plain record. Plugin tools and handlers are merged from `PluginResult`.
+- `ToolExecResult` is now the single result type in `tools.ts`. `ToolResult` and `ReadImageResult` were removed. All execute functions return `ToolExecResult` directly.
+- `AgentTool` wrapper type removed from `agent.ts`. The agent loop takes `tools: Tool[]` + `toolHandlers: Map<string, ToolHandler>` separately.
+- 158 tests still pass across 9 files.
+
 ### 4b — App shell (running app, no commands)
 
-- [ ] `index.ts` — entry point: provider discovery (env + OAuth), register built-in API providers, model selection, startup sequence
+- [x] `index.ts` — entry point: provider discovery (env + OAuth), model selection (first available, null if none), startup sequence
 - [ ] `ui.ts` — cel-tui layout: conversation log (scrollable, stick-to-bottom), input area (TextInput, submit/newline), status bar (2 lines: cwd+git, model+usage), animated divider
 - [ ] Wire agent loop: submit → build context → stream → render events → tool results → loop
 - [ ] Message rendering: user (bg color), assistant (streamed Markdown), tool calls (shell: bordered output, edit: path + unified diff), errors

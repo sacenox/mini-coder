@@ -83,6 +83,7 @@ We test our logic at the boundaries. Never test dependencies (pi-ai, cel-tui, bu
 **Agent loop** (`agent.ts`):
 
 - Use pi-ai's `faux` provider for end-to-end loop tests.
+- The loop takes `tools: Tool[]` (definitions for the model) and `toolHandlers: Map<string, ToolHandler>` (dispatch map). Tests build both via helper functions.
 - Verify: tool calls are executed, messages are appended in correct order, turns are numbered, interrupt preserves partial response, error handling, unknown tool self-correction, length stop reason.
 
 **Input parsing** (`input.ts`):

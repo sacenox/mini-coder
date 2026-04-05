@@ -3,32 +3,21 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AssistantMessage, UserMessage } from "@mariozechner/pi-ai";
+import type { AssistantMessage, Tool, UserMessage } from "@mariozechner/pi-ai";
 import {
   type FauxProviderRegistration,
   fauxAssistantMessage,
   fauxToolCall,
   registerFauxProvider,
 } from "@mariozechner/pi-ai";
-import {
-  type AgentEvent,
-  type AgentTool,
-  runAgentLoop,
-  type ToolExecResult,
-} from "./agent.ts";
+import { type AgentEvent, runAgentLoop, type ToolHandler } from "./agent.ts";
 import {
   appendMessage,
   createSession,
   loadMessages,
   openDatabase,
 } from "./session.ts";
-import {
-  editTool,
-  executeEdit,
-  executeShell,
-  shellTool,
-  type ToolResult,
-} from "./tools.ts";
+import { editTool, executeEdit, executeShell, shellTool } from "./tools.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -54,36 +43,32 @@ function makeUser(text: string): UserMessage {
   return { role: "user", content: text, timestamp: Date.now() };
 }
 
-/** Wrap a text-only ToolResult into a ToolExecResult with content blocks. */
-function wrapResult(r: ToolResult): ToolExecResult {
-  return { content: [{ type: "text", text: r.text }], isError: r.isError };
+/** Built-in tool definitions for tests. */
+function builtinToolDefs(): Tool[] {
+  return [shellTool, editTool];
 }
 
-/** Create standard built-in tools for tests. */
-function builtinTools(): AgentTool[] {
-  return [
-    {
-      definition: shellTool,
-      execute: async (args, cwd) =>
-        wrapResult(
-          await executeShell({ command: args.command as string }, cwd),
+/** Built-in tool handlers for tests. */
+function builtinToolHandlers(): Map<string, ToolHandler> {
+  return new Map<string, ToolHandler>([
+    [
+      "shell",
+      async (args, cwd) =>
+        executeShell({ command: args.command as string }, cwd),
+    ],
+    [
+      "edit",
+      (args, cwd) =>
+        executeEdit(
+          {
+            path: args.path as string,
+            oldText: args.oldText as string,
+            newText: args.newText as string,
+          },
+          cwd,
         ),
-    },
-    {
-      definition: editTool,
-      execute: (args, cwd) =>
-        wrapResult(
-          executeEdit(
-            {
-              path: args.path as string,
-              oldText: args.oldText as string,
-              newText: args.newText as string,
-            },
-            cwd,
-          ),
-        ),
-    },
-  ];
+    ],
+  ]);
 }
 
 // ---------------------------------------------------------------------------
@@ -105,6 +90,7 @@ describe("agent loop", () => {
       model: faux.getModel(),
       systemPrompt: "Test",
       tools: [],
+      toolHandlers: new Map(),
       messages: [userMsg],
       cwd: tmp,
     });
@@ -128,6 +114,7 @@ describe("agent loop", () => {
       model: faux.getModel(),
       systemPrompt: "Test",
       tools: [],
+      toolHandlers: new Map(),
       messages: [userMsg],
       cwd: tmp,
     });
@@ -159,7 +146,8 @@ describe("agent loop", () => {
       turn,
       model: faux.getModel(),
       systemPrompt: "Test",
-      tools: builtinTools(),
+      tools: builtinToolDefs(),
+      toolHandlers: builtinToolHandlers(),
       messages: [userMsg],
       cwd: tmp,
     });
@@ -207,7 +195,8 @@ describe("agent loop", () => {
       turn,
       model: faux.getModel(),
       systemPrompt: "Test",
-      tools: builtinTools(),
+      tools: builtinToolDefs(),
+      toolHandlers: builtinToolHandlers(),
       messages: [userMsg],
       cwd: tmp,
     });
@@ -245,7 +234,8 @@ describe("agent loop", () => {
       turn,
       model: faux.getModel(),
       systemPrompt: "Test",
-      tools: builtinTools(),
+      tools: builtinToolDefs(),
+      toolHandlers: builtinToolHandlers(),
       messages: [userMsg],
       cwd: tmp,
     });
@@ -273,7 +263,8 @@ describe("agent loop", () => {
       turn,
       model: faux.getModel(),
       systemPrompt: "Test",
-      tools: builtinTools(),
+      tools: builtinToolDefs(),
+      toolHandlers: builtinToolHandlers(),
       messages: [userMsg],
       cwd: tmp,
     });
@@ -304,6 +295,7 @@ describe("agent loop", () => {
       model: faux.getModel(),
       systemPrompt: "Test",
       tools: [],
+      toolHandlers: new Map(),
       messages: [userMsg],
       cwd: tmp,
       onEvent: (e) => events.push(e),
@@ -336,7 +328,8 @@ describe("agent loop", () => {
       turn,
       model: faux.getModel(),
       systemPrompt: "Test",
-      tools: builtinTools(),
+      tools: builtinToolDefs(),
+      toolHandlers: builtinToolHandlers(),
       messages: [userMsg],
       cwd: tmp,
       onEvent: (e) => events.push(e),
@@ -368,6 +361,7 @@ describe("agent loop", () => {
       model: faux.getModel(),
       systemPrompt: "Test",
       tools: [],
+      toolHandlers: new Map(),
       messages: [userMsg],
       cwd: tmp,
       signal: controller.signal,
@@ -408,6 +402,7 @@ describe("agent loop", () => {
       model: faux.getModel(),
       systemPrompt: "Test",
       tools: [],
+      toolHandlers: new Map(),
       messages: [userMsg],
       cwd: tmp,
     });
@@ -433,7 +428,8 @@ describe("agent loop", () => {
       turn,
       model: faux.getModel(),
       systemPrompt: "Test",
-      tools: builtinTools(),
+      tools: builtinToolDefs(),
+      toolHandlers: builtinToolHandlers(),
       messages: [userMsg],
       cwd: tmp,
     });
@@ -466,6 +462,7 @@ describe("agent loop", () => {
       model: faux.getModel(),
       systemPrompt: "Test",
       tools: [],
+      toolHandlers: new Map(),
       messages: [userMsg],
       cwd: tmp,
     });

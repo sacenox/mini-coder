@@ -12,6 +12,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Message, Tool } from "@mariozechner/pi-ai";
+import type { ToolHandler } from "./agent.ts";
 import type { Theme } from "./theme.ts";
 
 // ---------------------------------------------------------------------------
@@ -40,8 +41,10 @@ export interface AgentContext {
  * context to append to the system prompt.
  */
 export interface PluginResult {
-  /** Additional tools the agent can use. */
+  /** Additional tool definitions to register with the model. */
   tools?: Tool[];
+  /** Tool name → handler map for the tools above. */
+  toolHandlers?: Map<string, ToolHandler>;
   /** Additional context to append to the system prompt. */
   systemPromptSuffix?: string;
   /** Partial theme override — merged on top of the default theme. */

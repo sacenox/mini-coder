@@ -12,8 +12,16 @@ import {
   executeEdit,
   executeReadImage,
   executeShell,
+  type ToolExecResult,
   truncateOutput,
 } from "./tools.ts";
+
+/** Extract the text string from a text-only ToolExecResult. */
+function resultText(r: ToolExecResult): string {
+  const block = r.content[0];
+  if (!block || block.type !== "text") throw new Error("Expected text content");
+  return block.text;
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -61,7 +69,7 @@ describe("edit", () => {
       tmp,
     );
     expect(result.isError).toBe(true);
-    expect(result.text).toContain("not found");
+    expect(resultText(result)).toContain("not found");
     // File unchanged
     expect(readFile("a.txt")).toBe("hello world");
   });
@@ -73,7 +81,7 @@ describe("edit", () => {
       tmp,
     );
     expect(result.isError).toBe(true);
-    expect(result.text).toContain("multiple");
+    expect(resultText(result)).toContain("multiple");
     // File unchanged
     expect(readFile("a.txt")).toBe("aaa bbb aaa");
   });
@@ -103,7 +111,7 @@ describe("edit", () => {
       tmp,
     );
     expect(result.isError).toBe(true);
-    expect(result.text).toContain("already exists");
+    expect(resultText(result)).toContain("already exists");
     // File unchanged
     expect(readFile("existing.txt")).toBe("already here");
   });
@@ -174,7 +182,7 @@ describe("edit", () => {
       tmp,
     );
     expect(result.isError).toBe(true);
-    expect(result.text).toContain("not found");
+    expect(resultText(result)).toContain("not found");
   });
 });
 
@@ -186,25 +194,25 @@ describe("shell", () => {
   test("returns stdout from a command", async () => {
     const result = await executeShell({ command: "echo hello" }, tmp);
     expect(result.isError).toBe(false);
-    expect(result.text).toContain("hello");
+    expect(resultText(result)).toContain("hello");
   });
 
   test("returns stderr from a command", async () => {
     const result = await executeShell({ command: "echo err >&2" }, tmp);
     expect(result.isError).toBe(false);
-    expect(result.text).toContain("err");
+    expect(resultText(result)).toContain("err");
   });
 
   test("passes through exit code", async () => {
     const result = await executeShell({ command: "exit 42" }, tmp);
     expect(result.isError).toBe(true);
-    expect(result.text).toContain("exit code 42");
+    expect(resultText(result)).toContain("exit code 42");
   });
 
   test("runs in the specified cwd", async () => {
     const result = await executeShell({ command: "pwd" }, tmp);
     expect(result.isError).toBe(false);
-    expect(result.text).toContain(tmp);
+    expect(resultText(result)).toContain(tmp);
   });
 
   test("truncates large output", async () => {
@@ -213,11 +221,12 @@ describe("shell", () => {
       maxLines: 100,
     });
     expect(result.isError).toBe(false);
-    expect(result.text).toContain("… truncated");
+    const text = resultText(result);
+    expect(text).toContain("… truncated");
     // Should contain head lines (near the start)
-    expect(result.text).toContain("1\n");
+    expect(text).toContain("1\n");
     // Should contain tail lines (near the end)
-    expect(result.text).toContain("2000");
+    expect(text).toContain("2000");
   });
 
   test("does not truncate output within the limit", async () => {
@@ -225,7 +234,7 @@ describe("shell", () => {
       maxLines: 100,
     });
     expect(result.isError).toBe(false);
-    expect(result.text).not.toContain("truncated");
+    expect(resultText(result)).not.toContain("truncated");
   });
 
   test("supports abort signal", async () => {
@@ -243,8 +252,9 @@ describe("shell", () => {
       { command: "echo out && echo err >&2" },
       tmp,
     );
-    expect(result.text).toContain("out");
-    expect(result.text).toContain("err");
+    const text = resultText(result);
+    expect(text).toContain("out");
+    expect(text).toContain("err");
   });
 });
 
@@ -352,19 +362,13 @@ describe("readImage", () => {
     writeFileSync(join(tmp, "vector.svg"), "<svg></svg>");
     const result = executeReadImage({ path: "vector.svg" }, tmp);
     expect(result.isError).toBe(true);
-    expect(result.content[0]!.type).toBe("text");
-    if (result.content[0]!.type === "text") {
-      expect(result.content[0]!.text).toContain("Unsupported");
-    }
+    expect(resultText(result)).toContain("Unsupported");
   });
 
   test("handles missing file", () => {
     const result = executeReadImage({ path: "nonexistent.png" }, tmp);
     expect(result.isError).toBe(true);
-    expect(result.content[0]!.type).toBe("text");
-    if (result.content[0]!.type === "text") {
-      expect(result.content[0]!.text).toContain("not found");
-    }
+    expect(resultText(result)).toContain("not found");
   });
 
   test("resolves relative paths against cwd", () => {
