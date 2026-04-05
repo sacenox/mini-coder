@@ -57,3 +57,11 @@
 - [ ] `index.ts` — entry point, provider discovery, startup sequence, command routing
 - [ ] Commands — `/model`, `/session`, `/new`, `/fork`, `/undo`, `/reasoning`, `/verbose`, `/login`, `/logout`, `/help`, `/effort`
 - [ ] Input handling — `/skill:name` parsing, image path detection, Tab file autocomplete
+
+## Future ideas
+
+- [ ] Divider theme plugin — customizable divider animations. Candidates designed during Phase 4 UI exploration:
+  - **Scanning pulse** (current default): bright segment sweeps across the dimmed divider
+  - **Breathing**: divider alternates between two dim levels, subtle pulse
+  - **Flowing dots**: dot characters move along the divider like a marquee
+  - **Wave**: characters cycle through `─` / `═` to create a moving wave effect

@@ -53,6 +53,7 @@ This replaces: `yoctocolors`, `yoctomarkdown`, `yoctoselect`, and all our custom
 
 - **Runtime**: Bun — for runtime, bundling, testing, and `bun:sqlite`.
 - **Schema validation**: TypeBox (re-exported from pi-ai) for tool schemas.
+- **Diffing**: `diff` (jsdiff) — `structuredPatch` for line-level unified diffs in edit tool output.
 
 ## Tools
 
@@ -161,6 +162,8 @@ interface PluginResult {
   tools?: Tool[];
   /** Additional context to append to the system prompt. */
   systemPromptSuffix?: string;
+  /** Partial theme override — merged on top of the default theme. */
+  theme?: Partial<Theme>;
 }
 
 interface AgentContext {
@@ -382,27 +385,31 @@ Key decisions informed by the Codex prompting guide and Claude prompting best pr
 Three zones, top to bottom:
 
 ```
-┌──────────────────────────────────────────────┐
-│                                              │
-│  Conversation log                            │
-│  (scrollable, flex: 1)                       │
-│                                              │
-│  ▶ User: fix the tests                       │
-│                                              │
-│  ▷ Agent: I'll check the test suite...       │
-│    ┌─────────────────────────────┐           │
-│    │ $ bun test                  │           │
-│    │ 3 passed, 1 failed          │           │
-│    └─────────────────────────────┘           │
-│    Fixed the assertion in...                 │
-│                                              │
-├──────────────────────────────────────────────┤
-│ > fix the remaining lint warnings            │
-│   in the utils file too                      │
-├──────────────────────────────────────────────┤
-│ ~/src/mini-coder              main +3 ~1 ▲ 2 │
-│ anthropic/sonnet-4 · med  in:1.2k out:0.8k 42% $0.03 │
-└──────────────────────────────────────────────┘
+│                                                     │
+│  ┌─────────────────────────────────────────────┐    │
+│  │ fix the tests                               │    │  user: bg color
+│  └─────────────────────────────────────────────┘    │
+│                                                     │
+│  I'll check the test suite first.                   │  agent: default bg
+│                                                     │
+│  │ $ bun test                                       │  tool: left border
+│  │ 3 passed, 1 failed                               │  dimmed text
+│  │ ... truncated 45 lines ...                        │
+│  │ FAIL src/agent.test.ts > handles error            │
+│  │ exit 1                                            │
+│  │                                                   │
+│  │ ~ src/agent.ts                                    │  edit: path + diff
+│  │ -    expect(result).toBe("stop");                  │  red removed
+│  │ +    expect(result).toBe("error");                 │  green added
+│  │                                                   │
+│  Fixed the assertion. Tests pass now.                │
+│                                                     │
+────══════───────────────────────────────────────────  animated divider
+ fix the remaining lint warnings                       │  input: no prefix
+ in the utils file too_                                │
+─────────────────────────────────────────────────────  static divider
+ ~/src/mini-coder                    main +3 ~1 A 2    │  status line 1
+ anthropic/sonnet-4 · med    in:1.2k out:0.8k 42% $0.03│  status line 2
 ```
 
 cel-tui structure:
@@ -411,20 +418,46 @@ cel-tui structure:
 VStack({ height: "100%" }, [
   // Conversation log — takes all available space
   VStack({ flex: 1, overflow: "scroll", scrollbar: true }),
+  // Top divider — animated scanning pulse when agent is working
   Divider(),
-  // Input area — intrinsic height, grows up to maxHeight
-  HStack({ padding: { x: 1 } }, [
-    Text(">"),
-    TextInput({ flex: 1, maxHeight: 10 }),
-  ]),
+  // Input area — intrinsic height, no prompt prefix
+  VStack({ padding: { x: 1 } }, [TextInput({ flex: 1, maxHeight: 10 })]),
+  // Bottom divider — always static
   Divider(),
   // Status bar — fixed 2 lines
-  VStack({ height: 2 }, [
+  VStack({ height: 2, padding: { x: 1 } }, [
     HStack([Text(cwd), Spacer(), Text(gitStatus)]),
     HStack([Text(modelInfo), Spacer(), Text(usage)]),
   ]),
 ]);
 ```
+
+### Theme
+
+All UI colors are defined in a single `Theme` object. The UI never hardcodes colors — it reads from the active theme. Plugins can return a `Partial<Theme>` in their `PluginResult` to override any color. Multiple plugin overrides are merged left-to-right (last wins).
+
+```ts
+interface Theme {
+  /** User message background. */
+  userMsgBg: string;
+  /** Tool output left border and text. */
+  toolBorder: string;
+  toolText: string;
+  /** Diff colors in edit tool output. */
+  diffAdded: string;
+  diffRemoved: string;
+  /** Divider line color (idle state). */
+  divider: string;
+  /** Divider scanning pulse highlight color (active state). */
+  dividerPulse: string;
+  /** Status bar foreground. */
+  statusText: string;
+  /** Error text. */
+  error: string;
+}
+```
+
+The default theme uses terminal palette colors (e.g., `color08` for dimmed, `color02` for green, `color01` for red) so it adapts to the user's terminal color scheme. Theme values are cel-tui color strings.
 
 ### Status bar
 
@@ -453,18 +486,18 @@ Scrollable area that shows the full conversation history. Stick-to-bottom by def
 
 Message types and their rendering:
 
-- **User messages**: prefixed with a role indicator and displayed as plain text.
-- **Assistant messages**: streamed markdown rendered via cel-tui's `Markdown` component. Thinking/reasoning content is collapsible (hidden by default, toggled with `/reasoning`).
-- **Tool calls — shell**: show the command, then stdout/stderr. Output is truncated in the UI (head + tail) with a visual marker. Full output viewable with `/verbose`.
-- **Tool calls — edit**: show the file path and a brief summary (e.g., "edited 3 lines in `src/agent.ts`"). No full diff in the log.
-- **Tool calls — plugin tools**: prefixed with plugin/tool name.
+- **User messages**: displayed as plain text with a subtle background color to distinguish them from agent responses. No prefix or role indicator.
+- **Assistant messages**: streamed markdown rendered via cel-tui's `Markdown` component on the default background. Thinking/reasoning content is collapsible (hidden by default, toggled with `/reasoning`).
+- **Tool calls — shell**: rendered with a left border (`│`) and dimmed foreground. Shows the command (`$ command`), head + tail truncated output with a visual marker, and exit code. Full output viewable with `/verbose`.
+- **Tool calls — edit**: rendered with a left border (`│`) and dimmed foreground. Shows the file path and a unified diff of the change (added lines in green, removed in red). Uses the `diff` package (`structuredPatch`) for line-level diffing.
+- **Tool calls — plugin tools**: rendered with a left border, prefixed with plugin/tool name.
 - **Errors**: one-line summary, styled distinctly.
 
-While the agent is working, an inline spinner with an activity label ("thinking", "running shell", "editing") appears at the end of the log.
+While the agent is working, the top divider (above the input area) animates with a scanning pulse — a bright segment sweeping across the dimmed divider line. The animation starts when a turn begins and stops when the turn ends (done, error, or aborted). No per-activity state tracking.
 
 ### Input area
 
-Multi-line text input. Intrinsic height (1 line when empty, grows with content) up to `maxHeight: 10`, then scrolls internally. cel-tui's `TextInput` with `submitKey: "enter"` (Enter submits, Shift+Enter adds newlines).
+Multi-line text input with no prompt prefix — the blinking cursor is the affordance. Intrinsic height (1 line when empty, grows with content) up to `maxHeight: 10`, then scrolls internally. cel-tui's `TextInput` with `submitKey: "enter"` (Enter submits, Shift+Enter adds newlines).
 
 Supports:
 

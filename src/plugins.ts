@@ -12,6 +12,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Message, Tool } from "@mariozechner/pi-ai";
+import type { Theme } from "./theme.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -43,6 +44,8 @@ export interface PluginResult {
   tools?: Tool[];
   /** Additional context to append to the system prompt. */
   systemPromptSuffix?: string;
+  /** Partial theme override — merged on top of the default theme. */
+  theme?: Partial<Theme>;
 }
 
 /**
