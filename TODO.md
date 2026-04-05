@@ -134,20 +134,10 @@
 **Bugs / missing behavior:**
 
 - `agent.ts` never passes `reasoning` (effort level) to `streamSimple()`. The `/effort` command updates `state.effort` but it has no effect on the LLM call. `RunAgentOpts` needs an `effort` field, and the `streamSimple` call needs `{ signal, reasoning: effort }`.
-- `/model` spec says "readImage tool is re-evaluated (added/removed based on the new model's capabilities)" — currently `/model` updates `state.model` but `buildToolList` is only called at submit time, so this works implicitly. Correct.
 - Shell tool rendering doesn't show exit code (spec: "Shows the command, head + tail truncated output with a visual marker, and exit code"). `ToolExecResult` carries `isError` but not the numeric exit code.
 - Status bar CWD truncation from the left (`…/mini-coder`) on narrow terminals — not implemented, just shows full abbreviated path.
 - `Ctrl+Z` suspend/background — not implemented (spec lists it in key bindings).
 - `/session` spec says "list, resume, delete" — we intentionally deferred delete (design decision).
-
-**Not yet implemented (tracked in 4c/4d):**
-
-- `/new`, `/fork`, `/undo`, `/reasoning`, `/verbose` — simple commands, no UI complexity.
-- `/login`, `/logout` — OAuth flows.
-- `/help` — info display.
-- `/` + Tab command autocomplete, Tab file path autocomplete.
-- `/skill:name` input handling, image embedding.
-- Context limit compaction.
 
 ### 4d — Polish
 

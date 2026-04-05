@@ -826,6 +826,7 @@ async function submitMessage(text: string, state: AppState): Promise<void> {
       toolHandlers,
       messages: state.messages,
       cwd: state.cwd,
+      effort: state.effort,
       signal: state.abortController.signal,
       onEvent: (event) => handleAgentEvent(event, state),
     });

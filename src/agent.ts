@@ -13,6 +13,7 @@ import type {
   AssistantMessage,
   Message,
   Model,
+  ThinkingLevel,
   Tool,
   ToolCall,
   ToolResultMessage,
@@ -69,6 +70,8 @@ export interface RunAgentOpts {
   messages: Message[];
   /** Working directory for tool execution. */
   cwd: string;
+  /** Reasoning effort level (e.g. "low", "medium", "high", "xhigh"). */
+  effort?: ThinkingLevel;
   /** Abort signal for interruption. */
   signal?: AbortSignal;
   /** Callback for UI events. */
@@ -111,6 +114,7 @@ export async function runAgentLoop(
     toolHandlers,
     messages,
     cwd,
+    effort,
     signal,
     onEvent,
   } = opts;
@@ -123,7 +127,10 @@ export async function runAgentLoop(
         : { systemPrompt, messages };
 
     // Stream to LLM
-    const streamOpts = signal ? { signal } : {};
+    const streamOpts = {
+      ...(effort ? { reasoning: effort } : {}),
+      ...(signal ? { signal } : {}),
+    };
     const eventStream = streamSimple(model, context, streamOpts);
     let assistantMessage: AssistantMessage | undefined;
 
