@@ -43,7 +43,7 @@ import {
   saveOAuthCredentials,
   shutdown,
 } from "./index.ts";
-import { parseInput } from "./input.ts";
+import { COMMANDS, parseInput } from "./input.ts";
 import {
   appendMessage,
   computeStats,
@@ -974,6 +974,48 @@ function handleLogoutCommand(state: AppState): void {
   cel.render();
 }
 
+/** Command descriptions for the autocomplete overlay. */
+const COMMAND_DESCRIPTIONS: Record<string, string> = {
+  model: "Select a model",
+  effort: "Set reasoning effort",
+  session: "Resume a session",
+  new: "New session",
+  fork: "Fork session",
+  undo: "Undo last turn",
+  reasoning: "Toggle thinking display",
+  verbose: "Toggle full output",
+  login: "OAuth login",
+  logout: "OAuth logout",
+  help: "Show help",
+};
+
+/** Show command autocomplete overlay. */
+function showCommandAutocomplete(state: AppState): void {
+  const items = COMMANDS.map((cmd) => ({
+    label: `/${cmd}  ${COMMAND_DESCRIPTIONS[cmd] ?? ""}`,
+    value: cmd,
+    filterText: cmd,
+  }));
+
+  const select = Select({
+    items,
+    maxVisible: OVERLAY_MAX_VISIBLE,
+    placeholder: "type to filter commands...",
+    focused: true,
+    highlightColor: "color06",
+    onSelect: (value) => {
+      dismissOverlay();
+      handleInput(`/${value}`, state);
+    },
+    onBlur: dismissOverlay,
+  });
+
+  inputFocused = false;
+  inputValue = "";
+  activeOverlay = { select, title: "Commands" };
+  cel.render();
+}
+
 /** Dispatch a parsed command. Returns true if handled. */
 function handleCommand(command: string, state: AppState): boolean {
   switch (command) {
@@ -1259,6 +1301,10 @@ export function startUI(state: AppState): void {
                 inputValue = "";
                 cel.render();
                 handleInput(raw, state);
+                return false;
+              }
+              if (key === "tab" && inputValue.startsWith("/")) {
+                showCommandAutocomplete(state);
                 return false;
               }
             },
