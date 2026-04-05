@@ -28,6 +28,22 @@
 - Keep it minimal — don't add abstractions for hypothetical futures.
 - Performance matters. Prefer fast paths.
 
+## Working with dependencies
+
+- **Study before using.** Before writing code against a dependency, read its examples, types, and tsconfig. Match the dependency's conventions — don't fight them.
+- **Match tsconfig constraints.** If a dependency ships `.ts` source (e.g., cel-tui), our tsconfig must be compatible with theirs. Relax our config to match, not the other way around. Never add lint-ignore comments or type casts to work around mismatched strictness settings.
+- **Follow established patterns.** Dependencies with examples (e.g., `cel-tui/examples/chat.ts`) define the canonical usage patterns. Copy those patterns exactly before customizing. Don't invent alternative approaches.
+- **Verify visual correctness.** For UI code, think through rendering on both light and dark terminals. Test color choices against both backgrounds. The spec says "adapts to the user's terminal color scheme" — that means colors must be legible in both contexts.
+- **Understand layout before rendering.** For TUI frameworks, understand how the layout engine determines dimensions (intrinsic vs fixed vs flex vs fill). Never hardcode dimensions that the framework should compute.
+
+## Lessons learned
+
+- **Never rush an implementation.** A broken implementation that compiles is worse than no implementation — it wastes review time, erodes trust, and the rework costs more than doing it right the first time.
+- **Don't suppress lint warnings for future code.** If code doesn't exist yet, don't add `biome-ignore` or `// @ts-ignore` comments for it. Add them when the code actually exists.
+- **Dead guards are lies.** Type guards for impossible types (e.g., `typeof c !== "string"` when the type is `TextContent | ThinkingContent | ToolCall`) suggest the type can contain those values. They mislead readers and should not exist.
+- **Event APIs must carry their data.** When an event handler needs data from the event source (e.g., tool call arguments), the event must carry that data. Walking external state to reconstruct it is fragile and breaks with duplicate entries.
+- **Async callbacks must handle errors.** When a sync callback invokes an async function, the returned promise must be caught. Dropping it silently turns errors into unhandled rejections.
+
 ## Testing strategy
 
 We test our logic at the boundaries. Never test dependencies (pi-ai, cel-tui, bun:sqlite). Never use mocks or stubs.
