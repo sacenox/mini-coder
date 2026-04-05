@@ -8,7 +8,8 @@
  * @module
  */
 
-import { homedir } from "node:os";
+import { exec } from "node:child_process";
+import { homedir, platform } from "node:os";
 import type { SelectInstance } from "@cel-tui/components";
 import { Divider, Markdown, Select, Spacer } from "@cel-tui/components";
 import {
@@ -28,6 +29,8 @@ import type {
   ThinkingLevel,
   ToolCall,
 } from "@mariozechner/pi-ai";
+import type { OAuthProviderInterface } from "@mariozechner/pi-ai/oauth";
+import { getOAuthProviders } from "@mariozechner/pi-ai/oauth";
 import { structuredPatch } from "diff";
 import type { AgentEvent } from "./agent.ts";
 import { runAgentLoop } from "./agent.ts";
@@ -37,6 +40,7 @@ import {
   buildPrompt,
   buildToolList,
   getAvailableModels,
+  saveOAuthCredentials,
   shutdown,
 } from "./index.ts";
 import { parseInput } from "./input.ts";
@@ -741,6 +745,114 @@ function formatSessionDate(date: Date): string {
   return date.toLocaleDateString();
 }
 
+/** Open a URL in the user's default browser. */
+function openInBrowser(url: string): void {
+  const cmd = platform() === "darwin" ? "open" : "xdg-open";
+  exec(`${cmd} ${JSON.stringify(url)}`);
+}
+
+/**
+ * Append a system info line to the conversation log.
+ *
+ * Used for login progress/status messages that aren't part of the
+ * agent conversation. Rendered as dimmed italic text.
+ */
+function appendInfoMessage(text: string, state: AppState): void {
+  const msg: Message = {
+    role: "user",
+    content: `[${text}]`,
+    timestamp: Date.now(),
+  };
+  state.messages.push(msg);
+  stickToBottom = true;
+  cel.render();
+}
+
+/** Handle the /login command: OAuth provider login. */
+function handleLoginCommand(state: AppState): void {
+  const oauthProviders = getOAuthProviders();
+  if (oauthProviders.length === 0) {
+    return;
+  }
+
+  const items = oauthProviders.map((p) => {
+    const loggedIn = state.oauthCredentials[p.id] != null;
+    const status = loggedIn ? " (logged in)" : "";
+    return {
+      label: `${p.name}${status}`,
+      value: p.id,
+      filterText: p.name,
+    };
+  });
+
+  const select = Select({
+    items,
+    maxVisible: OVERLAY_MAX_VISIBLE,
+    placeholder: "type to filter providers...",
+    focused: true,
+    highlightColor: "color06",
+    onSelect: (providerId) => {
+      dismissOverlay();
+      const provider = oauthProviders.find((p) => p.id === providerId);
+      if (provider) {
+        performLogin(provider, state).catch((err) => {
+          appendInfoMessage(
+            `Login failed: ${err instanceof Error ? err.message : String(err)}`,
+            state,
+          );
+        });
+      }
+    },
+    onBlur: dismissOverlay,
+  });
+
+  inputFocused = false;
+  activeOverlay = { select, title: "Login to a provider" };
+  cel.render();
+}
+
+/** Run the OAuth login flow for a provider. */
+async function performLogin(
+  provider: OAuthProviderInterface,
+  state: AppState,
+): Promise<void> {
+  appendInfoMessage(`Logging in to ${provider.name}...`, state);
+
+  const credentials = await provider.login({
+    onAuth: (info) => {
+      openInBrowser(info.url);
+      appendInfoMessage(
+        info.instructions ?? "Opening browser for login...",
+        state,
+      );
+    },
+    onPrompt: () => {
+      return Promise.reject(new Error("Manual code input is not supported."));
+    },
+    onProgress: (message) => {
+      appendInfoMessage(message, state);
+    },
+  });
+
+  // Persist credentials
+  state.oauthCredentials[provider.id] = credentials;
+  saveOAuthCredentials(state.oauthCredentials);
+
+  // Register the provider's API key
+  const apiKey = provider.getApiKey(credentials);
+  state.providers.set(provider.id, apiKey);
+
+  // Auto-select model if none was set
+  if (!state.model) {
+    const models = getAvailableModels(state);
+    if (models.length > 0) {
+      state.model = models[0]!;
+    }
+  }
+
+  appendInfoMessage(`Logged in to ${provider.name}.`, state);
+}
+
 /** Dispatch a parsed command. Returns true if handled. */
 function handleCommand(command: string, state: AppState): boolean {
   switch (command) {
@@ -752,6 +864,9 @@ function handleCommand(command: string, state: AppState): boolean {
       return true;
     case "session":
       handleSessionCommand(state);
+      return true;
+    case "login":
+      handleLoginCommand(state);
       return true;
     default:
       return false;
@@ -826,6 +941,9 @@ async function submitMessage(text: string, state: AppState): Promise<void> {
       toolHandlers,
       messages: state.messages,
       cwd: state.cwd,
+      apiKey: state.model
+        ? state.providers.get(state.model.provider)
+        : undefined,
       effort: state.effort,
       signal: state.abortController.signal,
       onEvent: (event) => handleAgentEvent(event, state),

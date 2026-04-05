@@ -70,6 +70,8 @@ export interface RunAgentOpts {
   messages: Message[];
   /** Working directory for tool execution. */
   cwd: string;
+  /** API key for the provider. */
+  apiKey?: string;
   /** Reasoning effort level (e.g. "low", "medium", "high", "xhigh"). */
   effort?: ThinkingLevel;
   /** Abort signal for interruption. */
@@ -114,6 +116,7 @@ export async function runAgentLoop(
     toolHandlers,
     messages,
     cwd,
+    apiKey,
     effort,
     signal,
     onEvent,
@@ -128,6 +131,7 @@ export async function runAgentLoop(
 
     // Stream to LLM
     const streamOpts = {
+      ...(apiKey ? { apiKey } : {}),
       ...(effort ? { reasoning: effort } : {}),
       ...(signal ? { signal } : {}),
     };

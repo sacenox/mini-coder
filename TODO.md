@@ -134,6 +134,7 @@
 **Bugs / missing behavior:**
 
 - `agent.ts` never passes `reasoning` (effort level) to `streamSimple()`. The `/effort` command updates `state.effort` but it has no effect on the LLM call. `RunAgentOpts` needs an `effort` field, and the `streamSimple` call needs `{ signal, reasoning: effort }`.
+- Assistant messages not visibly streaming — text appears as full blocks instead of incrementally, causing jarring scroll jumps. Likely a rendering or event issue in `ui.ts` streaming path.
 - Shell tool rendering doesn't show exit code (spec: "Shows the command, head + tail truncated output with a visual marker, and exit code"). `ToolExecResult` carries `isError` but not the numeric exit code.
 - Status bar CWD truncation from the left (`…/mini-coder`) on narrow terminals — not implemented, just shows full abbreviated path.
 - `Ctrl+Z` suspend/background — not implemented (spec lists it in key bindings).
