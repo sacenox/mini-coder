@@ -119,7 +119,7 @@
 - [x] `/verbose` — toggle `verbose`
 - [x] Info messages separated from `state.messages` — display-only `infoMessages` array, not sent to LLM, cleared on session switch
 - [x] `/` + Tab — command autocomplete overlay (all 11 commands with descriptions)
-- [ ] `/help` — list commands, AGENTS.md files, skills, plugins
+- [x] `/help` — list commands, providers, model, AGENTS.md files, skills, plugins
 
 ### Notes from Phase 4c
 
@@ -139,6 +139,9 @@
 - `handleInput()` routes through `parseInput()` → `handleCommand()` for commands, `submitMessage()` for text. Skill and image cases are stubs for Phase 4d.
 - `Theme` gained `overlayBg: Color` (default `"color08"`).
 - `appendInfoMessage()` helper for display-only status messages. Uses separate `infoMessages` array (not `state.messages`) so info text is never sent to the LLM. Cleared on `/new`, `/session` resume, `/fork`.
+- `/help` renders commands (with descriptions), providers, model, AGENTS.md paths, skills, plugins as a multi-line info message.
+- `/` + Tab in TextInput triggers `showCommandAutocomplete()` — overlay Select with all 11 commands from `COMMANDS` + `COMMAND_DESCRIPTIONS`. Selection executes the command via `handleInput`. Tab without `/` falls through (file autocomplete deferred to Phase 4d).
+- All 11 spec commands implemented. Phase 4c complete.
 - 162 tests across 9 files (session: 24, tools: 36, git: 10, skills: 14, prompt: 21, agent: 12, plugins: 10, input: 30, theme: 5).
 
 ### Spec review findings (Phase 4c checkpoint)

@@ -779,7 +779,7 @@ function openInBrowser(url: string): void {
 function appendInfoMessage(text: string, _state: AppState): void {
   const msg: Message = {
     role: "user",
-    content: `[${text}]`,
+    content: `${text}`,
     timestamp: Date.now(),
   };
   infoMessages.push(msg);
@@ -974,6 +974,64 @@ function handleLogoutCommand(state: AppState): void {
   cel.render();
 }
 
+/** Handle the /help command: show commands, providers, agents, skills, plugins. */
+function handleHelpCommand(state: AppState): void {
+  const lines: string[] = [];
+
+  // Commands
+  lines.push("Commands:");
+  for (const cmd of COMMANDS) {
+    const desc = COMMAND_DESCRIPTIONS[cmd] ?? "";
+    lines.push(`  /${cmd}  ${desc}`);
+  }
+
+  // Providers
+  const providerNames = Array.from(state.providers.keys());
+  lines.push("");
+  lines.push(
+    providerNames.length > 0
+      ? `Providers: ${providerNames.join(", ")}`
+      : "Providers: none (use /login)",
+  );
+
+  // Model
+  lines.push(
+    state.model
+      ? `Model: ${state.model.provider}/${state.model.id}`
+      : "Model: none (use /model)",
+  );
+
+  // AGENTS.md files
+  if (state.agentsMd.length > 0) {
+    lines.push("");
+    lines.push("AGENTS.md files:");
+    for (const a of state.agentsMd) {
+      lines.push(`  ${abbreviatePath(a.path)}`);
+    }
+  }
+
+  // Skills
+  if (state.skills.length > 0) {
+    lines.push("");
+    lines.push("Skills:");
+    for (const s of state.skills) {
+      const desc = s.description ? `  ${s.description}` : "";
+      lines.push(`  ${s.name}${desc}`);
+    }
+  }
+
+  // Plugins
+  if (state.plugins.length > 0) {
+    lines.push("");
+    lines.push("Plugins:");
+    for (const p of state.plugins) {
+      lines.push(`  ${p.entry.name}`);
+    }
+  }
+
+  appendInfoMessage(lines.join("\n"), state);
+}
+
 /** Command descriptions for the autocomplete overlay. */
 const COMMAND_DESCRIPTIONS: Record<string, string> = {
   model: "Select a model",
@@ -1048,6 +1106,9 @@ function handleCommand(command: string, state: AppState): boolean {
       return true;
     case "verbose":
       handleVerboseCommand(state);
+      return true;
+    case "help":
+      handleHelpCommand(state);
       return true;
     default:
       return false;
