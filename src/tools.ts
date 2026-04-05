@@ -1,17 +1,17 @@
 /**
- * Built-in tool implementations: `edit` and `shell`.
+ * Built-in tool implementations: `edit`, `shell`, and `readImage`.
  *
  * Each tool is exposed as a pure-ish execute function that takes typed
- * arguments and a working directory, returning a result object with `text`
- * and `isError`. The pi-ai {@link Tool} definitions (TypeBox schemas) are
- * exported separately for registration with the agent context.
+ * arguments and a working directory, returning a result object. The pi-ai
+ * {@link Tool} definitions (TypeBox schemas) are exported separately for
+ * registration with the agent context.
  *
  * @module
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, isAbsolute, join } from "node:path";
-import type { Tool } from "@mariozechner/pi-ai";
+import { dirname, extname, isAbsolute, join } from "node:path";
+import type { ImageContent, TextContent, Tool } from "@mariozechner/pi-ai";
 import { Type } from "@mariozechner/pi-ai";
 
 // ---------------------------------------------------------------------------
@@ -117,7 +117,7 @@ export interface ShellOpts {
   signal?: AbortSignal;
 }
 
-const DEFAULT_MAX_LINES = 500;
+const DEFAULT_MAX_LINES = 1000;
 
 /**
  * Run a command in the user's shell.
@@ -244,5 +244,93 @@ export const shellTool: Tool = {
     "Use for exploring the codebase (rg, find, ls, cat), running tests, builds, git, etc.",
   parameters: Type.Object({
     command: Type.String({ description: "The shell command to execute" }),
+  }),
+};
+
+// ---------------------------------------------------------------------------
+// readImage
+// ---------------------------------------------------------------------------
+
+/** Supported image extensions and their MIME types. */
+const IMAGE_MIME_TYPES: Record<string, string> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+};
+
+/** Arguments for the `readImage` tool. */
+export interface ReadImageArgs {
+  /** File path (absolute or relative to cwd). */
+  path: string;
+}
+
+/** Result returned by readImage — supports image content in tool results. */
+export interface ReadImageResult {
+  /** Content blocks for the tool result (text for errors, image for success). */
+  content: (TextContent | ImageContent)[];
+  /** Whether the execution encountered an error. */
+  isError: boolean;
+}
+
+/**
+ * Read an image file and return it as base64-encoded content.
+ *
+ * Supports PNG, JPEG, GIF, and WebP. Returns {@link ImageContent} on
+ * success or a text error message on failure. The MIME type is detected
+ * from the file extension.
+ *
+ * @param args - ReadImage arguments (path).
+ * @param cwd - Working directory for resolving relative paths.
+ * @returns A {@link ReadImageResult} with image content or error message.
+ */
+export function executeReadImage(
+  args: ReadImageArgs,
+  cwd: string,
+): ReadImageResult {
+  const filePath = isAbsolute(args.path) ? args.path : join(cwd, args.path);
+  const ext = extname(filePath).toLowerCase();
+
+  const mimeType = IMAGE_MIME_TYPES[ext];
+  if (!mimeType) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Unsupported image format: ${ext || "(no extension)"}`,
+        },
+      ],
+      isError: true,
+    };
+  }
+
+  if (!existsSync(filePath)) {
+    return {
+      content: [{ type: "text", text: `File not found: ${args.path}` }],
+      isError: true,
+    };
+  }
+
+  const data = readFileSync(filePath);
+  const base64 = Buffer.from(data).toString("base64");
+
+  return {
+    content: [{ type: "image", data: base64, mimeType }],
+    isError: false,
+  };
+}
+
+/** pi-ai tool definition for `readImage`. */
+export const readImageTool: Tool = {
+  name: "readImage",
+  description:
+    "Read an image file and return its contents. " +
+    "Supports PNG, JPEG, GIF, and WebP formats. " +
+    "Use this to inspect screenshots, diagrams, or any image in the repo.",
+  parameters: Type.Object({
+    path: Type.String({
+      description: "File path (absolute or relative to cwd)",
+    }),
   }),
 };

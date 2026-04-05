@@ -20,19 +20,36 @@
 
 ## Phase 2 — Context assembly
 
-- [ ] `skills.ts` — SKILL.md discovery, frontmatter parsing, catalog generation, name collision resolution
-- [ ] `prompt.ts` — AGENTS.md discovery, system prompt construction (base + AGENTS.md + skills + plugins + git footer)
+- [x] `skills.ts` — SKILL.md discovery, frontmatter parsing, catalog generation, name collision resolution
+- [x] `skills.test.ts` — 14 tests: single/multi path discovery, name collision, missing dirs, frontmatter (none, missing fields, multi-line, quoted), catalog XML
+- [x] `prompt.ts` — AGENTS.md discovery, system prompt construction (base + AGENTS.md + skills + plugins + git footer)
+- [x] `prompt.test.ts` — 21 tests: AGENTS.md walk (5), git line formatting (6), system prompt assembly (10)
 
-### Phase 2 entry points
+### Notes from Phase 2
 
-- `skills.ts` depends on nothing from Phase 1. It scans directories for `SKILL.md` files, parses YAML frontmatter (name, description), resolves name collisions (project-level wins over user-level), and generates the XML catalog string for the system prompt. See spec.md "Agent Skills" section.
-- `prompt.ts` depends on `skills.ts` and `git.ts` (both done). It walks from CWD to scan root collecting `AGENTS.md`/`CLAUDE.md` files, assembles the full system prompt in construction order (base → AGENTS.md → skills catalog → plugin suffixes → session footer with date/cwd/git). See spec.md "System prompt" section.
+- `skills.ts` exports: `Skill` interface, `discoverSkills(scanPaths)`, `buildSkillCatalog(skills)`. Minimal YAML frontmatter parser (no dependency) handles `name`, `description`, folded scalars (`>`), quoted values. Falls back to directory name when frontmatter `name` is absent.
+- `prompt.ts` exports: `AgentsMdFile` interface, `BuildSystemPromptOpts` interface, `discoverAgentsMd(cwd, scanRoot, globalAgentsDir?)`, `formatGitLine(state)`, `buildSystemPrompt(opts)`. Both `discoverSkills` and `discoverAgentsMd` take paths as parameters — the actual scan paths (spec §"Agent Skills" discovery, §"AGENTS.md" scan root priority) are determined by the caller (`index.ts` in Phase 4).
+- Base instructions in `prompt.ts` match spec.md §"Base instructions" verbatim.
+- `readImage` is intentionally absent from base instructions per spec — conditionally registered via tool definitions only.
+- 92 tests total across 5 files (session: 20, tools: 27, git: 10, skills: 14, prompt: 21).
 
 ## Phase 3 — Agent loop
 
-- [ ] `agent.ts` — core loop: stream → handle events → execute tools → loop. Interrupt handling. Context limit / compaction.
-- [ ] `plugins.ts` — plugin loader, init/destroy lifecycle, tool + prompt injection
-- [ ] `readImage` tool — base64 encoding, mime detection, conditional registration
+- [x] `readImage` tool in `tools.ts` — base64 encoding, mime detection, path resolution
+- [x] `tools.test.ts` — 9 new readImage tests (36 total: edit 13, shell 8, truncateOutput 6, readImage 9)
+- [x] `agent.ts` — core loop: stream → handle events → execute tools → loop. Interrupt handling.
+- [x] `agent.test.ts` — 12 tests with faux provider: text response, tool execution, multi-tool, chaining, turn numbering, events, interrupt, error, unknown tool, length stop
+- [x] `plugins.ts` — plugin types, config loading, init/destroy lifecycle
+- [x] `plugins.test.ts` — 10 tests with real plugin modules in temp dirs: config loading, init, config passthrough, error handling, tool collection, destroy lifecycle
+
+### Notes from Phase 3
+
+- `readImage` in `tools.ts` exports: `ReadImageArgs`, `ReadImageResult`, `executeReadImage`, `readImageTool`. Returns `ImageContent` on success (base64 + mimeType) or `TextContent` error. Separate result type from `ToolResult` since it carries image content — the agent loop handles mapping both into `ToolResultMessage`.
+- `agent.ts` exports: `AgentTool`, `ToolExecResult`, `AgentEvent`, `RunAgentOpts`, `AgentLoopResult`, `runAgentLoop`. The loop streams via `streamSimple`, dispatches tool calls through a name→handler map, appends all messages to DB with the same turn number, and emits events for UI updates. Unknown tools produce error results so the model can self-correct.
+- `plugins.ts` exports: `AgentContext`, `PluginResult`, `Plugin`, `PluginEntry`, `LoadedPlugin`, `loadPluginConfig`, `initPlugins`, `destroyPlugins`. Plugins are real modules loaded via dynamic `import()` — tested with actual `.ts` files in temp dirs (no mocks).
+- Context limit compaction is deferred — the spec notes "the specifics will be refined during development." The agent loop structure supports adding it as a pre-stream check.
+- Conditional `readImage` registration (only for vision-capable models) will be handled by the caller (`index.ts`) checking `Model.input.includes("image")`.
+- 123 tests total across 7 files.
 
 ## Phase 4 — UI
 

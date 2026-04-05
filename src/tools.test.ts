@@ -8,7 +8,12 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { executeEdit, executeShell, truncateOutput } from "./tools.ts";
+import {
+  executeEdit,
+  executeReadImage,
+  executeShell,
+  truncateOutput,
+} from "./tools.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -286,5 +291,95 @@ describe("truncateOutput", () => {
     const lines = Array.from({ length: 10 }, (_, i) => `line${i + 1}`);
     const input = lines.join("\n");
     expect(truncateOutput(input, 10)).toBe(input);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// readImage
+// ---------------------------------------------------------------------------
+
+describe("readImage", () => {
+  test("reads a PNG file and returns base64 with correct mime type", () => {
+    const data = Buffer.from("fake png data");
+    writeFileSync(join(tmp, "test.png"), data);
+    const result = executeReadImage({ path: "test.png" }, tmp);
+    expect(result.isError).toBe(false);
+    expect(result.content).toHaveLength(1);
+    expect(result.content[0]!.type).toBe("image");
+    if (result.content[0]!.type === "image") {
+      expect(result.content[0]!.mimeType).toBe("image/png");
+      expect(result.content[0]!.data).toBe(data.toString("base64"));
+    }
+  });
+
+  test("detects JPEG mime type from .jpeg extension", () => {
+    writeFileSync(join(tmp, "photo.jpeg"), "jpeg data");
+    const result = executeReadImage({ path: "photo.jpeg" }, tmp);
+    expect(result.isError).toBe(false);
+    if (result.content[0]!.type === "image") {
+      expect(result.content[0]!.mimeType).toBe("image/jpeg");
+    }
+  });
+
+  test("detects JPEG mime type from .jpg extension", () => {
+    writeFileSync(join(tmp, "photo.jpg"), "jpg data");
+    const result = executeReadImage({ path: "photo.jpg" }, tmp);
+    expect(result.isError).toBe(false);
+    if (result.content[0]!.type === "image") {
+      expect(result.content[0]!.mimeType).toBe("image/jpeg");
+    }
+  });
+
+  test("detects GIF mime type", () => {
+    writeFileSync(join(tmp, "anim.gif"), "gif data");
+    const result = executeReadImage({ path: "anim.gif" }, tmp);
+    expect(result.isError).toBe(false);
+    if (result.content[0]!.type === "image") {
+      expect(result.content[0]!.mimeType).toBe("image/gif");
+    }
+  });
+
+  test("detects WebP mime type", () => {
+    writeFileSync(join(tmp, "image.webp"), "webp data");
+    const result = executeReadImage({ path: "image.webp" }, tmp);
+    expect(result.isError).toBe(false);
+    if (result.content[0]!.type === "image") {
+      expect(result.content[0]!.mimeType).toBe("image/webp");
+    }
+  });
+
+  test("rejects unsupported image format", () => {
+    writeFileSync(join(tmp, "vector.svg"), "<svg></svg>");
+    const result = executeReadImage({ path: "vector.svg" }, tmp);
+    expect(result.isError).toBe(true);
+    expect(result.content[0]!.type).toBe("text");
+    if (result.content[0]!.type === "text") {
+      expect(result.content[0]!.text).toContain("Unsupported");
+    }
+  });
+
+  test("handles missing file", () => {
+    const result = executeReadImage({ path: "nonexistent.png" }, tmp);
+    expect(result.isError).toBe(true);
+    expect(result.content[0]!.type).toBe("text");
+    if (result.content[0]!.type === "text") {
+      expect(result.content[0]!.text).toContain("not found");
+    }
+  });
+
+  test("resolves relative paths against cwd", () => {
+    mkdirSync(join(tmp, "sub"), { recursive: true });
+    writeFileSync(join(tmp, "sub", "img.png"), "png in sub");
+    const result = executeReadImage({ path: "sub/img.png" }, tmp);
+    expect(result.isError).toBe(false);
+    expect(result.content[0]!.type).toBe("image");
+  });
+
+  test("resolves absolute paths directly", () => {
+    const absPath = join(tmp, "abs.png");
+    writeFileSync(absPath, "absolute png");
+    const result = executeReadImage({ path: absPath }, tmp);
+    expect(result.isError).toBe(false);
+    expect(result.content[0]!.type).toBe("image");
   });
 });
