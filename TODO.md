@@ -118,8 +118,8 @@
 - [x] `/reasoning` — toggle `showReasoning`
 - [x] `/verbose` — toggle `verbose`
 - [x] Info messages separated from `state.messages` — display-only `infoMessages` array, not sent to LLM, cleared on session switch
+- [x] `/` + Tab — command autocomplete overlay (all 11 commands with descriptions)
 - [ ] `/help` — list commands, AGENTS.md files, skills, plugins
-- [ ] `/` + Tab — command autocomplete in input
 
 ### Notes from Phase 4c
 
