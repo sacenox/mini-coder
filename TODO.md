@@ -102,7 +102,10 @@
 
 ### 4c — Commands
 
-- [ ] `/model` — interactive model selector (Select component, available providers/models)
+- [x] `/model` — interactive model selector (Select component, available providers/models)
+- [x] `/effort` — effort level selector
+- [x] Overlay layer system for interactive Select commands
+- [x] Wire `parseInput()` into Enter handler, route commands vs text
 - [ ] `/session` — session manager (list, resume, delete)
 - [ ] `/new` — new session, reset counters
 - [ ] `/fork` — fork current session
@@ -110,9 +113,18 @@
 - [ ] `/reasoning` — toggle thinking display
 - [ ] `/verbose` — toggle full output (disable truncation)
 - [ ] `/login` / `/logout` — OAuth flows via pi-ai
-- [ ] `/effort` — effort level selector
 - [ ] `/help` — list commands, AGENTS.md files, skills, plugins
 - [ ] `/` + Tab — command autocomplete in input
+
+### Notes from Phase 4c
+
+- Overlay system: cel-tui multi-layer viewport. `activeOverlay` module state holds a `SelectInstance` + title. When active, `cel.viewport()` returns `[base, overlayLayer]`. Overlay is a centered modal with `padding: { x: 4 }` and fixed height (`OVERLAY_MAX_VISIBLE + 3`), `bgColor: theme.overlayBg`.
+- Escape dismissal: cel-tui intercepts Escape at the framework level (unfocuses before `onKeyPress` fires), so overlay dismissal uses `onBlur: dismissOverlay` instead of `onKeyPress`.
+- `/model` builds items from `getAvailableModels(state)` (new helper in `index.ts`), marks current with `(current)` suffix, `filterText` includes both provider and model id.
+- `/effort` shows 4 levels (low/medium/high/xhigh), marks current.
+- `handleInput()` routes through `parseInput()` → `handleCommand()` for commands, `submitMessage()` for text. Skill and image cases are stubs for Phase 4d.
+- `Theme` gained `overlayBg: Color` (default `"color08"`).
+- 158 tests still pass across 9 files.
 
 ### 4d — Polish
 
