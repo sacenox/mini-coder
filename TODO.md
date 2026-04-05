@@ -104,9 +104,10 @@
 
 - [x] `/model` — interactive model selector (Select component, available providers/models)
 - [x] `/effort` — effort level selector
+- [x] `/session` — session manager (list, resume). Scoped to CWD.
 - [x] Overlay layer system for interactive Select commands
 - [x] Wire `parseInput()` into Enter handler, route commands vs text
-- [ ] `/session` — session manager (list, resume, delete)
+- [x] Session truncation — keep max 20 per CWD, runs on init
 - [ ] `/new` — new session, reset counters
 - [ ] `/fork` — fork current session
 - [ ] `/undo` — remove last turn
@@ -122,9 +123,31 @@
 - Escape dismissal: cel-tui intercepts Escape at the framework level (unfocuses before `onKeyPress` fires), so overlay dismissal uses `onBlur: dismissOverlay` instead of `onKeyPress`.
 - `/model` builds items from `getAvailableModels(state)` (new helper in `index.ts`), marks current with `(current)` suffix, `filterText` includes both provider and model id.
 - `/effort` shows 4 levels (low/medium/high/xhigh), marks current.
+- `/session` lists sessions via `listSessions(db, cwd)`, labels show relative timestamp (`formatSessionDate`) + model + `(current)` marker. Resume swaps `state.session`, reloads messages and stats.
+- `truncateSessions(db, cwd, keep)` in `session.ts` — deletes oldest beyond limit per CWD. `listSessions` SQL uses `rowid DESC` tiebreaker for deterministic ordering.
 - `handleInput()` routes through `parseInput()` → `handleCommand()` for commands, `submitMessage()` for text. Skill and image cases are stubs for Phase 4d.
 - `Theme` gained `overlayBg: Color` (default `"color08"`).
-- 158 tests still pass across 9 files.
+- 162 tests across 9 files (session: 24, tools: 36, git: 10, skills: 14, prompt: 21, agent: 12, plugins: 10, input: 30, theme: 5).
+
+### Spec review findings (Phase 4c checkpoint)
+
+**Bugs / missing behavior:**
+
+- `agent.ts` never passes `reasoning` (effort level) to `streamSimple()`. The `/effort` command updates `state.effort` but it has no effect on the LLM call. `RunAgentOpts` needs an `effort` field, and the `streamSimple` call needs `{ signal, reasoning: effort }`.
+- `/model` spec says "readImage tool is re-evaluated (added/removed based on the new model's capabilities)" — currently `/model` updates `state.model` but `buildToolList` is only called at submit time, so this works implicitly. Correct.
+- Shell tool rendering doesn't show exit code (spec: "Shows the command, head + tail truncated output with a visual marker, and exit code"). `ToolExecResult` carries `isError` but not the numeric exit code.
+- Status bar CWD truncation from the left (`…/mini-coder`) on narrow terminals — not implemented, just shows full abbreviated path.
+- `Ctrl+Z` suspend/background — not implemented (spec lists it in key bindings).
+- `/session` spec says "list, resume, delete" — we intentionally deferred delete (design decision).
+
+**Not yet implemented (tracked in 4c/4d):**
+
+- `/new`, `/fork`, `/undo`, `/reasoning`, `/verbose` — simple commands, no UI complexity.
+- `/login`, `/logout` — OAuth flows.
+- `/help` — info display.
+- `/` + Tab command autocomplete, Tab file path autocomplete.
+- `/skill:name` input handling, image embedding.
+- Context limit compaction.
 
 ### 4d — Polish
 
