@@ -48,6 +48,7 @@ export type { ToolExecResult };
 export type AgentEvent =
   | { type: "text_delta"; delta: string }
   | { type: "thinking_delta"; delta: string }
+  | { type: "assistant_message"; message: AssistantMessage }
   | {
       type: "tool_start";
       toolCallId: string;
@@ -66,6 +67,7 @@ export type AgentEvent =
       name: string;
       result: ToolExecResult;
     }
+  | { type: "tool_result"; message: ToolResultMessage }
   | { type: "done"; message: AssistantMessage }
   | { type: "error"; message: AssistantMessage }
   | { type: "aborted"; message: AssistantMessage };
@@ -268,6 +270,7 @@ export async function runAgentLoop(
     // Append assistant message to history and DB
     messages.push(assistantMessage);
     appendMessage(db, sessionId, assistantMessage, turn);
+    onEvent?.({ type: "assistant_message", message: assistantMessage });
 
     // Handle stop reasons
     if (
@@ -339,6 +342,7 @@ export async function runAgentLoop(
 
       messages.push(toolResultMessage);
       appendMessage(db, sessionId, toolResultMessage, turn);
+      onEvent?.({ type: "tool_result", message: toolResultMessage });
     }
 
     // Loop back to stream with updated context

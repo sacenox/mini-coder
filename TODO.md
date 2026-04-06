@@ -9,8 +9,6 @@ The spec.md and code are the sources of truth, not this file, don't assume anyth
 
 ### Core behavior
 
-- [ ] **End-to-end streaming in the UI** (`ui.ts`) — completed assistant/tool messages should remain visible in the conversation log as soon as they happen, without waiting for the full loop to finish and reload from the DB. The current state/event flow drops already-produced assistant text during tool-use turns.
-
 - [ ] **Implement `/skill:name` submission flow** (`ui.ts`) — strip the prefix from input, prepend the selected skill body to the user message, and send the rest of the user text as the instruction.
 
 - [ ] **Implement image submission flow** (`ui.ts`) — when `parseInput()` returns an image, send it as `ImageContent` in the user message when the active model supports images.

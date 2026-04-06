@@ -1838,11 +1838,16 @@ function handleAgentEvent(event: AgentEvent, state: AppState): void {
       }
       break;
 
-    case "tool_start":
-      // The assistant message is appended to history before tool_start,
-      // so clear the streaming buffers — that text is now in history.
+    case "assistant_message":
+      state.messages.push(event.message);
+      state.stats = computeStats(state.messages);
       streamingText = "";
       streamingThinking = "";
+      stickToBottom = true;
+      cel.render();
+      break;
+
+    case "tool_start":
       pendingToolCalls.push({
         toolCallId: event.toolCallId,
         name: event.name,
@@ -1882,10 +1887,18 @@ function handleAgentEvent(event: AgentEvent, state: AppState): void {
       break;
     }
 
+    case "tool_result":
+      state.messages.push(event.message);
+      pendingToolCalls = pendingToolCalls.filter(
+        (toolCall) => toolCall.toolCallId !== event.message.toolCallId,
+      );
+      stickToBottom = true;
+      cel.render();
+      break;
+
     case "done":
     case "error":
     case "aborted":
-      // Completed messages are already in state.messages.
       streamingText = "";
       streamingThinking = "";
       pendingToolCalls = [];

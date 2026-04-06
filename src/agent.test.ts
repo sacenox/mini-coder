@@ -535,6 +535,79 @@ describe("agent loop", () => {
     expect(toolEnds).toHaveLength(1);
   });
 
+  test("emits committed assistant and tool-result events in tool-use order", async () => {
+    faux.setResponses([
+      fauxAssistantMessage(
+        [
+          fauxText("I'll inspect the output first."),
+          fauxToolCall("shell", { command: "echo test" }),
+        ],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("Done."),
+    ]);
+
+    const events: AgentEvent[] = [];
+
+    const session = createSession(db, { cwd: tmp });
+    const userMsg = makeUser("go");
+    const turn = appendMessage(db, session.id, userMsg);
+
+    await runAgentLoop({
+      db,
+      sessionId: session.id,
+      turn,
+      model: faux.getModel(),
+      systemPrompt: "Test",
+      tools: builtinToolDefs(),
+      toolHandlers: builtinToolHandlers(),
+      messages: [userMsg],
+      cwd: tmp,
+      onEvent: (e) => events.push(e),
+    });
+
+    const assistantMessages = events.filter(
+      (event) => event.type === "assistant_message",
+    );
+    const toolResults = events.filter((event) => event.type === "tool_result");
+
+    expect(assistantMessages).toHaveLength(2);
+    expect(toolResults).toHaveLength(1);
+
+    const firstAssistant = assistantMessages[0];
+    const toolStart = events.find((event) => event.type === "tool_start");
+    const toolEnd = events.find((event) => event.type === "tool_end");
+    const toolResult = toolResults[0];
+
+    if (
+      !firstAssistant ||
+      firstAssistant.type !== "assistant_message" ||
+      !toolStart ||
+      toolStart.type !== "tool_start" ||
+      !toolEnd ||
+      toolEnd.type !== "tool_end" ||
+      !toolResult ||
+      toolResult.type !== "tool_result"
+    ) {
+      throw new Error(
+        "Expected assistant, tool start/end, and tool result events",
+      );
+    }
+
+    expect(firstAssistant.message.stopReason).toBe("toolUse");
+    expect(firstAssistant.message.content).toContainEqual(
+      fauxText("I'll inspect the output first."),
+    );
+
+    const firstAssistantIndex = events.indexOf(firstAssistant);
+    const toolStartIndex = events.indexOf(toolStart);
+    const toolEndIndex = events.indexOf(toolEnd);
+    const toolResultIndex = events.indexOf(toolResult);
+
+    expect(firstAssistantIndex).toBeLessThan(toolStartIndex);
+    expect(toolEndIndex).toBeLessThan(toolResultIndex);
+  });
+
   test("emits tool delta events during tool execution", async () => {
     faux.setResponses([
       fauxAssistantMessage([fauxToolCall("shell", { command: "echo test" })], {

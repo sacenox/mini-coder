@@ -3,11 +3,16 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Node } from "@cel-tui/types";
+import type { AssistantMessage, Model } from "@mariozechner/pi-ai";
 import {
+  createAssistantMessageEventStream,
   fauxAssistantMessage,
   fauxText,
   fauxThinking,
+  fauxToolCall,
+  registerApiProvider,
   registerFauxProvider,
+  unregisterApiProviders,
 } from "@mariozechner/pi-ai";
 import {
   type AppState,
@@ -482,6 +487,204 @@ describe("ui rendering", () => {
     } finally {
       process.env.PATH = originalPath;
       faux.unregister();
+      state.db.close();
+    }
+  });
+
+  test("completed assistant text stays visible while a tool is running", async () => {
+    const faux = registerFauxProvider();
+    const state = createTestState();
+    const originalPath = process.env.PATH;
+    process.env.PATH = `${process.env.PATH ?? ""}:/usr/bin:/bin`;
+    state.cwd = process.cwd();
+    state.canonicalCwd = process.cwd();
+    state.model = faux.getModel();
+    faux.setResponses([
+      fauxAssistantMessage(
+        [
+          fauxText("I'll inspect the command output first."),
+          fauxToolCall("shell", { command: "sleep 0.2; echo tool-output" }),
+        ],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("Done."),
+    ]);
+
+    try {
+      handleInput("hello", state);
+
+      await waitFor(() => {
+        const logText = collectText({
+          type: "vstack",
+          props: {},
+          children: buildConversationLog(state),
+        });
+        return logText.includes("Running...");
+      });
+
+      const logText = collectText({
+        type: "vstack",
+        props: {},
+        children: buildConversationLog(state),
+      });
+
+      expect(logText).toContain("I'll inspect the command output first.");
+      expect(logText).toContain("$ sleep 0.2; echo tool-output");
+      expect(logText).toContain("Running...");
+    } finally {
+      process.env.PATH = originalPath;
+      faux.unregister();
+      state.db.close();
+    }
+  });
+
+  test("completed tool results stay visible before the full loop finishes", async () => {
+    const api = "ui-streaming-tool-result-test";
+    const sourceId = "ui-streaming-tool-result-test-source";
+    const model: Model<string> = {
+      id: "ui-streaming-tool-result-model",
+      name: "UI Streaming Tool Result Model",
+      api,
+      provider: "test",
+      baseUrl: "http://localhost:0",
+      reasoning: true,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 128000,
+      maxTokens: 4096,
+    };
+
+    let callCount = 0;
+    const buildProviderStream = () => {
+      callCount += 1;
+      const stream = createAssistantMessageEventStream();
+
+      if (callCount === 1) {
+        const message: AssistantMessage = {
+          role: "assistant",
+          content: [fauxToolCall("shell", { command: "echo tool-output" })],
+          api,
+          provider: model.provider,
+          model: model.id,
+          usage: {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            totalTokens: 0,
+            cost: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              total: 0,
+            },
+          },
+          stopReason: "toolUse",
+          timestamp: Date.now(),
+        };
+
+        queueMicrotask(() => {
+          stream.push({
+            type: "done",
+            reason: "toolUse",
+            message,
+          });
+          stream.end(message);
+        });
+
+        return stream;
+      }
+
+      const partial: AssistantMessage = {
+        role: "assistant",
+        content: [fauxText("Done streaming")],
+        api,
+        provider: model.provider,
+        model: model.id,
+        usage: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 0,
+          cost: {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            total: 0,
+          },
+        },
+        stopReason: "stop",
+        timestamp: Date.now(),
+      };
+      const finalMessage: AssistantMessage = { ...partial };
+
+      queueMicrotask(() => {
+        stream.push({
+          type: "text_delta",
+          contentIndex: 0,
+          delta: "Done streaming",
+          partial,
+        });
+        setTimeout(() => {
+          stream.push({
+            type: "done",
+            reason: "stop",
+            message: finalMessage,
+          });
+          stream.end(finalMessage);
+        }, 200);
+      });
+
+      return stream;
+    };
+
+    registerApiProvider(
+      {
+        api,
+        stream: (_model, _context, _options) => buildProviderStream(),
+        streamSimple: (_model, _context, _options) => buildProviderStream(),
+      },
+      sourceId,
+    );
+
+    const state = createTestState();
+    const originalPath = process.env.PATH;
+    process.env.PATH = `${process.env.PATH ?? ""}:/usr/bin:/bin`;
+    state.cwd = process.cwd();
+    state.canonicalCwd = process.cwd();
+    state.model = model;
+
+    try {
+      handleInput("hello", state);
+
+      await waitFor(() => {
+        const logText = collectText({
+          type: "vstack",
+          props: {},
+          children: buildConversationLog(state),
+        });
+        return (
+          state.running &&
+          logText.includes("tool-output") &&
+          logText.includes("Done streaming")
+        );
+      });
+
+      const logText = collectText({
+        type: "vstack",
+        props: {},
+        children: buildConversationLog(state),
+      });
+
+      expect(logText).toContain("$ echo tool-output");
+      expect(logText).toContain("tool-output");
+      expect(logText).toContain("Done streaming");
+    } finally {
+      process.env.PATH = originalPath;
+      unregisterApiProviders(sourceId);
       state.db.close();
     }
   });
