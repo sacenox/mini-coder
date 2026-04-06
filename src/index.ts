@@ -301,7 +301,7 @@ export interface AppState {
   effort: ThinkingLevel;
   /** Message history for the active session. */
   messages: ReturnType<typeof loadMessages>;
-  /** Cumulative usage stats. */
+  /** Cumulative session input/output/cost stats for the status bar. */
   stats: SessionStats;
   /** Discovered AGENTS.md files. */
   agentsMd: AgentsMdFile[];

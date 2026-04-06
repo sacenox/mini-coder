@@ -14,7 +14,12 @@ import {
   DEFAULT_SHOW_REASONING,
   DEFAULT_VERBOSE,
 } from "./index.ts";
-import { createSession, loadMessages, openDatabase } from "./session.ts";
+import {
+  createSession,
+  createUiMessage,
+  loadMessages,
+  openDatabase,
+} from "./session.ts";
 import { loadSettings } from "./settings.ts";
 import { DEFAULT_THEME, type Theme } from "./theme.ts";
 import {
@@ -516,7 +521,7 @@ describe("ui rendering", () => {
     }
   });
 
-  test("renderStatusBar uses the latest assistant usage for context percentage", () => {
+  test("renderStatusBar estimates context usage from the latest valid assistant usage plus trailing model-visible messages", () => {
     const faux = registerFauxProvider();
     const state = createTestState();
     state.model = {
@@ -525,17 +530,21 @@ describe("ui rendering", () => {
     };
     state.messages = [
       { role: "user", content: "first", timestamp: 1 },
-      makeAssistantWithUsage("First.", {
-        input: 120,
-        output: 30,
-        totalTokens: 150,
-      }),
-      { role: "user", content: "second", timestamp: 2 },
       makeAssistantWithUsage("Second.", {
         input: 200,
         output: 50,
         totalTokens: 250,
       }),
+      createUiMessage("x".repeat(500)),
+      { role: "user", content: "12345678", timestamp: 2 },
+      {
+        role: "toolResult",
+        toolCallId: "tool-1",
+        toolName: "shell",
+        content: [{ type: "text", text: "done" }],
+        isError: false,
+        timestamp: 3,
+      },
     ];
     state.stats = {
       totalInput: 4_000,
@@ -547,8 +556,100 @@ describe("ui rendering", () => {
       const node = renderStatusBar(state);
       const text = collectText(node);
 
-      expect(text).toContain("in:4.0k out:2.0k · 25.0%/1k · $1.23");
-      expect(text).not.toContain("in:4.0k out:2.0k · 600.0%/1k · $1.23");
+      expect(text).toContain("in:4.0k out:2.0k · 25.3%/1k · $1.23");
+      expect(text).not.toContain("in:4.0k out:2.0k · 75.3%/1k · $1.23");
+      expect(text).not.toContain("in:4.0k out:2.0k · 25.0%/1k · $1.23");
+    } finally {
+      faux.unregister();
+      state.db.close();
+    }
+  });
+
+  test("renderStatusBar estimates context usage before the first assistant response", () => {
+    const faux = registerFauxProvider();
+    const state = createTestState();
+    state.model = {
+      ...faux.getModel(),
+      contextWindow: 100,
+    };
+    state.messages = [
+      createUiMessage("x".repeat(500)),
+      { role: "user", content: "12345678", timestamp: 1 },
+    ];
+
+    try {
+      const node = renderStatusBar(state);
+      const text = collectText(node);
+
+      expect(text).toContain("in:0 out:0 · 2.0%/100 · $0.00");
+      expect(text).not.toContain("in:0 out:0 · 127.0%/100 · $0.00");
+      expect(text).not.toContain("in:0 out:0 · 0.0%/100 · $0.00");
+    } finally {
+      faux.unregister();
+      state.db.close();
+    }
+  });
+
+  test("renderStatusBar skips aborted assistant usage as a context anchor", () => {
+    const faux = registerFauxProvider();
+    const state = createTestState();
+    const aborted = makeAssistantWithUsage("abcdefghi", {
+      input: 700,
+      output: 200,
+      totalTokens: 900,
+    });
+    aborted.stopReason = "aborted";
+
+    state.model = {
+      ...faux.getModel(),
+      contextWindow: 1_000,
+    };
+    state.messages = [
+      { role: "user", content: "first", timestamp: 1 },
+      makeAssistantWithUsage("valid", {
+        input: 150,
+        output: 50,
+        totalTokens: 200,
+      }),
+      aborted,
+      { role: "user", content: "1234", timestamp: 2 },
+    ];
+
+    try {
+      const node = renderStatusBar(state);
+      const text = collectText(node);
+
+      expect(text).toContain("in:0 out:0 · 20.4%/1k · $0.00");
+      expect(text).not.toContain("in:0 out:0 · 90.0%/1k · $0.00");
+    } finally {
+      faux.unregister();
+      state.db.close();
+    }
+  });
+
+  test("renderStatusBar falls back to usage components when totalTokens is zero", () => {
+    const faux = registerFauxProvider();
+    const state = createTestState();
+    state.model = {
+      ...faux.getModel(),
+      contextWindow: 1_000,
+    };
+    state.messages = [
+      makeAssistantWithUsage("fallback", {
+        input: 120,
+        output: 30,
+        cacheRead: 25,
+        cacheWrite: 25,
+        totalTokens: 0,
+      }),
+    ];
+
+    try {
+      const node = renderStatusBar(state);
+      const text = collectText(node);
+
+      expect(text).toContain("in:0 out:0 · 20.0%/1k · $0.00");
+      expect(text).not.toContain("in:0 out:0 · 0.0%/1k · $0.00");
     } finally {
       faux.unregister();
       state.db.close();

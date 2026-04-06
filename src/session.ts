@@ -42,11 +42,13 @@ export interface Session {
 }
 
 /**
- * Cumulative token and cost statistics for a session.
+ * Cumulative input/output token and cost statistics for a session.
  *
  * Computed by summing `usage` fields from all {@link AssistantMessage}s
  * in the session's history. Not stored — derived on load and maintained
- * in-memory during the session.
+ * in-memory during the session. These feed the status bar's cumulative
+ * `in`, `out`, and `$cost` values; current context usage is estimated
+ * separately from the current model-visible history.
  */
 export interface SessionStats {
   /** Total input tokens across all assistant messages. */

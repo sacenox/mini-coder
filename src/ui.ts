@@ -72,6 +72,9 @@ const DIVIDER_FRAME_MS = 60;
 /** Width of the bright pulse segment in the animated divider. */
 const PULSE_WIDTH = 5;
 
+/** Conservative fixed estimate for an image block's token footprint. */
+const ESTIMATED_IMAGE_TOKENS = 1_200;
+
 // ---------------------------------------------------------------------------
 // UI state (module-scoped, not in AppState)
 // ---------------------------------------------------------------------------
@@ -308,23 +311,110 @@ function formatModelInfo(state: AppState): string {
   return `${state.model.provider}/${state.model.id} · ${formatEffort(state.effort)}`;
 }
 
-/** Get the most recent assistant message's total token usage. */
-function getLatestContextTokenUsage(state: AppState): number {
-  for (let i = state.messages.length - 1; i >= 0; i--) {
-    const message = state.messages[i];
-    if (message?.role === "assistant") {
-      return (message as AssistantMessage).usage.totalTokens;
-    }
-  }
-  return 0;
+/** Calculate context tokens from assistant usage, falling back when `totalTokens` is zero. */
+function calculateUsageTokens(usage: AssistantMessage["usage"]): number {
+  return (
+    usage.totalTokens ||
+    usage.input + usage.output + usage.cacheRead + usage.cacheWrite
+  );
 }
 
-/** Format usage stats for the status bar right side. */
+/** Estimate token usage from a character count using a conservative chars/4 heuristic. */
+function estimateCharacterTokens(charCount: number): number {
+  return Math.ceil(charCount / 4);
+}
+
+/** Estimate token usage for a model-visible message. */
+function estimateMessageTokens(message: Message): number {
+  switch (message.role) {
+    case "user": {
+      if (typeof message.content === "string") {
+        return estimateCharacterTokens(message.content.length);
+      }
+
+      let chars = 0;
+      let imageTokens = 0;
+      for (const block of message.content) {
+        if (block.type === "text") {
+          chars += block.text.length;
+        } else if (block.type === "image") {
+          imageTokens += ESTIMATED_IMAGE_TOKENS;
+        }
+      }
+      return estimateCharacterTokens(chars) + imageTokens;
+    }
+    case "assistant": {
+      let chars = 0;
+      for (const block of message.content) {
+        if (block.type === "text") {
+          chars += block.text.length;
+        } else if (block.type === "thinking") {
+          chars += block.thinking.length;
+        } else if (block.type === "toolCall") {
+          chars += block.name.length + JSON.stringify(block.arguments).length;
+        }
+      }
+      return estimateCharacterTokens(chars);
+    }
+    case "toolResult": {
+      let chars = 0;
+      let imageTokens = 0;
+      for (const block of message.content) {
+        if (block.type === "text") {
+          chars += block.text.length;
+        } else if (block.type === "image") {
+          imageTokens += ESTIMATED_IMAGE_TOKENS;
+        }
+      }
+      return estimateCharacterTokens(chars) + imageTokens;
+    }
+  }
+}
+
+/** Find the latest assistant usage that can anchor context estimation. */
+function getLatestValidAssistantUsage(
+  messages: readonly Message[],
+): { index: number; tokens: number } | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i];
+    if (
+      message?.role === "assistant" &&
+      message.stopReason !== "aborted" &&
+      message.stopReason !== "error"
+    ) {
+      return {
+        index: i,
+        tokens: calculateUsageTokens(message.usage),
+      };
+    }
+  }
+  return null;
+}
+
+/** Estimate the current model-visible context size for the next request. */
+function estimateCurrentContextTokens(state: AppState): number {
+  const messages = filterModelMessages(state.messages);
+  const latestUsage = getLatestValidAssistantUsage(messages);
+
+  if (!latestUsage) {
+    return messages.reduce((total, message) => {
+      return total + estimateMessageTokens(message);
+    }, 0);
+  }
+
+  let total = latestUsage.tokens;
+  for (let i = latestUsage.index + 1; i < messages.length; i++) {
+    total += estimateMessageTokens(messages[i]!);
+  }
+  return total;
+}
+
+/** Format cumulative session totals plus estimated current context usage for the status bar. */
 function formatUsage(state: AppState): string {
   if (!state.model) return "";
   const inp = formatTokens(state.stats.totalInput);
   const out = formatTokens(state.stats.totalOutput);
-  const contextTokens = getLatestContextTokenUsage(state);
+  const contextTokens = estimateCurrentContextTokens(state);
   const ctxPct =
     state.model.contextWindow > 0
       ? (contextTokens / state.model.contextWindow) * 100

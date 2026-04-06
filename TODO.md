@@ -40,7 +40,7 @@ The spec.md and code are the sources of truth, not this file, don't assume anyth
 - [ ] `/skill:name` input handling (strip prefix, prepend skill body to user message)
 - [ ] Sending images in the prompt
 - [ ] Tab file path autocomplete in input
-- [ ] Context limit compaction (threshold detection, model-generated summary, prompt cache preservation)
+- [ ] Optional context compaction plugin or extension point (threshold detection, model-generated summary, prompt cache preservation)
 
 ## Future ideas
 
