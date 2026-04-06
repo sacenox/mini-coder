@@ -38,6 +38,7 @@ import {
 import {
   computeStats,
   createSession,
+  filterModelMessages,
   loadMessages,
   openDatabase,
   type Session,
@@ -73,6 +74,12 @@ const AUTH_PATH = join(DATA_DIR, "auth.json");
 
 /** Default effort level. */
 const DEFAULT_EFFORT: ThinkingLevel = "medium";
+
+/** Whether reasoning blocks are shown by default. */
+export const DEFAULT_SHOW_REASONING = true;
+
+/** Whether full tool output is shown by default. */
+export const DEFAULT_VERBOSE = false;
 
 /** Maximum sessions to keep per CWD. */
 const MAX_SESSIONS_PER_CWD = 20;
@@ -349,7 +356,7 @@ export async function init(): Promise<AppState> {
   // Init plugins
   const context: AgentContext = {
     cwd,
-    messages,
+    messages: filterModelMessages(messages),
     dataDir: DATA_DIR,
   };
   const plugins = await initPlugins(pluginEntries, context, (entry, err) => {
@@ -380,8 +387,8 @@ export async function init(): Promise<AppState> {
     canonicalCwd,
     running: false,
     abortController: null,
-    showReasoning: false,
-    verbose: false,
+    showReasoning: DEFAULT_SHOW_REASONING,
+    verbose: DEFAULT_VERBOSE,
   };
 }
 

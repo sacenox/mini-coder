@@ -3,12 +3,23 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AssistantMessage, Tool, UserMessage } from "@mariozechner/pi-ai";
+import type {
+  AssistantMessage,
+  Model,
+  Tool,
+  Usage,
+  UserMessage,
+} from "@mariozechner/pi-ai";
 import {
+  createAssistantMessageEventStream,
   type FauxProviderRegistration,
   fauxAssistantMessage,
+  fauxText,
+  fauxThinking,
   fauxToolCall,
+  registerApiProvider,
   registerFauxProvider,
+  unregisterApiProviders,
 } from "@mariozechner/pi-ai";
 import { type AgentEvent, runAgentLoop, type ToolHandler } from "./agent.ts";
 import {
@@ -42,6 +53,15 @@ afterEach(() => {
 function makeUser(text: string): UserMessage {
   return { role: "user", content: text, timestamp: Date.now() };
 }
+
+const ZERO_USAGE: Usage = {
+  input: 0,
+  output: 0,
+  cacheRead: 0,
+  cacheWrite: 0,
+  totalTokens: 0,
+  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+};
 
 /** Built-in tool definitions for tests. */
 function builtinToolDefs(): Tool[] {
@@ -308,6 +328,177 @@ describe("agent loop", () => {
     expect(doneEvents).toHaveLength(1);
   });
 
+  test("emits thinking delta events during streaming", async () => {
+    faux.setResponses([
+      fauxAssistantMessage([
+        fauxThinking("Need to inspect the failing test."),
+        fauxText("Done."),
+      ]),
+    ]);
+
+    const events: AgentEvent[] = [];
+
+    const session = createSession(db, { cwd: tmp });
+    const userMsg = makeUser("hi");
+    const turn = appendMessage(db, session.id, userMsg);
+
+    await runAgentLoop({
+      db,
+      sessionId: session.id,
+      turn,
+      model: faux.getModel(),
+      systemPrompt: "Test",
+      tools: [],
+      toolHandlers: new Map(),
+      messages: [userMsg],
+      cwd: tmp,
+      onEvent: (e) => events.push(e),
+    });
+
+    const thinkingDeltas = events.filter((e) => e.type === "thinking_delta");
+    expect(thinkingDeltas.length).toBeGreaterThan(0);
+  });
+
+  test("reconstructs thinking content when the final done message omits it", async () => {
+    const api = "reasoning-drop-test";
+    const sourceId = "reasoning-drop-test-source";
+    const model: Model<string> = {
+      id: "reasoning-drop-model",
+      name: "Reasoning Drop Model",
+      api,
+      provider: "test",
+      baseUrl: "http://localhost:0",
+      reasoning: true,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 128000,
+      maxTokens: 4096,
+    };
+
+    registerApiProvider(
+      {
+        api,
+        stream: (_model, _context, _options) => {
+          const stream = createAssistantMessageEventStream();
+          const partial: AssistantMessage = {
+            role: "assistant",
+            content: [
+              fauxThinking("Need to inspect the failing test."),
+              fauxText("Done."),
+            ],
+            api,
+            provider: "test",
+            model: model.id,
+            usage: ZERO_USAGE,
+            stopReason: "stop",
+            timestamp: Date.now(),
+          };
+          const finalMessage: AssistantMessage = {
+            ...partial,
+            content: [fauxText("Done.")],
+          };
+
+          queueMicrotask(() => {
+            stream.push({
+              type: "thinking_delta",
+              contentIndex: 0,
+              delta: "Need to inspect the failing test.",
+              partial,
+            });
+            stream.push({
+              type: "text_delta",
+              contentIndex: 1,
+              delta: "Done.",
+              partial,
+            });
+            stream.push({
+              type: "done",
+              reason: "stop",
+              message: finalMessage,
+            });
+            stream.end(finalMessage);
+          });
+
+          return stream;
+        },
+        streamSimple: (_model, _context, _options) => {
+          const stream = createAssistantMessageEventStream();
+          const partial: AssistantMessage = {
+            role: "assistant",
+            content: [
+              fauxThinking("Need to inspect the failing test."),
+              fauxText("Done."),
+            ],
+            api,
+            provider: "test",
+            model: model.id,
+            usage: ZERO_USAGE,
+            stopReason: "stop",
+            timestamp: Date.now(),
+          };
+          const finalMessage: AssistantMessage = {
+            ...partial,
+            content: [fauxText("Done.")],
+          };
+
+          queueMicrotask(() => {
+            stream.push({
+              type: "thinking_delta",
+              contentIndex: 0,
+              delta: "Need to inspect the failing test.",
+              partial,
+            });
+            stream.push({
+              type: "text_delta",
+              contentIndex: 1,
+              delta: "Done.",
+              partial,
+            });
+            stream.push({
+              type: "done",
+              reason: "stop",
+              message: finalMessage,
+            });
+            stream.end(finalMessage);
+          });
+
+          return stream;
+        },
+      },
+      sourceId,
+    );
+
+    try {
+      const session = createSession(db, { cwd: tmp });
+      const userMsg = makeUser("hi");
+      const turn = appendMessage(db, session.id, userMsg);
+
+      const result = await runAgentLoop({
+        db,
+        sessionId: session.id,
+        turn,
+        model,
+        systemPrompt: "Test",
+        tools: [],
+        toolHandlers: new Map(),
+        messages: [userMsg],
+        cwd: tmp,
+      });
+
+      const assistant = result.messages[1];
+      expect(assistant?.role).toBe("assistant");
+      if (assistant?.role !== "assistant") {
+        throw new Error("Expected assistant message");
+      }
+      expect(assistant.content).toContainEqual(
+        fauxThinking("Need to inspect the failing test."),
+      );
+      expect(assistant.content).toContainEqual(fauxText("Done."));
+    } finally {
+      unregisterApiProviders(sourceId);
+    }
+  });
+
   test("emits tool events during tool execution", async () => {
     faux.setResponses([
       fauxAssistantMessage([fauxToolCall("shell", { command: "echo test" })], {
@@ -381,6 +572,41 @@ describe("agent loop", () => {
     const dbLast = dbMessages[dbMessages.length - 1] as AssistantMessage;
     expect(dbLast.role).toBe("assistant");
     expect(dbLast.stopReason).toBe("aborted");
+  });
+
+  test("preserves thinking content on assistant messages", async () => {
+    faux.setResponses([
+      fauxAssistantMessage([
+        fauxThinking("Need to inspect the failing test."),
+        fauxText("Done."),
+      ]),
+    ]);
+
+    const session = createSession(db, { cwd: tmp });
+    const userMsg = makeUser("hello");
+    const turn = appendMessage(db, session.id, userMsg);
+
+    const result = await runAgentLoop({
+      db,
+      sessionId: session.id,
+      turn,
+      model: faux.getModel(),
+      systemPrompt: "Test",
+      tools: [],
+      toolHandlers: new Map(),
+      messages: [userMsg],
+      cwd: tmp,
+    });
+
+    const assistant = result.messages[1];
+    expect(assistant?.role).toBe("assistant");
+    if (assistant?.role !== "assistant") {
+      throw new Error("Expected assistant message");
+    }
+    expect(assistant.content).toContainEqual(
+      fauxThinking("Need to inspect the failing test."),
+    );
+    expect(assistant.content).toContainEqual(fauxText("Done."));
   });
 
   test("handles LLM error gracefully", async () => {

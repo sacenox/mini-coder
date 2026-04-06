@@ -88,6 +88,77 @@ export interface AgentLoopResult {
   stopReason: "stop" | "length" | "error" | "aborted";
 }
 
+/** Merge streamed partial assistant content into the final message content. */
+function mergeAssistantContent(
+  partialContent: AssistantMessage["content"],
+  finalContent: AssistantMessage["content"],
+): AssistantMessage["content"] {
+  if (partialContent.length === 0) return finalContent;
+  if (finalContent.length === 0) return partialContent;
+
+  const merged: AssistantMessage["content"] = [];
+  let partialIndex = 0;
+  let finalIndex = 0;
+
+  while (
+    partialIndex < partialContent.length ||
+    finalIndex < finalContent.length
+  ) {
+    const partialBlock = partialContent[partialIndex];
+    const finalBlock = finalContent[finalIndex];
+
+    if (!partialBlock) {
+      merged.push(finalBlock!);
+      finalIndex++;
+      continue;
+    }
+    if (!finalBlock) {
+      merged.push(partialBlock);
+      partialIndex++;
+      continue;
+    }
+    if (partialBlock.type === finalBlock.type) {
+      if (
+        partialBlock.type === "thinking" &&
+        finalBlock.type === "thinking" &&
+        partialBlock.thinking &&
+        !finalBlock.thinking
+      ) {
+        merged.push(partialBlock);
+      } else {
+        merged.push(finalBlock);
+      }
+      partialIndex++;
+      finalIndex++;
+      continue;
+    }
+    if (partialBlock.type === "thinking") {
+      merged.push(partialBlock);
+      partialIndex++;
+      continue;
+    }
+    merged.push(finalBlock);
+    partialIndex++;
+    finalIndex++;
+  }
+
+  return merged;
+}
+
+/** Merge a final assistant message with the richest streamed partial content seen. */
+function mergeAssistantMessage(
+  partialMessage: AssistantMessage,
+  finalMessage: AssistantMessage,
+): AssistantMessage {
+  return {
+    ...finalMessage,
+    content: mergeAssistantContent(
+      partialMessage.content,
+      finalMessage.content,
+    ),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Agent loop
 // ---------------------------------------------------------------------------
@@ -137,8 +208,13 @@ export async function runAgentLoop(
     };
     const eventStream = streamSimple(model, context, streamOpts);
     let assistantMessage: AssistantMessage | undefined;
+    let partialAssistantMessage: AssistantMessage | undefined;
 
     for await (const event of eventStream) {
+      if ("partial" in event) {
+        partialAssistantMessage = event.partial;
+      }
+
       switch (event.type) {
         case "text_delta":
           onEvent?.({ type: "text_delta", delta: event.delta });
@@ -161,6 +237,12 @@ export async function runAgentLoop(
     // If somehow we got no message, fall back to the stream result
     if (!assistantMessage) {
       assistantMessage = await eventStream.result();
+    }
+    if (partialAssistantMessage) {
+      assistantMessage = mergeAssistantMessage(
+        partialAssistantMessage,
+        assistantMessage,
+      );
     }
 
     // Append assistant message to history and DB

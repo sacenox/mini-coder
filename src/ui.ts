@@ -48,20 +48,22 @@ import {
   appendMessage,
   computeStats,
   createSession,
+  createUiMessage,
+  filterModelMessages,
   forkSession,
   listSessions,
   loadMessages,
+  type UiMessage,
   undoLastTurn,
 } from "./session.ts";
 import type { Theme } from "./theme.ts";
-import { truncateOutput } from "./tools.ts";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-/** Max lines of shell output shown in the conversation log. */
-const UI_MAX_SHELL_LINES = 200;
+/** Max body lines shown for tool results when verbose mode is off. */
+const UI_TOOL_PREVIEW_LINES = 20;
 
 /** Divider animation speed (ms per frame). */
 const DIVIDER_FRAME_MS = 60;
@@ -138,11 +140,27 @@ export interface StreamingRenderState {
   pendingToolCalls: PendingToolCall[];
 }
 
+/** Semantic line kinds used when rendering tool output in the log. */
+export type ToolRenderLineKind =
+  | "command"
+  | "path"
+  | "toolName"
+  | "text"
+  | "diffAdded"
+  | "diffRemoved"
+  | "summary"
+  | "error";
+
+/** A single logical line in a rendered tool block. */
+export interface ToolRenderLine {
+  /** Semantic line kind for styling. */
+  kind: ToolRenderLineKind;
+  /** Text content for this line. */
+  text: string;
+}
+
 /** Tool calls collected during the current streaming turn. */
 let pendingToolCalls: PendingToolCall[] = [];
-
-/** Display-only info messages (not persisted, not sent to LLM). */
-let infoMessages: Message[] = [];
 
 // ---------------------------------------------------------------------------
 // Overlay state
@@ -365,6 +383,159 @@ export function renderAssistantMessage(
   return VStack({}, children);
 }
 
+/** Split multi-line tool text into logical render lines. */
+function splitToolTextLines(
+  text: string,
+  kind: Exclude<
+    ToolRenderLineKind,
+    "command" | "path" | "toolName" | "summary"
+  >,
+): ToolRenderLine[] {
+  if (text === "") {
+    return [];
+  }
+  return text.split("\n").map((line) => ({ kind, text: line }));
+}
+
+/**
+ * Apply the UI preview policy to tool body lines.
+ *
+ * When verbose mode is off, only the first `maxLines` body lines are shown,
+ * followed by a summary line reporting how many lines remain hidden.
+ *
+ * @param lines - Full body lines for the tool output.
+ * @param verbose - Whether verbose mode is enabled.
+ * @param maxLines - Maximum visible body lines in preview mode.
+ * @returns The lines to render in the conversation log.
+ */
+export function previewToolRenderLines(
+  lines: readonly ToolRenderLine[],
+  verbose: boolean,
+  maxLines = UI_TOOL_PREVIEW_LINES,
+): ToolRenderLine[] {
+  if (verbose || lines.length <= maxLines) {
+    return [...lines];
+  }
+
+  return [
+    ...lines.slice(0, maxLines),
+    {
+      kind: "summary",
+      text: `And ${lines.length - maxLines} lines more`,
+    },
+  ];
+}
+
+/** Build the logical render lines for a shell tool result. */
+function buildShellToolLines(
+  command: string,
+  output: string,
+  verbose: boolean,
+): ToolRenderLine[] {
+  return [
+    { kind: "command", text: `$ ${command}` },
+    ...previewToolRenderLines(splitToolTextLines(output, "text"), verbose),
+  ];
+}
+
+/** Build the logical render lines for an edit tool result. */
+function buildEditToolLines(
+  filePath: string,
+  oldText: string,
+  newText: string,
+  isError: boolean,
+  resultText: string,
+  verbose: boolean,
+): ToolRenderLine[] {
+  if (isError) {
+    return [
+      { kind: "path", text: `~ ${filePath}` },
+      ...previewToolRenderLines(
+        splitToolTextLines(resultText, "error"),
+        verbose,
+      ),
+    ];
+  }
+
+  if (oldText === "") {
+    return [
+      { kind: "path", text: `~ ${filePath}` },
+      { kind: "diffAdded", text: "(new file)" },
+    ];
+  }
+
+  const patch = structuredPatch("", "", oldText, newText, "", "", {
+    context: 2,
+  });
+  const diffLines: ToolRenderLine[] = [];
+
+  for (const hunk of patch.hunks) {
+    for (const line of hunk.lines) {
+      if (line.startsWith("+")) {
+        diffLines.push({ kind: "diffAdded", text: line });
+      } else if (line.startsWith("-")) {
+        diffLines.push({ kind: "diffRemoved", text: line });
+      } else {
+        diffLines.push({ kind: "text", text: line });
+      }
+    }
+  }
+
+  return [
+    { kind: "path", text: `~ ${filePath}` },
+    ...previewToolRenderLines(diffLines, verbose),
+  ];
+}
+
+/** Render a single styled text node for a tool line. */
+function renderToolLine(line: ToolRenderLine, theme: Theme): Node {
+  switch (line.kind) {
+    case "command":
+    case "path":
+      return Text(line.text, {
+        fgColor: "color06",
+        bold: true,
+        wrap: "word",
+      });
+    case "toolName":
+      return Text(line.text, {
+        fgColor: "color05",
+        bold: true,
+        wrap: "word",
+      });
+    case "diffAdded":
+      return Text(line.text, { fgColor: theme.diffAdded, wrap: "word" });
+    case "diffRemoved":
+      return Text(line.text, { fgColor: theme.diffRemoved, wrap: "word" });
+    case "summary":
+      return Text(line.text, {
+        fgColor: theme.toolText,
+        italic: true,
+        wrap: "word",
+      });
+    case "error":
+      return Text(line.text, { fgColor: theme.error, wrap: "word" });
+    case "text":
+      return Text(line.text, { wrap: "word" });
+  }
+}
+
+/** Render styled text nodes for tool lines. */
+function renderToolLines(
+  lines: readonly ToolRenderLine[],
+  theme: Theme,
+): Node[] {
+  return lines.map((line) => renderToolLine(line, theme));
+}
+
+/** Render a tool block with a left border. */
+function renderToolBlock(lines: readonly ToolRenderLine[], theme: Theme): Node {
+  return HStack({ padding: { x: 1 } }, [
+    Text("│ ", { fgColor: theme.toolBorder }),
+    VStack({ flex: 1, fgColor: theme.toolText }, renderToolLines(lines, theme)),
+  ]);
+}
+
 /** Render a shell tool call with left border. */
 function renderShellToolCall(
   command: string,
@@ -372,21 +543,10 @@ function renderShellToolCall(
   _isError: boolean,
   opts: Pick<ConversationRenderOpts, "verbose" | "theme">,
 ): Node {
-  const displayed = opts.verbose
-    ? output
-    : truncateOutput(output, UI_MAX_SHELL_LINES);
-
-  const lines: Node[] = [
-    Text(`$ ${command}`, { fgColor: "color06", bold: true }),
-  ];
-  if (displayed) {
-    lines.push(Text(displayed, { wrap: "word" }));
-  }
-
-  return HStack({ padding: { x: 1 } }, [
-    Text("│ ", { fgColor: opts.theme.toolBorder }),
-    VStack({ flex: 1, fgColor: opts.theme.toolText }, lines),
-  ]);
+  return renderToolBlock(
+    buildShellToolLines(command, output, opts.verbose),
+    opts.theme,
+  );
 }
 
 /** Render an edit tool call with file path and unified diff. */
@@ -396,42 +556,19 @@ function renderEditToolCall(
   newText: string,
   isError: boolean,
   resultText: string,
-  theme: Theme,
+  opts: Pick<ConversationRenderOpts, "verbose" | "theme">,
 ): Node {
-  if (isError) {
-    return HStack({ padding: { x: 1 } }, [
-      Text("│ ", { fgColor: theme.toolBorder }),
-      VStack({ flex: 1 }, [Text(resultText, { fgColor: theme.error })]),
-    ]);
-  }
-
-  const lines: Node[] = [
-    Text(`~ ${filePath}`, { fgColor: "color06", bold: true }),
-  ];
-
-  if (oldText === "") {
-    lines.push(Text("(new file)", { fgColor: theme.diffAdded }));
-  } else {
-    const patch = structuredPatch("", "", oldText, newText, "", "", {
-      context: 2,
-    });
-    for (const hunk of patch.hunks) {
-      for (const line of hunk.lines) {
-        if (line.startsWith("+")) {
-          lines.push(Text(line, { fgColor: theme.diffAdded }));
-        } else if (line.startsWith("-")) {
-          lines.push(Text(line, { fgColor: theme.diffRemoved }));
-        } else {
-          lines.push(Text(line, { fgColor: theme.toolText }));
-        }
-      }
-    }
-  }
-
-  return HStack({ padding: { x: 1 } }, [
-    Text("│ ", { fgColor: theme.toolBorder }),
-    VStack({ flex: 1 }, lines),
-  ]);
+  return renderToolBlock(
+    buildEditToolLines(
+      filePath,
+      oldText,
+      newText,
+      isError,
+      resultText,
+      opts.verbose,
+    ),
+    opts.theme,
+  );
 }
 
 /** Render a generic (plugin) tool call with left border. */
@@ -441,19 +578,25 @@ function renderGenericToolCall(
   isError: boolean,
   theme: Theme,
 ): Node {
-  const fgColor = isError ? theme.error : theme.toolText;
+  const lines: ToolRenderLine[] = [
+    { kind: "toolName", text: toolName },
+    ...splitToolTextLines(output, isError ? "error" : "text"),
+  ];
 
-  return HStack({ padding: { x: 1 } }, [
-    Text("│ ", { fgColor: theme.toolBorder }),
-    VStack({ flex: 1 }, [
-      Text(toolName, { fgColor: "color05", bold: true }),
-      ...(output ? [Text(output, { wrap: "word", fgColor })] : []),
-    ]),
-  ]);
+  return renderToolBlock(lines, theme);
 }
 
-/** Render a tool result, dispatching by tool name. */
-function renderToolResult(
+/**
+ * Render a tool result, dispatching by tool name.
+ *
+ * @param toolName - Tool name to render.
+ * @param args - Tool call arguments used for headers/diffs.
+ * @param resultText - Text content from the tool result message.
+ * @param isError - Whether the tool execution failed.
+ * @param opts - Shared conversation render options.
+ * @returns The rendered tool block node.
+ */
+export function renderToolResult(
   toolName: string,
   args: Record<string, unknown>,
   resultText: string,
@@ -473,7 +616,10 @@ function renderToolResult(
       args.newText as string,
       isError,
       resultText,
-      opts.theme,
+      {
+        verbose: opts.verbose,
+        theme: opts.theme,
+      },
     );
   }
   return renderGenericToolCall(toolName, resultText, isError, opts.theme);
@@ -545,8 +691,19 @@ export function renderStreamingResponse(
 // Conversation log
 // ---------------------------------------------------------------------------
 
+/** Render an internal UI message in the conversation log. */
+function renderUiMessage(msg: UiMessage): Node {
+  return VStack({ padding: { x: 1 } }, [
+    Text(msg.content, {
+      fgColor: "color08",
+      italic: true,
+      wrap: "word",
+    }),
+  ]);
+}
+
 /** Build the full conversation log as an array of nodes. */
-function buildConversationLog(state: AppState): Node[] {
+export function buildConversationLog(state: AppState): Node[] {
   const nodes: Node[] = [];
   const renderOpts: ConversationRenderOpts = {
     showReasoning: state.showReasoning,
@@ -567,7 +724,9 @@ function buildConversationLog(state: AppState): Node[] {
   >();
 
   for (const msg of state.messages) {
-    if (msg.role === "user") {
+    if (msg.role === "ui") {
+      pushConversationNode(renderUiMessage(msg));
+    } else if (msg.role === "user") {
       pushConversationNode(renderUserMessage(msg, state.theme));
     } else if (msg.role === "assistant") {
       const am = msg as AssistantMessage;
@@ -603,18 +762,6 @@ function buildConversationLog(state: AppState): Node[] {
         },
         renderOpts,
       ),
-    );
-  }
-
-  // Append display-only info messages
-  for (const msg of infoMessages) {
-    pushConversationNode(
-      VStack({ padding: { x: 1 } }, [
-        Text(typeof msg.content === "string" ? msg.content : "", {
-          fgColor: "color08",
-          italic: true,
-        }),
-      ]),
     );
   }
 
@@ -788,7 +935,6 @@ function handleSessionCommand(state: AppState): void {
           state.session = picked;
           state.messages = loadMessages(state.db, picked.id);
           state.stats = computeStats(state.messages);
-          infoMessages = [];
           stickToBottom = true;
         }
       }
@@ -824,20 +970,24 @@ function openInBrowser(url: string): void {
 }
 
 /**
- * Append a system info line to the conversation log.
+ * Append a persisted UI-only info message to the conversation log.
  *
- * Used for login progress/status messages that aren't part of the
- * agent conversation. Rendered as dimmed italic text.
+ * @param text - Display text to append.
+ * @param state - Application state.
+ * @param turn - Optional turn number to join.
+ * @returns The turn number the UI message was stored with.
  */
-function appendInfoMessage(text: string, _state: AppState): void {
-  const msg: Message = {
-    role: "user",
-    content: `${text}`,
-    timestamp: Date.now(),
-  };
-  infoMessages.push(msg);
+function appendInfoMessage(
+  text: string,
+  state: AppState,
+  turn?: number,
+): number {
+  const msg = createUiMessage(text);
+  const effectiveTurn = appendMessage(state.db, state.session.id, msg, turn);
+  state.messages.push(msg);
   stickToBottom = true;
   cel.render();
+  return effectiveTurn;
 }
 
 /** Handle the /new command: start a new session. */
@@ -853,7 +1003,6 @@ function handleNewCommand(state: AppState): void {
   });
   state.messages = [];
   state.stats = { totalInput: 0, totalOutput: 0, totalCost: 0 };
-  infoMessages = [];
   stickToBottom = true;
   cel.render();
 }
@@ -865,7 +1014,6 @@ function handleForkCommand(state: AppState): void {
   state.session = forked;
   state.messages = loadMessages(state.db, forked.id);
   state.stats = computeStats(state.messages);
-  infoMessages = [];
   appendInfoMessage(`Forked session.`, state);
 }
 
@@ -1027,15 +1175,37 @@ function handleLogoutCommand(state: AppState): void {
   cel.render();
 }
 
-/** Handle the /help command: show commands, providers, agents, skills, plugins. */
-function handleHelpCommand(state: AppState): void {
+/** Help text inputs derived from application state. */
+export interface HelpRenderState {
+  /** Available provider credentials keyed by provider id. */
+  providers: AppState["providers"];
+  /** Current model selection. */
+  model: AppState["model"];
+  /** Loaded AGENTS.md files. */
+  agentsMd: AppState["agentsMd"];
+  /** Discovered skills. */
+  skills: AppState["skills"];
+  /** Active plugins. */
+  plugins: AppState["plugins"];
+  /** Whether reasoning blocks are shown in the log. */
+  showReasoning: AppState["showReasoning"];
+  /** Whether full tool output is shown in the log. */
+  verbose: AppState["verbose"];
+}
+
+/**
+ * Build the `/help` text shown in the conversation log.
+ *
+ * @param state - Help-relevant application state.
+ * @returns Multi-line help text for display.
+ */
+export function buildHelpText(state: HelpRenderState): string {
   const lines: string[] = [];
 
   // Commands
   lines.push("Commands:");
   for (const cmd of COMMANDS) {
-    const desc = COMMAND_DESCRIPTIONS[cmd] ?? "";
-    lines.push(`  /${cmd}  ${desc}`);
+    lines.push(`  /${cmd}  ${getHelpCommandDescription(cmd, state)}`);
   }
 
   // Providers
@@ -1082,7 +1252,12 @@ function handleHelpCommand(state: AppState): void {
     }
   }
 
-  appendInfoMessage(lines.join("\n"), state);
+  return lines.join("\n");
+}
+
+/** Handle the /help command: show commands, providers, agents, skills, plugins. */
+function handleHelpCommand(state: AppState): void {
+  appendInfoMessage(buildHelpText(state), state);
 }
 
 /** Command descriptions for the autocomplete overlay. */
@@ -1099,6 +1274,27 @@ const COMMAND_DESCRIPTIONS: Record<string, string> = {
   logout: "OAuth logout",
   help: "Show help",
 };
+
+/**
+ * Get the `/help` description for a command, including current state when relevant.
+ *
+ * @param command - Command name.
+ * @param state - Help-relevant application state.
+ * @returns Human-readable command description.
+ */
+function getHelpCommandDescription(
+  command: (typeof COMMANDS)[number],
+  state: Pick<HelpRenderState, "showReasoning" | "verbose">,
+): string {
+  const description = COMMAND_DESCRIPTIONS[command] ?? "";
+  if (command === "reasoning") {
+    return `${description} (currently ${state.showReasoning ? "on" : "off"})`;
+  }
+  if (command === "verbose") {
+    return `${description} (currently ${state.verbose ? "on" : "off"})`;
+  }
+  return description;
+}
 
 /** Show command autocomplete overlay. */
 function showCommandAutocomplete(state: AppState): void {
@@ -1173,7 +1369,7 @@ function handleCommand(command: string, state: AppState): boolean {
 // ---------------------------------------------------------------------------
 
 /** Route raw user input through parseInput and dispatch accordingly. */
-function handleInput(raw: string, state: AppState): void {
+export function handleInput(raw: string, state: AppState): void {
   const parsed = parseInput(raw);
 
   switch (parsed.type) {
@@ -1234,7 +1430,7 @@ async function submitMessage(text: string, state: AppState): Promise<void> {
       systemPrompt,
       tools,
       toolHandlers,
-      messages: state.messages,
+      messages: filterModelMessages(state.messages),
       cwd: state.cwd,
       apiKey: state.model
         ? state.providers.get(state.model.provider)

@@ -57,6 +57,21 @@ export interface SessionStats {
   totalCost: number;
 }
 
+/** A persisted UI-only message shown in the conversation log. */
+export interface UiMessage {
+  /** Identifies this as an internal UI message. */
+  role: "ui";
+  /** UI message category for rendering and future behavior. */
+  kind: "info";
+  /** Display text shown in the conversation log. */
+  content: string;
+  /** Unix timestamp in milliseconds. */
+  timestamp: number;
+}
+
+/** Any message persisted in session history. */
+export type PersistedMessage = Message | UiMessage;
+
 /** Options for creating a new session. */
 interface CreateSessionOpts {
   /** Working directory to scope the session to. */
@@ -270,6 +285,45 @@ export function truncateSessions(
 // ---------------------------------------------------------------------------
 
 /**
+ * Create a persisted UI message.
+ *
+ * @param content - Display text shown in the conversation log.
+ * @returns A new {@link UiMessage}.
+ */
+export function createUiMessage(content: string): UiMessage {
+  return {
+    role: "ui",
+    kind: "info",
+    content,
+    timestamp: Date.now(),
+  };
+}
+
+/**
+ * Check whether a persisted message is a UI-only message.
+ *
+ * @param message - Message to inspect.
+ * @returns `true` when the message is a {@link UiMessage}.
+ */
+export function isUiMessage(message: PersistedMessage): message is UiMessage {
+  return message.role === "ui";
+}
+
+/**
+ * Filter persisted session history down to model-visible pi-ai messages.
+ *
+ * @param messages - Persisted session history.
+ * @returns Only the pi-ai {@link Message} entries.
+ */
+export function filterModelMessages(
+  messages: readonly PersistedMessage[],
+): Message[] {
+  return messages.filter(
+    (message): message is Message => !isUiMessage(message),
+  );
+}
+
+/**
  * Append a message to a session's history.
  *
  * Turn numbering rules:
@@ -283,14 +337,14 @@ export function truncateSessions(
  *
  * @param db - Open database handle.
  * @param sessionId - The session to append to.
- * @param message - A pi-ai {@link Message} (UserMessage, AssistantMessage, or ToolResultMessage).
+ * @param message - A persisted message (pi-ai message or internal UI message).
  * @param turn - Explicit turn number to join. Omit to start a new turn.
  * @returns The turn number the message was stored with.
  */
 export function appendMessage(
   db: Database,
   sessionId: string,
-  message: Message,
+  message: PersistedMessage,
   turn?: number,
 ): number {
   const now = Date.now();
@@ -316,17 +370,20 @@ export function appendMessage(
  * Load all messages for a session in insertion order.
  *
  * Messages are deserialized from their JSON representation back into
- * pi-ai {@link Message} objects. The ordering matches the original
- * append order (by autoincrement `id`), preserving the conversation flow.
+ * persisted app messages. The ordering matches the original append order
+ * (by autoincrement `id`), preserving the conversation flow.
  *
  * @param db - Open database handle.
  * @param sessionId - The session to load messages for.
- * @returns An array of {@link Message} objects, empty if the session has
- *          no messages or does not exist.
+ * @returns An array of {@link PersistedMessage} objects, empty if the session
+ *          has no messages or does not exist.
  */
-export function loadMessages(db: Database, sessionId: string): Message[] {
+export function loadMessages(
+  db: Database,
+  sessionId: string,
+): PersistedMessage[] {
   const rows = db.query<DataRow, [string]>(SQL.loadMessages).all(sessionId);
-  return rows.map((row) => JSON.parse(row.data) as Message);
+  return rows.map((row) => JSON.parse(row.data) as PersistedMessage);
 }
 
 // ---------------------------------------------------------------------------
@@ -412,10 +469,12 @@ export function forkSession(db: Database, sourceId: string): Session {
  * designed to be called once on session load, with the result maintained
  * in-memory via a running accumulator during the session.
  *
- * @param messages - The full message history for a session.
+ * @param messages - The full persisted message history for a session.
  * @returns Aggregated {@link SessionStats}.
  */
-export function computeStats(messages: Message[]): SessionStats {
+export function computeStats(
+  messages: readonly PersistedMessage[],
+): SessionStats {
   let totalInput = 0;
   let totalOutput = 0;
   let totalCost = 0;

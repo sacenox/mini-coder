@@ -65,7 +65,7 @@ Runs a command in the user's shell. Returns stdout, stderr, and exit code.
 
 Implementation details:
 
-- Large outputs are truncated (keeping head + tail with a middle marker) to avoid context explosion.
+- Large outputs are truncated to avoid context explosion caused by reading a massive file or binary by accident. This is a guard at the tool level, and not related to the user-configured verbose setting.
 - The truncation threshold is configurable, tuned to keep useful output while staying well within context limits.
 - Commands run via `$SHELL -c "<command>"` (falling back to `/bin/sh` if `$SHELL` is unset) with the CWD set to the session's working directory.
 - Timeout: no default timeout. The user can interrupt via `Escape`.
@@ -201,11 +201,11 @@ The core runtime. This is what happens on each turn:
 
 1. **User submits a message** — the input text (plus any embedded images or skill bodies from `/skill:name`) becomes a pi-ai `UserMessage`. It is appended to the session's message history and persisted to the DB.
 
-2. **Build context** — construct a pi-ai `Context`: the system prompt (see [System prompt](#system-prompt)), the full message history, and the registered tool definitions (built-in + plugin tools). Git state in the session footer is refreshed before each turn.
+2. **Build context** — construct a pi-ai `Context`: the system prompt (see [System prompt](#system-prompt)), the full message history, and the registered tool definitions (built-in + plugin tools). Git state in the session footer is refreshed at session start and after each turn.
 
 3. **Stream to LLM** — call `streamSimple(model, context, options)` from pi-ai. Iterate over the event stream:
-   - `text_delta` / `thinking_delta` → update the UI (stream markdown, show thinking if enabled).
-   - `toolcall_end` → execute the tool call (see below), append the `ToolResultMessage` to history and DB.
+   - `text_delta` / `thinking_delta` / `toolcall_delta` → update the in-progress assistant message and the UI incrementally (stream markdown, show thinking if enabled, accumulate tool call arguments as they arrive).
+   - `toolcall_end` → finalize the structured tool call in the in-progress `AssistantMessage`.
    - `done` → append the `AssistantMessage` to history and DB. Update cumulative stats. If `stopReason` is `"toolUse"`, go to step 4. If `"stop"` or `"length"`, return to the input prompt.
    - `error` → display error in the log, return to the input prompt.
 
@@ -385,25 +385,24 @@ Key decisions informed by the Codex prompting guide and Claude prompting best pr
 Three zones, top to bottom:
 
 ```
-│                                                     │
-│  ┌─────────────────────────────────────────────┐    │
-│  │ fix the tests                               │    │  user: bg color
-│  └─────────────────────────────────────────────┘    │
-│                                                     │
-│  I'll check the test suite first.                   │  agent: default bg
-│                                                     │
-│  │ $ bun test                                       │  tool: left border
-│  │ 3 passed, 1 failed                               │  dimmed text
-│  │ ... truncated 45 lines ...                        │
+│                                                      │
+│  ┌─────────────────────────────────────────────┐     │
+│  │ fix the tests                               │     │  user: bg color
+│  └─────────────────────────────────────────────┘     │
+│                                                      │
+│  I'll check the test suite first.                    │  agent: default bg
+│                                                      │
+│  │ $ bun test                                        │  tool: left border
+│  │ 3 passed, 1 failed                                │  dimmed text
 │  │ FAIL src/agent.test.ts > handles error            │
 │  │ exit 1                                            │
 │  │                                                   │
 │  │ ~ src/agent.ts                                    │  edit: path + diff
-│  │ -    expect(result).toBe("stop");                  │  red removed
-│  │ +    expect(result).toBe("error");                 │  green added
+│  │ -    expect(result).toBe("stop");                 │  red removed
+│  │ +    expect(result).toBe("error");                │  green added
 │  │                                                   │
 │  Fixed the assertion. Tests pass now.                │
-│                                                     │
+│                                                      │
 ────══════───────────────────────────────────────────  animated divider
  fix the remaining lint warnings                       │  input: no prefix
  in the utils file too_                                │
@@ -417,7 +416,7 @@ cel-tui structure:
 ```ts
 VStack({ height: "100%" }, [
   // Conversation log — takes all available space
-  VStack({ flex: 1, overflow: "scroll", scrollbar: true }),
+  VStack({ flex: 1, overflow: "scroll" }),
   // Top divider — animated scanning pulse when agent is working
   Divider(),
   // Input area — intrinsic height, no prompt prefix
@@ -487,13 +486,14 @@ Scrollable area that shows the full conversation history. Stick-to-bottom by def
 Message types and their rendering:
 
 - **User messages**: displayed as plain text with a subtle background color to distinguish them from agent responses. No prefix or role indicator.
-- **Assistant messages**: streamed markdown rendered via cel-tui's `Markdown` component on the default background. Thinking/reasoning content is collapsible (hidden by default, toggled with `/reasoning`).
-- **Tool calls — shell**: rendered with a left border (`│`) and dimmed foreground. Shows the command (`$ command`), head + tail truncated output with a visual marker, and exit code. Full output viewable with `/verbose`.
-- **Tool calls — edit**: rendered with a left border (`│`) and dimmed foreground. Shows the file path and a unified diff of the change (added lines in green, removed in red). Uses the `diff` package (`structuredPatch`) for line-level diffing.
+- **Assistant messages**: streamed markdown rendered via cel-tui's `Markdown` component on the default background. Thinking/reasoning content is collapsible (shown by default, toggled with `/reasoning`).
+- **Tool calls — shell**: rendered with a left border (`│`) and dimmed foreground. Shows the command (`$ command`) and the tool output. When `/verbose` is off, shell output is previewed as the first 20 lines followed by `And X lines more` when additional lines exist. When `/verbose` is on, the shell block expands to the full stored tool result. Exit code display is intended but not implemented yet.
+- **Tool calls — edit**: rendered with a left border (`│`) and dimmed foreground. Shows the file path and a unified diff of the change (added lines in green, removed in red). When `/verbose` is off, the diff preview shows the first 20 diff lines followed by `And X lines more` when additional lines exist. When `/verbose` is on, the diff expands to the full stored tool result. Uses the `diff` package (`structuredPatch`) for line-level diffing.
 - **Tool calls — plugin tools**: rendered with a left border, prefixed with plugin/tool name.
+- **UI messages**: internal app messages such as `/help` output, OAuth progress, and other session-local notices. They are rendered in the conversation log, persisted with the session, and excluded from model context.
 - **Errors**: one-line summary, styled distinctly.
 
-While the agent is working, the top divider (above the input area) animates with a scanning pulse — a bright segment sweeping across the dimmed divider line. The animation starts when a turn begins and stops when the turn ends (done, error, or aborted). No per-activity state tracking.
+While the agent is working, the top divider (above the input area) animates with a scanning pulse — a bright and colored (be creative) segment sweeping across the dimmed divider line. The animation starts when a turn begins and stops when the turn ends (done, error, or aborted). No per-activity state tracking.
 
 ### Input area
 
@@ -504,7 +504,7 @@ Supports:
 - `Tab` for file path autocomplete.
 - `/command` prefix for slash commands.
 - `/skill:skill-name` prefix to inject a skill's body into the user message. The `/skill:name` prefix is stripped from the input and the skill's `SKILL.md` body is prepended to the user message content. The rest of the input becomes the user's instruction. Example: `/skill:code-review check the auth module` sends the code-review skill body + "check the auth module" as the user message.
-- Image embedding: if the entire input (after trimming) is a file path ending in `.png`, `.jpg`, `.jpeg`, `.gif`, or `.webp`, and the file exists, it is embedded as `ImageContent` in the user message (base64-encoded). Only when the current model supports image input (`Model.input` includes `"image"`). If the model doesn't support images, or the file doesn't exist, or the input contains other text, the path is sent as plain text. This is intentionally simple — no inline detection within sentences.
+- Image embedding: if we autocomplete a file path ending in `.png`, `.jpg`, `.jpeg`, `.gif`, or `.webp`, and the file exists, it is embedded as `ImageContent` in the user message (base64-encoded). Only when the current model supports image input (`Model.input` includes `"image"`). If the model doesn't support images, or the file doesn't exist, or the input contains other text, the path is sent as plain text. This is intentionally simple — no inline detection within sentences.
 
 ### Key bindings
 
@@ -513,7 +513,6 @@ Supports:
 | `Enter`       | Input focused | Submit message                                    |
 | `Shift+Enter` | Input focused | Insert newline                                    |
 | `Escape`      | Agent working | Interrupt current turn, preserve partial response |
-| `Escape`      | Input focused | Unfocus input                                     |
 | `Tab`         | Input focused | File path autocomplete                            |
 | `Ctrl+C`      | Any           | Graceful exit                                     |
 | `Ctrl+D`      | Input empty   | Graceful exit (EOF)                               |
@@ -525,16 +524,16 @@ Supports:
 | Command      | Description                                                                                                                                                                                                                                                                                                                                              |
 | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `/model`     | Interactive model selector (provider + model + effort). Switching models mid-session is allowed — pi-ai's context is model-agnostic. The `readImage` tool is re-evaluated (added/removed based on the new model's capabilities). The status bar updates immediately. The session record's `model` field is not updated (it reflects the initial choice). |
-| `/session`   | Interactive session manager (list, resume, delete). Sessions scoped to CWD.                                                                                                                                                                                                                                                                              |
+| `/session`   | Interactive session manager (list, resume). Sessions scoped to CWD.                                                                                                                                                                                                                                                                                      |
 | `/new`       | Start a new session. Clears conversation, resets cost/token counters.                                                                                                                                                                                                                                                                                    |
 | `/fork`      | Fork the current conversation into a new session. Copies the full message history, continues from here independently. The original session is preserved.                                                                                                                                                                                                 |
 | `/undo`      | Remove the last turn from conversation history (the user message and all assistant/tool messages that followed). Context-only — does not revert filesystem changes.                                                                                                                                                                                      |
-| `/reasoning` | Toggle display of model thinking/reasoning content in the log.                                                                                                                                                                                                                                                                                           |
-| `/verbose`   | Toggle full output display (disables truncation in the UI).                                                                                                                                                                                                                                                                                              |
+| `/reasoning` | Toggle display of model thinking/reasoning content in the log. Reasoning is shown by default.                                                                                                                                                                                                                                                            |
+| `/verbose`   | Toggle full shell-output and edit-diff display in the UI. When off, those tool blocks show a concise preview (first 20 lines plus `And X lines more` when applicable). When on, they expand to the full stored tool result. Verbose mode is off by default.                                                                                              |
 | `/login`     | Interactive OAuth login. Shows a selector with available OAuth providers and their login status (logged in / not logged in). Selecting a provider starts the browser-based OAuth flow. Uses pi-ai's OAuth registry. Credentials are persisted to the app data directory and used for provider discovery on subsequent launches.                          |
 | `/logout`    | Interactive OAuth logout. Shows a selector with logged-in OAuth providers. Selecting one clears its saved credentials.                                                                                                                                                                                                                                   |
 | `/effort`    | Interactive effort selector. Shows the four reasoning levels (`low`, `med`, `high`, `xhigh`) with the current level highlighted. Updates the status bar immediately. Does not update the session record's `effort` field (it reflects the initial choice, like `/model`).                                                                                |
-| `/help`      | List available commands, loaded AGENTS.md files, discovered skills, and active plugins.                                                                                                                                                                                                                                                                  |
+| `/help`      | List available commands, including the current on/off state of `/reasoning` and `/verbose`, plus loaded AGENTS.md files, discovered skills, and active plugins.                                                                                                                                                                                          |
 
 Commands are discoverable via `/` + Tab to interactively select/filter in the input area.
 
@@ -544,8 +543,8 @@ On launch, mini-coder:
 
 1. Discovers providers (env vars, OAuth tokens).
 2. Loads AGENTS.md files, skills, plugins.
-3. Starts a new session.
-4. Renders the UI with an empty conversation log and the status bar populated.
+3. Renders the UI with an empty conversation log and the status bar populated.
+4. Starts a new session when the user sends a message (no 0-message sessions in the DB).
 
 No banner or splash screen. The status bar already shows all the context the user needs.
 
@@ -572,7 +571,7 @@ CREATE TABLE messages (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   session_id  TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   turn        INTEGER NOT NULL,   -- groups a user message with its response cycle
-  data        TEXT NOT NULL,      -- JSON-serialized pi-ai Message
+  data        TEXT NOT NULL,      -- JSON-serialized persisted message (pi-ai Message or internal UI message)
   created_at  INTEGER NOT NULL    -- unix ms
 );
 
@@ -581,7 +580,7 @@ CREATE INDEX idx_messages_session ON messages(session_id, turn);
 
 ### Design decisions
 
-**Messages as JSON blobs**: pi-ai's `Message` type (UserMessage, AssistantMessage, ToolResultMessage) is already serializable. We store the full object as JSON in `data` rather than normalizing into columns. We never need to query by message content — we only load all messages for a session and replay them into a pi-ai `Context`.
+**Messages as JSON blobs**: pi-ai's `Message` type (UserMessage, AssistantMessage, ToolResultMessage) is already serializable, and we also persist internal UI-only log entries in the same table. We store the full object as JSON in `data` rather than normalizing into columns. Session load returns the complete chronological log; model context construction filters out UI-only messages before replaying the remaining pi-ai messages into a pi-ai `Context`.
 
 **Turn grouping**: the `turn` column groups messages that belong to the same turn. A turn is: one user message + one or more assistant messages + any tool result messages from that agent loop. `/undo` deletes all messages with the highest `turn` value in the session. `/fork` copies all messages to a new session preserving turn numbers.
 
@@ -590,6 +589,8 @@ CREATE INDEX idx_messages_session ON messages(session_id, turn);
 **Turn number assignment**: when a user message is appended, its turn number is `MAX(turn) + 1` for the session (or 1 for the first message). All subsequent messages in the same agent loop (assistant responses, tool results) share that turn number. This is what makes `/undo` atomic — it deletes all messages with the highest turn.
 
 **Model/effort on the session**: stored at creation for display in `/session` list. The user can change models mid-session via `/model`; the session record reflects the initial choice, individual messages record their actual model via pi-ai's `AssistantMessage.model`.
+
+**Session truncation**: sessions are truncated per cwd to keep only the 20 most recently updated sessions (`updated_at DESC`), deleting older sessions and their messages via cascade.
 
 ### Operations
 
@@ -600,5 +601,5 @@ CREATE INDEX idx_messages_session ON messages(session_id, turn);
 | Undo           | `DELETE FROM messages WHERE session_id = ? AND turn = (SELECT MAX(turn) FROM messages WHERE session_id = ?)`                                             |
 | Fork           | `INSERT INTO sessions` (new id, `forked_from` set), then `INSERT INTO messages SELECT ... FROM messages WHERE session_id = ?` (copy all, new session_id) |
 | List sessions  | `SELECT * FROM sessions WHERE cwd = ? ORDER BY updated_at DESC`                                                                                          |
-| Load session   | `SELECT data FROM messages WHERE session_id = ? ORDER BY id` → parse JSON → pi-ai `Message[]`                                                            |
+| Load session   | `SELECT data FROM messages WHERE session_id = ? ORDER BY id` → parse JSON → persisted message log (`pi-ai Message[]` + internal UI messages)             |
 | Delete session | `DELETE FROM sessions WHERE id = ?` (cascade deletes messages)                                                                                           |

@@ -9,7 +9,9 @@ import {
   appendMessage,
   computeStats,
   createSession,
+  createUiMessage,
   deleteSession,
+  filterModelMessages,
   forkSession,
   getSession,
   listSessions,
@@ -66,6 +68,10 @@ function makeToolResult(toolCallId: string, text: string): ToolResultMessage {
     isError: false,
     timestamp: Date.now(),
   };
+}
+
+function makeUiMessage(text: string) {
+  return createUiMessage(text);
 }
 
 // ---------------------------------------------------------------------------
@@ -191,6 +197,18 @@ describe("message persistence and turn numbering", () => {
     expect(msgs).toHaveLength(2);
     expect(msgs[0]?.role).toBe("user");
     expect(msgs[1]?.role).toBe("assistant");
+    db.close();
+  });
+
+  test("loadMessages round-trips persisted UI messages", () => {
+    const db = openDatabase(":memory:");
+    const session = createSession(db, { cwd: "/tmp/test" });
+    const uiMessage = makeUiMessage("Help output");
+
+    appendMessage(db, session.id, uiMessage);
+
+    const msgs = loadMessages(db, session.id);
+    expect(msgs).toEqual([uiMessage]);
     db.close();
   });
 
@@ -372,15 +390,29 @@ describe("cumulative stats", () => {
   });
 
   test("computeStats ignores non-assistant messages", () => {
-    const messages: Message[] = [
+    const messages = [
       makeUser("hello"),
       makeToolResult("tc1", "result"),
+      makeUiMessage("Help output"),
     ];
 
     const stats = computeStats(messages);
     expect(stats.totalInput).toBe(0);
     expect(stats.totalOutput).toBe(0);
     expect(stats.totalCost).toBe(0);
+  });
+
+  test("filterModelMessages excludes UI messages", () => {
+    const ui = makeUiMessage("Help output");
+    const user = makeUser("hello");
+    const assistant = makeAssistant("reply");
+    const messages = [ui, user, assistant];
+
+    const filtered = filterModelMessages(messages);
+
+    expect(filtered).toHaveLength(2);
+    expect(filtered[0]).toEqual(user);
+    expect(filtered[1]).toEqual(assistant);
   });
 });
 
