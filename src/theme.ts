@@ -12,6 +12,9 @@
 
 import type { Color } from "@cel-tui/types";
 
+/** A cel-tui palette color or the terminal default when undefined. */
+type ThemeColor = Color | undefined;
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -24,25 +27,31 @@ import type { Color } from "@cel-tui/types";
  */
 export interface Theme {
   /** User message background. */
-  userMsgBg: Color;
+  userMsgBg: ThemeColor;
+  /** Muted informational text, placeholders, and helper copy. */
+  mutedText: ThemeColor;
+  /** Primary accent for important labels and interactive highlights. */
+  accentText: ThemeColor;
+  /** Secondary accent for supplementary labels like git status. */
+  secondaryAccentText: ThemeColor;
   /** Tool output left border and text. */
-  toolBorder: Color;
+  toolBorder: ThemeColor;
   /** Tool output text. */
-  toolText: Color;
+  toolText: ThemeColor;
   /** Diff added line color (green). */
-  diffAdded: Color;
+  diffAdded: ThemeColor;
   /** Diff removed line color (red). */
-  diffRemoved: Color;
+  diffRemoved: ThemeColor;
   /** Divider line color (idle state). */
-  divider: Color;
+  divider: ThemeColor;
   /** Divider scanning pulse highlight color (active state). */
-  dividerPulse: Color;
+  dividerPulse: ThemeColor;
   /** Status bar foreground. */
-  statusText: Color;
+  statusText: ThemeColor;
   /** Error text. */
-  error: Color;
+  error: ThemeColor;
   /** Overlay modal background. */
-  overlayBg: Color;
+  overlayBg: ThemeColor;
 }
 
 // ---------------------------------------------------------------------------
@@ -57,13 +66,16 @@ export interface Theme {
  */
 export const DEFAULT_THEME: Theme = {
   userMsgBg: "color08",
+  mutedText: "color08",
+  accentText: "color04",
+  secondaryAccentText: "color05",
   toolBorder: "color08",
   toolText: "color08",
   diffAdded: "color02",
   diffRemoved: "color01",
   divider: "color08",
-  dividerPulse: "color07",
-  statusText: "color07",
+  dividerPulse: "color04",
+  statusText: undefined,
   error: "color01",
   overlayBg: "color08",
 };

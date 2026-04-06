@@ -9,17 +9,9 @@ The spec.md and code are the sources of truth, not this file, don't assume anyth
 
 ### MUST FIX
 
-- [ ] **Streaming Markdown wraps can corrupt the UI until the turn finishes** (`ui.ts` / cel-tui Markdown integration) — some styled Markdown lines break badly at wrap boundaries during streaming, causing duplicated/corrupted rendering in the conversation log. The corruption clears itself once the assistant turn completes, which suggests a bug in the incremental render path around wrapped styled content rather than persisted message rendering. Fix: reproduce with a regression test and adjust the streaming Markdown/container rendering so wrapped styled lines remain stable while deltas arrive.
-
 - [ ] **Status bar context usage percentage is wrong** (`ui.ts`) — the token usage indicator reports a much higher fraction of the model context window than is actually in use (for example, showing roughly half full when usage is still low). That makes the context meter untrustworthy and could mislead users about when compaction is needed. Fix: audit the percentage calculation and ensure it uses the correct token totals against the active model's real context window.
 
-- [ ] **Conversation log scroll speed is too slow** (`ui.ts`) — scrolling the conversation log appears to move only one line at a time, which makes navigating longer sessions tedious. The scroll step should feel responsive and usable for large transcripts. Fix: audit the wheel/key scroll increment and tune it to scroll by a larger chunk per interaction.
-
-- [ ] **UI theming is broken on non-dark background terminals** This is on us. `cel-tui` explicitly handles the terminal bg and fg; we hardcoded colors without any thought for how the theme feels or looks. Awful work.
-
 ### High
-
-- [ ] **Animated turn divider flickers a cursor-shaped artifact at the pulse edge** (`ui.ts`) — while the agent is running, the divider animation shows a flickering cursor-like mark on the right edge of the bright moving segment. So far this was only observed in Alacritty; Ghostty renders the same animation correctly, which suggests a terminal-specific rendering or cursor interaction issue. That makes the busy indicator look glitchy and suggests the animated segment rendering is leaving a stale cell or width mismatch behind as frames advance. Fix: reproduce visually in both terminals, then audit the divider segment widths, cursor visibility/placement, and frame-to-frame rendering so the pulse fully overwrites its previous position.
 
 - [ ] **Uncaught tool handler exceptions** (`agent.ts`) — if a plugin handler (or a built-in on a filesystem error like EPERM) throws, the agent loop crashes. The exception propagates through `submitMessage` (try/finally, no catch) to a `.catch(console.error)` in `handleInput` — invisible in the TUI. The conversation is left inconsistent: `tool_start` emitted but `tool_end` never fires, tool result message never appended. Fix: wrap the `handler()` call in try/catch, produce an error `ToolExecResult`, and always emit `tool_end`.
 

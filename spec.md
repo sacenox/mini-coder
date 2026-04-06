@@ -438,25 +438,33 @@ All UI colors are defined in a single `Theme` object. The UI never hardcodes col
 ```ts
 interface Theme {
   /** User message background. */
-  userMsgBg: string;
+  userMsgBg: Color | undefined;
+  /** Muted informational text, placeholders, and helper copy. */
+  mutedText: Color | undefined;
+  /** Primary accent for important labels and interactive highlights. */
+  accentText: Color | undefined;
+  /** Secondary accent for supplementary labels like git status. */
+  secondaryAccentText: Color | undefined;
   /** Tool output left border and text. */
-  toolBorder: string;
-  toolText: string;
+  toolBorder: Color | undefined;
+  toolText: Color | undefined;
   /** Diff colors in edit tool output. */
-  diffAdded: string;
-  diffRemoved: string;
+  diffAdded: Color | undefined;
+  diffRemoved: Color | undefined;
   /** Divider line color (idle state). */
-  divider: string;
+  divider: Color | undefined;
   /** Divider scanning pulse highlight color (active state). */
-  dividerPulse: string;
-  /** Status bar foreground. */
-  statusText: string;
+  dividerPulse: Color | undefined;
+  /** Status bar foreground. Uses the terminal default when undefined. */
+  statusText: Color | undefined;
   /** Error text. */
-  error: string;
+  error: Color | undefined;
+  /** Overlay modal background. */
+  overlayBg: Color | undefined;
 }
 ```
 
-The default theme uses terminal palette colors (e.g., `color08` for dimmed, `color02` for green, `color01` for red) so it adapts to the user's terminal color scheme. Theme values are cel-tui color strings.
+The default theme uses terminal palette colors where semantic accents help (`color08` for muted text, `color04`/`color05` for accents, `color02` for green, `color01` for red) and leaves shared foreground text on the terminal default where that gives better contrast. Theme values are cel-tui colors; `undefined` means "use the terminal default".
 
 ### Status bar
 

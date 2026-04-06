@@ -1,17 +1,29 @@
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_THEME, mergeThemes } from "./theme.ts";
 
+const THEME_KEYS = [
+  "userMsgBg",
+  "mutedText",
+  "accentText",
+  "secondaryAccentText",
+  "toolBorder",
+  "toolText",
+  "diffAdded",
+  "diffRemoved",
+  "divider",
+  "dividerPulse",
+  "statusText",
+  "error",
+  "overlayBg",
+] as const;
+
 describe("theme", () => {
   test("DEFAULT_THEME has all required keys", () => {
-    expect(DEFAULT_THEME.userMsgBg).toBeString();
-    expect(DEFAULT_THEME.toolBorder).toBeString();
-    expect(DEFAULT_THEME.toolText).toBeString();
-    expect(DEFAULT_THEME.diffAdded).toBeString();
-    expect(DEFAULT_THEME.diffRemoved).toBeString();
-    expect(DEFAULT_THEME.divider).toBeString();
-    expect(DEFAULT_THEME.dividerPulse).toBeString();
-    expect(DEFAULT_THEME.statusText).toBeString();
-    expect(DEFAULT_THEME.error).toBeString();
+    expect(Object.keys(DEFAULT_THEME).sort()).toEqual([...THEME_KEYS].sort());
+  });
+
+  test("DEFAULT_THEME uses the terminal default foreground for shared status text", () => {
+    expect(DEFAULT_THEME.statusText).toBeUndefined();
   });
 
   test("mergeThemes with no overrides returns base unchanged", () => {

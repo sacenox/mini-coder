@@ -12,7 +12,7 @@ import {
   DEFAULT_VERBOSE,
 } from "./index.ts";
 import { createSession, loadMessages, openDatabase } from "./session.ts";
-import { DEFAULT_THEME } from "./theme.ts";
+import { DEFAULT_THEME, type Theme } from "./theme.ts";
 import {
   buildConversationLog,
   buildHelpText,
@@ -23,6 +23,7 @@ import {
   previewToolRenderLines,
   renderAssistantMessage,
   renderInputArea,
+  renderStatusBar,
   renderStreamingResponse,
   renderToolResult,
   type ToolRenderLine,
@@ -45,6 +46,25 @@ function collectText(node: Node | null): string[] {
     return [];
   }
   return node.children.flatMap((child) => collectText(child));
+}
+
+function findTextNode(node: Node | null, content: string): Node | null {
+  if (!node) {
+    return null;
+  }
+  if (node.type === "text") {
+    return node.content === content ? node : null;
+  }
+  if (node.type === "textinput") {
+    return null;
+  }
+  for (const child of node.children) {
+    const found = findTextNode(child, content);
+    if (found) {
+      return found;
+    }
+  }
+  return null;
 }
 
 function createTestState(): AppState {
@@ -116,11 +136,21 @@ describe("ui rendering", () => {
     const node = renderAssistantMessage(message, {
       ...RENDER_OPTS,
       showReasoning: true,
+      theme: { ...DEFAULT_THEME, mutedText: "color03" },
     });
     const text = collectText(node);
+    const thinkingNode = findTextNode(
+      node,
+      "I should inspect the tests first.",
+    );
 
     expect(text).toContain("I should inspect the tests first.");
     expect(text).toContain("Done.");
+    expect(thinkingNode).not.toBeNull();
+    if (!thinkingNode || thinkingNode.type !== "text") {
+      throw new Error("Expected thinking node to be a text node");
+    }
+    expect(thinkingNode.props.fgColor).toBe("color03");
   });
 
   test("renderStreamingResponse keeps text and tool output inside one top-level container", () => {
@@ -252,8 +282,8 @@ describe("ui rendering", () => {
 
     try {
       const controller = createInputController(state);
-      const first = renderInputArea(controller);
-      const second = renderInputArea(controller);
+      const first = renderInputArea(state.theme, controller);
+      const second = renderInputArea(state.theme, controller);
 
       expect(first.type).toBe("vstack");
       expect(second.type).toBe("vstack");
@@ -272,6 +302,9 @@ describe("ui rendering", () => {
         throw new Error("Expected text input child nodes");
       }
 
+      expect(firstInput.props.placeholder?.props.fgColor).toBe(
+        state.theme.mutedText,
+      );
       expect(firstInput.props.onChange).toBe(controller.onChange);
       expect(firstInput.props.onFocus).toBe(controller.onFocus);
       expect(firstInput.props.onBlur).toBe(controller.onBlur);
@@ -281,6 +314,89 @@ describe("ui rendering", () => {
       expect(secondInput.props.onBlur).toBe(firstInput.props.onBlur);
       expect(secondInput.props.onKeyPress).toBe(firstInput.props.onKeyPress);
     } finally {
+      state.db.close();
+    }
+  });
+
+  test("renderToolResult uses themed accent colors for tool headers", () => {
+    const theme: Theme = {
+      ...DEFAULT_THEME,
+      accentText: "color04",
+      secondaryAccentText: "color05",
+    };
+
+    const shellNode = renderToolResult(
+      "shell",
+      { command: "seq 1 3" },
+      "1\n2\n3",
+      false,
+      { ...RENDER_OPTS, theme },
+    );
+    const shellHeader = findTextNode(shellNode, "$ seq 1 3");
+    expect(shellHeader).not.toBeNull();
+    if (!shellHeader || shellHeader.type !== "text") {
+      throw new Error("Expected shell header to be a text node");
+    }
+    expect(shellHeader.props.fgColor).toBe(theme.accentText);
+
+    const pluginNode = renderToolResult("plugin-tool", {}, "ok", false, {
+      ...RENDER_OPTS,
+      theme,
+    });
+    const pluginHeader = findTextNode(pluginNode, "plugin-tool");
+    expect(pluginHeader).not.toBeNull();
+    if (!pluginHeader || pluginHeader.type !== "text") {
+      throw new Error("Expected plugin header to be a text node");
+    }
+    expect(pluginHeader.props.fgColor).toBe(theme.secondaryAccentText);
+  });
+
+  test("renderStatusBar uses themed accent colors for git and model info", () => {
+    const faux = registerFauxProvider();
+    const state = createTestState();
+    state.model = faux.getModel();
+    state.git = {
+      root: state.cwd,
+      branch: "main",
+      staged: 1,
+      modified: 2,
+      untracked: 3,
+      ahead: 4,
+      behind: 0,
+    };
+    state.theme = {
+      ...DEFAULT_THEME,
+      accentText: "color04",
+      secondaryAccentText: "color05",
+      statusText: undefined,
+    } satisfies Theme;
+
+    try {
+      const node = renderStatusBar(state);
+
+      expect(node.type).toBe("vstack");
+      if (node.type !== "vstack") {
+        throw new Error("Expected status bar to be a VStack");
+      }
+      expect(node.props.fgColor).toBeUndefined();
+
+      const gitNode = findTextNode(node, "main +1 ~2 ?3 ▲ 4");
+      const modelNode = findTextNode(
+        node,
+        `${state.model.provider}/${state.model.id} · med`,
+      );
+      expect(gitNode).not.toBeNull();
+      expect(modelNode).not.toBeNull();
+      if (!gitNode || !modelNode) {
+        throw new Error("Expected git and model text nodes");
+      }
+      if (gitNode.type !== "text" || modelNode.type !== "text") {
+        throw new Error("Expected git and model nodes to be text");
+      }
+      expect(gitNode.props.fgColor).toBe(state.theme.secondaryAccentText);
+      expect(modelNode.props.fgColor).toBe(state.theme.accentText);
+    } finally {
+      faux.unregister();
       state.db.close();
     }
   });

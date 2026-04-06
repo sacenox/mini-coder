@@ -361,7 +361,7 @@ export function renderAssistantMessage(
           VStack({ padding: { x: 1 } }, [
             Text(thinking, {
               wrap: "word",
-              fgColor: "color08",
+              fgColor: opts.theme.mutedText,
               italic: true,
             }),
           ]),
@@ -497,13 +497,13 @@ function renderToolLine(line: ToolRenderLine, theme: Theme): Node {
     case "command":
     case "path":
       return Text(line.text, {
-        fgColor: "color06",
+        fgColor: theme.accentText,
         bold: true,
         wrap: "word",
       });
     case "toolName":
       return Text(line.text, {
-        fgColor: "color05",
+        fgColor: theme.secondaryAccentText,
         bold: true,
         wrap: "word",
       });
@@ -738,7 +738,7 @@ export function renderStreamingResponse(
       VStack({ padding: { x: 1 } }, [
         Text(streaming.thinking, {
           wrap: "word",
-          fgColor: "color08",
+          fgColor: opts.theme.mutedText,
           italic: true,
         }),
       ]),
@@ -765,10 +765,10 @@ export function renderStreamingResponse(
 // ---------------------------------------------------------------------------
 
 /** Render an internal UI message in the conversation log. */
-function renderUiMessage(msg: UiMessage): Node {
+function renderUiMessage(msg: UiMessage, theme: Theme): Node {
   return VStack({ padding: { x: 1 } }, [
     Text(msg.content, {
-      fgColor: "color08",
+      fgColor: theme.mutedText,
       italic: true,
       wrap: "word",
     }),
@@ -798,7 +798,7 @@ export function buildConversationLog(state: AppState): Node[] {
 
   for (const msg of state.messages) {
     if (msg.role === "ui") {
-      pushConversationNode(renderUiMessage(msg));
+      pushConversationNode(renderUiMessage(msg, state.theme));
     } else if (msg.role === "user") {
       pushConversationNode(renderUserMessage(msg, state.theme));
     } else if (msg.role === "assistant") {
@@ -847,7 +847,7 @@ export function buildConversationLog(state: AppState): Node[] {
           state.model
             ? "Ready. Type a message to start."
             : "No providers configured. Use /login to authenticate.",
-          { fgColor: "color08", italic: true },
+          { fgColor: state.theme.mutedText, italic: true },
         ),
       ]),
     );
@@ -887,10 +887,49 @@ function renderOverlay(state: AppState): Node {
           padding: { x: 1 },
         },
         [
-          Text(activeOverlay!.title, { bold: true, fgColor: "color06" }),
+          Text(activeOverlay!.title, {
+            bold: true,
+            fgColor: state.theme.accentText,
+          }),
           activeOverlay!.select(),
         ],
       ),
+    ],
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Status bar
+// ---------------------------------------------------------------------------
+
+/**
+ * Render the two-line status bar.
+ *
+ * @param state - Application state.
+ * @returns The status bar node.
+ */
+export function renderStatusBar(state: AppState): Node {
+  return VStack(
+    {
+      height: 2,
+      padding: { x: 1 },
+      fgColor: state.theme.statusText,
+    },
+    [
+      HStack({}, [
+        Text(abbreviatePath(state.cwd)),
+        Spacer(),
+        Text(formatGitStatus(state), {
+          fgColor: state.theme.secondaryAccentText,
+        }),
+      ]),
+      HStack({}, [
+        Text(formatModelInfo(state), {
+          fgColor: state.theme.accentText,
+        }),
+        Spacer(),
+        Text(formatUsage(state)),
+      ]),
     ],
   );
 }
@@ -954,17 +993,21 @@ export function createInputController(state: AppState): InputController {
 /**
  * Render the padded input area.
  *
+ * @param theme - Active UI theme.
  * @param controller - Stable TextInput callbacks.
  * @returns The input area node.
  */
-export function renderInputArea(controller: InputController): Node {
+export function renderInputArea(
+  theme: Theme,
+  controller: InputController,
+): Node {
   return VStack({ padding: { x: 1 } }, [
     TextInput({
       flex: 1,
       maxHeight: 10,
       value: inputValue,
       onChange: controller.onChange,
-      placeholder: Text("message…", { fgColor: "color08" }),
+      placeholder: Text("message…", { fgColor: theme.mutedText }),
       focused: inputFocused,
       onFocus: controller.onFocus,
       onBlur: controller.onBlur,
@@ -1004,7 +1047,7 @@ function handleModelCommand(state: AppState): void {
     maxVisible: OVERLAY_MAX_VISIBLE,
     placeholder: "type to filter models...",
     focused: true,
-    highlightColor: "color06",
+    highlightColor: state.theme.accentText,
     onSelect: (value) => {
       const picked = models.find((m) => `${m.provider}/${m.id}` === value);
       if (picked) {
@@ -1041,7 +1084,7 @@ function handleEffortCommand(state: AppState): void {
     maxVisible: OVERLAY_MAX_VISIBLE,
     placeholder: "type to filter...",
     focused: true,
-    highlightColor: "color06",
+    highlightColor: state.theme.accentText,
     onSelect: (value) => {
       state.effort = value as ThinkingLevel;
       dismissOverlay();
@@ -1078,7 +1121,7 @@ function handleSessionCommand(state: AppState): void {
     maxVisible: OVERLAY_MAX_VISIBLE,
     placeholder: "type to filter sessions...",
     focused: true,
-    highlightColor: "color06",
+    highlightColor: state.theme.accentText,
     onSelect: (sessionId) => {
       if (sessionId !== state.session.id) {
         const picked = sessions.find((s) => s.id === sessionId);
@@ -1217,7 +1260,7 @@ function handleLoginCommand(state: AppState): void {
     maxVisible: OVERLAY_MAX_VISIBLE,
     placeholder: "type to filter providers...",
     focused: true,
-    highlightColor: "color06",
+    highlightColor: state.theme.accentText,
     onSelect: (providerId) => {
       dismissOverlay();
       const provider = oauthProviders.find((p) => p.id === providerId);
@@ -1300,7 +1343,7 @@ function handleLogoutCommand(state: AppState): void {
     maxVisible: OVERLAY_MAX_VISIBLE,
     placeholder: "type to filter providers...",
     focused: true,
-    highlightColor: "color06",
+    highlightColor: state.theme.accentText,
     onSelect: (providerId) => {
       delete state.oauthCredentials[providerId];
       saveOAuthCredentials(state.oauthCredentials);
@@ -1460,7 +1503,7 @@ function showCommandAutocomplete(state: AppState): void {
     maxVisible: OVERLAY_MAX_VISIBLE,
     placeholder: "type to filter commands...",
     focused: true,
-    highlightColor: "color06",
+    highlightColor: state.theme.accentText,
     onSelect: (value) => {
       dismissOverlay();
       handleInput(`/${value}`, state);
@@ -1752,31 +1795,13 @@ export function startUI(state: AppState): void {
         renderDivider(state, cols),
 
         // ── Input area ──
-        renderInputArea(inputController),
+        renderInputArea(state.theme, inputController),
 
         // ── Static divider ──
         Divider({ fgColor: state.theme.divider }),
 
         // ── Status bar (2 lines) ──
-        VStack(
-          {
-            height: 2,
-            padding: { x: 1 },
-            fgColor: state.theme.statusText,
-          },
-          [
-            HStack({}, [
-              Text(abbreviatePath(state.cwd)),
-              Spacer(),
-              Text(formatGitStatus(state), { fgColor: "color05" }),
-            ]),
-            HStack({}, [
-              Text(formatModelInfo(state), { fgColor: "color06" }),
-              Spacer(),
-              Text(formatUsage(state)),
-            ]),
-          ],
-        ),
+        renderStatusBar(state),
       ],
     );
 
