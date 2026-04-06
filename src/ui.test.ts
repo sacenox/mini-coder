@@ -86,14 +86,20 @@ function createTempDir(): string {
   return dir;
 }
 
+function countSessions(state: Pick<AppState, "db">): number {
+  const row = state.db
+    .query<{ count: number }, []>("SELECT COUNT(*) as count FROM sessions")
+    .get();
+  return row?.count ?? 0;
+}
+
 function createTestState(): AppState {
   const db = openDatabase(":memory:");
   const cwd = "/tmp/mini-coder-ui-test";
-  const session = createSession(db, { cwd });
   const settingsPath = join(createTempDir(), "settings.json");
   return {
     db,
-    session,
+    session: null,
     model: null,
     effort: "medium",
     messages: [],
@@ -344,7 +350,7 @@ describe("ui rendering", () => {
     expect(text).toContain("Running...");
   });
 
-  test("/help appends a persisted UI message to the conversation log", () => {
+  test("/help before the first user message does not create a session", () => {
     const state = createTestState();
 
     try {
@@ -355,10 +361,88 @@ describe("ui rendering", () => {
         children: buildConversationLog(state),
       });
 
+      expect(state.session).toBeNull();
+      expect(countSessions(state)).toBe(0);
       expect(state.messages).toHaveLength(1);
       expect(state.messages[0]?.role).toBe("ui");
       expect(logText.some((line) => line.includes("Commands:"))).toBe(true);
     } finally {
+      state.db.close();
+    }
+  });
+
+  test("first user message creates the session lazily", async () => {
+    const faux = registerFauxProvider();
+    const state = createTestState();
+    const originalPath = process.env.PATH;
+    process.env.PATH = `${process.env.PATH ?? ""}:/usr/bin:/bin`;
+    state.cwd = process.cwd();
+    state.canonicalCwd = process.cwd();
+    state.model = faux.getModel();
+    faux.setResponses([fauxAssistantMessage("Done.")]);
+
+    try {
+      expect(state.session).toBeNull();
+      expect(countSessions(state)).toBe(0);
+
+      handleInput("hello", state);
+
+      await waitFor(() => state.session !== null);
+      expect(countSessions(state)).toBe(1);
+
+      const sessionId = state.session?.id;
+      if (!sessionId) {
+        throw new Error("Expected a session to be created");
+      }
+
+      await waitFor(() =>
+        loadMessages(state.db, sessionId).some(
+          (message) => message.role === "assistant",
+        ),
+      );
+    } finally {
+      process.env.PATH = originalPath;
+      faux.unregister();
+      state.db.close();
+    }
+  });
+
+  test("/new clears the active session and defers replacement session creation", async () => {
+    const faux = registerFauxProvider();
+    const state = createTestState();
+    const originalPath = process.env.PATH;
+    process.env.PATH = `${process.env.PATH ?? ""}:/usr/bin:/bin`;
+    state.cwd = process.cwd();
+    state.canonicalCwd = process.cwd();
+    state.model = faux.getModel();
+    const previousSession = createSession(state.db, {
+      cwd: state.canonicalCwd,
+    });
+    state.session = previousSession;
+    faux.setResponses([fauxAssistantMessage("Fresh session.")]);
+
+    try {
+      expect(countSessions(state)).toBe(1);
+
+      handleInput("/new", state);
+
+      expect(state.session).toBeNull();
+      expect(state.messages).toEqual([]);
+      expect(state.stats).toEqual({
+        totalInput: 0,
+        totalOutput: 0,
+        totalCost: 0,
+      });
+      expect(countSessions(state)).toBe(1);
+
+      handleInput("hello again", state);
+
+      await waitFor(() => state.session !== null);
+      expect(countSessions(state)).toBe(2);
+      expect(state.session?.id).not.toBe(previousSession.id);
+    } finally {
+      process.env.PATH = originalPath;
+      faux.unregister();
       state.db.close();
     }
   });
@@ -375,8 +459,13 @@ describe("ui rendering", () => {
 
     try {
       handleInput("hello", state);
+      await waitFor(() => state.session !== null);
+      const sessionId = state.session?.id;
+      if (!sessionId) {
+        throw new Error("Expected a session to be created");
+      }
       await waitFor(() =>
-        loadMessages(state.db, state.session.id).some(
+        loadMessages(state.db, sessionId).some(
           (message) => message.role === "assistant",
         ),
       );

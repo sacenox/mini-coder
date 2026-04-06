@@ -9,12 +9,6 @@ The spec.md and code are the sources of truth, not this file, don't assume anyth
 
 ### Core behavior
 
-- [ ] **No empty sessions** — startup should render the UI without creating a DB session. Create the session only when the user sends the first message. `/new` should reset in-memory conversation state and defer session creation until the next user message.
-
-- [ ] **UI messages are not conversational turns** (`session.ts`, `ui.ts`) — persisted UI messages must not participate in turn numbering. Update the schema/logic so UI messages store `turn = NULL`, stay visible in history, are excluded from model context, and survive `/undo`.
-
-- [ ] **`/undo` must only remove the last conversational turn** (`ui.ts`, `session.ts`) — after the UI-message turn model is fixed, make `/undo` remove only the last user message and its assistant/tool results, while leaving persisted UI messages untouched.
-
 - [ ] **End-to-end streaming in the UI** (`ui.ts`) — completed assistant/tool messages should remain visible in the conversation log as soon as they happen, without waiting for the full loop to finish and reload from the DB. The current state/event flow drops already-produced assistant text during tool-use turns.
 
 - [ ] **Implement `/skill:name` submission flow** (`ui.ts`) — strip the prefix from input, prepend the selected skill body to the user message, and send the rest of the user text as the instruction.

@@ -212,6 +212,35 @@ describe("message persistence and turn numbering", () => {
     db.close();
   });
 
+  test("UI messages store turn as NULL and do not consume conversational turn numbers", () => {
+    const db = openDatabase(":memory:");
+    const session = createSession(db, { cwd: "/tmp/test" });
+
+    const uiTurn = appendMessage(db, session.id, makeUiMessage("Help output"));
+    const firstUserTurn = appendMessage(db, session.id, makeUser("hello"));
+    const ignoredUiTurn = appendMessage(
+      db,
+      session.id,
+      makeUiMessage("More help"),
+      firstUserTurn,
+    );
+    const secondUserTurn = appendMessage(db, session.id, makeUser("next"));
+
+    const turns = db
+      .query<{ turn: number | null }, [string]>(
+        "SELECT turn FROM messages WHERE session_id = ? ORDER BY id",
+      )
+      .all(session.id)
+      .map((row) => row.turn);
+
+    expect(uiTurn).toBeNull();
+    expect(ignoredUiTurn).toBeNull();
+    expect(firstUserTurn).toBe(1);
+    expect(secondUserTurn).toBe(2);
+    expect(turns).toEqual([null, 1, null, 2]);
+    db.close();
+  });
+
   test("appendMessage updates session updated_at", () => {
     const db = openDatabase(":memory:");
     const session = createSession(db, { cwd: "/tmp/test" });
@@ -271,6 +300,42 @@ describe("undo", () => {
 
     const msgs = loadMessages(db, session.id);
     expect(msgs).toHaveLength(0);
+    db.close();
+  });
+
+  test("undoLastTurn keeps UI messages because they are not part of conversational turns", () => {
+    const db = openDatabase(":memory:");
+    const session = createSession(db, { cwd: "/tmp/test" });
+
+    appendMessage(db, session.id, makeUiMessage("Help output"));
+    const t1 = appendMessage(db, session.id, makeUser("first"));
+    appendMessage(db, session.id, makeAssistant("reply1"), t1);
+    appendMessage(db, session.id, makeUiMessage("OAuth progress"));
+    const t2 = appendMessage(db, session.id, makeUser("second"));
+    appendMessage(db, session.id, makeAssistant("reply2"), t2);
+    appendMessage(db, session.id, makeUiMessage("Still visible"));
+
+    const removed = undoLastTurn(db, session.id);
+    expect(removed).toBe(true);
+
+    const msgs = loadMessages(db, session.id);
+    expect(msgs).toHaveLength(5);
+    expect(msgs.map((msg) => msg.role)).toEqual([
+      "ui",
+      "user",
+      "assistant",
+      "ui",
+      "ui",
+    ]);
+    expect((msgs[0] as ReturnType<typeof makeUiMessage>).content).toBe(
+      "Help output",
+    );
+    expect((msgs[3] as ReturnType<typeof makeUiMessage>).content).toBe(
+      "OAuth progress",
+    );
+    expect((msgs[4] as ReturnType<typeof makeUiMessage>).content).toBe(
+      "Still visible",
+    );
     db.close();
   });
 

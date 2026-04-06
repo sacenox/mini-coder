@@ -37,13 +37,11 @@ import {
 } from "./prompt.ts";
 import {
   computeStats,
-  createSession,
   filterModelMessages,
-  loadMessages,
+  type loadMessages,
   openDatabase,
   type Session,
   type SessionStats,
-  truncateSessions,
 } from "./session.ts";
 import {
   loadSettings,
@@ -83,7 +81,7 @@ const SETTINGS_PATH = join(DATA_DIR, "settings.json");
 export { DEFAULT_SHOW_REASONING, DEFAULT_VERBOSE } from "./settings.ts";
 
 /** Maximum sessions to keep per CWD. */
-const MAX_SESSIONS_PER_CWD = 20;
+export const MAX_SESSIONS_PER_CWD = 20;
 
 // ---------------------------------------------------------------------------
 // OAuth credential persistence
@@ -293,8 +291,8 @@ function getSkillScanPaths(cwd: string, gitRoot: string | null): string[] {
 export interface AppState {
   /** Open database handle. */
   db: ReturnType<typeof openDatabase>;
-  /** Current session. */
-  session: Session;
+  /** Current session, created lazily on the first user message. */
+  session: Session | null;
   /** Current model, or `null` if no providers are available yet. */
   model: Model<string> | null;
   /** Current effort level. */
@@ -372,17 +370,10 @@ export async function init(): Promise<AppState> {
   // Load plugins
   const pluginEntries = loadPluginConfig(PLUGIN_CONFIG_PATH);
 
-  // Open database and create session
+  // Open database. Sessions are created lazily on the first user message.
   const db = openDatabase(DB_PATH);
   const effort = startup.effort;
-  const modelLabel = model ? `${model.provider}/${model.id}` : undefined;
-  const session = createSession(db, {
-    cwd: canonicalCwd,
-    model: modelLabel,
-    effort,
-  });
-  truncateSessions(db, canonicalCwd, MAX_SESSIONS_PER_CWD);
-  const messages = loadMessages(db, session.id);
+  const messages: ReturnType<typeof loadMessages> = [];
   const stats = computeStats(messages);
 
   // Init plugins
@@ -403,7 +394,7 @@ export async function init(): Promise<AppState> {
 
   return {
     db,
-    session,
+    session: null,
     model,
     effort,
     messages,

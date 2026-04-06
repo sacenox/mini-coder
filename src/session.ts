@@ -132,7 +132,7 @@ CREATE INDEX IF NOT EXISTS idx_sessions_cwd ON sessions(cwd);
 CREATE TABLE IF NOT EXISTS messages (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   session_id  TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-  turn        INTEGER NOT NULL,
+  turn        INTEGER,
   data        TEXT NOT NULL,
   created_at  INTEGER NOT NULL
 );
@@ -326,7 +326,26 @@ export function filterModelMessages(
 }
 
 /**
- * Append a message to a session's history.
+ * Append a UI-only message to a session's history.
+ *
+ * UI messages are persisted with `turn = NULL` so they remain visible in
+ * history without participating in conversational turn numbering or `/undo`.
+ *
+ * @param db - Open database handle.
+ * @param sessionId - The session to append to.
+ * @param message - The UI-only message to persist.
+ * @param turn - Ignored for UI messages.
+ * @returns `null`, since UI messages do not belong to conversational turns.
+ */
+export function appendMessage(
+  db: Database,
+  sessionId: string,
+  message: UiMessage,
+  turn?: number,
+): null;
+
+/**
+ * Append a conversational message to a session's history.
  *
  * Turn numbering rules:
  * - When `turn` is **omitted**, a new turn is started with `MAX(turn) + 1`
@@ -339,20 +358,60 @@ export function filterModelMessages(
  *
  * @param db - Open database handle.
  * @param sessionId - The session to append to.
- * @param message - A persisted message (pi-ai message or internal UI message).
+ * @param message - A model-visible pi-ai message.
  * @param turn - Explicit turn number to join. Omit to start a new turn.
- * @returns The turn number the message was stored with.
+ * @returns The conversational turn number the message was stored with.
+ */
+export function appendMessage(
+  db: Database,
+  sessionId: string,
+  message: Message,
+  turn?: number,
+): number;
+
+/**
+ * Append a persisted message to a session's history.
+ *
+ * UI messages always store `turn = NULL`. Conversational messages either start
+ * a new turn or join an existing one, depending on `turn`.
+ *
+ * @param db - Open database handle.
+ * @param sessionId - The session to append to.
+ * @param message - Persisted message to store.
+ * @param turn - Explicit conversational turn to join.
+ * @returns The assigned conversational turn number, or `null` for UI messages.
  */
 export function appendMessage(
   db: Database,
   sessionId: string,
   message: PersistedMessage,
   turn?: number,
-): number {
+): number | null;
+
+/**
+ * Append a persisted message to a session's history.
+ *
+ * UI messages always store `turn = NULL`. Conversational messages either start
+ * a new turn or join an existing one, depending on `turn`.
+ *
+ * @param db - Open database handle.
+ * @param sessionId - The session to append to.
+ * @param message - Persisted message to store.
+ * @param turn - Explicit conversational turn to join.
+ * @returns The assigned conversational turn number, or `null` for UI messages.
+ */
+export function appendMessage(
+  db: Database,
+  sessionId: string,
+  message: PersistedMessage,
+  turn?: number,
+): number | null {
   const now = Date.now();
 
-  let effectiveTurn: number;
-  if (turn !== undefined) {
+  let effectiveTurn: number | null;
+  if (isUiMessage(message)) {
+    effectiveTurn = null;
+  } else if (turn !== undefined) {
     effectiveTurn = turn;
   } else {
     const row = db.query<MaxTurnRow, [string]>(SQL.maxTurn).get(sessionId);

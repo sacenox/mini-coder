@@ -40,6 +40,7 @@ import {
   buildPrompt,
   buildToolList,
   getAvailableModels,
+  MAX_SESSIONS_PER_CWD,
   saveOAuthCredentials,
   shutdown,
 } from "./index.ts";
@@ -53,6 +54,7 @@ import {
   forkSession,
   listSessions,
   loadMessages,
+  truncateSessions,
   type UiMessage,
   undoLastTurn,
 } from "./session.ts";
@@ -1244,11 +1246,12 @@ function handleSessionCommand(state: AppState): void {
     return;
   }
 
+  const currentSessionId = state.session?.id ?? null;
   const items = sessions.map((s) => {
     const date = new Date(s.updatedAt);
     const dateStr = formatSessionDate(date);
     const model = s.model ?? "no model";
-    const current = s.id === state.session.id ? " (current)" : "";
+    const current = s.id === currentSessionId ? " (current)" : "";
     return {
       label: `${dateStr}  ${model}${current}`,
       value: s.id,
@@ -1263,7 +1266,7 @@ function handleSessionCommand(state: AppState): void {
     focused: true,
     highlightColor: state.theme.accentText,
     onSelect: (sessionId) => {
-      if (sessionId !== state.session.id) {
+      if (sessionId !== currentSessionId) {
         const picked = sessions.find((s) => s.id === sessionId);
         if (picked) {
           state.session = picked;
@@ -1304,37 +1307,60 @@ function openInBrowser(url: string): void {
 }
 
 /**
- * Append a persisted UI-only info message to the conversation log.
+ * Ensure the app has an active persisted session.
  *
- * @param text - Display text to append.
+ * Creates the session lazily on the first user message and backfills any
+ * pre-session UI messages currently shown in the log.
+ *
  * @param state - Application state.
- * @param turn - Optional turn number to join.
- * @returns The turn number the UI message was stored with.
+ * @returns The active persisted session.
  */
-function appendInfoMessage(
-  text: string,
-  state: AppState,
-  turn?: number,
-): number {
-  const msg = createUiMessage(text);
-  const effectiveTurn = appendMessage(state.db, state.session.id, msg, turn);
-  state.messages.push(msg);
-  stickToBottom = true;
-  cel.render();
-  return effectiveTurn;
-}
+function ensureSession(state: AppState): NonNullable<AppState["session"]> {
+  if (state.session) {
+    return state.session;
+  }
 
-/** Handle the /new command: start a new session. */
-function handleNewCommand(state: AppState): void {
-  if (state.running) return;
   const modelLabel = state.model
     ? `${state.model.provider}/${state.model.id}`
     : undefined;
-  state.session = createSession(state.db, {
+  const session = createSession(state.db, {
     cwd: state.canonicalCwd,
     model: modelLabel,
     effort: state.effort,
   });
+  truncateSessions(state.db, state.canonicalCwd, MAX_SESSIONS_PER_CWD);
+  state.session = session;
+
+  for (const message of state.messages) {
+    appendMessage(state.db, session.id, message);
+  }
+
+  return session;
+}
+
+/**
+ * Append a UI-only info message to the conversation log.
+ *
+ * When no persisted session exists yet, the message stays in memory and is
+ * backfilled if the user later starts a session by sending a message.
+ *
+ * @param text - Display text to append.
+ * @param state - Application state.
+ */
+function appendInfoMessage(text: string, state: AppState): void {
+  const msg = createUiMessage(text);
+  if (state.session) {
+    appendMessage(state.db, state.session.id, msg);
+  }
+  state.messages.push(msg);
+  stickToBottom = true;
+  cel.render();
+}
+
+/** Handle the /new command: clear the current in-memory session state. */
+function handleNewCommand(state: AppState): void {
+  if (state.running) return;
+  state.session = null;
   state.messages = [];
   state.stats = { totalInput: 0, totalOutput: 0, totalCost: 0 };
   stickToBottom = true;
@@ -1343,7 +1369,7 @@ function handleNewCommand(state: AppState): void {
 
 /** Handle the /fork command: fork the current session. */
 function handleForkCommand(state: AppState): void {
-  if (state.running) return;
+  if (state.running || !state.session) return;
   const forked = forkSession(state.db, state.session.id);
   state.session = forked;
   state.messages = loadMessages(state.db, forked.id);
@@ -1356,6 +1382,9 @@ function handleUndoCommand(state: AppState): void {
   // Interrupt first if the agent is running
   if (state.running && state.abortController) {
     state.abortController.abort();
+  }
+  if (!state.session) {
+    return;
   }
   const removed = undoLastTurn(state.db, state.session.id);
   if (removed) {
@@ -1733,6 +1762,7 @@ export function handleInput(raw: string, state: AppState): void {
 async function submitMessage(text: string, state: AppState): Promise<void> {
   if (!text.trim() || !state.model || state.running) return;
 
+  const session = ensureSession(state);
   const userMessage: Message = {
     role: "user",
     content: text,
@@ -1740,7 +1770,7 @@ async function submitMessage(text: string, state: AppState): Promise<void> {
   };
 
   // Append user message — returns the auto-assigned turn number
-  const turn = appendMessage(state.db, state.session.id, userMessage);
+  const turn = appendMessage(state.db, session.id, userMessage);
   state.messages.push(userMessage);
   stickToBottom = true;
   cel.render();
@@ -1764,7 +1794,7 @@ async function submitMessage(text: string, state: AppState): Promise<void> {
   try {
     await runAgentLoop({
       db: state.db,
-      sessionId: state.session.id,
+      sessionId: session.id,
       turn,
       model: state.model,
       systemPrompt,
@@ -1772,14 +1802,12 @@ async function submitMessage(text: string, state: AppState): Promise<void> {
       toolHandlers,
       messages: filterModelMessages(state.messages),
       cwd: state.cwd,
-      apiKey: state.model
-        ? state.providers.get(state.model.provider)
-        : undefined,
+      apiKey: state.providers.get(state.model.provider),
       effort: state.effort,
       signal: state.abortController.signal,
       onEvent: (event) => handleAgentEvent(event, state),
     });
-    state.messages = loadMessages(state.db, state.session.id);
+    state.messages = loadMessages(state.db, session.id);
     state.stats = computeStats(state.messages);
   } finally {
     state.running = false;
