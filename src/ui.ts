@@ -268,6 +268,11 @@ function formatTokens(n: number): string {
   return String(n);
 }
 
+/** Format a token capacity, trimming unnecessary trailing `.0`. */
+function formatTokenCapacity(n: number): string {
+  return formatTokens(n).replace(/\.0([kM])$/, "$1");
+}
+
 /** Format a dollar cost. */
 function formatCost(cost: number): string {
   return `$${cost.toFixed(2)}`;
@@ -303,17 +308,29 @@ function formatModelInfo(state: AppState): string {
   return `${state.model.provider}/${state.model.id} · ${formatEffort(state.effort)}`;
 }
 
+/** Get the most recent assistant message's total token usage. */
+function getLatestContextTokenUsage(state: AppState): number {
+  for (let i = state.messages.length - 1; i >= 0; i--) {
+    const message = state.messages[i];
+    if (message?.role === "assistant") {
+      return (message as AssistantMessage).usage.totalTokens;
+    }
+  }
+  return 0;
+}
+
 /** Format usage stats for the status bar right side. */
 function formatUsage(state: AppState): string {
   if (!state.model) return "";
   const inp = formatTokens(state.stats.totalInput);
   const out = formatTokens(state.stats.totalOutput);
-  const totalTokens = state.stats.totalInput + state.stats.totalOutput;
+  const contextTokens = getLatestContextTokenUsage(state);
   const ctxPct =
     state.model.contextWindow > 0
-      ? Math.round((totalTokens / state.model.contextWindow) * 100)
+      ? (contextTokens / state.model.contextWindow) * 100
       : 0;
-  return `in:${inp} out:${out} · ${ctxPct}% · ${formatCost(state.stats.totalCost)}`;
+  const ctxWindow = formatTokenCapacity(state.model.contextWindow);
+  return `in:${inp} out:${out} · ${ctxPct.toFixed(1)}%/${ctxWindow} · ${formatCost(state.stats.totalCost)}`;
 }
 
 // ---------------------------------------------------------------------------

@@ -229,6 +229,28 @@ describe("shell", () => {
     expect(text).toContain("2000");
   });
 
+  test("truncates huge output even when line count is small", async () => {
+    const longLine = "x".repeat(20_000);
+    writeFileSync(join(tmp, "huge-lines.txt"), `${longLine}\n${longLine}\n`);
+
+    const result = await executeShell(
+      {
+        command:
+          "python - <<'PY'\nfrom pathlib import Path\nprint(Path('huge-lines.txt').read_text(), end='')\nPY",
+      },
+      tmp,
+      {
+        maxLines: 100,
+        maxBytes: 4_000,
+      },
+    );
+
+    expect(result.isError).toBe(false);
+    const text = resultText(result);
+    expect(text).toContain("… truncated");
+    expect(text.length).toBeLessThan(40_000);
+  });
+
   test("does not truncate output within the limit", async () => {
     const result = await executeShell({ command: "seq 1 10" }, tmp, {
       maxLines: 100,
@@ -284,25 +306,54 @@ describe("shell", () => {
 // ---------------------------------------------------------------------------
 
 describe("truncateOutput", () => {
-  test("returns input unchanged when within limit", () => {
+  test("returns input unchanged when within limits", () => {
     const input = "line1\nline2\nline3";
-    expect(truncateOutput(input, 10)).toBe(input);
+    expect(truncateOutput(input, 10, 1_000)).toBe(input);
   });
 
-  test("truncates keeping head and tail with marker", () => {
+  test("truncates keeping head and tail with marker when line count exceeds the limit", () => {
     const lines = Array.from({ length: 100 }, (_, i) => `line${i + 1}`);
     const input = lines.join("\n");
-    const result = truncateOutput(input, 20);
+    const result = truncateOutput(input, 20, 10_000);
 
     expect(result).toContain("line1");
     expect(result).toContain("line100");
     expect(result).toContain("… truncated");
   });
 
+  test("truncates keeping head and tail with marker when byte size exceeds the limit", () => {
+    const head = "A".repeat(6_000);
+    const tail = "B".repeat(6_000);
+    const input = `${head}\n${tail}`;
+    const result = truncateOutput(input, 100, 4_000);
+
+    expect(result).toContain("AAAA");
+    expect(result).toContain("BBBB");
+    expect(result).toContain("… truncated");
+    expect(Buffer.byteLength(result, "utf8")).toBeLessThanOrEqual(4_000);
+  });
+
+  test("applies line and byte limits in a single truncation pass", () => {
+    const lines = Array.from(
+      { length: 100 },
+      (_, i) => `${i + 1}:${"x".repeat(300)}`,
+    );
+    const input = lines.join("\n");
+    const result = truncateOutput(input, 20, 2_000);
+
+    expect(result).toContain("1:");
+    expect(result).toContain("100:");
+    expect(result).toContain("… truncated 80 lines …");
+    expect(result).not.toContain("… truncated for size …");
+    expect(result.match(/… truncated/g) ?? []).toHaveLength(1);
+    expect(result.split("\n").length).toBeLessThanOrEqual(21);
+    expect(Buffer.byteLength(result, "utf8")).toBeLessThanOrEqual(2_000);
+  });
+
   test("head and tail do not overlap", () => {
     const lines = Array.from({ length: 50 }, (_, i) => `L${i + 1}`);
     const input = lines.join("\n");
-    const result = truncateOutput(input, 20);
+    const result = truncateOutput(input, 20, 10_000);
 
     // Count total lines (head + marker + tail)
     const resultLines = result.split("\n");
@@ -311,17 +362,19 @@ describe("truncateOutput", () => {
   });
 
   test("handles empty input", () => {
-    expect(truncateOutput("", 10)).toBe("");
+    expect(truncateOutput("", 10, 1_000)).toBe("");
   });
 
   test("handles single-line input", () => {
-    expect(truncateOutput("hello", 10)).toBe("hello");
+    expect(truncateOutput("hello", 10, 1_000)).toBe("hello");
   });
 
-  test("handles input at exactly the limit", () => {
+  test("handles input at exactly the line and byte limit", () => {
     const lines = Array.from({ length: 10 }, (_, i) => `line${i + 1}`);
     const input = lines.join("\n");
-    expect(truncateOutput(input, 10)).toBe(input);
+    expect(truncateOutput(input, 10, Buffer.byteLength(input, "utf8"))).toBe(
+      input,
+    );
   });
 });
 

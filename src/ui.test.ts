@@ -111,6 +111,29 @@ function createTestState(): AppState {
   };
 }
 
+function makeAssistantWithUsage(
+  text: string,
+  usage: Partial<ReturnType<typeof fauxAssistantMessage>["usage"]>,
+) {
+  const message = fauxAssistantMessage(text);
+  message.usage = {
+    input: 100,
+    output: 50,
+    cacheRead: 0,
+    cacheWrite: 0,
+    totalTokens: 150,
+    cost: {
+      input: 0.001,
+      output: 0.002,
+      cacheRead: 0,
+      cacheWrite: 0,
+      total: 0.003,
+    },
+    ...usage,
+  };
+  return message;
+}
+
 afterEach(() => {
   for (const dir of tempDirs.splice(0)) {
     rmSync(dir, { recursive: true, force: true });
@@ -487,6 +510,45 @@ describe("ui rendering", () => {
       }
       expect(gitNode.props.fgColor).toBe(state.theme.secondaryAccentText);
       expect(modelNode.props.fgColor).toBe(state.theme.accentText);
+    } finally {
+      faux.unregister();
+      state.db.close();
+    }
+  });
+
+  test("renderStatusBar uses the latest assistant usage for context percentage", () => {
+    const faux = registerFauxProvider();
+    const state = createTestState();
+    state.model = {
+      ...faux.getModel(),
+      contextWindow: 1_000,
+    };
+    state.messages = [
+      { role: "user", content: "first", timestamp: 1 },
+      makeAssistantWithUsage("First.", {
+        input: 120,
+        output: 30,
+        totalTokens: 150,
+      }),
+      { role: "user", content: "second", timestamp: 2 },
+      makeAssistantWithUsage("Second.", {
+        input: 200,
+        output: 50,
+        totalTokens: 250,
+      }),
+    ];
+    state.stats = {
+      totalInput: 4_000,
+      totalOutput: 2_000,
+      totalCost: 1.23,
+    };
+
+    try {
+      const node = renderStatusBar(state);
+      const text = collectText(node);
+
+      expect(text).toContain("in:4.0k out:2.0k · 25.0%/1k · $1.23");
+      expect(text).not.toContain("in:4.0k out:2.0k · 600.0%/1k · $1.23");
     } finally {
       faux.unregister();
       state.db.close();

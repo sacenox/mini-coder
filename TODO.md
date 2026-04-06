@@ -9,8 +9,6 @@ The spec.md and code are the sources of truth, not this file, don't assume anyth
 
 ### MUST FIX
 
-- [ ] **Status bar context usage percentage is wrong** (`ui.ts`) — the token usage indicator reports a much higher fraction of the model context window than is actually in use (for example, showing roughly half full when usage is still low). That makes the context meter untrustworthy and could mislead users about when compaction is needed. Fix: audit the percentage calculation and ensure it uses the correct token totals against the active model's real context window.
-
 ### High
 
 - [ ] **Uncaught tool handler exceptions** (`agent.ts`) — if a plugin handler (or a built-in on a filesystem error like EPERM) throws, the agent loop crashes. The exception propagates through `submitMessage` (try/finally, no catch) to a `.catch(console.error)` in `handleInput` — invisible in the TUI. The conversation is left inconsistent: `tool_start` emitted but `tool_end` never fires, tool result message never appended. Fix: wrap the `handler()` call in try/catch, produce an error `ToolExecResult`, and always emit `tool_end`.

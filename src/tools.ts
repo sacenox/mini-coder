@@ -124,6 +124,8 @@ export interface ShellArgs {
 export interface ShellOpts {
   /** Maximum output lines before truncation. Default: 1000. */
   maxLines?: number;
+  /** Maximum UTF-8 bytes before truncation. Default: 50_000. */
+  maxBytes?: number;
   /** Abort signal to cancel the command. */
   signal?: AbortSignal;
   /** Callback for progressive output updates while the command is running. */
@@ -131,6 +133,7 @@ export interface ShellOpts {
 }
 
 const DEFAULT_MAX_LINES = 1000;
+const DEFAULT_MAX_BYTES = 50_000;
 
 /** Format combined stdout/stderr for display in tool results. */
 function formatShellOutput(stdout: string, stderr: string): string {
@@ -187,6 +190,7 @@ export async function executeShell(
 ): Promise<ToolExecResult> {
   const shell = process.env.SHELL || "/bin/sh";
   const maxLines = opts?.maxLines ?? DEFAULT_MAX_LINES;
+  const maxBytes = opts?.maxBytes ?? DEFAULT_MAX_BYTES;
 
   try {
     const spawnOpts: Parameters<typeof Bun.spawn>[1] = {
@@ -200,7 +204,11 @@ export async function executeShell(
     let stdoutBuf = "";
     let stderrBuf = "";
     const reportUpdate = (): void => {
-      const output = formatShellOutput(stdoutBuf, stderrBuf);
+      const output = truncateOutput(
+        formatShellOutput(stdoutBuf, stderrBuf),
+        maxLines,
+        maxBytes,
+      );
       if (!output) {
         return;
       }
@@ -222,6 +230,7 @@ export async function executeShell(
     const output = truncateOutput(
       formatShellOutput(stdout.trimEnd(), stderr.trimEnd()),
       maxLines,
+      maxBytes,
     );
 
     const isError = exitCode !== 0;
@@ -239,31 +248,159 @@ export async function executeShell(
 // Output truncation
 // ---------------------------------------------------------------------------
 
-/**
- * Truncate output to keep head and tail lines with a marker in between.
- *
- * If the output has fewer lines than `maxLines`, it is returned unchanged.
- * Otherwise, keeps roughly half the budget for head lines and half for tail
- * lines, joined by a truncation marker showing how many lines were omitted.
- *
- * @param output - The full output string.
- * @param maxLines - Maximum number of content lines to keep.
- * @returns The (possibly truncated) output string.
- */
-export function truncateOutput(output: string, maxLines: number): string {
-  if (!output) return output;
-
+/** Build line-limited head/tail segments and their truncation marker. */
+function buildLineTruncation(
+  output: string,
+  maxLines: number,
+): {
+  head: string;
+  tail: string;
+  marker: string;
+} | null {
   const lines = output.split("\n");
-  if (lines.length <= maxLines) return output;
+  if (lines.length <= maxLines) {
+    return null;
+  }
 
   const headCount = Math.ceil(maxLines / 2);
   const tailCount = Math.floor(maxLines / 2);
   const omitted = lines.length - headCount - tailCount;
 
-  const head = lines.slice(0, headCount);
-  const tail = lines.slice(lines.length - tailCount);
+  return {
+    head: lines.slice(0, headCount).join("\n"),
+    tail: lines.slice(lines.length - tailCount).join("\n"),
+    marker: `\n… truncated ${omitted} lines …\n`,
+  };
+}
 
-  return [...head, `… truncated ${omitted} lines …`, ...tail].join("\n");
+/** Slice the largest UTF-8 prefix that fits within `maxBytes`. */
+function sliceUtf8Prefix(input: string, maxBytes: number): string {
+  if (maxBytes <= 0 || input === "") {
+    return "";
+  }
+  let low = 0;
+  let high = input.length;
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2);
+    const candidate = input.slice(0, mid);
+    if (Buffer.byteLength(candidate, "utf8") <= maxBytes) {
+      low = mid;
+    } else {
+      high = mid - 1;
+    }
+  }
+  return input.slice(0, low);
+}
+
+/** Slice the largest UTF-8 suffix that fits within `maxBytes`. */
+function sliceUtf8Suffix(input: string, maxBytes: number): string {
+  if (maxBytes <= 0 || input === "") {
+    return "";
+  }
+  let low = 0;
+  let high = input.length;
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2);
+    const candidate = input.slice(input.length - mid);
+    if (Buffer.byteLength(candidate, "utf8") <= maxBytes) {
+      low = mid;
+    } else {
+      high = mid - 1;
+    }
+  }
+  return input.slice(input.length - low);
+}
+
+/** Fit disjoint head/tail segments plus a marker within a UTF-8 byte budget. */
+function fitSegmentsWithinBytes(
+  headSource: string,
+  tailSource: string,
+  marker: string,
+  maxBytes: number,
+): string {
+  const markerBytes = Buffer.byteLength(marker, "utf8");
+  if (markerBytes >= maxBytes) {
+    return sliceUtf8Prefix(headSource, maxBytes);
+  }
+
+  const availableBytes = maxBytes - markerBytes;
+  const headBudget = Math.ceil(availableBytes / 2);
+  const tailBudget = Math.floor(availableBytes / 2);
+
+  let head = sliceUtf8Prefix(headSource, headBudget);
+  let tail = sliceUtf8Suffix(tailSource, tailBudget);
+
+  const usedBytes =
+    Buffer.byteLength(head, "utf8") + Buffer.byteLength(tail, "utf8");
+  let remainingBytes = availableBytes - usedBytes;
+
+  if (remainingBytes > 0) {
+    const expandedHead = sliceUtf8Prefix(
+      headSource,
+      headBudget + remainingBytes,
+    );
+    remainingBytes -=
+      Buffer.byteLength(expandedHead, "utf8") - Buffer.byteLength(head, "utf8");
+    head = expandedHead;
+  }
+
+  if (remainingBytes > 0) {
+    tail = sliceUtf8Suffix(tailSource, tailBudget + remainingBytes);
+  }
+
+  return head + marker + tail;
+}
+
+/** Truncate output by UTF-8 byte size, preserving head and tail text. */
+function truncateOutputByBytes(output: string, maxBytes: number): string {
+  if (Buffer.byteLength(output, "utf8") <= maxBytes) {
+    return output;
+  }
+
+  return fitSegmentsWithinBytes(
+    output,
+    output,
+    "\n… truncated for size …\n",
+    maxBytes,
+  );
+}
+
+/**
+ * Truncate output to keep useful head and tail content within line and byte budgets.
+ *
+ * The line budget avoids flooding the model with very tall outputs, while the
+ * byte budget prevents context explosions caused by a small number of very long
+ * lines.
+ *
+ * @param output - The full output string.
+ * @param maxLines - Maximum number of content lines to keep.
+ * @param maxBytes - Maximum UTF-8 bytes to keep.
+ * @returns The (possibly truncated) output string.
+ */
+export function truncateOutput(
+  output: string,
+  maxLines: number,
+  maxBytes: number,
+): string {
+  if (!output) return output;
+
+  const lineTruncation = buildLineTruncation(output, maxLines);
+  if (!lineTruncation) {
+    return truncateOutputByBytes(output, maxBytes);
+  }
+
+  const lineLimited =
+    lineTruncation.head + lineTruncation.marker + lineTruncation.tail;
+  if (Buffer.byteLength(lineLimited, "utf8") <= maxBytes) {
+    return lineLimited;
+  }
+
+  return fitSegmentsWithinBytes(
+    lineTruncation.head,
+    lineTruncation.tail,
+    lineTruncation.marker,
+    maxBytes,
+  );
 }
 
 // ---------------------------------------------------------------------------

@@ -65,7 +65,7 @@ Runs a command in the user's shell. Returns stdout, stderr, and exit code.
 
 Implementation details:
 
-- Large outputs are truncated to avoid context explosion caused by reading a massive file or binary by accident. This is a guard at the tool level, and not related to the user-configured verbose setting.
+- Large outputs are truncated to avoid context explosion caused by reading a massive file or binary by accident. This guard applies to both very tall output (many lines) and very wide output (a few extremely long lines), and is not related to the user-configured verbose setting.
 - The truncation threshold is configurable, tuned to keep useful output while staying well within context limits.
 - Commands run via `$SHELL -c "<command>"` (falling back to `/bin/sh` if `$SHELL` is unset) with the CWD set to the session's working directory.
 - Timeout: no default timeout. The user can interrupt via `Escape`.
@@ -471,8 +471,8 @@ The default theme uses terminal palette colors where semantic accents help (`col
 Two lines, four corners:
 
 ```
-~/src/mini-coder                                     main +3 ~1 ▲ 2
-anthropic/sonnet-4 · med                       in:1.2k out:0.8k · 42% · $0.03
+~/src/mini-coder                                   main +3 ~1 ▲ 2
+anthropic/sonnet-4 · med                 in:1.2k out:0.8k · 42.0%/200k · $0.03
 ```
 
 **Line 1 — location:**
@@ -483,9 +483,9 @@ anthropic/sonnet-4 · med                       in:1.2k out:0.8k · 42% · $0.03
 **Line 2 — session:**
 
 - Left: `provider/model · effort`. Effort shown as `low`, `med`, `high`, `xhigh`.
-- Right: `in:input out:output · context% · $cost`. All values are **cumulative for the session**.
+- Right: `in:input out:output · context%/window · $cost`. `in`, `out`, and `$cost` are **cumulative for the session**. `context%/window` shows the most recently loaded context as a percentage of the active model's context window, e.g. `33.1%/272k`.
 
-Token counts use human-friendly units (1.2k, 45k, 1.2M). Context % is computed from cumulative tokens vs `Model.contextWindow`. Cost is a running sum of `AssistantMessage.usage.cost.total` across all messages in the session, accumulated by us (pi-ai tracks per-message only). Reset on `/new`, restored from DB on session resume.
+Token counts use human-friendly units (1.2k, 45k, 1.2M). Context usage is computed from the most recent assistant message's `usage.totalTokens` vs `Model.contextWindow` — this is the best available approximation of the actual prompt/response footprint without re-tokenizing the conversation locally. The denominator shows the active model's context window in the same compact units. Cost is a running sum of `AssistantMessage.usage.cost.total` across all messages in the session, accumulated by us (pi-ai tracks per-message only). Reset on `/new`, restored from DB on session resume.
 
 ### Conversation log
 
