@@ -16,11 +16,13 @@ import { DEFAULT_THEME } from "./theme.ts";
 import {
   buildConversationLog,
   buildHelpText,
+  createInputController,
   type HelpRenderState,
   handleInput,
   type PendingToolCall,
   previewToolRenderLines,
   renderAssistantMessage,
+  renderInputArea,
   renderStreamingResponse,
   renderToolResult,
   type ToolRenderLine,
@@ -241,6 +243,44 @@ describe("ui rendering", () => {
     } finally {
       process.env.PATH = originalPath;
       faux.unregister();
+      state.db.close();
+    }
+  });
+
+  test("renderInputArea reuses stable TextInput handlers from the input controller", () => {
+    const state = createTestState();
+
+    try {
+      const controller = createInputController(state);
+      const first = renderInputArea(controller);
+      const second = renderInputArea(controller);
+
+      expect(first.type).toBe("vstack");
+      expect(second.type).toBe("vstack");
+      if (first.type !== "vstack" || second.type !== "vstack") {
+        throw new Error("Expected input area wrappers to be VStack nodes");
+      }
+
+      const firstInput = first.children[0];
+      const secondInput = second.children[0];
+      expect(firstInput?.type).toBe("textinput");
+      expect(secondInput?.type).toBe("textinput");
+      if (!firstInput || !secondInput) {
+        throw new Error("Expected text input children to exist");
+      }
+      if (firstInput.type !== "textinput" || secondInput.type !== "textinput") {
+        throw new Error("Expected text input child nodes");
+      }
+
+      expect(firstInput.props.onChange).toBe(controller.onChange);
+      expect(firstInput.props.onFocus).toBe(controller.onFocus);
+      expect(firstInput.props.onBlur).toBe(controller.onBlur);
+      expect(firstInput.props.onKeyPress).toBe(controller.onKeyPress);
+      expect(secondInput.props.onChange).toBe(firstInput.props.onChange);
+      expect(secondInput.props.onFocus).toBe(firstInput.props.onFocus);
+      expect(secondInput.props.onBlur).toBe(firstInput.props.onBlur);
+      expect(secondInput.props.onKeyPress).toBe(firstInput.props.onKeyPress);
+    } finally {
       state.db.close();
     }
   });

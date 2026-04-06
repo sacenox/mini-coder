@@ -896,6 +896,84 @@ function renderOverlay(state: AppState): Node {
 }
 
 // ---------------------------------------------------------------------------
+// Input area
+// ---------------------------------------------------------------------------
+
+/** Stable callbacks for the controlled TextInput. */
+export interface InputController {
+  /** Update the controlled input value and re-render. */
+  onChange: (value: string) => void;
+  /** Mark the input as focused and re-render. */
+  onFocus: () => void;
+  /** Mark the input as blurred and re-render. */
+  onBlur: () => void;
+  /** Intercept submit/autocomplete keys before default editing runs. */
+  onKeyPress: (key: string) => boolean | undefined;
+}
+
+/**
+ * Create stable handlers for the main TextInput.
+ *
+ * cel-tui keys TextInput cursor/scroll state by the `onChange` function
+ * reference, so these callbacks must be created once and reused across
+ * renders.
+ *
+ * @param state - Application state used by the handlers.
+ * @returns Stable callbacks for the controlled TextInput.
+ */
+export function createInputController(state: AppState): InputController {
+  return {
+    onChange: (value) => {
+      inputValue = value;
+      cel.render();
+    },
+    onFocus: () => {
+      inputFocused = true;
+      cel.render();
+    },
+    onBlur: () => {
+      inputFocused = false;
+      cel.render();
+    },
+    onKeyPress: (key) => {
+      if (key === "enter") {
+        const raw = inputValue;
+        inputValue = "";
+        cel.render();
+        handleInput(raw, state);
+        return false;
+      }
+      if (key === "tab" && inputValue.startsWith("/")) {
+        showCommandAutocomplete(state);
+        return false;
+      }
+    },
+  };
+}
+
+/**
+ * Render the padded input area.
+ *
+ * @param controller - Stable TextInput callbacks.
+ * @returns The input area node.
+ */
+export function renderInputArea(controller: InputController): Node {
+  return VStack({ padding: { x: 1 } }, [
+    TextInput({
+      flex: 1,
+      maxHeight: 10,
+      value: inputValue,
+      onChange: controller.onChange,
+      placeholder: Text("message…", { fgColor: "color08" }),
+      focused: inputFocused,
+      onFocus: controller.onFocus,
+      onBlur: controller.onBlur,
+      onKeyPress: controller.onKeyPress,
+    }),
+  ]);
+}
+
+// ---------------------------------------------------------------------------
 // Command handlers
 // ---------------------------------------------------------------------------
 
@@ -1628,6 +1706,7 @@ async function gracefulExit(state: AppState): Promise<void> {
  */
 export function startUI(state: AppState): void {
   const terminal = new ProcessTerminal();
+  const inputController = createInputController(state);
   cel.init(terminal);
 
   cel.viewport(() => {
@@ -1673,40 +1752,7 @@ export function startUI(state: AppState): void {
         renderDivider(state, cols),
 
         // ── Input area ──
-        VStack({ padding: { x: 1 } }, [
-          TextInput({
-            flex: 1,
-            maxHeight: 10,
-            value: inputValue,
-            onChange: (value) => {
-              inputValue = value;
-              cel.render();
-            },
-            placeholder: Text("message…", { fgColor: "color08" }),
-            focused: inputFocused,
-            onFocus: () => {
-              inputFocused = true;
-              cel.render();
-            },
-            onBlur: () => {
-              inputFocused = false;
-              cel.render();
-            },
-            onKeyPress: (key) => {
-              if (key === "enter") {
-                const raw = inputValue;
-                inputValue = "";
-                cel.render();
-                handleInput(raw, state);
-                return false;
-              }
-              if (key === "tab" && inputValue.startsWith("/")) {
-                showCommandAutocomplete(state);
-                return false;
-              }
-            },
-          }),
-        ]),
+        renderInputArea(inputController),
 
         // ── Static divider ──
         Divider({ fgColor: state.theme.divider }),
