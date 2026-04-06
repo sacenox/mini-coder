@@ -31,7 +31,7 @@
 
 - [ ] `/skill:name` input handling (strip prefix, prepend skill body to user message)
 - [ ] Image embedding (entire input is image path → embed as `ImageContent`)
-- [ ] Conditional `readImage` tool registration (only for vision-capable models, re-evaluated on `/model`)
+- [x] Conditional `readImage` tool registration (only for vision-capable models, re-evaluated on `/model`)
 - [ ] Tab file path autocomplete in input
 - [ ] Context limit compaction (threshold detection, model-generated summary, prompt cache preservation)
 
@@ -40,3 +40,4 @@
 - [ ] User preferences persistence (model, effort) — not in spec, currently resets to defaults on launch
 - [ ] Session list preview — show first user message snippet in `/session` selector
 - [ ] Divider theme plugin — customizable divider animations (scanning pulse, breathing, flowing dots, wave)
+- [ ] Backward-compatibility and migration policy for 1.0 (session/app data versioning, explicit migration strategy)

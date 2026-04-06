@@ -49,6 +49,8 @@
 - **Read the framework's key dispatch code.** cel-tui intercepts Escape at the framework level (unfocuses before `onKeyPress` fires). Use `onBlur` for dismiss-on-Escape instead of `onKeyPress`. Don't assume events reach component handlers without checking the framework's dispatch order.
 - **Pass all required options through the call chain.** pi-ai's `streamSimple` needs `apiKey` in options for OAuth providers (env vars aren't set). When adding a new field to a dependency's options, trace the full call path from UI → agent loop → provider to ensure it arrives.
 - **Display-only state must not leak into model context.** Info messages (login progress, fork confirmation) belong in a separate display array, not `state.messages`. Anything in `state.messages` gets sent to the LLM as conversation history.
+- **Compatibility policy is a product decision.** Before 1.0, prefer correct, simple semantics over speculative backward-compatibility shims. If a change may affect existing data or behavior, raise it explicitly, but do not implement migrations or compatibility layers unless the spec or user asks for them.
+- **Breaking changes still need to be called out.** Pre-1.0 is not a license to surprise the user. If a change intentionally trades compatibility for correctness or simplicity, say so explicitly in discussion and keep TODO/release notes aligned.
 
 ## Testing strategy
 

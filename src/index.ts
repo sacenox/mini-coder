@@ -22,6 +22,7 @@ import { getEnvApiKey, getModels, getProviders } from "@mariozechner/pi-ai";
 import { getOAuthApiKey, getOAuthProviders } from "@mariozechner/pi-ai/oauth";
 import type { ToolHandler } from "./agent.ts";
 import { type GitState, getGitState } from "./git.ts";
+import { canonicalizePath } from "./paths.ts";
 import {
   type AgentContext,
   destroyPlugins,
@@ -287,8 +288,10 @@ export interface AppState {
   providers: Map<string, string>;
   /** OAuth credentials on disk. */
   oauthCredentials: Record<string, OAuthCredentials>;
-  /** Working directory. */
+  /** Working directory as entered by the user/shell (for display and tool execution). */
   cwd: string;
+  /** Canonical working directory (for path identity and session scoping). */
+  canonicalCwd: string;
   /** Whether the agent loop is currently running. */
   running: boolean;
   /** Abort controller for the current agent run. */
@@ -306,6 +309,7 @@ export interface AppState {
 /** Initialize and return the full app state. */
 export async function init(): Promise<AppState> {
   const cwd = process.cwd();
+  const canonicalCwd = canonicalizePath(cwd);
 
   // Ensure data directory exists
   mkdirSync(DATA_DIR, { recursive: true });
@@ -324,7 +328,7 @@ export async function init(): Promise<AppState> {
   const home = homedir();
   const scanRoot = gitRoot ?? home;
   const agentsMd = discoverAgentsMd(cwd, scanRoot, join(home, ".agents"));
-  const skills = discoverSkills(getSkillScanPaths(cwd, gitRoot));
+  const skills = discoverSkills(getSkillScanPaths(canonicalCwd, gitRoot));
 
   // Load plugins
   const pluginEntries = loadPluginConfig(PLUGIN_CONFIG_PATH);
@@ -334,11 +338,11 @@ export async function init(): Promise<AppState> {
   const effort = DEFAULT_EFFORT;
   const modelLabel = model ? `${model.provider}/${model.id}` : undefined;
   const session = createSession(db, {
-    cwd,
+    cwd: canonicalCwd,
     model: modelLabel,
     effort,
   });
-  truncateSessions(db, cwd, MAX_SESSIONS_PER_CWD);
+  truncateSessions(db, canonicalCwd, MAX_SESSIONS_PER_CWD);
   const messages = loadMessages(db, session.id);
   const stats = computeStats(messages);
 
@@ -373,6 +377,7 @@ export async function init(): Promise<AppState> {
     providers,
     oauthCredentials,
     cwd,
+    canonicalCwd,
     running: false,
     abortController: null,
     showReasoning: false,

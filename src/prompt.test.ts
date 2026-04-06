@@ -1,8 +1,15 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { GitState } from "./git.ts";
+import { canonicalizePath } from "./paths.ts";
 import {
   buildSystemPrompt,
   discoverAgentsMd,
@@ -40,9 +47,11 @@ describe("discoverAgentsMd", () => {
 
     // Should be ordered root-to-leaf
     expect(files).toHaveLength(2);
-    expect(files[0]!.path).toBe(join(tmp, "AGENTS.md"));
+    expect(files[0]!.path).toBe(canonicalizePath(join(tmp, "AGENTS.md")));
     expect(files[0]!.content).toBe("Root instructions");
-    expect(files[1]!.path).toBe(join(tmp, "src", "AGENTS.md"));
+    expect(files[1]!.path).toBe(
+      canonicalizePath(join(tmp, "src", "AGENTS.md")),
+    );
     expect(files[1]!.content).toBe("Src instructions");
   });
 
@@ -94,6 +103,44 @@ describe("discoverAgentsMd", () => {
     expect(files[0]!.content).toBe("level-0");
     expect(files[1]!.content).toBe("level-1");
     expect(files[2]!.content).toBe("level-2");
+  });
+
+  test("does not walk above the scan root when cwd uses a symlinked path", () => {
+    const project = join(tmp, "project");
+    const linkedProject = join(tmp, "linked-project");
+    const child = join(linkedProject, "src");
+
+    mkdirSync(join(project, "src"), { recursive: true });
+    symlinkSync(project, linkedProject);
+
+    writeFileSync(join(tmp, "AGENTS.md"), "Above root");
+    writeFileSync(join(project, "AGENTS.md"), "At root");
+
+    const files = discoverAgentsMd(child, canonicalizePath(project));
+    expect(files).toHaveLength(1);
+    expect(files[0]!.content).toBe("At root");
+  });
+
+  test("includes intermediate AGENTS.md files from the canonical parent chain", () => {
+    const home = join(tmp, "home");
+    const work = join(home, "work");
+    const project = join(work, "project");
+    const linkedProject = join(tmp, "project-link");
+    const child = join(linkedProject, "src");
+
+    mkdirSync(join(project, "src"), { recursive: true });
+    symlinkSync(project, linkedProject);
+
+    writeFileSync(join(home, "AGENTS.md"), "Home instructions");
+    writeFileSync(join(work, "AGENTS.md"), "Work instructions");
+    writeFileSync(join(project, "AGENTS.md"), "Project instructions");
+
+    const files = discoverAgentsMd(child, home);
+    expect(files.map((file) => file.content)).toEqual([
+      "Home instructions",
+      "Work instructions",
+      "Project instructions",
+    ]);
   });
 });
 

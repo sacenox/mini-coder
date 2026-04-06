@@ -1,8 +1,15 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { getGitState } from "./git.ts";
+import { canonicalizePath } from "./paths.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -59,7 +66,7 @@ describe("getGitState", () => {
     await initRepo();
     const state = await getGitState(tmp);
     expect(state).not.toBeNull();
-    expect(state!.root).toBe(resolve(tmp));
+    expect(state!.root).toBe(canonicalizePath(tmp));
   });
 
   test("gets current branch name", async () => {
@@ -139,11 +146,20 @@ describe("getGitState", () => {
   test("works from a subdirectory", async () => {
     await initRepo();
     const sub = join(tmp, "src", "deep");
-    const { mkdirSync } = await import("node:fs");
     mkdirSync(sub, { recursive: true });
 
     const state = await getGitState(sub);
     expect(state).not.toBeNull();
-    expect(state!.root).toBe(resolve(tmp));
+    expect(state!.root).toBe(canonicalizePath(tmp));
+  });
+
+  test("returns the canonical repo root when accessed through a symlink", async () => {
+    await initRepo();
+    mkdirSync(join(tmp, "src"), { recursive: true });
+    symlinkSync(tmp, join(tmp, "alias"));
+
+    const state = await getGitState(join(tmp, "alias", "src"));
+    expect(state).not.toBeNull();
+    expect(state!.root).toBe(canonicalizePath(tmp));
   });
 });

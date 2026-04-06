@@ -758,7 +758,7 @@ function handleEffortCommand(state: AppState): void {
 
 /** Handle the /session command: list and resume sessions. */
 function handleSessionCommand(state: AppState): void {
-  const sessions = listSessions(state.db, state.cwd);
+  const sessions = listSessions(state.db, state.canonicalCwd);
   if (sessions.length === 0) {
     return;
   }
@@ -847,7 +847,7 @@ function handleNewCommand(state: AppState): void {
     ? `${state.model.provider}/${state.model.id}`
     : undefined;
   state.session = createSession(state.db, {
-    cwd: state.cwd,
+    cwd: state.canonicalCwd,
     model: modelLabel,
     effort: state.effort,
   });

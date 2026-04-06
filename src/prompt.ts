@@ -9,8 +9,9 @@
  */
 
 import { existsSync, readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import type { GitState } from "./git.ts";
+import { canonicalizePath } from "./paths.ts";
 import { buildSkillCatalog, type Skill } from "./skills.ts";
 
 // ---------------------------------------------------------------------------
@@ -65,10 +66,10 @@ export function discoverAgentsMd(
   scanRoot: string,
   globalAgentsDir?: string,
 ): AgentsMdFile[] {
-  const root = resolve(scanRoot);
-  const start = resolve(cwd);
+  const root = canonicalizePath(scanRoot);
+  const start = canonicalizePath(cwd);
 
-  // Collect directories from scanRoot to cwd
+  // Collect canonical directories from scanRoot to cwd
   const dirs: string[] = [];
   let current = start;
   while (true) {
