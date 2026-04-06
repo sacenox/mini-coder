@@ -53,6 +53,7 @@ import {
   loadMessages,
   undoLastTurn,
 } from "./session.ts";
+import type { Theme } from "./theme.ts";
 import { truncateOutput } from "./tools.ts";
 
 // ---------------------------------------------------------------------------
@@ -105,7 +106,8 @@ let isStreaming = false;
  * Stores the tool name and arguments from `tool_start`, and the
  * result text from `tool_end` (filled in when the tool finishes).
  */
-interface PendingToolCall {
+/** A pending tool call shown in the streaming tail. */
+export interface PendingToolCall {
   /** Tool name. */
   name: string;
   /** Tool call arguments. */
@@ -114,6 +116,26 @@ interface PendingToolCall {
   resultText: string | null;
   /** Whether the tool result was an error. */
   isError: boolean;
+}
+
+/** Render options shared by completed and streaming assistant content. */
+export interface ConversationRenderOpts {
+  /** Whether reasoning blocks are visible. */
+  showReasoning: boolean;
+  /** Whether tool output should be truncated in the UI. */
+  verbose: boolean;
+  /** Active UI theme. */
+  theme: Theme;
+}
+
+/** Display-only assistant content that is still streaming. */
+export interface StreamingRenderState {
+  /** Streamed markdown text so far. */
+  text: string;
+  /** Streamed thinking text so far. */
+  thinking: string;
+  /** Tool calls observed in the current streaming turn. */
+  pendingToolCalls: PendingToolCall[];
 }
 
 /** Tool calls collected during the current streaming turn. */
@@ -290,24 +312,30 @@ function renderUserMessage(msg: Message, theme: AppState["theme"]): Node {
   ]);
 }
 
+/** Render markdown blocks with stable top-level containers. */
+function renderMarkdownContent(content: string): Node[] {
+  return Markdown(content).map((node) => {
+    if (node.type === "text" && node.content === "") {
+      return node;
+    }
+    return HStack({ padding: { x: 1 } }, [VStack({ flex: 1 }, [node])]);
+  });
+}
+
 /** Render a completed assistant message from history. */
-function renderAssistantMessage(
+export function renderAssistantMessage(
   msg: AssistantMessage,
-  state: AppState,
-): Node[] {
-  const nodes: Node[] = [];
+  opts: ConversationRenderOpts,
+): Node | null {
+  const children: Node[] = [];
 
   for (const block of msg.content) {
     if (block.type === "text" && (block as TextContent).text) {
-      nodes.push(
-        ...Markdown((block as TextContent).text).map((n) =>
-          HStack({ padding: { x: 1 } }, [VStack({ flex: 1 }, [n])]),
-        ),
-      );
-    } else if (block.type === "thinking" && state.showReasoning) {
+      children.push(...renderMarkdownContent((block as TextContent).text));
+    } else if (block.type === "thinking" && opts.showReasoning) {
       const thinking = (block as ThinkingContent).thinking;
       if (thinking) {
-        nodes.push(
+        children.push(
           VStack({ padding: { x: 1 } }, [
             Text(thinking, {
               wrap: "word",
@@ -321,16 +349,20 @@ function renderAssistantMessage(
   }
 
   if (msg.stopReason === "error" && msg.errorMessage) {
-    nodes.push(
+    children.push(
       VStack({ padding: { x: 1 } }, [
         Text(`Error: ${msg.errorMessage}`, {
-          fgColor: state.theme.error,
+          fgColor: opts.theme.error,
         }),
       ]),
     );
   }
 
-  return nodes;
+  if (children.length === 0) {
+    return null;
+  }
+
+  return VStack({}, children);
 }
 
 /** Render a shell tool call with left border. */
@@ -338,9 +370,9 @@ function renderShellToolCall(
   command: string,
   output: string,
   _isError: boolean,
-  state: AppState,
+  opts: Pick<ConversationRenderOpts, "verbose" | "theme">,
 ): Node {
-  const displayed = state.verbose
+  const displayed = opts.verbose
     ? output
     : truncateOutput(output, UI_MAX_SHELL_LINES);
 
@@ -352,8 +384,8 @@ function renderShellToolCall(
   }
 
   return HStack({ padding: { x: 1 } }, [
-    Text("│ ", { fgColor: state.theme.toolBorder }),
-    VStack({ flex: 1, fgColor: state.theme.toolText }, lines),
+    Text("│ ", { fgColor: opts.theme.toolBorder }),
+    VStack({ flex: 1, fgColor: opts.theme.toolText }, lines),
   ]);
 }
 
@@ -364,12 +396,12 @@ function renderEditToolCall(
   newText: string,
   isError: boolean,
   resultText: string,
-  state: AppState,
+  theme: Theme,
 ): Node {
   if (isError) {
     return HStack({ padding: { x: 1 } }, [
-      Text("│ ", { fgColor: state.theme.toolBorder }),
-      VStack({ flex: 1 }, [Text(resultText, { fgColor: state.theme.error })]),
+      Text("│ ", { fgColor: theme.toolBorder }),
+      VStack({ flex: 1 }, [Text(resultText, { fgColor: theme.error })]),
     ]);
   }
 
@@ -378,7 +410,7 @@ function renderEditToolCall(
   ];
 
   if (oldText === "") {
-    lines.push(Text("(new file)", { fgColor: state.theme.diffAdded }));
+    lines.push(Text("(new file)", { fgColor: theme.diffAdded }));
   } else {
     const patch = structuredPatch("", "", oldText, newText, "", "", {
       context: 2,
@@ -386,18 +418,18 @@ function renderEditToolCall(
     for (const hunk of patch.hunks) {
       for (const line of hunk.lines) {
         if (line.startsWith("+")) {
-          lines.push(Text(line, { fgColor: state.theme.diffAdded }));
+          lines.push(Text(line, { fgColor: theme.diffAdded }));
         } else if (line.startsWith("-")) {
-          lines.push(Text(line, { fgColor: state.theme.diffRemoved }));
+          lines.push(Text(line, { fgColor: theme.diffRemoved }));
         } else {
-          lines.push(Text(line, { fgColor: state.theme.toolText }));
+          lines.push(Text(line, { fgColor: theme.toolText }));
         }
       }
     }
   }
 
   return HStack({ padding: { x: 1 } }, [
-    Text("│ ", { fgColor: state.theme.toolBorder }),
+    Text("│ ", { fgColor: theme.toolBorder }),
     VStack({ flex: 1 }, lines),
   ]);
 }
@@ -407,12 +439,12 @@ function renderGenericToolCall(
   toolName: string,
   output: string,
   isError: boolean,
-  state: AppState,
+  theme: Theme,
 ): Node {
-  const fgColor = isError ? state.theme.error : state.theme.toolText;
+  const fgColor = isError ? theme.error : theme.toolText;
 
   return HStack({ padding: { x: 1 } }, [
-    Text("│ ", { fgColor: state.theme.toolBorder }),
+    Text("│ ", { fgColor: theme.toolBorder }),
     VStack({ flex: 1 }, [
       Text(toolName, { fgColor: "color05", bold: true }),
       ...(output ? [Text(output, { wrap: "word", fgColor })] : []),
@@ -426,15 +458,13 @@ function renderToolResult(
   args: Record<string, unknown>,
   resultText: string,
   isError: boolean,
-  state: AppState,
+  opts: ConversationRenderOpts,
 ): Node {
   if (toolName === "shell") {
-    return renderShellToolCall(
-      args.command as string,
-      resultText,
-      isError,
-      state,
-    );
+    return renderShellToolCall(args.command as string, resultText, isError, {
+      verbose: opts.verbose,
+      theme: opts.theme,
+    });
   }
   if (toolName === "edit") {
     return renderEditToolCall(
@@ -443,10 +473,10 @@ function renderToolResult(
       args.newText as string,
       isError,
       resultText,
-      state,
+      opts.theme,
     );
   }
-  return renderGenericToolCall(toolName, resultText, isError, state);
+  return renderGenericToolCall(toolName, resultText, isError, opts.theme);
 }
 
 // ---------------------------------------------------------------------------
@@ -458,13 +488,16 @@ function renderToolResult(
  *
  * Shows thinking (if enabled), streamed markdown, and pending tool calls.
  */
-function renderStreamingResponse(state: AppState): Node[] {
-  const nodes: Node[] = [];
+export function renderStreamingResponse(
+  streaming: StreamingRenderState,
+  opts: ConversationRenderOpts,
+): Node | null {
+  const children: Node[] = [];
 
-  if (state.showReasoning && streamingThinking) {
-    nodes.push(
+  if (opts.showReasoning && streaming.thinking) {
+    children.push(
       VStack({ padding: { x: 1 } }, [
-        Text(streamingThinking, {
+        Text(streaming.thinking, {
           wrap: "word",
           fgColor: "color08",
           italic: true,
@@ -473,18 +506,14 @@ function renderStreamingResponse(state: AppState): Node[] {
     );
   }
 
-  if (streamingText) {
-    nodes.push(
-      ...Markdown(streamingText).map((n) =>
-        HStack({ padding: { x: 1 } }, [VStack({ flex: 1 }, [n])]),
-      ),
-    );
+  if (streaming.text) {
+    children.push(...renderMarkdownContent(streaming.text));
   }
 
-  for (const tc of pendingToolCalls) {
+  for (const tc of streaming.pendingToolCalls) {
     if (tc.resultText !== null) {
-      nodes.push(
-        renderToolResult(tc.name, tc.args, tc.resultText, tc.isError, state),
+      children.push(
+        renderToolResult(tc.name, tc.args, tc.resultText, tc.isError, opts),
       );
     } else {
       // Tool still running — show indicator
@@ -494,9 +523,9 @@ function renderStreamingResponse(state: AppState): Node[] {
           : tc.name === "edit"
             ? `~ ${tc.args.path ?? ""}…`
             : `${tc.name}…`;
-      nodes.push(
+      children.push(
         HStack({ padding: { x: 1 } }, [
-          Text("│ ", { fgColor: state.theme.toolBorder }),
+          Text("│ ", { fgColor: opts.theme.toolBorder }),
           VStack({ flex: 1 }, [
             Text(label, { fgColor: "color06", italic: true }),
           ]),
@@ -505,7 +534,11 @@ function renderStreamingResponse(state: AppState): Node[] {
     }
   }
 
-  return nodes;
+  if (children.length === 0) {
+    return null;
+  }
+
+  return VStack({}, children);
 }
 
 // ---------------------------------------------------------------------------
@@ -515,6 +548,17 @@ function renderStreamingResponse(state: AppState): Node[] {
 /** Build the full conversation log as an array of nodes. */
 function buildConversationLog(state: AppState): Node[] {
   const nodes: Node[] = [];
+  const renderOpts: ConversationRenderOpts = {
+    showReasoning: state.showReasoning,
+    verbose: state.verbose,
+    theme: state.theme,
+  };
+
+  const pushConversationNode = (node: Node | null): void => {
+    if (!node) return;
+    if (nodes.length > 0) nodes.push(Text(""));
+    nodes.push(node);
+  };
 
   // Map toolCallId → { name, args } so we can render diffs for edits.
   const toolCallArgs = new Map<
@@ -524,9 +568,7 @@ function buildConversationLog(state: AppState): Node[] {
 
   for (const msg of state.messages) {
     if (msg.role === "user") {
-      if (nodes.length > 0) nodes.push(Text(""));
-      nodes.push(renderUserMessage(msg, state.theme));
-      nodes.push(Text(""));
+      pushConversationNode(renderUserMessage(msg, state.theme));
     } else if (msg.role === "assistant") {
       const am = msg as AssistantMessage;
       for (const block of am.content) {
@@ -535,7 +577,7 @@ function buildConversationLog(state: AppState): Node[] {
           toolCallArgs.set(tc.id, { name: tc.name, args: tc.arguments });
         }
       }
-      nodes.push(...renderAssistantMessage(am, state));
+      pushConversationNode(renderAssistantMessage(am, renderOpts));
     } else if (msg.role === "toolResult") {
       const info = toolCallArgs.get(msg.toolCallId);
       const name = info?.name ?? msg.toolName;
@@ -544,18 +586,29 @@ function buildConversationLog(state: AppState): Node[] {
         .filter((c): c is TextContent => c.type === "text")
         .map((c) => c.text)
         .join("\n");
-      nodes.push(renderToolResult(name, args, text, msg.isError, state));
+      pushConversationNode(
+        renderToolResult(name, args, text, msg.isError, renderOpts),
+      );
     }
   }
 
   // Append in-progress streaming response
   if (isStreaming) {
-    nodes.push(...renderStreamingResponse(state));
+    pushConversationNode(
+      renderStreamingResponse(
+        {
+          text: streamingText,
+          thinking: streamingThinking,
+          pendingToolCalls,
+        },
+        renderOpts,
+      ),
+    );
   }
 
   // Append display-only info messages
   for (const msg of infoMessages) {
-    nodes.push(
+    pushConversationNode(
       VStack({ padding: { x: 1 } }, [
         Text(typeof msg.content === "string" ? msg.content : "", {
           fgColor: "color08",
