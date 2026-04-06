@@ -13,6 +13,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, extname, isAbsolute, join } from "node:path";
 import type { ImageContent, TextContent, Tool } from "@mariozechner/pi-ai";
 import { Type } from "@mariozechner/pi-ai";
+import type { ToolUpdateCallback } from "./agent.ts";
 
 // ---------------------------------------------------------------------------
 // Result type
@@ -125,9 +126,47 @@ export interface ShellOpts {
   maxLines?: number;
   /** Abort signal to cancel the command. */
   signal?: AbortSignal;
+  /** Callback for progressive output updates while the command is running. */
+  onUpdate?: ToolUpdateCallback;
 }
 
 const DEFAULT_MAX_LINES = 1000;
+
+/** Format combined stdout/stderr for display in tool results. */
+function formatShellOutput(stdout: string, stderr: string): string {
+  if (stdout && stderr) {
+    return `${stdout}\n\n[stderr]\n${stderr}`;
+  }
+  if (stdout) {
+    return stdout;
+  }
+  if (stderr) {
+    return `[stderr]\n${stderr}`;
+  }
+  return "";
+}
+
+/** Read a spawned shell stream into a string, reporting progressive updates. */
+async function consumeShellStream(
+  stream: ReadableStream<Uint8Array>,
+  onChunk: (chunk: string) => void,
+): Promise<string> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let output = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      output += decoder.decode();
+      return output;
+    }
+
+    const chunk = decoder.decode(value, { stream: true });
+    output += chunk;
+    onChunk(chunk);
+  }
+}
 
 /**
  * Run a command in the user's shell.
@@ -138,7 +177,7 @@ const DEFAULT_MAX_LINES = 1000;
  *
  * @param args - Shell arguments (command).
  * @param cwd - Working directory to run the command in.
- * @param opts - Optional execution options (maxLines, signal).
+ * @param opts - Optional execution options (maxLines, signal, onUpdate).
  * @returns A {@link ToolExecResult} with the command output.
  */
 export async function executeShell(
@@ -158,25 +197,32 @@ export async function executeShell(
     if (opts?.signal) spawnOpts.signal = opts.signal;
     const proc = Bun.spawn([shell, "-c", args.command], spawnOpts);
 
-    const [stdoutBuf, stderrBuf] = await Promise.all([
-      new Response(proc.stdout as ReadableStream).text(),
-      new Response(proc.stderr as ReadableStream).text(),
+    let stdoutBuf = "";
+    let stderrBuf = "";
+    const reportUpdate = (): void => {
+      const output = formatShellOutput(stdoutBuf, stderrBuf);
+      if (!output) {
+        return;
+      }
+      opts?.onUpdate?.(textResult(output, false));
+    };
+
+    const [stdout, stderr, exitCode] = await Promise.all([
+      consumeShellStream(proc.stdout as ReadableStream<Uint8Array>, (chunk) => {
+        stdoutBuf += chunk;
+        reportUpdate();
+      }),
+      consumeShellStream(proc.stderr as ReadableStream<Uint8Array>, (chunk) => {
+        stderrBuf += chunk;
+        reportUpdate();
+      }),
+      proc.exited,
     ]);
-    const exitCode = await proc.exited;
 
-    const stdout = stdoutBuf.trimEnd();
-    const stderr = stderrBuf.trimEnd();
-
-    let output = "";
-    if (stdout && stderr) {
-      output = `${stdout}\n\n[stderr]\n${stderr}`;
-    } else if (stdout) {
-      output = stdout;
-    } else if (stderr) {
-      output = `[stderr]\n${stderr}`;
-    }
-
-    output = truncateOutput(output, maxLines);
+    const output = truncateOutput(
+      formatShellOutput(stdout.trimEnd(), stderr.trimEnd()),
+      maxLines,
+    );
 
     const isError = exitCode !== 0;
     const prefix = isError ? `Command failed with exit code ${exitCode}\n` : "";

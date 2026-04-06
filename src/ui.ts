@@ -105,19 +105,23 @@ let isStreaming = false;
 /**
  * A tool call observed during streaming, before it lands in history.
  *
- * Stores the tool name and arguments from `tool_start`, and the
- * result text from `tool_end` (filled in when the tool finishes).
+ * Stores the tool name and arguments from `tool_start`, progressive
+ * text updates from `tool_delta`, and the final result from `tool_end`.
  */
 /** A pending tool call shown in the streaming tail. */
 export interface PendingToolCall {
+  /** Tool call id from the assistant message. */
+  toolCallId: string;
   /** Tool name. */
   name: string;
   /** Tool call arguments. */
   args: Record<string, unknown>;
-  /** Text result, or `null` while still running. */
-  resultText: string | null;
+  /** Progressive text output captured so far. */
+  resultText: string;
   /** Whether the tool result was an error. */
   isError: boolean;
+  /** Whether the tool has finished. */
+  done: boolean;
 }
 
 /** Render options shared by completed and streaming assistant content. */
@@ -536,6 +540,16 @@ function renderToolBlock(lines: readonly ToolRenderLine[], theme: Theme): Node {
   ]);
 }
 
+/** Extract text blocks from a tool result for UI rendering. */
+function getToolResultText(
+  result: Extract<AgentEvent, { type: "tool_delta" | "tool_end" }>["result"],
+): string {
+  return result.content
+    .filter((content): content is TextContent => content.type === "text")
+    .map((content) => content.text)
+    .join("\n");
+}
+
 /** Render a shell tool call with left border. */
 function renderShellToolCall(
   command: string,
@@ -629,6 +643,85 @@ export function renderToolResult(
 // Streaming response rendering
 // ---------------------------------------------------------------------------
 
+/** Render a pending tool call, including progressive output when available. */
+function renderPendingToolCall(
+  toolCall: PendingToolCall,
+  opts: Pick<ConversationRenderOpts, "verbose" | "theme">,
+): Node {
+  const runningLine: ToolRenderLine = {
+    kind: "summary",
+    text: "Running...",
+  };
+
+  if (toolCall.resultText) {
+    if (toolCall.name === "shell") {
+      return renderToolBlock(
+        [
+          ...buildShellToolLines(
+            toolCall.args.command as string,
+            toolCall.resultText,
+            opts.verbose,
+          ),
+          ...(toolCall.done ? [] : [runningLine]),
+        ],
+        opts.theme,
+      );
+    }
+
+    if (toolCall.name === "edit") {
+      return renderToolBlock(
+        [
+          { kind: "path", text: `~ ${String(toolCall.args.path ?? "")}` },
+          ...previewToolRenderLines(
+            splitToolTextLines(
+              toolCall.resultText,
+              toolCall.isError ? "error" : "text",
+            ),
+            opts.verbose,
+          ),
+          ...(toolCall.done ? [] : [runningLine]),
+        ],
+        opts.theme,
+      );
+    }
+
+    return renderToolBlock(
+      [
+        { kind: "toolName", text: toolCall.name },
+        ...splitToolTextLines(
+          toolCall.resultText,
+          toolCall.isError ? "error" : "text",
+        ),
+        ...(toolCall.done ? [] : [runningLine]),
+      ],
+      opts.theme,
+    );
+  }
+
+  const label =
+    toolCall.name === "shell"
+      ? `$ ${toolCall.args.command ?? ""}`
+      : toolCall.name === "edit"
+        ? `~ ${toolCall.args.path ?? ""}`
+        : toolCall.name;
+
+  return renderToolBlock(
+    [
+      {
+        kind:
+          toolCall.name === "shell"
+            ? "command"
+            : toolCall.name === "edit"
+              ? "path"
+              : "toolName",
+        text: label,
+      },
+      ...(toolCall.done ? [] : [runningLine]),
+    ],
+    opts.theme,
+  );
+}
+
 /**
  * Render the in-progress streaming response.
  *
@@ -656,28 +749,8 @@ export function renderStreamingResponse(
     children.push(...renderMarkdownContent(streaming.text));
   }
 
-  for (const tc of streaming.pendingToolCalls) {
-    if (tc.resultText !== null) {
-      children.push(
-        renderToolResult(tc.name, tc.args, tc.resultText, tc.isError, opts),
-      );
-    } else {
-      // Tool still running — show indicator
-      const label =
-        tc.name === "shell"
-          ? `$ ${tc.args.command ?? ""}…`
-          : tc.name === "edit"
-            ? `~ ${tc.args.path ?? ""}…`
-            : `${tc.name}…`;
-      children.push(
-        HStack({ padding: { x: 1 } }, [
-          Text("│ ", { fgColor: opts.theme.toolBorder }),
-          VStack({ flex: 1 }, [
-            Text(label, { fgColor: "color06", italic: true }),
-          ]),
-        ]),
-      );
-    }
+  for (const toolCall of streaming.pendingToolCalls) {
+    children.push(renderPendingToolCall(toolCall, opts));
   }
 
   if (children.length === 0) {
@@ -1439,6 +1512,7 @@ async function submitMessage(text: string, state: AppState): Promise<void> {
       signal: state.abortController.signal,
       onEvent: (event) => handleAgentEvent(event, state),
     });
+    state.messages = loadMessages(state.db, state.session.id);
     state.stats = computeStats(state.messages);
   } finally {
     state.running = false;
@@ -1475,25 +1549,38 @@ function handleAgentEvent(event: AgentEvent, state: AppState): void {
       streamingText = "";
       streamingThinking = "";
       pendingToolCalls.push({
+        toolCallId: event.toolCallId,
         name: event.name,
         args: event.args,
-        resultText: null,
+        resultText: "",
         isError: false,
+        done: false,
       });
       stickToBottom = true;
       cel.render();
       break;
 
-    case "tool_end": {
+    case "tool_delta": {
       const pending = pendingToolCalls.find(
-        (tc) => tc.name === event.name && tc.resultText === null,
+        (toolCall) => toolCall.toolCallId === event.toolCallId,
       );
       if (pending) {
-        pending.resultText = event.result.content
-          .filter((c) => c.type === "text")
-          .map((c) => (c as TextContent).text)
-          .join("\n");
+        pending.resultText = getToolResultText(event.result);
         pending.isError = event.result.isError;
+      }
+      stickToBottom = true;
+      cel.render();
+      break;
+    }
+
+    case "tool_end": {
+      const pending = pendingToolCalls.find(
+        (toolCall) => toolCall.toolCallId === event.toolCallId,
+      );
+      if (pending) {
+        pending.resultText = getToolResultText(event.result);
+        pending.isError = event.result.isError;
+        pending.done = true;
       }
       stickToBottom = true;
       cel.render();

@@ -1,10 +1,13 @@
 # TODO
 
+Keep this always update so work can continue accross sessions.
+Don't keep completed items bloating the file.
+Keep the file strucured and minimal.
+The spec.md and code are the sources of truth, not this file, don't assume anything because it's documented here.
+
 ## Bugs — from code review
 
 ### MUST FIX
-
-- [ ] **Tool outputs are not streamed into the UI** (`agent.ts` / `ui.ts`) — shell/edit/plugin tool results only become visible on `tool_end`, so long-running tools make the UI feel stalled instead of progressively updating. This conflicts with the spec's emphasis on speed and streaming feel. Fix: design a streaming/partial tool-output path (or explicit progressive status model) so tool execution remains visibly active before the final result lands.
 
 - [ ] **TextInput cursor is off by one after line wrapping** (`ui.ts` / cel-tui TextInput integration) — when the input wraps onto a new line, the visual cursor position drifts by one column from the actual insertion point. My current suspicion is that wrapping is happening at the cell level, but the cursor position is being computed against the logical text position without staying in sync with where the wrapped cell actually lands on the next line. That makes editing long prompts confusing and suggests our input layout/measurement does not match how the wrapped text is rendered. Fix: reproduce with a focused UI test and verify the wrapped input width, prompt padding, wrapping semantics, and cursor-position calculation.
 
@@ -27,8 +30,6 @@
 - [ ] **Invisible submit errors** (`ui.ts`) — `submitMessage` errors only go to `console.error`, invisible in TUI mode. Network errors, malformed responses, or tool handler crashes cause the agent to silently stop. Fix: append a persisted UI message so the error surfaces in the conversation log without leaking into model context.
 
 ### Medium
-
-- [ ] **Fragile `tool_end` matching** (`ui.ts`/`agent.ts`) — `tool_end` events match pending tool calls by name + null resultText. Two calls to the same tool in one response (e.g., two `shell` calls) rely on sequential execution order. Fix: add `toolCallId` to `tool_start`/`tool_end` `AgentEvent` types, emit from `agent.ts`, match by id in `ui.ts`.
 
 - [ ] **Stale plugin `AgentContext.messages`** (`index.ts`) — `AgentContext.messages` is the same array ref as `state.messages`, which gets reassigned on `/new`, `/session`, `/fork`, `/undo`. Plugins holding the original reference see stale data. Fix: use a getter (`get messages() { return state.messages; }`).
 

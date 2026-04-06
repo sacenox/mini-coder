@@ -32,10 +32,14 @@ import type { ToolExecResult } from "./tools.ts";
  * Called by the agent loop when the model invokes a tool. Arguments are
  * the JSON object parsed by pi-ai from the model's tool call.
  */
+/** Callback used by tool handlers to report progressive output updates. */
+export type ToolUpdateCallback = (result: ToolExecResult) => void;
+
 export type ToolHandler = (
   args: Record<string, unknown>,
   cwd: string,
   signal?: AbortSignal,
+  onUpdate?: ToolUpdateCallback,
 ) => Promise<ToolExecResult> | ToolExecResult;
 
 export type { ToolExecResult };
@@ -44,8 +48,24 @@ export type { ToolExecResult };
 export type AgentEvent =
   | { type: "text_delta"; delta: string }
   | { type: "thinking_delta"; delta: string }
-  | { type: "tool_start"; name: string; args: Record<string, unknown> }
-  | { type: "tool_end"; name: string; result: ToolExecResult }
+  | {
+      type: "tool_start";
+      toolCallId: string;
+      name: string;
+      args: Record<string, unknown>;
+    }
+  | {
+      type: "tool_delta";
+      toolCallId: string;
+      name: string;
+      result: ToolExecResult;
+    }
+  | {
+      type: "tool_end";
+      toolCallId: string;
+      name: string;
+      result: ToolExecResult;
+    }
   | { type: "done"; message: AssistantMessage }
   | { type: "error"; message: AssistantMessage }
   | { type: "aborted"; message: AssistantMessage };
@@ -286,13 +306,26 @@ export async function runAgentLoop(
       } else {
         onEvent?.({
           type: "tool_start",
+          toolCallId: toolCall.id,
           name: toolCall.name,
           args: toolCall.arguments,
         });
 
-        result = await handler(toolCall.arguments, cwd, signal);
+        result = await handler(toolCall.arguments, cwd, signal, (partial) => {
+          onEvent?.({
+            type: "tool_delta",
+            toolCallId: toolCall.id,
+            name: toolCall.name,
+            result: partial,
+          });
+        });
 
-        onEvent?.({ type: "tool_end", name: toolCall.name, result });
+        onEvent?.({
+          type: "tool_end",
+          toolCallId: toolCall.id,
+          name: toolCall.name,
+          result,
+        });
       }
 
       const toolResultMessage: ToolResultMessage = {

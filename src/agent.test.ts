@@ -73,8 +73,11 @@ function builtinToolHandlers(): Map<string, ToolHandler> {
   return new Map<string, ToolHandler>([
     [
       "shell",
-      async (args, cwd) =>
-        executeShell({ command: args.command as string }, cwd),
+      async (args, cwd, signal, onUpdate) =>
+        executeShell({ command: args.command as string }, cwd, {
+          ...(signal ? { signal } : {}),
+          ...(onUpdate ? { onUpdate } : {}),
+        }),
     ],
     [
       "edit",
@@ -530,6 +533,83 @@ describe("agent loop", () => {
     const toolEnds = events.filter((e) => e.type === "tool_end");
     expect(toolStarts).toHaveLength(1);
     expect(toolEnds).toHaveLength(1);
+  });
+
+  test("emits tool delta events during tool execution", async () => {
+    faux.setResponses([
+      fauxAssistantMessage([fauxToolCall("shell", { command: "echo test" })], {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage("Done."),
+    ]);
+
+    const events: AgentEvent[] = [];
+    const toolHandlers = new Map<string, ToolHandler>([
+      [
+        "shell",
+        async (_args, _cwd, _signal, onUpdate) => {
+          onUpdate?.({
+            content: [{ type: "text", text: "partial output" }],
+            isError: false,
+          });
+          return {
+            content: [{ type: "text", text: "final output" }],
+            isError: false,
+          };
+        },
+      ],
+    ]);
+
+    const session = createSession(db, { cwd: tmp });
+    const userMsg = makeUser("go");
+    const turn = appendMessage(db, session.id, userMsg);
+
+    await runAgentLoop({
+      db,
+      sessionId: session.id,
+      turn,
+      model: faux.getModel(),
+      systemPrompt: "Test",
+      tools: builtinToolDefs(),
+      toolHandlers,
+      messages: [userMsg],
+      cwd: tmp,
+      onEvent: (e) => events.push(e),
+    });
+
+    const toolStart = events.find((event) => event.type === "tool_start");
+    const toolDelta = events.find((event) => event.type === "tool_delta");
+    const toolEnd = events.find((event) => event.type === "tool_end");
+
+    expect(toolStart).toBeDefined();
+    expect(toolDelta).toBeDefined();
+    expect(toolEnd).toBeDefined();
+
+    if (
+      !toolStart ||
+      toolStart.type !== "tool_start" ||
+      !toolDelta ||
+      toolDelta.type !== "tool_delta" ||
+      !toolEnd ||
+      toolEnd.type !== "tool_end"
+    ) {
+      throw new Error("Expected tool start, delta, and end events");
+    }
+
+    expect(toolDelta.toolCallId).toBe(toolStart.toolCallId);
+    expect(toolEnd.toolCallId).toBe(toolStart.toolCallId);
+    expect(toolDelta.result.content).toEqual([
+      { type: "text", text: "partial output" },
+    ]);
+    expect(toolEnd.result.content).toEqual([
+      { type: "text", text: "final output" },
+    ]);
+
+    const startIndex = events.findIndex((event) => event.type === "tool_start");
+    const deltaIndex = events.findIndex((event) => event.type === "tool_delta");
+    const endIndex = events.findIndex((event) => event.type === "tool_end");
+    expect(startIndex).toBeLessThan(deltaIndex);
+    expect(deltaIndex).toBeLessThan(endIndex);
   });
 
   test("interrupt preserves partial response", async () => {

@@ -51,6 +51,7 @@
 - **Display-only state must not leak into model context.** Info messages (login progress, fork confirmation) belong in a separate display array, not `state.messages`. Anything in `state.messages` gets sent to the LLM as conversation history.
 - **Compatibility policy is a product decision.** Before 1.0, prefer correct, simple semantics over speculative backward-compatibility shims. If a change may affect existing data or behavior, raise it explicitly, but do not implement migrations or compatibility layers unless the spec or user asks for them.
 - **Breaking changes still need to be called out.** Pre-1.0 is not a license to surprise the user. If a change intentionally trades compatibility for correctness or simplicity, say so explicitly in discussion and keep TODO/release notes aligned.
+- **TUI changes need real terminal validation.** For rendering, streaming, scrolling, resize, focus, or input changes, passing tests is not enough. Validate the behavior manually in `tmux` before calling the change done.
 
 ## Testing strategy
 

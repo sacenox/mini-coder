@@ -256,6 +256,27 @@ describe("shell", () => {
     expect(text).toContain("out");
     expect(text).toContain("err");
   });
+
+  test("reports progressive output updates while a command runs", async () => {
+    const updates: string[] = [];
+
+    const result = await executeShell(
+      {
+        command: "printf 'first\n'; sleep 0.05; printf 'second\n'",
+      },
+      tmp,
+      {
+        onUpdate: (partial) => {
+          updates.push(resultText(partial));
+        },
+      },
+    );
+
+    expect(result.isError).toBe(false);
+    expect(updates.length).toBeGreaterThan(0);
+    expect(updates.some((text) => text.includes("first"))).toBe(true);
+    expect(updates.at(-1)).toContain("second");
+  });
 });
 
 // ---------------------------------------------------------------------------

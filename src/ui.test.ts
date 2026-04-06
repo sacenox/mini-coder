@@ -4,13 +4,14 @@ import {
   fauxAssistantMessage,
   fauxText,
   fauxThinking,
+  registerFauxProvider,
 } from "@mariozechner/pi-ai";
 import {
   type AppState,
   DEFAULT_SHOW_REASONING,
   DEFAULT_VERBOSE,
 } from "./index.ts";
-import { createSession, openDatabase } from "./session.ts";
+import { createSession, loadMessages, openDatabase } from "./session.ts";
 import { DEFAULT_THEME } from "./theme.ts";
 import {
   buildConversationLog,
@@ -71,6 +72,20 @@ function createTestState(): AppState {
   };
 }
 
+async function waitFor(
+  predicate: () => boolean,
+  timeoutMs = 1_000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (predicate()) {
+      return;
+    }
+    await Bun.sleep(10);
+  }
+  throw new Error("Timed out waiting for condition");
+}
+
 describe("ui rendering", () => {
   test("reasoning defaults on and verbose defaults off", () => {
     expect(DEFAULT_SHOW_REASONING).toBe(true);
@@ -109,10 +124,12 @@ describe("ui rendering", () => {
   test("renderStreamingResponse keeps text and tool output inside one top-level container", () => {
     const pendingToolCalls: PendingToolCall[] = [
       {
+        toolCallId: "tool-1",
         name: "shell",
         args: { command: "echo hi" },
         resultText: "hi",
         isError: false,
+        done: true,
       },
     ];
 
@@ -150,6 +167,31 @@ describe("ui rendering", () => {
     expect(text).toContain("Reasoning in progress");
   });
 
+  test("renderStreamingResponse shows partial tool output before the tool finishes", () => {
+    const node = renderStreamingResponse(
+      {
+        text: "",
+        thinking: "",
+        pendingToolCalls: [
+          {
+            toolCallId: "tool-1",
+            name: "shell",
+            args: { command: "echo hi" },
+            resultText: "partial output",
+            isError: false,
+            done: false,
+          },
+        ],
+      },
+      RENDER_OPTS,
+    );
+    const text = collectText(node);
+
+    expect(text).toContain("$ echo hi");
+    expect(text).toContain("partial output");
+    expect(text).toContain("Running...");
+  });
+
   test("/help appends a persisted UI message to the conversation log", () => {
     const state = createTestState();
 
@@ -165,6 +207,40 @@ describe("ui rendering", () => {
       expect(state.messages[0]?.role).toBe("ui");
       expect(logText.some((line) => line.includes("Commands:"))).toBe(true);
     } finally {
+      state.db.close();
+    }
+  });
+
+  test("completed assistant messages remain visible after a turn finishes", async () => {
+    const faux = registerFauxProvider();
+    const state = createTestState();
+    const originalPath = process.env.PATH;
+    process.env.PATH = `${process.env.PATH ?? ""}:/usr/bin:/bin`;
+    state.cwd = process.cwd();
+    state.canonicalCwd = process.cwd();
+    state.model = faux.getModel();
+    faux.setResponses([fauxAssistantMessage("Done.")]);
+
+    try {
+      handleInput("hello", state);
+      await waitFor(() =>
+        loadMessages(state.db, state.session.id).some(
+          (message) => message.role === "assistant",
+        ),
+      );
+
+      expect(
+        state.messages.some((message) => message.role === "assistant"),
+      ).toBe(true);
+      const logText = collectText({
+        type: "vstack",
+        props: {},
+        children: buildConversationLog(state),
+      });
+      expect(logText).toContain("Done.");
+    } finally {
+      process.env.PATH = originalPath;
+      faux.unregister();
       state.db.close();
     }
   });

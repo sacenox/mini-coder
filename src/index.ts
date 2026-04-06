@@ -198,12 +198,11 @@ const BUILTIN_HANDLERS: Record<string, ToolHandler> = {
       },
       cwd,
     ),
-  shell: (args, cwd, signal) =>
-    executeShell(
-      { command: args.command as string },
-      cwd,
-      signal ? { signal } : undefined,
-    ),
+  shell: (args, cwd, signal, onUpdate) =>
+    executeShell({ command: args.command as string }, cwd, {
+      ...(signal ? { signal } : {}),
+      ...(onUpdate ? { onUpdate } : {}),
+    }),
   readImage: (args, cwd) =>
     executeReadImage({ path: args.path as string }, cwd),
 };
