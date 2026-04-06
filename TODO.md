@@ -5,42 +5,49 @@ Don't keep completed items bloating the file.
 Keep the file structured and minimal.
 The spec.md and code are the sources of truth, not this file, don't assume anything because it's documented here.
 
-## Bugs — from code review
+## Spec alignment
 
-### MUST FIX
+### Core behavior
 
-### High
+- [ ] **No empty sessions** — startup should render the UI without creating a DB session. Create the session only when the user sends the first message. `/new` should reset in-memory conversation state and defer session creation until the next user message.
 
-- [ ] **Uncaught tool handler exceptions** (`agent.ts`) — if a plugin handler (or a built-in on a filesystem error like EPERM) throws, the agent loop crashes. The exception propagates through `submitMessage` (try/finally, no catch) to a `.catch(console.error)` in `handleInput` — invisible in the TUI. The conversation is left inconsistent: `tool_start` emitted but `tool_end` never fires, tool result message never appended. Fix: wrap the `handler()` call in try/catch, produce an error `ToolExecResult`, and always emit `tool_end`.
+- [ ] **UI messages are not conversational turns** (`session.ts`, `ui.ts`) — persisted UI messages must not participate in turn numbering. Update the schema/logic so UI messages store `turn = NULL`, stay visible in history, are excluded from model context, and survive `/undo`.
 
-- [ ] **`/undo` race condition** (`ui.ts`) — `/undo` aborts the agent loop then immediately calls `undoLastTurn`, but `abort()` is asynchronous. The agent loop may still write an `AssistantMessage` (stopReason "aborted") to the same turn after `undoLastTurn` has deleted it, leaving orphaned messages in the DB. Fix: store the agent loop promise as module state; in `handleUndoCommand`, await it (via `.finally()`) before calling `undoLastTurn`.
+- [ ] **`/undo` must only remove the last conversational turn** (`ui.ts`, `session.ts`) — after the UI-message turn model is fixed, make `/undo` remove only the last user message and its assistant/tool results, while leaving persisted UI messages untouched.
 
-- [ ] **Invisible submit errors** (`ui.ts`) — `submitMessage` errors only go to `console.error`, invisible in TUI mode. Network errors, malformed responses, or tool handler crashes cause the agent to silently stop. Fix: append a persisted UI message so the error surfaces in the conversation log without leaking into model context.
+- [ ] **End-to-end streaming in the UI** (`ui.ts`) — completed assistant/tool messages should remain visible in the conversation log as soon as they happen, without waiting for the full loop to finish and reload from the DB. The current state/event flow drops already-produced assistant text during tool-use turns.
 
-### Medium
+- [ ] **Implement `/skill:name` submission flow** (`ui.ts`) — strip the prefix from input, prepend the selected skill body to the user message, and send the rest of the user text as the instruction.
 
-- [ ] **Stale plugin `AgentContext.messages`** (`index.ts`) — `AgentContext.messages` is the same array ref as `state.messages`, which gets reassigned on `/new`, `/session`, `/fork`, `/undo`. Plugins holding the original reference see stale data. Fix: use a getter (`get messages() { return state.messages; }`).
+- [ ] **Implement image submission flow** (`ui.ts`) — when `parseInput()` returns an image, send it as `ImageContent` in the user message when the active model supports images.
 
-- [ ] **OAuth credential reference comparison** (`index.ts`) — `result.newCredentials !== oauthCredentials[oauthProvider.id]` compares by reference, not value. Causes unnecessary disk writes on every startup if `getOAuthApiKey` returns a new object. Fix: unconditionally assign when result is present, or compare serialized form.
+- [ ] **Implement file path autocomplete** (`ui.ts`) — `Tab` should autocomplete file paths in normal input mode. When the input starts with `/`, `Tab` should open command selection instead.
 
-- [ ] **Persisted UI messages create awkward undo/session turn boundaries** (`ui.ts` / `session.ts`) — `/help`, fork notices, and OAuth progress are now correctly persisted in session history, but each UI message currently starts its own turn. That means `/undo` peels off UI log lines one at a time instead of cleanly undoing the last conversational turn, and multi-step flows like OAuth can fragment the history. Fix: decide how UI messages should join turns (e.g. current turn / explicit synthetic turn grouping) and make append sites pass the correct turn consistently.
+- [ ] **Remove the empty-state banner** (`ui.ts`) — spec says no banner/splash screen. The empty conversation view should not show `Ready. Type a message to start.`.
 
-### Low
+### Robustness
 
-- [ ] **`Ctrl+Z` suspend/background** — spec lists it in key bindings but it's not implemented.
+- [ ] **Catch tool handler exceptions in the agent loop** (`agent.ts`) — if a built-in tool or future extension throws, the loop should convert that into an error tool result, still emit `tool_end`, append a `ToolResultMessage`, and continue or fail cleanly instead of crashing the loop.
 
-- [ ] **Shell output missing exit code** — spec says shell tool rendering should show the command, tool output preview/full output, and exit code. `ToolExecResult` carries `isError` but not the numeric exit code.
+- [ ] **Fix the `/undo` abort race** (`ui.ts`) — aborting an active run and undoing immediately can still race with the agent loop writing the aborted assistant message. Track the active loop promise and wait for it to settle before removing the last conversational turn.
 
-- [ ] **CWD truncation on narrow terminals** — spec says truncate from left (`…/mini-coder`). Currently shows the full abbreviated path.
+- [ ] **Surface submit/runtime errors in the TUI** (`ui.ts`) — failures from `submitMessage()` should append a persisted UI message to the conversation log instead of only going to `console.error`.
 
-- [ ] **`readImage` missing try/catch** (`tools.ts`) — `executeReadImage` doesn't catch `readFileSync` exceptions. A permission error (EACCES) after the `existsSync` check throws an uncaught exception. Fix: wrap in try/catch, return text error result.
+- [ ] **Harden `readImage` error handling** (`tools.ts`) — catch filesystem read errors after the existence check and return a tool error result instead of throwing.
 
-## Polish (deferred until user says so)
+### Smaller spec mismatches
 
-- [ ] `/skill:name` input handling (strip prefix, prepend skill body to user message)
-- [ ] Sending images in the prompt
-- [ ] Tab file path autocomplete in input
-- [ ] Optional context compaction plugin or extension point (threshold detection, model-generated summary, prompt cache preservation)
+- [ ] **Implement `Ctrl+Z` suspend/background** (`ui.ts`)
+- [ ] **Show shell exit codes in the UI** (`tools.ts`, `ui.ts`) — shell tool rendering should display the numeric exit code.
+- [ ] **Left-truncate CWD on narrow terminals** (`ui.ts`) — status bar path should truncate from the left (`…/mini-coder`).
+- [ ] **Honor `MC_AGENTS_ROOT=/`** (`index.ts`, `prompt.ts`) — only walk AGENTS.md discovery to filesystem root when this env var is explicitly set.
+- [ ] **Fix OAuth credential refresh comparison** (`index.ts`) — avoid reference-based comparison when deciding whether refreshed OAuth credentials should be written back to disk.
+
+## Plugins (deferred until core/spec alignment is done)
+
+- [ ] **Finalize plugin API after core stabilizes** — defer plugin API cleanup until the core behavior is implemented and spec-compliant.
+- [ ] **Current plugin `AgentContext.messages` is stale** (`index.ts`) — plugin context currently gets a snapshot instead of the live current session messages.
+- [ ] **Package-name plugin imports do not work** (`plugins.ts`) — plugin config says `module` can be a package name or path, but current loading always resolves as a filesystem path.
 
 ## Future ideas
 
