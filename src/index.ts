@@ -45,6 +45,11 @@ import {
   type SessionStats,
   truncateSessions,
 } from "./session.ts";
+import {
+  loadSettings,
+  resolveStartupSettings,
+  type UserSettings,
+} from "./settings.ts";
 import { discoverSkills, type Skill } from "./skills.ts";
 import { DEFAULT_THEME, mergeThemes, type Theme } from "./theme.ts";
 import {
@@ -72,14 +77,10 @@ const PLUGIN_CONFIG_PATH = join(DATA_DIR, "plugins.json");
 /** OAuth credentials file path. */
 const AUTH_PATH = join(DATA_DIR, "auth.json");
 
-/** Default effort level. */
-const DEFAULT_EFFORT: ThinkingLevel = "medium";
+/** User settings file path. */
+const SETTINGS_PATH = join(DATA_DIR, "settings.json");
 
-/** Whether reasoning blocks are shown by default. */
-export const DEFAULT_SHOW_REASONING = true;
-
-/** Whether full tool output is shown by default. */
-export const DEFAULT_VERBOSE = false;
+export { DEFAULT_SHOW_REASONING, DEFAULT_VERBOSE } from "./settings.ts";
 
 /** Maximum sessions to keep per CWD. */
 const MAX_SESSIONS_PER_CWD = 20;
@@ -168,19 +169,41 @@ async function discoverProviders(): Promise<DiscoveryResult> {
 // ---------------------------------------------------------------------------
 
 /**
- * Select the first available model from discovered providers.
+ * List all models from authenticated providers.
  *
- * Returns the first model from the first provider that has models
- * in the registry, or `null` if none are available.
+ * @param availableProviders - Providers with usable credentials.
+ * @returns Flat list of available models.
  */
-function selectModel(
+function listAvailableModels(
   availableProviders: Map<string, string>,
-): Model<string> | null {
+): Model<string>[] {
+  const result: Model<string>[] = [];
   for (const provider of availableProviders.keys()) {
     const models = getModels(provider as KnownProvider);
-    if (models.length > 0) return models[0]!;
+    for (const model of models) {
+      result.push(model);
+    }
   }
-  return null;
+  return result;
+}
+
+/**
+ * Select a model by id from the available model list.
+ *
+ * @param models - Available models.
+ * @param modelId - Preferred provider/model identifier.
+ * @returns Matching model, or `null` when none is selected.
+ */
+function selectModel(
+  models: readonly Model<string>[],
+  modelId: string | null,
+): Model<string> | null {
+  if (modelId == null) {
+    return null;
+  }
+  return (
+    models.find((model) => `${model.provider}/${model.id}` === modelId) ?? null
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -294,6 +317,10 @@ export interface AppState {
   providers: Map<string, string>;
   /** OAuth credentials on disk. */
   oauthCredentials: Record<string, OAuthCredentials>;
+  /** Loaded global user settings. */
+  settings: UserSettings;
+  /** Absolute path to the global settings file. */
+  settingsPath: string;
   /** Working directory as entered by the user/shell (for display and tool execution). */
   cwd: string;
   /** Canonical working directory (for path identity and session scoping). */
@@ -323,8 +350,14 @@ export async function init(): Promise<AppState> {
   // Discover providers (env + OAuth)
   const { providers, oauthCredentials } = await discoverProviders();
 
-  // Select first available model (null if no providers found)
-  const model = selectModel(providers);
+  // Load user settings and resolve startup defaults
+  const settings = loadSettings(SETTINGS_PATH);
+  const availableModels = listAvailableModels(providers);
+  const startup = resolveStartupSettings(
+    settings,
+    availableModels.map((model) => `${model.provider}/${model.id}`),
+  );
+  const model = selectModel(availableModels, startup.modelId);
 
   // Gather git state
   const git = await getGitState(cwd);
@@ -341,7 +374,7 @@ export async function init(): Promise<AppState> {
 
   // Open database and create session
   const db = openDatabase(DB_PATH);
-  const effort = DEFAULT_EFFORT;
+  const effort = startup.effort;
   const modelLabel = model ? `${model.provider}/${model.id}` : undefined;
   const session = createSession(db, {
     cwd: canonicalCwd,
@@ -382,12 +415,14 @@ export async function init(): Promise<AppState> {
     git,
     providers,
     oauthCredentials,
+    settings,
+    settingsPath: SETTINGS_PATH,
     cwd,
     canonicalCwd,
     running: false,
     abortController: null,
-    showReasoning: DEFAULT_SHOW_REASONING,
-    verbose: DEFAULT_VERBOSE,
+    showReasoning: startup.showReasoning,
+    verbose: startup.verbose,
   };
 }
 
@@ -426,14 +461,7 @@ export function buildToolList(state: AppState): {
  * for, suitable for the `/model` selector.
  */
 export function getAvailableModels(state: AppState): Model<string>[] {
-  const result: Model<string>[] = [];
-  for (const provider of state.providers.keys()) {
-    const models = getModels(provider as KnownProvider);
-    for (const model of models) {
-      result.push(model);
-    }
-  }
-  return result;
+  return listAvailableModels(state.providers);
 }
 
 /** Clean up resources on shutdown. */
@@ -448,7 +476,13 @@ export async function shutdown(state: AppState): Promise<void> {
 // OAuth helpers (re-exported for /login and /logout commands)
 // ---------------------------------------------------------------------------
 
-export { AUTH_PATH, DATA_DIR, loadOAuthCredentials, saveOAuthCredentials };
+export {
+  AUTH_PATH,
+  DATA_DIR,
+  loadOAuthCredentials,
+  SETTINGS_PATH,
+  saveOAuthCredentials,
+};
 
 // ---------------------------------------------------------------------------
 // Main

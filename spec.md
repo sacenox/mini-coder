@@ -494,7 +494,7 @@ Scrollable area that shows the full conversation history. Stick-to-bottom by def
 Message types and their rendering:
 
 - **User messages**: displayed as plain text with a subtle background color to distinguish them from agent responses. No prefix or role indicator.
-- **Assistant messages**: streamed markdown rendered via cel-tui's `Markdown` component on the default background. Thinking/reasoning content is collapsible (shown by default, toggled with `/reasoning`).
+- **Assistant messages**: streamed markdown rendered via cel-tui's `Markdown` component on the default background. Thinking/reasoning content is collapsible (shown or hidden according to the user's persisted `/reasoning` preference; defaults to shown when no setting exists).
 - **Tool calls — shell**: rendered with a left border (`│`) and dimmed foreground. Shows the command (`$ command`) and the tool output. When `/verbose` is off, shell output is previewed as the first 20 lines followed by `And X lines more` when additional lines exist. When `/verbose` is on, the shell block expands to the full stored tool result. Exit code display is intended but not implemented yet.
 - **Tool calls — edit**: rendered with a left border (`│`) and dimmed foreground. Shows the file path and a unified diff of the change (added lines in green, removed in red). When `/verbose` is off, the diff preview shows the first 20 diff lines followed by `And X lines more` when additional lines exist. When `/verbose` is on, the diff expands to the full stored tool result. Uses the `diff` package (`structuredPatch`) for line-level diffing.
 - **Tool calls — plugin tools**: rendered with a left border, prefixed with plugin/tool name.
@@ -529,19 +529,19 @@ Supports:
 
 ### Commands
 
-| Command      | Description                                                                                                                                                                                                                                                                                                                                              |
-| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/model`     | Interactive model selector (provider + model + effort). Switching models mid-session is allowed — pi-ai's context is model-agnostic. The `readImage` tool is re-evaluated (added/removed based on the new model's capabilities). The status bar updates immediately. The session record's `model` field is not updated (it reflects the initial choice). |
-| `/session`   | Interactive session manager (list, resume). Sessions scoped to CWD.                                                                                                                                                                                                                                                                                      |
-| `/new`       | Start a new session. Clears conversation, resets cost/token counters.                                                                                                                                                                                                                                                                                    |
-| `/fork`      | Fork the current conversation into a new session. Copies the full message history, continues from here independently. The original session is preserved.                                                                                                                                                                                                 |
-| `/undo`      | Remove the last turn from conversation history (the user message and all assistant/tool messages that followed). Context-only — does not revert filesystem changes.                                                                                                                                                                                      |
-| `/reasoning` | Toggle display of model thinking/reasoning content in the log. Reasoning is shown by default.                                                                                                                                                                                                                                                            |
-| `/verbose`   | Toggle full shell-output and edit-diff display in the UI. When off, those tool blocks show a concise preview (first 20 lines plus `And X lines more` when applicable). When on, they expand to the full stored tool result. Verbose mode is off by default.                                                                                              |
-| `/login`     | Interactive OAuth login. Shows a selector with available OAuth providers and their login status (logged in / not logged in). Selecting a provider starts the browser-based OAuth flow. Uses pi-ai's OAuth registry. Credentials are persisted to the app data directory and used for provider discovery on subsequent launches.                          |
-| `/logout`    | Interactive OAuth logout. Shows a selector with logged-in OAuth providers. Selecting one clears its saved credentials.                                                                                                                                                                                                                                   |
-| `/effort`    | Interactive effort selector. Shows the four reasoning levels (`low`, `med`, `high`, `xhigh`) with the current level highlighted. Updates the status bar immediately. Does not update the session record's `effort` field (it reflects the initial choice, like `/model`).                                                                                |
-| `/help`      | List available commands, including the current on/off state of `/reasoning` and `/verbose`, plus loaded AGENTS.md files, discovered skills, and active plugins.                                                                                                                                                                                          |
+| Command      | Description                                                                                                                                                                                                                                                                                                                                                                                                |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/model`     | Interactive model selector. Switching models mid-session is allowed — pi-ai's context is model-agnostic. The `readImage` tool is re-evaluated (added/removed based on the new model's capabilities). The status bar updates immediately, and the selected model is persisted immediately as the user's global default. The session record's `model` field is not updated (it reflects the initial choice). |
+| `/session`   | Interactive session manager (list, resume). Sessions scoped to CWD.                                                                                                                                                                                                                                                                                                                                        |
+| `/new`       | Start a new session. Clears conversation, resets cost/token counters.                                                                                                                                                                                                                                                                                                                                      |
+| `/fork`      | Fork the current conversation into a new session. Copies the full message history, continues from here independently. The original session is preserved.                                                                                                                                                                                                                                                   |
+| `/undo`      | Remove the last turn from conversation history (the user message and all assistant/tool messages that followed). Context-only — does not revert filesystem changes.                                                                                                                                                                                                                                        |
+| `/reasoning` | Toggle display of model thinking/reasoning content in the log. The new on/off state is persisted immediately and restored on launch. When no setting exists yet, reasoning defaults to shown.                                                                                                                                                                                                              |
+| `/verbose`   | Toggle full shell-output and edit-diff display in the UI. When off, those tool blocks show a concise preview (first 20 lines plus `And X lines more` when applicable). When on, they expand to the full stored tool result. The new on/off state is persisted immediately and restored on launch. When no setting exists yet, verbose mode defaults to off.                                                |
+| `/login`     | Interactive OAuth login. Shows a selector with available OAuth providers and their login status (logged in / not logged in). Selecting a provider starts the browser-based OAuth flow. Uses pi-ai's OAuth registry. Credentials are persisted to the app data directory and used for provider discovery on subsequent launches.                                                                            |
+| `/logout`    | Interactive OAuth logout. Shows a selector with logged-in OAuth providers. Selecting one clears its saved credentials.                                                                                                                                                                                                                                                                                     |
+| `/effort`    | Interactive effort selector. Shows the four reasoning levels (`low`, `med`, `high`, `xhigh`) with the current level highlighted. Updates the status bar immediately, and the selected effort is persisted immediately as the user's global default. The session record's `effort` field is not updated (it reflects the initial choice, like `/model`).                                                    |
+| `/help`      | List available commands, including the current on/off state of `/reasoning` and `/verbose`, plus loaded AGENTS.md files, discovered skills, and active plugins.                                                                                                                                                                                                                                            |
 
 Commands are discoverable via `/` + Tab to interactively select/filter in the input area.
 
@@ -550,11 +550,41 @@ Commands are discoverable via `/` + Tab to interactively select/filter in the in
 On launch, mini-coder:
 
 1. Discovers providers (env vars, OAuth tokens).
-2. Loads AGENTS.md files, skills, plugins.
-3. Renders the UI with an empty conversation log and the status bar populated.
-4. Starts a new session when the user sends a message (no 0-message sessions in the DB).
+2. Loads user settings from `~/.config/mini-coder/settings.json`.
+3. Selects the startup model, effort, reasoning visibility, and verbose mode from those settings when available.
+   - `defaultModel`: if the saved provider/model is currently available, use it; otherwise fall back to the first available model for this launch.
+   - `defaultEffort`: if valid, use it; otherwise fall back to `medium`.
+   - `showReasoning`: if present, use it; otherwise fall back to `true`.
+   - `verbose`: if present, use it; otherwise fall back to `false`.
+4. Loads AGENTS.md files, skills, plugins.
+5. Renders the UI with an empty conversation log and the status bar populated.
+6. Starts a new session when the user sends a message (no 0-message sessions in the DB).
 
 No banner or splash screen. The status bar already shows all the context the user needs.
+
+## User settings persistence
+
+mini-coder persists global user defaults in `~/.config/mini-coder/settings.json`.
+
+### Stored settings
+
+```json
+{
+  "defaultModel": "anthropic/claude-sonnet-4",
+  "defaultEffort": "medium",
+  "showReasoning": true,
+  "verbose": false
+}
+```
+
+### Semantics
+
+- Settings are **global to the user**, not scoped per project, repository, or session.
+- `/model`, `/effort`, `/reasoning`, and `/verbose` persist their new values immediately when changed.
+- If `defaultModel` is saved but unavailable at startup (for example, missing credentials), mini-coder keeps the saved preference unchanged and uses a runtime fallback model for that launch.
+- Invalid or missing settings file content is treated as "no saved settings" rather than a fatal startup error.
+- `/new`, `/fork`, and `/session` do not modify global settings.
+- Session records remain historical: their `model` and `effort` fields reflect the values active when that session was created, not the current global defaults.
 
 ## Session persistence
 
@@ -596,7 +626,7 @@ CREATE INDEX idx_messages_session ON messages(session_id, turn);
 
 **Turn number assignment**: when a user message is appended, its turn number is `MAX(turn) + 1` for the session (or 1 for the first message). All subsequent messages in the same agent loop (assistant responses, tool results) share that turn number. This is what makes `/undo` atomic — it deletes all messages with the highest turn.
 
-**Model/effort on the session**: stored at creation for display in `/session` list. The user can change models mid-session via `/model`; the session record reflects the initial choice, individual messages record their actual model via pi-ai's `AssistantMessage.model`.
+**Model/effort on the session**: stored at creation for display in `/session` list. The user can change models and effort mid-session via `/model` and `/effort`; those commands update the current in-memory state and global user settings, but the session record still reflects the initial values for that session. Individual assistant messages record their actual model via pi-ai's `AssistantMessage.model`.
 
 **Session truncation**: sessions are truncated per cwd to keep only the 20 most recently updated sessions (`updated_at DESC`), deleting older sessions and their messages via cascade.
 

@@ -1,4 +1,7 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { Node } from "@cel-tui/types";
 import {
   fauxAssistantMessage,
@@ -12,8 +15,11 @@ import {
   DEFAULT_VERBOSE,
 } from "./index.ts";
 import { createSession, loadMessages, openDatabase } from "./session.ts";
+import { loadSettings } from "./settings.ts";
 import { DEFAULT_THEME, type Theme } from "./theme.ts";
 import {
+  applyEffortSelection,
+  applyModelSelection,
   buildConversationLog,
   buildHelpText,
   createInputController,
@@ -67,10 +73,19 @@ function findTextNode(node: Node | null, content: string): Node | null {
   return null;
 }
 
+const tempDirs: string[] = [];
+
+function createTempDir(): string {
+  const dir = mkdtempSync(join(tmpdir(), "mini-coder-ui-test-"));
+  tempDirs.push(dir);
+  return dir;
+}
+
 function createTestState(): AppState {
   const db = openDatabase(":memory:");
   const cwd = "/tmp/mini-coder-ui-test";
   const session = createSession(db, { cwd });
+  const settingsPath = join(createTempDir(), "settings.json");
   return {
     db,
     session,
@@ -85,6 +100,8 @@ function createTestState(): AppState {
     git: null,
     providers: new Map(),
     oauthCredentials: {},
+    settings: {},
+    settingsPath,
     cwd,
     canonicalCwd: cwd,
     running: false,
@@ -93,6 +110,12 @@ function createTestState(): AppState {
     verbose: DEFAULT_VERBOSE,
   };
 }
+
+afterEach(() => {
+  for (const dir of tempDirs.splice(0)) {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 async function waitFor(
   predicate: () => boolean,
@@ -112,6 +135,75 @@ describe("ui rendering", () => {
   test("reasoning defaults on and verbose defaults off", () => {
     expect(DEFAULT_SHOW_REASONING).toBe(true);
     expect(DEFAULT_VERBOSE).toBe(false);
+  });
+
+  test("/reasoning toggles the UI state and persists it", () => {
+    const state = createTestState();
+
+    try {
+      expect(state.showReasoning).toBe(true);
+
+      handleInput("/reasoning", state);
+
+      expect(state.showReasoning).toBe(false);
+      expect(state.settings.showReasoning).toBe(false);
+      expect(loadSettings(state.settingsPath)).toEqual({
+        showReasoning: false,
+      });
+    } finally {
+      state.db.close();
+    }
+  });
+
+  test("/verbose toggles the UI state and persists it", () => {
+    const state = createTestState();
+
+    try {
+      expect(state.verbose).toBe(false);
+
+      handleInput("/verbose", state);
+
+      expect(state.verbose).toBe(true);
+      expect(state.settings.verbose).toBe(true);
+      expect(loadSettings(state.settingsPath)).toEqual({ verbose: true });
+    } finally {
+      state.db.close();
+    }
+  });
+
+  test("applyModelSelection updates the active model and persists it", () => {
+    const faux = registerFauxProvider();
+    const state = createTestState();
+    const model = faux.getModel();
+
+    try {
+      applyModelSelection(state, model);
+
+      expect(state.model).toBe(model);
+      expect(state.settings.defaultModel).toBe(`${model.provider}/${model.id}`);
+      expect(loadSettings(state.settingsPath)).toEqual({
+        defaultModel: `${model.provider}/${model.id}`,
+      });
+    } finally {
+      faux.unregister();
+      state.db.close();
+    }
+  });
+
+  test("applyEffortSelection updates the active effort and persists it", () => {
+    const state = createTestState();
+
+    try {
+      applyEffortSelection(state, "xhigh");
+
+      expect(state.effort).toBe("xhigh");
+      expect(state.settings.defaultEffort).toBe("xhigh");
+      expect(loadSettings(state.settingsPath)).toEqual({
+        defaultEffort: "xhigh",
+      });
+    } finally {
+      state.db.close();
+    }
   });
 
   test("renderAssistantMessage keeps streamed markdown inside one top-level container", () => {

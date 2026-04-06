@@ -1,8 +1,8 @@
 # TODO
 
-Keep this always update so work can continue accross sessions.
+Keep this always updated so work can continue across sessions.
 Don't keep completed items bloating the file.
-Keep the file strucured and minimal.
+Keep the file structured and minimal.
 The spec.md and code are the sources of truth, not this file, don't assume anything because it's documented here.
 
 ## Bugs — from code review
@@ -46,7 +46,6 @@ The spec.md and code are the sources of truth, not this file, don't assume anyth
 
 ## Future ideas
 
-- [ ] User preferences persistence (model, effort) — not in spec, currently resets to defaults on launch
 - [ ] Session list preview — show first user message snippet in `/session` selector
 - [ ] Divider theme plugin — customizable divider animations (scanning pulse, breathing, flowing dots, wave)
 - [ ] Backward-compatibility and migration policy for 1.0 (session/app data versioning, explicit migration strategy)

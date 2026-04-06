@@ -56,6 +56,7 @@ import {
   type UiMessage,
   undoLastTurn,
 } from "./session.ts";
+import { updateSettings } from "./settings.ts";
 import type { Theme } from "./theme.ts";
 
 // ---------------------------------------------------------------------------
@@ -1020,6 +1021,38 @@ export function renderInputArea(
 // Command handlers
 // ---------------------------------------------------------------------------
 
+/**
+ * Apply a model selection to the active state and persisted settings.
+ *
+ * @param state - Application state.
+ * @param model - Selected model.
+ */
+export function applyModelSelection(
+  state: AppState,
+  model: AppState["model"] & NonNullable<AppState["model"]>,
+): void {
+  state.model = model;
+  state.settings = updateSettings(state.settingsPath, {
+    defaultModel: `${model.provider}/${model.id}`,
+  });
+}
+
+/**
+ * Apply an effort selection to the active state and persisted settings.
+ *
+ * @param state - Application state.
+ * @param effort - Selected reasoning effort.
+ */
+export function applyEffortSelection(
+  state: AppState,
+  effort: ThinkingLevel,
+): void {
+  state.effort = effort;
+  state.settings = updateSettings(state.settingsPath, {
+    defaultEffort: effort,
+  });
+}
+
 /** Handle the /model command: show interactive model selector. */
 function handleModelCommand(state: AppState): void {
   const models = getAvailableModels(state);
@@ -1051,7 +1084,7 @@ function handleModelCommand(state: AppState): void {
     onSelect: (value) => {
       const picked = models.find((m) => `${m.provider}/${m.id}` === value);
       if (picked) {
-        state.model = picked;
+        applyModelSelection(state, picked);
       }
       dismissOverlay();
     },
@@ -1086,7 +1119,7 @@ function handleEffortCommand(state: AppState): void {
     focused: true,
     highlightColor: state.theme.accentText,
     onSelect: (value) => {
-      state.effort = value as ThinkingLevel;
+      applyEffortSelection(state, value as ThinkingLevel);
       dismissOverlay();
     },
     onBlur: dismissOverlay,
@@ -1229,12 +1262,18 @@ function handleUndoCommand(state: AppState): void {
 /** Handle the /reasoning command: toggle thinking display. */
 function handleReasoningCommand(state: AppState): void {
   state.showReasoning = !state.showReasoning;
+  state.settings = updateSettings(state.settingsPath, {
+    showReasoning: state.showReasoning,
+  });
   cel.render();
 }
 
 /** Handle the /verbose command: toggle full output display. */
 function handleVerboseCommand(state: AppState): void {
   state.verbose = !state.verbose;
+  state.settings = updateSettings(state.settingsPath, {
+    verbose: state.verbose,
+  });
   cel.render();
 }
 
