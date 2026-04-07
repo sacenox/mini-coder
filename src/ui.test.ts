@@ -487,6 +487,76 @@ describe("ui rendering", () => {
     }
   });
 
+  test("/session resumes a stored session even when historical assistant usage is missing", () => {
+    const state = createTestState();
+    const now = Date.now();
+    const session = createSession(state.db, {
+      cwd: state.canonicalCwd,
+      model: "test/beta",
+      effort: "high",
+    });
+
+    try {
+      state.db.run(
+        "INSERT INTO messages (session_id, turn, data, created_at) VALUES (?, ?, ?, ?)",
+        [
+          session.id,
+          1,
+          JSON.stringify({
+            role: "user",
+            content: "historical prompt",
+            timestamp: now,
+          }),
+          now,
+        ],
+      );
+      state.db.run(
+        "INSERT INTO messages (session_id, turn, data, created_at) VALUES (?, ?, ?, ?)",
+        [
+          session.id,
+          1,
+          JSON.stringify({
+            role: "assistant",
+            content: [{ type: "text", text: "historical reply" }],
+            api: "anthropic-messages",
+            provider: "anthropic",
+            model: "test/beta",
+            stopReason: "stop",
+            timestamp: now + 1,
+          }),
+          now + 1,
+        ],
+      );
+      state.db.run("UPDATE sessions SET updated_at = ? WHERE id = ?", [
+        now + 1,
+        session.id,
+      ]);
+
+      handleInput("/session", state);
+
+      const overlay = renderActiveOverlay(state);
+      const selectNode = findNodeWithKeyPress(overlay);
+
+      expect(selectNode).not.toBeNull();
+      if (!selectNode) {
+        throw new Error("Expected overlay to contain a Select root");
+      }
+
+      selectNode.props.onKeyPress?.("enter");
+
+      expect(renderActiveOverlay(state)).toBeNull();
+      expect(state.session?.id).toBe(session.id);
+
+      const layout = renderBaseLayout(state, 80, createInputController(state));
+      const text = collectText(layout);
+
+      expect(text).toContain("historical prompt");
+      expect(text).toContain("historical reply");
+    } finally {
+      state.db.close();
+    }
+  });
+
   test("/new clears the active session and defers replacement session creation", async () => {
     const faux = registerFauxProvider();
     const state = createTestState();

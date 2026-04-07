@@ -370,6 +370,87 @@ export function filterModelMessages(
   );
 }
 
+function toRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function readFiniteNumber(
+  record: Record<string, unknown>,
+  key: string,
+): number | null {
+  const value = record[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+/**
+ * Return an assistant message's usage when the persisted shape is valid.
+ *
+ * Session rows are treated as untrusted at runtime because older builds or
+ * external tooling may have stored assistant messages without a `usage`
+ * payload. Invalid or missing usage is ignored instead of crashing session
+ * loading or stats calculations.
+ *
+ * @param message - Message to inspect.
+ * @returns The assistant usage payload, or `null` when it is missing/invalid.
+ */
+export function getAssistantUsage(
+  message: PersistedMessage | Message,
+): AssistantMessage["usage"] | null {
+  if (message.role !== "assistant") {
+    return null;
+  }
+
+  const messageRecord = toRecord(message);
+  const usageRecord = toRecord(messageRecord?.usage);
+  const costRecord = toRecord(usageRecord?.cost);
+  if (!usageRecord || !costRecord) {
+    return null;
+  }
+
+  const input = readFiniteNumber(usageRecord, "input");
+  const output = readFiniteNumber(usageRecord, "output");
+  const cacheRead = readFiniteNumber(usageRecord, "cacheRead");
+  const cacheWrite = readFiniteNumber(usageRecord, "cacheWrite");
+  const totalTokens = readFiniteNumber(usageRecord, "totalTokens");
+  const costInput = readFiniteNumber(costRecord, "input");
+  const costOutput = readFiniteNumber(costRecord, "output");
+  const costCacheRead = readFiniteNumber(costRecord, "cacheRead");
+  const costCacheWrite = readFiniteNumber(costRecord, "cacheWrite");
+  const costTotal = readFiniteNumber(costRecord, "total");
+
+  if (
+    input === null ||
+    output === null ||
+    cacheRead === null ||
+    cacheWrite === null ||
+    totalTokens === null ||
+    costInput === null ||
+    costOutput === null ||
+    costCacheRead === null ||
+    costCacheWrite === null ||
+    costTotal === null
+  ) {
+    return null;
+  }
+
+  return {
+    input,
+    output,
+    cacheRead,
+    cacheWrite,
+    totalTokens,
+    cost: {
+      input: costInput,
+      output: costOutput,
+      cacheRead: costCacheRead,
+      cacheWrite: costCacheWrite,
+      total: costTotal,
+    },
+  };
+}
+
 /**
  * Append a UI-only message to a session's history.
  *
@@ -659,12 +740,13 @@ export function computeStats(
   let totalCost = 0;
 
   for (const msg of messages) {
-    if (msg.role === "assistant") {
-      const am = msg as AssistantMessage;
-      totalInput += am.usage.input;
-      totalOutput += am.usage.output;
-      totalCost += am.usage.cost.total;
+    const usage = getAssistantUsage(msg);
+    if (!usage) {
+      continue;
     }
+    totalInput += usage.input;
+    totalOutput += usage.output;
+    totalCost += usage.cost.total;
   }
 
   return { totalInput, totalOutput, totalCost };

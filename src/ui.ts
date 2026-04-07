@@ -54,6 +54,7 @@ import {
   createUiMessage,
   filterModelMessages,
   forkSession,
+  getAssistantUsage,
   listPromptHistory,
   listSessions,
   loadMessages,
@@ -407,9 +408,13 @@ function getLatestValidAssistantUsage(
       message.stopReason !== "aborted" &&
       message.stopReason !== "error"
     ) {
+      const usage = getAssistantUsage(message);
+      if (!usage) {
+        continue;
+      }
       return {
         index: i,
-        tokens: calculateUsageTokens(message.usage),
+        tokens: calculateUsageTokens(usage),
       };
     }
   }
