@@ -131,6 +131,38 @@ describe("edit", () => {
     expect(readFile("crlf.txt")).toBe("line1\r\nreplaced\r\nline3\r\n");
   });
 
+  test("normalizes multi-line replacements to the file's CRLF line endings", () => {
+    writeFile("crlf-multiline.txt", "start\r\nold a\r\nold b\r\nend\r\n");
+    const result = executeEdit(
+      {
+        path: "crlf-multiline.txt",
+        oldText: "old a\r\nold b",
+        newText: "new a\nnew b",
+      },
+      tmp,
+    );
+
+    expect(result.isError).toBe(false);
+    expect(readFile("crlf-multiline.txt")).toBe(
+      "start\r\nnew a\r\nnew b\r\nend\r\n",
+    );
+  });
+
+  test("normalizes multi-line replacements to the file's LF line endings", () => {
+    writeFile("lf-multiline.txt", "start\nold a\nold b\nend\n");
+    const result = executeEdit(
+      {
+        path: "lf-multiline.txt",
+        oldText: "old a\nold b",
+        newText: "new a\r\nnew b",
+      },
+      tmp,
+    );
+
+    expect(result.isError).toBe(false);
+    expect(readFile("lf-multiline.txt")).toBe("start\nnew a\nnew b\nend\n");
+  });
+
   test("handles UTF-8 content", () => {
     writeFile("utf8.txt", "こんにちは世界");
     const result = executeEdit(
@@ -443,6 +475,14 @@ describe("readImage", () => {
     const result = executeReadImage({ path: "nonexistent.png" }, tmp);
     expect(result.isError).toBe(true);
     expect(resultText(result)).toContain("not found");
+  });
+
+  test("returns a tool error when reading the image file fails", () => {
+    mkdirSync(join(tmp, "broken.png"));
+    const result = executeReadImage({ path: "broken.png" }, tmp);
+
+    expect(result.isError).toBe(true);
+    expect(resultText(result)).toContain("Failed to read image");
   });
 
   test("resolves relative paths against cwd", () => {

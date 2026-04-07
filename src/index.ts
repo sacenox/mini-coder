@@ -330,6 +330,8 @@ export interface AppState {
   running: boolean;
   /** Abort controller for the current agent run. */
   abortController: AbortController | null;
+  /** Promise for the active conversational turn, used to serialize cleanup like `/undo`. */
+  activeTurnPromise: Promise<void> | null;
   /** Whether to show thinking content. */
   showReasoning: boolean;
   /** Whether to show full (un-truncated) tool output. */
@@ -415,6 +417,7 @@ export async function init(): Promise<AppState> {
     canonicalCwd,
     running: false,
     abortController: null,
+    activeTurnPromise: null,
     showReasoning: startup.showReasoning,
     verbose: startup.verbose,
   };

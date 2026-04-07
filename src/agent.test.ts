@@ -741,6 +741,85 @@ describe("agent loop", () => {
     expect(dbLast.stopReason).toBe("aborted");
   });
 
+  test("interrupt during tool execution ends the turn without re-entering the model loop", async () => {
+    faux.setResponses([
+      fauxAssistantMessage([fauxToolCall("shell", { command: "sleep 10" })], {
+        stopReason: "toolUse",
+      }),
+    ]);
+
+    const controller = new AbortController();
+    const events: AgentEvent[] = [];
+    const toolHandlers = new Map<string, ToolHandler>([
+      [
+        "shell",
+        async () => {
+          controller.abort();
+          return {
+            content: [
+              {
+                type: "text",
+                text: "Shell error: This operation was aborted",
+              },
+            ],
+            isError: true,
+          };
+        },
+      ],
+    ]);
+
+    const session = createSession(db, { cwd: tmp });
+    const userMsg = makeUser("run and interrupt");
+    const turn = appendMessage(db, session.id, userMsg);
+
+    const result = await runAgentLoop({
+      db,
+      sessionId: session.id,
+      turn,
+      model: faux.getModel(),
+      systemPrompt: "Test",
+      tools: builtinToolDefs(),
+      toolHandlers,
+      messages: [userMsg],
+      cwd: tmp,
+      signal: controller.signal,
+      onEvent: (event) => events.push(event),
+    });
+
+    expect(result.stopReason).toBe("aborted");
+    expect(result.messages).toHaveLength(3);
+    expect(result.messages.map((message) => message.role)).toEqual([
+      "user",
+      "assistant",
+      "toolResult",
+    ]);
+
+    const toolResult = result.messages[2];
+    expect(toolResult?.role).toBe("toolResult");
+    if (!toolResult || toolResult.role !== "toolResult") {
+      throw new Error("Expected tool result message");
+    }
+    expect(toolResult.isError).toBe(true);
+    expect(toolResult.content).toEqual([
+      { type: "text", text: "Shell error: This operation was aborted" },
+    ]);
+
+    expect(events.some((event) => event.type === "aborted")).toBe(false);
+    expect(
+      events.filter((event) => event.type === "assistant_message"),
+    ).toHaveLength(1);
+    expect(events.filter((event) => event.type === "tool_result")).toHaveLength(
+      1,
+    );
+
+    const dbMessages = loadMessages(db, session.id);
+    expect(dbMessages.map((message) => message.role)).toEqual([
+      "user",
+      "assistant",
+      "toolResult",
+    ]);
+  });
+
   test("preserves thinking content on assistant messages", async () => {
     faux.setResponses([
       fauxAssistantMessage([
@@ -835,6 +914,87 @@ describe("agent loop", () => {
     if (toolResult?.role === "toolResult") {
       expect(toolResult.isError).toBe(true);
     }
+  });
+
+  test("converts thrown tool handler errors into error tool results", async () => {
+    faux.setResponses([
+      fauxAssistantMessage([fauxToolCall("shell", { command: "explode" })], {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage("Recovered after tool failure."),
+    ]);
+
+    const events: AgentEvent[] = [];
+    const toolHandlers = new Map<string, ToolHandler>([
+      [
+        "shell",
+        () => {
+          throw new Error("kaboom");
+        },
+      ],
+    ]);
+
+    const session = createSession(db, { cwd: tmp });
+    const userMsg = makeUser("run the failing tool");
+    const turn = appendMessage(db, session.id, userMsg);
+
+    const result = await runAgentLoop({
+      db,
+      sessionId: session.id,
+      turn,
+      model: faux.getModel(),
+      systemPrompt: "Test",
+      tools: builtinToolDefs(),
+      toolHandlers,
+      messages: [userMsg],
+      cwd: tmp,
+      onEvent: (event) => events.push(event),
+    });
+
+    expect(result.stopReason).toBe("stop");
+    expect(result.messages).toHaveLength(4);
+
+    const toolResult = result.messages.find(
+      (message) => message.role === "toolResult",
+    );
+    expect(toolResult).toBeDefined();
+    if (!toolResult || toolResult.role !== "toolResult") {
+      throw new Error("Expected tool result message");
+    }
+    expect(toolResult.isError).toBe(true);
+    expect(toolResult.content).toEqual([
+      { type: "text", text: "Tool shell failed: kaboom" },
+    ]);
+
+    const toolStart = events.find((event) => event.type === "tool_start");
+    const toolEnd = events.find((event) => event.type === "tool_end");
+    const toolResultEvent = events.find(
+      (event) => event.type === "tool_result",
+    );
+
+    expect(toolStart).toBeDefined();
+    expect(toolEnd).toBeDefined();
+    expect(toolResultEvent).toBeDefined();
+
+    if (
+      !toolStart ||
+      toolStart.type !== "tool_start" ||
+      !toolEnd ||
+      toolEnd.type !== "tool_end" ||
+      !toolResultEvent ||
+      toolResultEvent.type !== "tool_result"
+    ) {
+      throw new Error("Expected tool start/end/result events");
+    }
+
+    expect(toolEnd.result.isError).toBe(true);
+    expect(toolEnd.result.content).toEqual([
+      { type: "text", text: "Tool shell failed: kaboom" },
+    ]);
+    expect(events.indexOf(toolStart)).toBeLessThan(events.indexOf(toolEnd));
+    expect(events.indexOf(toolEnd)).toBeLessThan(
+      events.indexOf(toolResultEvent),
+    );
   });
 
   test("stopReason 'length' returns without looping", async () => {

@@ -120,6 +120,10 @@ export function isEmptyUserContent(content: UserMessage["content"]): boolean {
   );
 }
 
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 /**
  * Create the UI agent controller bound to runtime hooks supplied by `ui.ts`.
  *
@@ -146,9 +150,8 @@ export function createUiAgentController(
         readFileSync(skill.path, "utf-8"),
       ).trim();
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
       runtime.appendInfoMessage(
-        `Failed to read skill ${skillName}: ${message}`,
+        `Failed to read skill ${skillName}: ${getErrorMessage(err)}`,
         state,
       );
       return null;
@@ -253,9 +256,21 @@ export function createUiAgentController(
     state: AppState,
     rawInput: string,
   ): void => {
-    submitMessage(content, state, rawInput).catch((err) => {
-      console.error("Submit error:", err);
-    });
+    let submitPromise: Promise<void>;
+    submitPromise = submitMessage(content, state, rawInput)
+      .catch((err) => {
+        runtime.appendInfoMessage(
+          `Submit failed: ${getErrorMessage(err)}`,
+          state,
+        );
+      })
+      .finally(() => {
+        if (state.activeTurnPromise === submitPromise) {
+          state.activeTurnPromise = null;
+        }
+      });
+
+    state.activeTurnPromise = submitPromise;
   };
 
   const handleAgentEvent = (event: AgentEvent, state: AppState): void => {

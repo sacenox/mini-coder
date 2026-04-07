@@ -37,6 +37,26 @@ function textResult(text: string, isError: boolean): ToolExecResult {
   return { content: [{ type: "text", text }], isError };
 }
 
+function detectLineEnding(content: string): "\n" | "\r\n" | null {
+  if (content.includes("\r\n")) {
+    return "\r\n";
+  }
+  if (content.includes("\n")) {
+    return "\n";
+  }
+  return null;
+}
+
+function normalizeLineEndings(
+  content: string,
+  lineEnding: "\n" | "\r\n",
+): string {
+  if (lineEnding === "\r\n") {
+    return content.replace(/\r?\n/g, "\r\n");
+  }
+  return content.replace(/\r\n/g, "\n");
+}
+
 // ---------------------------------------------------------------------------
 // edit
 // ---------------------------------------------------------------------------
@@ -105,7 +125,11 @@ export function executeEdit(args: EditArgs, cwd: string): ToolExecResult {
   }
 
   // Exactly one match — replace
-  const updated = content.replace(args.oldText, args.newText);
+  const lineEnding = detectLineEnding(content);
+  const newText = lineEnding
+    ? normalizeLineEndings(args.newText, lineEnding)
+    : args.newText;
+  const updated = content.replace(args.oldText, newText);
   writeFileSync(filePath, updated, "utf-8");
   return textResult(`Edited ${args.path}`, false);
 }
@@ -489,13 +513,18 @@ export function executeReadImage(
     return textResult(`File not found: ${args.path}`, true);
   }
 
-  const data = readFileSync(filePath);
-  const base64 = Buffer.from(data).toString("base64");
+  try {
+    const data = readFileSync(filePath);
+    const base64 = Buffer.from(data).toString("base64");
 
-  return {
-    content: [{ type: "image", data: base64, mimeType }],
-    isError: false,
-  };
+    return {
+      content: [{ type: "image", data: base64, mimeType }],
+      isError: false,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return textResult(`Failed to read image ${args.path}: ${message}`, true);
+  }
 }
 
 /** pi-ai tool definition for `readImage`. */

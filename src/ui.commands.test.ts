@@ -66,6 +66,7 @@ function createTestState(): AppState {
     canonicalCwd: cwd,
     running: false,
     abortController: null,
+    activeTurnPromise: null,
     showReasoning: true,
     verbose: false,
   };

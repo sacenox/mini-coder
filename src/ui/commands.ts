@@ -38,6 +38,10 @@ const EFFORT_LEVELS: { label: string; value: ThinkingLevel }[] = [
   { label: "xhigh", value: "xhigh" },
 ];
 
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 /** Runtime hooks injected from the stateful UI module. */
 export interface UiCommandRuntime {
   /** Open an overlay and trigger a re-render. */
@@ -343,10 +347,15 @@ export function createCommandController(
     runtime.appendInfoMessage("Forked session.", state);
   };
 
-  const handleUndoCommand = (state: AppState): void => {
+  const handleUndoCommand = async (state: AppState): Promise<void> => {
     if (state.running && state.abortController) {
       state.abortController.abort();
     }
+
+    if (state.activeTurnPromise) {
+      await state.activeTurnPromise;
+    }
+
     if (!state.session) {
       return;
     }
@@ -442,7 +451,7 @@ export function createCommandController(
         if (provider) {
           performLogin(provider, state).catch((err) => {
             runtime.appendInfoMessage(
-              `Login failed: ${err instanceof Error ? err.message : String(err)}`,
+              `Login failed: ${getErrorMessage(err)}`,
               state,
             );
           });
@@ -519,7 +528,12 @@ export function createCommandController(
         handleForkCommand(state);
         return true;
       case "undo":
-        handleUndoCommand(state);
+        handleUndoCommand(state).catch((error) => {
+          runtime.appendInfoMessage(
+            `Undo failed: ${getErrorMessage(error)}`,
+            state,
+          );
+        });
         return true;
       case "reasoning":
         handleReasoningCommand(state);

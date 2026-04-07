@@ -142,6 +142,7 @@ function createTestState(): AppState {
     canonicalCwd: cwd,
     running: false,
     abortController: null,
+    activeTurnPromise: null,
     showReasoning: DEFAULT_SHOW_REASONING,
     verbose: DEFAULT_VERBOSE,
   };
@@ -679,6 +680,182 @@ describe("ui rendering", () => {
       await stopRunningTurn(state);
       process.env.PATH = originalPath;
       faux.unregister();
+      state.db.close();
+    }
+  });
+
+  test("submit/runtime errors are appended to the conversation log and persisted", async () => {
+    const api = "ui-submit-error-test";
+    const sourceId = "ui-submit-error-test-source";
+    const model: Model<string> = {
+      id: "ui-submit-error-model",
+      name: "UI Submit Error Model",
+      api,
+      provider: "test",
+      baseUrl: "http://localhost:0",
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 128000,
+      maxTokens: 4096,
+    };
+
+    registerApiProvider(
+      {
+        api,
+        stream: () => {
+          throw new Error("provider exploded");
+        },
+        streamSimple: () => {
+          throw new Error("provider exploded");
+        },
+      },
+      sourceId,
+    );
+
+    const state = createTestState();
+    state.cwd = process.cwd();
+    state.canonicalCwd = process.cwd();
+    state.model = model;
+
+    try {
+      handleInput("hello", state);
+
+      await waitFor(() =>
+        state.messages.some(
+          (message) =>
+            message.role === "ui" &&
+            message.content === "Submit failed: provider exploded",
+        ),
+      );
+      await waitFor(() => !state.running);
+
+      const sessionId = state.session?.id;
+      if (!sessionId) {
+        throw new Error("Expected a session to be created");
+      }
+
+      const messages = loadMessages(state.db, sessionId);
+      expect(messages.map((message) => message.role)).toEqual(["user", "ui"]);
+      const uiMessage = messages[1];
+      expect(uiMessage?.role).toBe("ui");
+      if (!uiMessage || uiMessage.role !== "ui") {
+        throw new Error("Expected persisted UI message");
+      }
+      expect(uiMessage.content).toBe("Submit failed: provider exploded");
+    } finally {
+      await stopRunningTurn(state);
+      unregisterApiProviders(sourceId);
+      state.db.close();
+    }
+  });
+
+  test("/undo waits for an aborted run to settle before deleting the turn", async () => {
+    const api = "ui-undo-abort-race-test";
+    const sourceId = "ui-undo-abort-race-test-source";
+    const model: Model<string> = {
+      id: "ui-undo-abort-race-model",
+      name: "UI Undo Abort Race Model",
+      api,
+      provider: "test",
+      baseUrl: "http://localhost:0",
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 128000,
+      maxTokens: 4096,
+    };
+
+    const buildAbortMessage = (): AssistantMessage => ({
+      role: "assistant",
+      content: [],
+      api,
+      provider: model.provider,
+      model: model.id,
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          total: 0,
+        },
+      },
+      stopReason: "aborted",
+      errorMessage: "aborted",
+      timestamp: Date.now(),
+    });
+
+    const buildProviderStream = (signal?: AbortSignal) => {
+      const stream = createAssistantMessageEventStream();
+
+      queueMicrotask(() => {
+        const emitAbort = () => {
+          const abortedMessage = buildAbortMessage();
+          stream.push({
+            type: "error",
+            reason: "aborted",
+            error: abortedMessage,
+          });
+          stream.end(abortedMessage);
+        };
+
+        if (signal?.aborted) {
+          setTimeout(emitAbort, 50);
+          return;
+        }
+
+        signal?.addEventListener(
+          "abort",
+          () => {
+            setTimeout(emitAbort, 50);
+          },
+          { once: true },
+        );
+      });
+
+      return stream;
+    };
+
+    registerApiProvider(
+      {
+        api,
+        stream: (_model, _context, options) =>
+          buildProviderStream(options?.signal),
+        streamSimple: (_model, _context, options) =>
+          buildProviderStream(options?.signal),
+      },
+      sourceId,
+    );
+
+    const state = createTestState();
+    state.cwd = process.cwd();
+    state.canonicalCwd = process.cwd();
+    state.model = model;
+
+    try {
+      handleInput("hello", state);
+
+      await waitFor(() => state.running && state.session !== null);
+      const sessionId = state.session?.id;
+      if (!sessionId) {
+        throw new Error("Expected a session to be created");
+      }
+
+      handleInput("/undo", state);
+
+      await waitFor(() => !state.running);
+      await waitFor(() => state.messages.length === 0);
+
+      expect(loadMessages(state.db, sessionId)).toEqual([]);
+    } finally {
+      await stopRunningTurn(state);
+      unregisterApiProviders(sourceId);
       state.db.close();
     }
   });

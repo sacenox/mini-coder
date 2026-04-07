@@ -203,6 +203,15 @@ function mergeAssistantMessage(
   };
 }
 
+function toolErrorResult(name: string, error: unknown): ToolExecResult {
+  const message = error instanceof Error ? error.message : String(error);
+
+  return {
+    content: [{ type: "text", text: `Tool ${name} failed: ${message}` }],
+    isError: true,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Agent loop
 // ---------------------------------------------------------------------------
@@ -344,14 +353,18 @@ export async function runAgentLoop(
           args: toolCall.arguments,
         });
 
-        result = await handler(toolCall.arguments, cwd, signal, (partial) => {
-          onEvent?.({
-            type: "tool_delta",
-            toolCallId: toolCall.id,
-            name: toolCall.name,
-            result: partial,
+        try {
+          result = await handler(toolCall.arguments, cwd, signal, (partial) => {
+            onEvent?.({
+              type: "tool_delta",
+              toolCallId: toolCall.id,
+              name: toolCall.name,
+              result: partial,
+            });
           });
-        });
+        } catch (error) {
+          result = toolErrorResult(toolCall.name, error);
+        }
 
         onEvent?.({
           type: "tool_end",
@@ -373,6 +386,10 @@ export async function runAgentLoop(
       messages.push(toolResultMessage);
       appendMessage(db, sessionId, toolResultMessage, turn);
       onEvent?.({ type: "tool_result", message: toolResultMessage });
+
+      if (signal?.aborted) {
+        return { messages, stopReason: "aborted" };
+      }
     }
 
     // Loop back to stream with updated context
