@@ -18,8 +18,8 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@cel-tui/components": "^0.3.0",
-    "@cel-tui/core": "^0.3.0",
+    "@cel-tui/components": "^0.4.0",
+    "@cel-tui/core": "^0.4.0",
     "@mariozechner/pi-ai": "^0.65.0",
     "diff": "^8.0.4"
   },
