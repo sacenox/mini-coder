@@ -479,7 +479,14 @@ export {
 // Main
 // ---------------------------------------------------------------------------
 
-async function main(): Promise<void> {
+/**
+ * Start the mini-coder CLI.
+ *
+ * Initializes application state and launches the TUI.
+ *
+ * @returns A promise that resolves once startup is complete.
+ */
+export async function main(): Promise<void> {
   const state = await init();
   const { startUI } = await import("./ui.ts");
   startUI(state);

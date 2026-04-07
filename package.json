@@ -5,7 +5,7 @@
   "module": "src/index.ts",
   "type": "module",
   "bin": {
-    "mc": "dist/mc.js"
+    "mc": "bin/mc.ts"
   },
   "scripts": {
     "prepare": "lefthook install",

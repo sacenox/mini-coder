@@ -16,6 +16,8 @@
   - `bun run check:fix` / `bun run format:fix` — auto-fix.
 - Lefthook pre-commit runs all four steps sequentially (`--silent`, `parallel: false`).
 - App data directory: `~/.config/mini-coder/`.
+- Local manual CLI testing on this machine uses `bun add -g /home/xonecas/src/mini-coder`, which links the working tree into `~/.bun/bin/mc` without publishing. Re-run that after changing bin wiring if the global command needs to be refreshed.
+- The rewrite's published CLI entrypoint is `mc` via the checked-in Bun launcher at `bin/mc.ts` (importing `src/index.ts`). Do not point `package.json#bin` at a `dist/` file unless the publish flow actually generates that artifact.
 - All exports should have JSDoc comments (descriptions, `@param`, `@returns`). Interface fields get single-line JSDoc. See `session.ts` for the established pattern.
 - Key dependency source code for reference:
   - pi-ai: `~/src/pi-mono/packages/ai/` — LLM provider SDK. See `src/types.ts` for core types, `src/stream.ts` for streaming API, `src/utils/oauth/` for OAuth, `src/providers/faux.ts` for test provider.
