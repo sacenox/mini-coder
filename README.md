@@ -7,13 +7,9 @@
 <p align="center"><strong>Lightning-fast coding agent for your terminal.</strong></p>
 
 <p align="center">
-  Small, fast, focused, and just opinionated enough to be useful.
-</p>
-
-<p align="center">
   <a href="https://www.npmjs.com/package/mini-coder">npm</a>
   ·
-  <a href="https://sacenox.github.io/mini-coder/">gh-pages</a>
+  <a href="https://sacenox.github.io/mini-coder/">docs</a>
   ·
   <a href="spec.md">spec</a>
 </p>
@@ -24,83 +20,73 @@
   </picture>
 </p>
 
-mini-coder (`mc`) is a terminal coding agent that reads your repo, edits files, runs commands, and keeps going until the work is done. The rewrite trims the product down to the essentials: a sharp system prompt, a small tool surface, streamed terminal UX, and strong foundations instead of framework soup.
+mini-coder (`mc`) is a terminal coding agent that reads your repo, edits files, runs commands, and keeps going until the work is done. Small core tool surface, flat architecture, fast turns, and streaming everywhere it matters.
+
+## Install
+
+```bash
+$ bun add -g mini-coder
+$ mc
+```
 
 ## Why mini-coder?
 
-- **Terminal-native** — no browser tab, no web app shell, no waiting around.
-- **Tiny core tool surface** — `shell` and `edit` do the real work. `readImage` joins when the model supports vision.
-- **Streams everything** — assistant text, reasoning, tool calls, and tool output show up as they happen.
-- **Actually remembers things** — sessions are persisted in SQLite with undo, fork, resume, and cumulative usage stats.
-- **Plays well with the community** — supports [AGENTS.md](https://agents.md), [Agent Skills](https://agentskills.io), and plugins.
-- **Built on proven parts** — [pi-ai](https://github.com/badlogic/pi-mono/tree/main/packages/ai) for providers and [cel-tui](https://github.com/sacenox/cel-tui) for the TUI.
+- **Lean on proven dependencies** — [pi-ai](https://github.com/badlogic/pi-mono/tree/main/packages/ai) for providers, streaming, tool calling, usage tracking, and OAuth. [cel-tui](https://github.com/sacenox/cel-tui) for the terminal UI. The core stays focused on agent work.
+- **Flat, simple codebase** — no workspaces, no internal abstraction layers. Files grouped by concern in a single `src/` directory.
+- **Agent-first** — every decision serves the goal of reading code, making changes, and verifying them via the shell.
+- **Performance** — startup and turn latency matter more than features.
+- **Streaming end-to-end** — assistant text, reasoning, tool calls, and tool output show up as they happen.
 
-## Install the stable release
+## Tools
 
-The published npm release installs a working `mc` binary:
+Two built-in tools, plus a read-only image tool:
 
-```bash
-npm install -g mini-coder
-mc
-```
+- **`shell`** — runs commands in the user's shell. Returns stdout, stderr, and exit code. Large output is truncated to protect model context.
+- **`edit`** — exact-text replacement in a single file. Fails deterministically if the target is missing or ambiguous. Creates new files when old text is empty.
+- **`readImage`** — reads PNG, JPEG, GIF, and WebP files as model input. Only registered when the active model supports images.
 
-If you prefer Bun globally:
+Plugins can add more tools, but the core stays intentionally small.
 
-```bash
-bun add -g mini-coder
-mc
-```
+## Features
 
-## Try the rewrite (`0.5.x`)
+- **Multi-provider model support** — Anthropic, OpenAI, Google, Bedrock, Mistral, Groq, xAI, OpenRouter, Ollama, Copilot, and more via pi-ai.
+- **Streaming TUI** — markdown conversation log, tool blocks with diffs, animated divider, multi-line input, and a one-line pill status bar.
+- **Session persistence** — SQLite-backed sessions with undo, fork, resume, and cumulative usage stats. Sessions are scoped to the working directory.
+- **Reasoning and verbosity controls** — toggle thinking visibility and full tool output on demand. Preferences persist across launches.
+- **[AGENTS.md](https://agents.md) support** — project-specific instructions discovered root-to-leaf, with `~/.agents/` for global instructions.
+- **[Agent Skills](https://agentskills.io)** — skill catalogs exposed in the prompt. `/skill:name` injects a skill body into the next user message.
+- **Plugins** — optional tools, integrations, theme overrides, and prompt suffixes without bloating the core.
 
-The rewrite is in progress on this repo right now. If you want the new version before it is published, clone the repo and run it directly with Bun:
+## Commands
 
-```bash
-git clone git@github.com:sacenox/mini-coder.git
-cd mini-coder
-bun install
-bun run src/index.ts
-```
+| Command      | Description                                                            |
+| ------------ | ---------------------------------------------------------------------- |
+| `/model`     | Switch models. Persists as the global default.                         |
+| `/session`   | List and resume sessions scoped to the current working directory.      |
+| `/new`       | Start a fresh session and reset cumulative usage counters.             |
+| `/fork`      | Copy the conversation into a new session and continue independently.   |
+| `/undo`      | Remove the last conversational turn (does not revert file changes).    |
+| `/reasoning` | Toggle thinking visibility. Persisted and restored on launch.          |
+| `/verbose`   | Toggle full shell output and edit diff display.                        |
+| `/login`     | Interactive OAuth login for supported providers.                       |
+| `/logout`    | Clear saved OAuth credentials for a logged-in provider.                |
+| `/effort`    | Set reasoning effort: low, med, high, or xhigh.                        |
+| `/help`      | List commands, loaded AGENTS.md files, discovered skills, and plugins. |
 
-Or give yourself a handy alias:
+## Key bindings
 
-```bash
-alias mc-dev='bun run ~/src/mini-coder/src/index.ts'
-mc-dev
-```
-
-## What you get
-
-- **Coding-agent workflow** — inspect with shell, mutate with edit, verify with shell.
-- **Multi-provider model support** — Anthropic, OpenAI, Google, OpenRouter, Ollama, Copilot, and more via pi-ai.
-- **Streaming TUI** — markdown conversation log, tool blocks, animated divider, a two-line default input, and a one-line pill status bar.
-- **Session persistence** — resume old sessions, `/fork` them, `/undo` turns, and keep working.
-- **Reasoning + verbosity controls** — toggle thinking visibility and full tool output on demand.
-- **Prompt context from your repo** — AGENTS.md discovery, skill catalog support, git state in the prompt footer.
-- **Plugin path** — optional tools, integrations, theme overrides, and prompt suffixes without bloating the core.
-
-## Handy commands
-
-- `/model` — switch models
-- `/session` — resume a session
-- `/new` — start fresh
-- `/fork` — branch the conversation
-- `/undo` — remove the last conversational turn
-- `/reasoning` — toggle thinking visibility
-- `/verbose` — toggle full tool output
-- `/login` / `/logout` — manage OAuth providers
-- `/effort` — set reasoning effort
-- `/help` — list the whole menu
-
-## Status
-
-mini-coder has a stable published release on npm today.
-
-The rewrite tracked in this repo is the next generation: smaller, faster, more spec-driven, and more focused on being a great coding agent in the terminal. If you want the stable packaged release, install from npm. If you want the shiny new hotness, run `main` from source.
+| Key           | Action                                            |
+| ------------- | ------------------------------------------------- |
+| `Enter`       | Submit message                                    |
+| `Shift+Enter` | Insert newline                                    |
+| `Escape`      | Interrupt current turn, preserve partial response |
+| `Tab`         | File path autocomplete (or command filter on `/`) |
+| `Ctrl+R`      | Search global raw input history                   |
+| `Ctrl+C`      | Graceful exit                                     |
 
 ## Docs
 
-- **Product site:** https://sacenox.github.io/mini-coder/
+- **Docs site:** https://sacenox.github.io/mini-coder/
 - **Spec:** [`spec.md`](spec.md)
 - **Repo instructions:** [`AGENTS.md`](AGENTS.md)
 
