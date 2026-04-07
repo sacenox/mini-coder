@@ -52,6 +52,7 @@
 - **Compatibility policy is a product decision.** Before 1.0, prefer correct, simple semantics over speculative backward-compatibility shims. If a change may affect existing data or behavior, raise it explicitly, but do not implement migrations or compatibility layers unless the spec or user asks for them.
 - **Breaking changes still need to be called out.** Pre-1.0 is not a license to surprise the user. If a change intentionally trades compatibility for correctness or simplicity, say so explicitly in discussion and keep TODO/release notes aligned.
 - **TUI changes need real terminal validation.** For rendering, streaming, scrolling, resize, focus, or input changes, passing tests is not enough. Validate the behavior manually in `tmux` before calling the change done.
+- **Work must stay within the agreed scope.** If you discussed and agreed with a user on the work to be done, don't deviate from it. Don't add scope, or deviate from the agreement.
 
 ## Testing strategy
 

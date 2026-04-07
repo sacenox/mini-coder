@@ -14,18 +14,18 @@ import {
   registerFauxProvider,
   unregisterApiProviders,
 } from "@mariozechner/pi-ai";
-import {
-  type AppState,
-  DEFAULT_SHOW_REASONING,
-  DEFAULT_VERBOSE,
-} from "./index.ts";
+import type { AppState } from "./index.ts";
 import {
   createSession,
   createUiMessage,
   loadMessages,
   openDatabase,
 } from "./session.ts";
-import { loadSettings } from "./settings.ts";
+import {
+  DEFAULT_SHOW_REASONING,
+  DEFAULT_VERBOSE,
+  loadSettings,
+} from "./settings.ts";
 import { DEFAULT_THEME, type Theme } from "./theme.ts";
 import {
   applyEffortSelection,
@@ -168,6 +168,21 @@ async function waitFor(
     await Bun.sleep(10);
   }
   throw new Error("Timed out waiting for condition");
+}
+
+async function stopRunningTurn(
+  state: Pick<AppState, "running" | "abortController">,
+): Promise<void> {
+  if (!state.running || !state.abortController) {
+    return;
+  }
+
+  state.abortController.abort();
+  try {
+    await waitFor(() => !state.running);
+  } catch {
+    // Ignore cleanup timeouts so test failures surface the original cause.
+  }
 }
 
 describe("ui rendering", () => {
@@ -406,6 +421,7 @@ describe("ui rendering", () => {
         ),
       );
     } finally {
+      await stopRunningTurn(state);
       process.env.PATH = originalPath;
       faux.unregister();
       state.db.close();
@@ -445,7 +461,19 @@ describe("ui rendering", () => {
       await waitFor(() => state.session !== null);
       expect(countSessions(state)).toBe(2);
       expect(state.session?.id).not.toBe(previousSession.id);
+
+      const sessionId = state.session?.id;
+      if (!sessionId) {
+        throw new Error("Expected a replacement session to be created");
+      }
+
+      await waitFor(() =>
+        loadMessages(state.db, sessionId).some(
+          (message) => message.role === "assistant",
+        ),
+      );
     } finally {
+      await stopRunningTurn(state);
       process.env.PATH = originalPath;
       faux.unregister();
       state.db.close();
@@ -485,6 +513,7 @@ describe("ui rendering", () => {
       });
       expect(logText).toContain("Done.");
     } finally {
+      await stopRunningTurn(state);
       process.env.PATH = originalPath;
       faux.unregister();
       state.db.close();
@@ -532,6 +561,7 @@ describe("ui rendering", () => {
       expect(logText).toContain("$ sleep 0.2; echo tool-output");
       expect(logText).toContain("Running...");
     } finally {
+      await stopRunningTurn(state);
       process.env.PATH = originalPath;
       faux.unregister();
       state.db.close();
@@ -683,6 +713,7 @@ describe("ui rendering", () => {
       expect(logText).toContain("tool-output");
       expect(logText).toContain("Done streaming");
     } finally {
+      await stopRunningTurn(state);
       process.env.PATH = originalPath;
       unregisterApiProviders(sourceId);
       state.db.close();
