@@ -419,9 +419,7 @@ VStack({ height: "100%" }, [
   // Top divider — animated scanning pulse when agent is working
   Divider(),
   // Input area — intrinsic height, no prompt prefix; starts at 2 lines
-  VStack({ padding: { x: 1 } }, [
-    TextInput({ flex: 1, minHeight: 2, maxHeight: 10 }),
-  ]),
+  TextInput({ minHeight: 2, maxHeight: 10, padding: { x: 1 } }),
   // Status pills — fixed 1 line, backgrounds only behind the text
   HStack({ height: 1, padding: { x: 1 } }, [
     statusPill(modelInfo, theme.statusPrimaryBg),

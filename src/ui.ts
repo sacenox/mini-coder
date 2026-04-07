@@ -1117,7 +1117,7 @@ export function createInputController(state: AppState): InputController {
 }
 
 /**
- * Render the padded input area.
+ * Render the input area.
  *
  * @param theme - Active UI theme.
  * @param controller - Stable TextInput callbacks.
@@ -1127,20 +1127,18 @@ export function renderInputArea(
   theme: Theme,
   controller: InputController,
 ): Node {
-  return VStack({ padding: { x: 1 } }, [
-    TextInput({
-      flex: 1,
-      minHeight: 2,
-      maxHeight: 10,
-      value: inputValue,
-      onChange: controller.onChange,
-      placeholder: Text("message…", { fgColor: theme.mutedText }),
-      focused: inputFocused,
-      onFocus: controller.onFocus,
-      onBlur: controller.onBlur,
-      onKeyPress: controller.onKeyPress,
-    }),
-  ]);
+  return TextInput({
+    minHeight: 2,
+    maxHeight: 10,
+    padding: { x: 1 },
+    value: inputValue,
+    onChange: controller.onChange,
+    placeholder: Text("message…", { fgColor: theme.mutedText }),
+    focused: inputFocused,
+    onFocus: controller.onFocus,
+    onBlur: controller.onBlur,
+    onKeyPress: controller.onKeyPress,
+  });
 }
 
 // ---------------------------------------------------------------------------

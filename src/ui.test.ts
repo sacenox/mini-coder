@@ -722,40 +722,31 @@ describe("ui rendering", () => {
     }
   });
 
-  test("renderInputArea reuses stable TextInput handlers from the input controller", () => {
+  test("renderInputArea returns a direct TextInput with stable handlers", () => {
     const state = createTestState();
 
     try {
       const controller = createInputController(state);
-      const first = renderInputArea(state.theme, controller);
-      const second = renderInputArea(state.theme, controller);
+      const firstInput = renderInputArea(state.theme, controller);
+      const secondInput = renderInputArea(state.theme, controller);
 
-      expect(first.type).toBe("vstack");
-      expect(second.type).toBe("vstack");
-      if (first.type !== "vstack" || second.type !== "vstack") {
-        throw new Error("Expected input area wrappers to be VStack nodes");
-      }
-
-      const firstInput = first.children[0];
-      const secondInput = second.children[0];
-      expect(firstInput?.type).toBe("textinput");
-      expect(secondInput?.type).toBe("textinput");
-      if (!firstInput || !secondInput) {
-        throw new Error("Expected text input children to exist");
-      }
+      expect(firstInput.type).toBe("textinput");
+      expect(secondInput.type).toBe("textinput");
       if (firstInput.type !== "textinput" || secondInput.type !== "textinput") {
-        throw new Error("Expected text input child nodes");
+        throw new Error("Expected direct TextInput nodes");
       }
 
       expect(firstInput.props.placeholder?.props.fgColor).toBe(
         state.theme.mutedText,
       );
+      expect(firstInput.props.padding).toEqual({ x: 1 });
       expect(firstInput.props.minHeight).toBe(2);
       expect(firstInput.props.maxHeight).toBe(10);
       expect(firstInput.props.onChange).toBe(controller.onChange);
       expect(firstInput.props.onFocus).toBe(controller.onFocus);
       expect(firstInput.props.onBlur).toBe(controller.onBlur);
       expect(firstInput.props.onKeyPress).toBe(controller.onKeyPress);
+      expect(secondInput.props.padding).toEqual(firstInput.props.padding);
       expect(secondInput.props.minHeight).toBe(firstInput.props.minHeight);
       expect(secondInput.props.maxHeight).toBe(firstInput.props.maxHeight);
       expect(secondInput.props.onChange).toBe(firstInput.props.onChange);
@@ -906,7 +897,7 @@ describe("ui rendering", () => {
       expect(node.children).toHaveLength(4);
       expect(node.children[0]?.type).toBe("vstack");
       expect(node.children[1]?.type).toBe("text");
-      expect(node.children[2]?.type).toBe("vstack");
+      expect(node.children[2]?.type).toBe("textinput");
       expect(node.children[3]?.type).toBe("hstack");
     } finally {
       state.db.close();
