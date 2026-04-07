@@ -33,6 +33,7 @@ The spec.md and code are the sources of truth, not this file, don't assume anyth
 
 ## Future ideas
 
+- [ ] Colocate extracted UI module tests under `src/ui/` (`agent.test.ts`, `commands.test.ts`, etc.) instead of keeping them at `src/ui.*.test.ts`
 - [ ] Demo asset tooling — script README preview GIF/poster generation from terminal recordings instead of relying on ad hoc `ffmpeg` commands
 - [ ] Session list preview — show first user message snippet in `/session` selector
 - [ ] Divider theme plugin — customizable divider animations (scanning pulse, breathing, flowing dots, wave)
