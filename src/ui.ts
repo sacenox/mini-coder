@@ -1962,7 +1962,7 @@ function renderConversationLog(state: AppState): Node {
  * Render the base application layout without overlays.
  *
  * The layout contains the conversation log, the animated divider, the input
- * area, and the two-line pill-based status bar.
+ * area, and the one-line pill-based status bar.
  *
  * @param state - Application state.
  * @param cols - Current terminal width in columns.
@@ -2003,7 +2003,7 @@ export function renderBaseLayout(
       // ── Input area ──
       renderInputArea(state.theme, inputController),
 
-      // ── Status bar (2 lines) ──
+      // ── Status bar (1 line) ──
       renderStatusBar(state),
     ],
   );

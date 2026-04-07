@@ -108,5 +108,5 @@ We test our logic at the boundaries. Never test dependencies (pi-ai, cel-tui, bu
 
 **Theme** (`theme.ts`):
 
-- Default theme has all required keys (10 themed colors including `overlayBg`).
+- Default theme has all required keys, including `statusPrimaryBg`, `statusSecondaryBg`, and `overlayBg`.
 - `mergeThemes` applies partial overrides left-to-right without mutating the base.

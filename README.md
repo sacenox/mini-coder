@@ -24,6 +24,8 @@
   </picture>
 </p>
 
+<p align="center"><sub>Screenshot refresh pending — current main uses a one-line pill status bar and a two-line default input.</sub></p>
+
 mini-coder (`mc`) is a terminal coding agent that reads your repo, edits files, runs commands, and keeps going until the work is done. The rewrite trims the product down to the essentials: a sharp system prompt, a small tool surface, streamed terminal UX, and strong foundations instead of framework soup.
 
 ## Why mini-coder?
@@ -73,7 +75,7 @@ mc-dev
 
 - **Coding-agent workflow** — inspect with shell, mutate with edit, verify with shell.
 - **Multi-provider model support** — Anthropic, OpenAI, Google, OpenRouter, Ollama, Copilot, and more via pi-ai.
-- **Streaming TUI** — markdown conversation log, tool blocks, animated divider, and a two-line status bar.
+- **Streaming TUI** — markdown conversation log, tool blocks, animated divider, a two-line default input, and a one-line pill status bar.
 - **Session persistence** — resume old sessions, `/fork` them, `/undo` turns, and keep working.
 - **Reasoning + verbosity controls** — toggle thinking visibility and full tool output on demand.
 - **Prompt context from your repo** — AGENTS.md discovery, skill catalog support, git state in the prompt footer.
