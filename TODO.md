@@ -43,6 +43,7 @@ The spec.md and code are the sources of truth, not this file, don't assume anyth
 
 ## Future ideas
 
+- [ ] Demo asset tooling — script README preview GIF/poster generation from terminal recordings instead of relying on ad hoc `ffmpeg` commands
 - [ ] Session list preview — show first user message snippet in `/session` selector
 - [ ] Divider theme plugin — customizable divider animations (scanning pulse, breathing, flowing dots, wave)
 - [ ] Backward-compatibility and migration policy for 1.0 (session/app data versioning, explicit migration strategy)

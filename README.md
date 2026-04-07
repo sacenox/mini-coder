@@ -20,11 +20,9 @@
 
 <p align="center">
   <picture>
-    <img src="assets/preview-0-5-0.png" alt="mini-coder terminal screenshot" width="960" style="border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.35);" />
+    <img src="assets/preview.gif" alt="mini-coder terminal session preview" width="960" style="border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.35);" />
   </picture>
 </p>
-
-<p align="center"><sub>Screenshot refresh pending — current main uses a one-line pill status bar and a two-line default input.</sub></p>
 
 mini-coder (`mc`) is a terminal coding agent that reads your repo, edits files, runs commands, and keeps going until the work is done. The rewrite trims the product down to the essentials: a sharp system prompt, a small tool surface, streamed terminal UX, and strong foundations instead of framework soup.
 
