@@ -13,6 +13,8 @@ const THEME_KEYS = [
   "divider",
   "dividerPulse",
   "statusText",
+  "statusPrimaryBg",
+  "statusSecondaryBg",
   "error",
   "overlayBg",
 ] as const;
@@ -22,8 +24,10 @@ describe("theme", () => {
     expect(Object.keys(DEFAULT_THEME).sort()).toEqual([...THEME_KEYS].sort());
   });
 
-  test("DEFAULT_THEME uses the terminal default foreground for shared status text", () => {
-    expect(DEFAULT_THEME.statusText).toBeUndefined();
+  test("DEFAULT_THEME uses explicit ANSI16 colors for status pills", () => {
+    expect(DEFAULT_THEME.statusText).toBe("color15");
+    expect(DEFAULT_THEME.statusPrimaryBg).toBe("color04");
+    expect(DEFAULT_THEME.statusSecondaryBg).toBe("color08");
   });
 
   test("mergeThemes with no overrides returns base unchanged", () => {

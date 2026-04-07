@@ -407,9 +407,7 @@ Three zones, top to bottom:
 ────══════───────────────────────────────────────────  animated divider
  fix the remaining lint warnings                       │  input: no prefix
  in the utils file too_                                │
-─────────────────────────────────────────────────────  static divider
- ~/src/mini-coder                    main +3 ~1 A 2    │  status line 1
- anthropic/sonnet-4 · med    in:1.2k out:0.8k 42% $0.03│  status line 2
+ [ anthropic/sonnet-4 · med ] [ ~/src/mini-coder ] [ main +3 ~1 ▲ 2 ] [ in:1.2k out:0.8k · 42%/200k · $0.03 ] │  status pills
 ```
 
 cel-tui structure:
@@ -420,14 +418,17 @@ VStack({ height: "100%" }, [
   VStack({ flex: 1, overflow: "scroll" }),
   // Top divider — animated scanning pulse when agent is working
   Divider(),
-  // Input area — intrinsic height, no prompt prefix
-  VStack({ padding: { x: 1 } }, [TextInput({ flex: 1, maxHeight: 10 })]),
-  // Bottom divider — always static
-  Divider(),
-  // Status bar — fixed 2 lines
-  VStack({ height: 2, padding: { x: 1 } }, [
-    HStack([Text(cwd), Spacer(), Text(gitStatus)]),
-    HStack([Text(modelInfo), Spacer(), Text(usage)]),
+  // Input area — intrinsic height, no prompt prefix; starts at 2 lines
+  VStack({ padding: { x: 1 } }, [
+    TextInput({ flex: 1, minHeight: 2, maxHeight: 10 }),
+  ]),
+  // Status pills — fixed 1 line, backgrounds only behind the text
+  HStack({ height: 1, padding: { x: 1 } }, [
+    statusPill(modelInfo, theme.statusPrimaryBg),
+    statusPill(cwd, theme.statusSecondaryBg),
+    Spacer(),
+    gitStatus && statusPill(gitStatus, theme.statusSecondaryBg),
+    statusPill(usage, theme.statusPrimaryBg),
   ]),
 ]);
 ```
@@ -456,8 +457,12 @@ interface Theme {
   divider: Color | undefined;
   /** Divider scanning pulse highlight color (active state). */
   dividerPulse: Color | undefined;
-  /** Status bar foreground. Uses the terminal default when undefined. */
+  /** Status pill foreground. */
   statusText: Color | undefined;
+  /** Primary status pill background (outer pills: model/effort + usage/context/cost). */
+  statusPrimaryBg: Color | undefined;
+  /** Secondary status pill background (inner pills: CWD + git). */
+  statusSecondaryBg: Color | undefined;
   /** Error text. */
   error: Color | undefined;
   /** Overlay modal background. */
@@ -465,26 +470,31 @@ interface Theme {
 }
 ```
 
-The default theme uses terminal palette colors where semantic accents help (`color08` for muted text, `color04`/`color05` for accents, `color02` for green, `color01` for red) and leaves shared foreground text on the terminal default where that gives better contrast. Theme values are cel-tui colors; `undefined` means "use the terminal default".
+The default theme uses the full ANSI 16-color terminal palette where semantic accents or pill styling benefit from it, including bright variants (`color08`-`color15`) rather than restricting itself to the base 8 colors. Semantic colors should still map sensibly (for example, greens for additions/success and reds for removals/errors), but status pill styling may draw from the wider ANSI 16 range to create restrained outer/inner separation. Status pill backgrounds are applied only behind the text and padding, never across the full width of the status area. Default status colors must remain legible on both light and dark terminals. Theme values are cel-tui colors; `undefined` means "use the terminal default".
 
 ### Status bar
 
-Two lines, four corners:
+One line, two-sided, rendered as compact padded pills rather than a full-width footer band:
 
 ```
-~/src/mini-coder                                   main +3 ~1 ▲ 2
-anthropic/sonnet-4 · med                 in:1.2k out:0.8k · 42.0%/200k · $0.03
+[ anthropic/sonnet-4 · med ] [ ~/src/mini-coder ]            [ main +3 ~1 ▲ 2 ] [ in:1.2k out:0.8k · 42.0%/200k · $0.03 ]
 ```
 
-**Line 1 — location:**
+- Background is applied only behind each pill's text + padding; there is no bottom divider below the input and no full-width colored block.
+- The outer pills (`model/effort` on the left, `usage/context/cost` on the right) use `statusPrimaryBg`.
+- The inner pills (`cwd` on the left, `git` on the right) use `statusSecondaryBg`.
+- All status pill text uses `statusText`, chosen to remain legible against both pill backgrounds on light and dark terminals.
+- The git pill is omitted outside a repo, preserving the current omission behavior.
 
-- Left: CWD, abbreviated with `~` for home. Truncated from the left (`…/mini-coder`) on narrow terminals.
-- Right: git branch, working tree counts (+ staged, ~ modified, ? untracked), ahead of remote (▲ N). Omitted outside a repo.
+**Left side:**
 
-**Line 2 — session:**
+- Outer-left: `provider/model · effort`. Effort shown as `low`, `med`, `high`, `xhigh`.
+- Inner-left: CWD, abbreviated with `~` for home. Truncated from the left (`…/mini-coder`) on narrow terminals.
 
-- Left: `provider/model · effort`. Effort shown as `low`, `med`, `high`, `xhigh`.
-- Right: `in:input out:output · context%/window · $cost`. `in`, `out`, and `$cost` are **cumulative for the session**. `context%/window` shows the **estimated current context usage for the next model request** as a percentage of the active model's context window.
+**Right side:**
+
+- Inner-right: git branch, working tree counts (+ staged, ~ modified, ? untracked), ahead of remote (▲ N). Omitted outside a repo.
+- Outer-right: `in:input out:output · context%/window · $cost`. `in`, `out`, and `$cost` are **cumulative for the session**. `context%/window` shows the **estimated current context usage for the next model request** as a percentage of the active model's context window.
 
 Token counts use human-friendly units (1.2k, 45k, 1.2M). Context usage is estimated from the current model-visible conversation, not just the last assistant message. Use the most recent valid assistant `usage` as an anchor (`totalTokens` when present, otherwise `input + output + cacheRead + cacheWrite`) and add heuristic estimates for any later messages. If no assistant `usage` exists yet, estimate the full current model-visible history heuristically. UI-only messages are excluded from this estimate.
 
@@ -506,7 +516,7 @@ While the agent is working, the top divider (above the input area) animates with
 
 ### Input area
 
-Multi-line text input with no prompt prefix — the blinking cursor is the affordance. Intrinsic height (1 line when empty, grows with content) up to `maxHeight: 10`, then scrolls internally. Enter submits, Shift+Enter adds newlines (via cel-tui's `TextInput` `onKeyPress` pattern).
+Multi-line text input with no prompt prefix — the blinking cursor is the affordance. Intrinsic height starts at 2 lines when empty (`minHeight: 2`), grows with content up to `maxHeight: 10`, then scrolls internally. Enter submits, Shift+Enter adds newlines (via cel-tui's `TextInput` `onKeyPress` pattern).
 
 Supports:
 

@@ -35,9 +35,11 @@ import {
   createInputController,
   type HelpRenderState,
   handleInput,
+  type InputController,
   type PendingToolCall,
   previewToolRenderLines,
   renderAssistantMessage,
+  renderBaseLayout,
   renderInputArea,
   renderStatusBar,
   renderStreamingResponse,
@@ -748,10 +750,14 @@ describe("ui rendering", () => {
       expect(firstInput.props.placeholder?.props.fgColor).toBe(
         state.theme.mutedText,
       );
+      expect(firstInput.props.minHeight).toBe(2);
+      expect(firstInput.props.maxHeight).toBe(10);
       expect(firstInput.props.onChange).toBe(controller.onChange);
       expect(firstInput.props.onFocus).toBe(controller.onFocus);
       expect(firstInput.props.onBlur).toBe(controller.onBlur);
       expect(firstInput.props.onKeyPress).toBe(controller.onKeyPress);
+      expect(secondInput.props.minHeight).toBe(firstInput.props.minHeight);
+      expect(secondInput.props.maxHeight).toBe(firstInput.props.maxHeight);
       expect(secondInput.props.onChange).toBe(firstInput.props.onChange);
       expect(secondInput.props.onFocus).toBe(firstInput.props.onFocus);
       expect(secondInput.props.onBlur).toBe(firstInput.props.onBlur);
@@ -794,7 +800,7 @@ describe("ui rendering", () => {
     expect(pluginHeader.props.fgColor).toBe(theme.secondaryAccentText);
   });
 
-  test("renderStatusBar uses themed accent colors for git and model info", () => {
+  test("renderStatusBar renders a one-line status bar with outer primary pills and inner secondary pills", () => {
     const faux = registerFauxProvider();
     const state = createTestState();
     state.model = faux.getModel();
@@ -809,37 +815,100 @@ describe("ui rendering", () => {
     };
     state.theme = {
       ...DEFAULT_THEME,
-      accentText: "color04",
-      secondaryAccentText: "color05",
-      statusText: undefined,
+      statusText: "color15",
+      statusPrimaryBg: "color04",
+      statusSecondaryBg: "color08",
     } satisfies Theme;
 
     try {
       const node = renderStatusBar(state);
 
-      expect(node.type).toBe("vstack");
-      if (node.type !== "vstack") {
-        throw new Error("Expected status bar to be a VStack");
+      expect(node.type).toBe("hstack");
+      if (node.type !== "hstack") {
+        throw new Error("Expected status bar to be an HStack");
       }
-      expect(node.props.fgColor).toBeUndefined();
+      expect(node.props.height).toBe(1);
+      expect(node.props.padding).toEqual({ x: 1 });
 
-      const gitNode = findTextNode(node, "main +1 ~2 ?3 ▲ 4");
+      const [modelPill, cwdPill, spacer, gitPill, usagePill] = node.children;
+      expect(modelPill?.type).toBe("hstack");
+      expect(cwdPill?.type).toBe("hstack");
+      expect(gitPill?.type).toBe("hstack");
+      expect(usagePill?.type).toBe("hstack");
+      if (
+        !modelPill ||
+        !cwdPill ||
+        !spacer ||
+        !gitPill ||
+        !usagePill ||
+        modelPill.type !== "hstack" ||
+        cwdPill.type !== "hstack" ||
+        gitPill.type !== "hstack" ||
+        usagePill.type !== "hstack"
+      ) {
+        throw new Error("Expected status pills around a spacer in one row");
+      }
+
+      expect(modelPill.props.bgColor).toBe(state.theme.statusPrimaryBg);
+      expect(cwdPill.props.bgColor).toBe(state.theme.statusSecondaryBg);
+      expect(gitPill.props.bgColor).toBe(state.theme.statusSecondaryBg);
+      expect(usagePill.props.bgColor).toBe(state.theme.statusPrimaryBg);
+      expect(modelPill.props.padding).toEqual({ x: 1 });
+      expect(cwdPill.props.padding).toEqual({ x: 1 });
+      expect(gitPill.props.padding).toEqual({ x: 1 });
+      expect(usagePill.props.padding).toEqual({ x: 1 });
+
+      const cwdNode = findTextNode(cwdPill, state.cwd);
+      const gitNode = findTextNode(gitPill, "main +1 ~2 ?3 ▲ 4");
       const modelNode = findTextNode(
-        node,
+        modelPill,
         `${state.model.provider}/${state.model.id} · med`,
       );
+      expect(cwdNode).not.toBeNull();
       expect(gitNode).not.toBeNull();
       expect(modelNode).not.toBeNull();
-      if (!gitNode || !modelNode) {
-        throw new Error("Expected git and model text nodes");
+      if (!cwdNode || !gitNode || !modelNode) {
+        throw new Error("Expected status pill text nodes");
       }
-      if (gitNode.type !== "text" || modelNode.type !== "text") {
-        throw new Error("Expected git and model nodes to be text");
+      if (
+        cwdNode.type !== "text" ||
+        gitNode.type !== "text" ||
+        modelNode.type !== "text"
+      ) {
+        throw new Error("Expected status pill content to be text nodes");
       }
-      expect(gitNode.props.fgColor).toBe(state.theme.secondaryAccentText);
-      expect(modelNode.props.fgColor).toBe(state.theme.accentText);
+      expect(cwdNode.props.fgColor).toBe(state.theme.statusText);
+      expect(gitNode.props.fgColor).toBe(state.theme.statusText);
+      expect(modelNode.props.fgColor).toBe(state.theme.statusText);
+      expect(collectText(usagePill).join("")).toContain("in:0 out:0 ·");
     } finally {
       faux.unregister();
+      state.db.close();
+    }
+  });
+
+  test("renderBaseLayout keeps a single divider between the log and input", () => {
+    const state = createTestState();
+    const controller: InputController = {
+      onChange: () => {},
+      onFocus: () => {},
+      onBlur: () => {},
+      onKeyPress: () => undefined,
+    };
+
+    try {
+      const node = renderBaseLayout(state, 80, controller);
+
+      expect(node.type).toBe("vstack");
+      if (node.type !== "vstack") {
+        throw new Error("Expected app layout to be a VStack");
+      }
+      expect(node.children).toHaveLength(4);
+      expect(node.children[0]?.type).toBe("vstack");
+      expect(node.children[1]?.type).toBe("text");
+      expect(node.children[2]?.type).toBe("vstack");
+      expect(node.children[3]?.type).toBe("hstack");
+    } finally {
       state.db.close();
     }
   });

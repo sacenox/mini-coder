@@ -11,7 +11,7 @@
 import { exec } from "node:child_process";
 import { homedir, platform } from "node:os";
 import type { SelectInstance } from "@cel-tui/components";
-import { Divider, Markdown, Select, Spacer } from "@cel-tui/components";
+import { Markdown, Select, Spacer } from "@cel-tui/components";
 import {
   cel,
   HStack,
@@ -1012,35 +1012,51 @@ function renderOverlay(state: AppState): Node {
 // Status bar
 // ---------------------------------------------------------------------------
 
+function renderStatusPill(
+  text: string,
+  bgColor: Theme["statusPrimaryBg"] | Theme["statusSecondaryBg"],
+  theme: Theme,
+): Node {
+  return HStack({ bgColor, padding: { x: 1 } }, [
+    Text(text, { fgColor: theme.statusText }),
+  ]);
+}
+
 /**
- * Render the two-line status bar.
+ * Render the one-line status bar as compact padded pills.
+ *
+ * Outer pills use the primary background and inner pills use the secondary
+ * background. The git pill is omitted outside repositories.
  *
  * @param state - Application state.
  * @returns The status bar node.
  */
 export function renderStatusBar(state: AppState): Node {
-  return VStack(
+  const cwd = abbreviatePath(state.cwd);
+  const gitStatus = formatGitStatus(state);
+  const modelInfo = formatModelInfo(state);
+  const usage = formatUsage(state);
+
+  const children: Node[] = [
+    renderStatusPill(modelInfo, state.theme.statusPrimaryBg, state.theme),
+    renderStatusPill(cwd, state.theme.statusSecondaryBg, state.theme),
+    Spacer(),
+  ];
+  if (gitStatus) {
+    children.push(
+      renderStatusPill(gitStatus, state.theme.statusSecondaryBg, state.theme),
+    );
+  }
+  children.push(
+    renderStatusPill(usage, state.theme.statusPrimaryBg, state.theme),
+  );
+
+  return HStack(
     {
-      height: 2,
+      height: 1,
       padding: { x: 1 },
-      fgColor: state.theme.statusText,
     },
-    [
-      HStack({}, [
-        Text(abbreviatePath(state.cwd)),
-        Spacer(),
-        Text(formatGitStatus(state), {
-          fgColor: state.theme.secondaryAccentText,
-        }),
-      ]),
-      HStack({}, [
-        Text(formatModelInfo(state), {
-          fgColor: state.theme.accentText,
-        }),
-        Spacer(),
-        Text(formatUsage(state)),
-      ]),
-    ],
+    children,
   );
 }
 
@@ -1114,6 +1130,7 @@ export function renderInputArea(
   return VStack({ padding: { x: 1 } }, [
     TextInput({
       flex: 1,
+      minHeight: 2,
       maxHeight: 10,
       value: inputValue,
       onChange: controller.onChange,
@@ -1926,6 +1943,74 @@ async function gracefulExit(state: AppState): Promise<void> {
 // Main
 // ---------------------------------------------------------------------------
 
+function renderConversationLog(state: AppState): Node {
+  return VStack(
+    {
+      flex: 1,
+      overflow: "scroll",
+      scrollbar: true,
+      scrollOffset: stickToBottom ? Infinity : scrollOffset,
+      onScroll: (offset, maxOffset) => {
+        scrollOffset = offset;
+        stickToBottom = offset >= maxOffset;
+        cel.render();
+      },
+    },
+    buildConversationLog(state),
+  );
+}
+
+/**
+ * Render the base application layout without overlays.
+ *
+ * The layout contains the conversation log, the animated divider, the input
+ * area, and the two-line pill-based status bar.
+ *
+ * @param state - Application state.
+ * @param cols - Current terminal width in columns.
+ * @param inputController - Stable callbacks for the controlled TextInput.
+ * @returns The base layout node.
+ */
+export function renderBaseLayout(
+  state: AppState,
+  cols: number,
+  inputController: InputController,
+): Node {
+  return VStack(
+    {
+      height: "100%",
+      onKeyPress: (key) => {
+        if (key === "ctrl+c") {
+          gracefulExit(state).catch(() => process.exit(1));
+          return;
+        }
+        if (key === "ctrl+d" && inputValue === "") {
+          gracefulExit(state).catch(() => process.exit(1));
+          return;
+        }
+        if (key === "escape" && state.running) {
+          if (state.abortController) state.abortController.abort();
+          return;
+        }
+        return false;
+      },
+    },
+    [
+      // ── Conversation log ──
+      renderConversationLog(state),
+
+      // ── Animated divider (pulse when agent is working) ──
+      renderDivider(state, cols),
+
+      // ── Input area ──
+      renderInputArea(state.theme, inputController),
+
+      // ── Status bar (2 lines) ──
+      renderStatusBar(state),
+    ],
+  );
+}
+
 /**
  * Start the terminal UI.
  *
@@ -1941,56 +2026,7 @@ export function startUI(state: AppState): void {
 
   cel.viewport(() => {
     const cols = terminal.columns;
-
-    const base = VStack(
-      {
-        height: "100%",
-        onKeyPress: (key) => {
-          if (key === "ctrl+c") {
-            gracefulExit(state).catch(() => process.exit(1));
-            return;
-          }
-          if (key === "ctrl+d" && inputValue === "") {
-            gracefulExit(state).catch(() => process.exit(1));
-            return;
-          }
-          if (key === "escape" && state.running) {
-            if (state.abortController) state.abortController.abort();
-            return;
-          }
-          return false;
-        },
-      },
-      [
-        // ── Conversation log ──
-        VStack(
-          {
-            flex: 1,
-            overflow: "scroll",
-            scrollbar: true,
-            scrollOffset: stickToBottom ? Infinity : scrollOffset,
-            onScroll: (offset, maxOffset) => {
-              scrollOffset = offset;
-              stickToBottom = offset >= maxOffset;
-              cel.render();
-            },
-          },
-          buildConversationLog(state),
-        ),
-
-        // ── Animated divider (pulse when agent is working) ──
-        renderDivider(state, cols),
-
-        // ── Input area ──
-        renderInputArea(state.theme, inputController),
-
-        // ── Static divider ──
-        Divider({ fgColor: state.theme.divider }),
-
-        // ── Status bar (2 lines) ──
-        renderStatusBar(state),
-      ],
-    );
+    const base = renderBaseLayout(state, cols, inputController);
 
     if (activeOverlay) {
       return [base, renderOverlay(state)];

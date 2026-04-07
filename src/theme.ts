@@ -5,7 +5,9 @@
  * never hardcodes colors. Plugins can return a `Partial<Theme>` in their
  * result to override any color. Multiple overrides are merged left-to-right.
  *
- * Theme values are cel-tui {@link Color} palette references.
+ * Theme values are cel-tui {@link Color} palette references. The default
+ * theme prefers ANSI 16-color palette entries so it adapts cleanly to the
+ * user's terminal theme while still allowing restrained pill styling.
  *
  * @module
  */
@@ -46,8 +48,12 @@ export interface Theme {
   divider: ThemeColor;
   /** Divider scanning pulse highlight color (active state). */
   dividerPulse: ThemeColor;
-  /** Status bar foreground. */
+  /** Status pill foreground. */
   statusText: ThemeColor;
+  /** Primary status pill background (outer pills: model/effort + usage/context/cost). */
+  statusPrimaryBg: ThemeColor;
+  /** Secondary status pill background (inner pills: CWD + git). */
+  statusSecondaryBg: ThemeColor;
   /** Error text. */
   error: ThemeColor;
   /** Overlay modal background. */
@@ -62,7 +68,9 @@ export interface Theme {
  * The default theme.
  *
  * Uses terminal palette colors so it looks reasonable across light and
- * dark terminal themes without any configuration.
+ * dark terminal themes without any configuration. The outer status pills
+ * use a blue primary background, the inner pills use a dim gray secondary
+ * background, and bright text keeps the badges readable.
  */
 export const DEFAULT_THEME: Theme = {
   userMsgBg: "color08",
@@ -75,7 +83,9 @@ export const DEFAULT_THEME: Theme = {
   diffRemoved: "color01",
   divider: "color08",
   dividerPulse: "color04",
-  statusText: undefined,
+  statusText: "color15",
+  statusPrimaryBg: "color04",
+  statusSecondaryBg: "color08",
   error: "color01",
   overlayBg: "color08",
 };
