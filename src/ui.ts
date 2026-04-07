@@ -40,6 +40,7 @@ import {
   buildPrompt,
   buildToolList,
   getAvailableModels,
+  MAX_PROMPT_HISTORY,
   MAX_SESSIONS_PER_CWD,
   saveOAuthCredentials,
   shutdown,
@@ -47,13 +48,16 @@ import {
 import { COMMANDS, parseInput } from "./input.ts";
 import {
   appendMessage,
+  appendPromptHistory,
   computeStats,
   createSession,
   createUiMessage,
   filterModelMessages,
   forkSession,
+  listPromptHistory,
   listSessions,
   loadMessages,
+  truncatePromptHistory,
   truncateSessions,
   type UiMessage,
   undoLastTurn,
@@ -189,6 +193,25 @@ let activeOverlay: {
   /** Title displayed above the Select. */
   title: string;
 } | null = null;
+
+/**
+ * Reset all module-scoped UI state.
+ *
+ * Useful for reinitializing the UI and for keeping tests isolated.
+ */
+export function resetUiState(): void {
+  scrollOffset = 0;
+  stickToBottom = true;
+  inputValue = "";
+  inputFocused = true;
+  dividerTick = 0;
+  stopDividerAnimation();
+  streamingText = "";
+  streamingThinking = "";
+  isStreaming = false;
+  pendingToolCalls = [];
+  activeOverlay = null;
+}
 
 // ---------------------------------------------------------------------------
 // Divider animation
@@ -1008,6 +1031,19 @@ function renderOverlay(state: AppState): Node {
   );
 }
 
+/**
+ * Render the active overlay when one is open.
+ *
+ * @param state - Application state.
+ * @returns The rendered overlay node, or `null` when no overlay is active.
+ */
+export function renderActiveOverlay(state: AppState): Node | null {
+  if (!activeOverlay) {
+    return null;
+  }
+  return renderOverlay(state);
+}
+
 // ---------------------------------------------------------------------------
 // Status bar
 // ---------------------------------------------------------------------------
@@ -1264,7 +1300,7 @@ function handleSessionCommand(state: AppState): void {
   const currentSessionId = state.session?.id ?? null;
   const items = sessions.map((s) => {
     const date = new Date(s.updatedAt);
-    const dateStr = formatSessionDate(date);
+    const dateStr = formatRelativeDate(date);
     const model = s.model ?? "no model";
     const current = s.id === currentSessionId ? " (current)" : "";
     return {
@@ -1300,8 +1336,8 @@ function handleSessionCommand(state: AppState): void {
   cel.render();
 }
 
-/** Format a session date for display. */
-function formatSessionDate(date: Date): string {
+/** Format a recent timestamp for display. */
+function formatRelativeDate(date: Date): string {
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffMins = Math.floor(diffMs / 60_000);
@@ -1313,6 +1349,11 @@ function formatSessionDate(date: Date): string {
   if (diffHours < 24) return `${diffHours}h ago`;
   if (diffDays < 7) return `${diffDays}d ago`;
   return date.toLocaleDateString();
+}
+
+/** Collapse a raw prompt into a one-line preview for the Select overlay. */
+function formatPromptHistoryPreview(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
 }
 
 /** Open a URL in the user's default browser. */
@@ -1707,6 +1748,44 @@ function showCommandAutocomplete(state: AppState): void {
   cel.render();
 }
 
+/** Show global raw input-history search in the standard Select overlay. */
+function showInputHistoryOverlay(state: AppState): void {
+  const history = listPromptHistory(state.db);
+  if (history.length === 0) {
+    return;
+  }
+
+  const items = history.map((entry) => {
+    const preview = formatPromptHistoryPreview(entry.text);
+    const date = formatRelativeDate(new Date(entry.createdAt));
+    return {
+      label: `${preview}  ·  ${abbreviatePath(entry.cwd)}  ·  ${date}`,
+      value: String(entry.id),
+      filterText: `${entry.text} ${entry.cwd}`,
+    };
+  });
+
+  const select = Select({
+    items,
+    maxVisible: OVERLAY_MAX_VISIBLE,
+    placeholder: "type to filter history...",
+    focused: true,
+    highlightColor: state.theme.accentText,
+    onSelect: (value) => {
+      const picked = history.find((entry) => String(entry.id) === value);
+      if (picked) {
+        inputValue = picked.text;
+      }
+      dismissOverlay();
+    },
+    onBlur: dismissOverlay,
+  });
+
+  inputFocused = false;
+  activeOverlay = { select, title: "Input history" };
+  cel.render();
+}
+
 /** Dispatch a parsed command. Returns true if handled. */
 function handleCommand(command: string, state: AppState): boolean {
   switch (command) {
@@ -1764,7 +1843,7 @@ export function handleInput(raw: string, state: AppState): void {
       break;
     case "text":
       if (parsed.text) {
-        submitMessage(parsed.text, state).catch((err) => {
+        submitMessage(parsed.text, state, raw).catch((err) => {
           console.error("Submit error:", err);
         });
       }
@@ -1774,10 +1853,21 @@ export function handleInput(raw: string, state: AppState): void {
 }
 
 /** Send a plain text message and run the agent loop. */
-async function submitMessage(text: string, state: AppState): Promise<void> {
+async function submitMessage(
+  text: string,
+  state: AppState,
+  rawInput = text,
+): Promise<void> {
   if (!text.trim() || !state.model || state.running) return;
 
   const session = ensureSession(state);
+  appendPromptHistory(state.db, {
+    text: rawInput,
+    cwd: state.cwd,
+    sessionId: session.id,
+  });
+  truncatePromptHistory(state.db, MAX_PROMPT_HISTORY);
+
   const userMessage: Message = {
     role: "user",
     content: text,
@@ -1978,6 +2068,10 @@ export function renderBaseLayout(
     {
       height: "100%",
       onKeyPress: (key) => {
+        if (key === "ctrl+r") {
+          showInputHistoryOverlay(state);
+          return;
+        }
         if (key === "ctrl+c") {
           gracefulExit(state).catch(() => process.exit(1));
           return;
@@ -2018,6 +2112,7 @@ export function renderBaseLayout(
  * @param state - The initialized application state from {@link init}.
  */
 export function startUI(state: AppState): void {
+  resetUiState();
   const terminal = new ProcessTerminal();
   const inputController = createInputController(state);
   cel.init(terminal);
@@ -2025,9 +2120,10 @@ export function startUI(state: AppState): void {
   cel.viewport(() => {
     const cols = terminal.columns;
     const base = renderBaseLayout(state, cols, inputController);
+    const overlay = renderActiveOverlay(state);
 
-    if (activeOverlay) {
-      return [base, renderOverlay(state)];
+    if (overlay) {
+      return [base, overlay];
     }
     return base;
   });

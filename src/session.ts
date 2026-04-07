@@ -59,6 +59,30 @@ export interface SessionStats {
   totalCost: number;
 }
 
+/** A raw submitted prompt stored for global input-history search. */
+export interface PromptHistoryEntry {
+  /** Monotonic row id. */
+  id: number;
+  /** Exact raw prompt text as submitted by the user. */
+  text: string;
+  /** Working directory where the prompt was submitted. */
+  cwd: string;
+  /** Originating session id when available. */
+  sessionId: string | null;
+  /** Unix timestamp in milliseconds when the prompt was submitted. */
+  createdAt: number;
+}
+
+/** Options for appending a raw prompt-history entry. */
+export interface AppendPromptHistoryOpts {
+  /** Exact raw prompt text as submitted by the user. */
+  text: string;
+  /** Working directory where the prompt was submitted. */
+  cwd: string;
+  /** Originating session id when available. */
+  sessionId?: string;
+}
+
 /** A persisted UI-only message shown in the conversation log. */
 export interface UiMessage {
   /** Identifies this as an internal UI message. */
@@ -105,6 +129,15 @@ type MaxTurnRow = { max_turn: number | null };
 /** Row shape for `SELECT data` queries. */
 type DataRow = { data: string };
 
+/** Row shape returned by `SELECT * FROM prompt_history`. */
+type PromptHistoryRow = {
+  id: number;
+  text: string;
+  cwd: string;
+  session_id: string | null;
+  created_at: number;
+};
+
 // ---------------------------------------------------------------------------
 // SQL
 // ---------------------------------------------------------------------------
@@ -114,6 +147,8 @@ const SQL = {
     "SELECT * FROM sessions WHERE cwd = ? ORDER BY updated_at DESC, rowid DESC",
   maxTurn: "SELECT MAX(turn) as max_turn FROM messages WHERE session_id = ?",
   loadMessages: "SELECT data FROM messages WHERE session_id = ? ORDER BY id",
+  listPromptHistory:
+    "SELECT * FROM prompt_history ORDER BY created_at DESC, id DESC LIMIT ?",
 } as const;
 
 const SCHEMA = `
@@ -138,6 +173,16 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 
 CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, turn);
+
+CREATE TABLE IF NOT EXISTS prompt_history (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  text        TEXT NOT NULL,
+  cwd         TEXT NOT NULL,
+  session_id  TEXT,
+  created_at  INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_prompt_history_created_at ON prompt_history(created_at, id);
 `;
 
 // ---------------------------------------------------------------------------
@@ -445,6 +490,79 @@ export function loadMessages(
 ): PersistedMessage[] {
   const rows = db.query<DataRow, [string]>(SQL.loadMessages).all(sessionId);
   return rows.map((row) => JSON.parse(row.data) as PersistedMessage);
+}
+
+// ---------------------------------------------------------------------------
+// Prompt history
+// ---------------------------------------------------------------------------
+
+/**
+ * Append a raw submitted prompt to the global prompt-history table.
+ *
+ * This history is separate from conversational turn state: it is global,
+ * append-only, and not affected by `/undo`.
+ *
+ * @param db - Open database handle.
+ * @param opts - Prompt-history fields to persist.
+ * @returns The stored {@link PromptHistoryEntry}.
+ */
+export function appendPromptHistory(
+  db: Database,
+  opts: AppendPromptHistoryOpts,
+): PromptHistoryEntry {
+  const now = Date.now();
+  const result = db.run(
+    "INSERT INTO prompt_history (text, cwd, session_id, created_at) VALUES (?, ?, ?, ?)",
+    [opts.text, opts.cwd, opts.sessionId ?? null, now],
+  );
+
+  return {
+    id: Number(result.lastInsertRowid),
+    text: opts.text,
+    cwd: opts.cwd,
+    sessionId: opts.sessionId ?? null,
+    createdAt: now,
+  };
+}
+
+/**
+ * List raw submitted prompts newest first.
+ *
+ * @param db - Open database handle.
+ * @param limit - Maximum number of entries to return.
+ * @returns Prompt-history entries ordered newest first.
+ */
+export function listPromptHistory(
+  db: Database,
+  limit = Number.MAX_SAFE_INTEGER,
+): PromptHistoryEntry[] {
+  const rows = db
+    .query<PromptHistoryRow, [number]>(SQL.listPromptHistory)
+    .all(limit);
+  return rows.map((row) => ({
+    id: row.id,
+    text: row.text,
+    cwd: row.cwd,
+    sessionId: row.session_id,
+    createdAt: row.created_at,
+  }));
+}
+
+/**
+ * Keep only the newest prompt-history rows.
+ *
+ * @param db - Open database handle.
+ * @param keep - Maximum number of prompt-history rows to retain.
+ */
+export function truncatePromptHistory(db: Database, keep: number): void {
+  db.run(
+    `DELETE FROM prompt_history WHERE id IN (
+       SELECT id FROM prompt_history
+       ORDER BY created_at DESC, id DESC
+       LIMIT -1 OFFSET ?
+     )`,
+    [keep],
+  );
 }
 
 // ---------------------------------------------------------------------------

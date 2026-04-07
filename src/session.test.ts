@@ -7,6 +7,7 @@ import type {
 } from "@mariozechner/pi-ai";
 import {
   appendMessage,
+  appendPromptHistory,
   computeStats,
   createSession,
   createUiMessage,
@@ -14,9 +15,11 @@ import {
   filterModelMessages,
   forkSession,
   getSession,
+  listPromptHistory,
   listSessions,
   loadMessages,
   openDatabase,
+  truncatePromptHistory,
   truncateSessions,
   undoLastTurn,
 } from "./session.ts";
@@ -406,6 +409,81 @@ describe("fork", () => {
 
     const forkedMsgs = loadMessages(db, forked.id);
     expect(forkedMsgs).toHaveLength(3);
+    db.close();
+  });
+});
+
+describe("prompt history", () => {
+  test("listPromptHistory returns newest prompts first across sessions and CWDs", () => {
+    const db = openDatabase(":memory:");
+    const sessionA = createSession(db, { cwd: "/tmp/a" });
+    const sessionB = createSession(db, { cwd: "/tmp/b" });
+
+    appendPromptHistory(db, {
+      text: "first prompt",
+      cwd: sessionA.cwd,
+      sessionId: sessionA.id,
+    });
+    appendPromptHistory(db, {
+      text: "second prompt",
+      cwd: sessionB.cwd,
+      sessionId: sessionB.id,
+    });
+    appendPromptHistory(db, {
+      text: "third prompt",
+      cwd: sessionA.cwd,
+    });
+
+    const history = listPromptHistory(db);
+
+    expect(history.map((entry) => entry.text)).toEqual([
+      "third prompt",
+      "second prompt",
+      "first prompt",
+    ]);
+    expect(history.map((entry) => entry.cwd)).toEqual([
+      "/tmp/a",
+      "/tmp/b",
+      "/tmp/a",
+    ]);
+    expect(history[0]?.sessionId).toBeNull();
+    expect(history[1]?.sessionId).toBe(sessionB.id);
+    expect(history[2]?.sessionId).toBe(sessionA.id);
+    db.close();
+  });
+
+  test("listPromptHistory preserves duplicate prompts", () => {
+    const db = openDatabase(":memory:");
+
+    appendPromptHistory(db, { text: "repeat", cwd: "/tmp/test" });
+    appendPromptHistory(db, { text: "repeat", cwd: "/tmp/test" });
+
+    const history = listPromptHistory(db);
+
+    expect(history).toHaveLength(2);
+    expect(history[0]?.text).toBe("repeat");
+    expect(history[1]?.text).toBe("repeat");
+    expect(history[0]?.id).not.toBe(history[1]?.id);
+    db.close();
+  });
+
+  test("truncatePromptHistory keeps the newest entries", () => {
+    const db = openDatabase(":memory:");
+
+    for (let i = 1; i <= 5; i++) {
+      appendPromptHistory(db, {
+        text: `prompt ${i}`,
+        cwd: "/tmp/test",
+      });
+    }
+
+    truncatePromptHistory(db, 3);
+
+    expect(listPromptHistory(db).map((entry) => entry.text)).toEqual([
+      "prompt 5",
+      "prompt 4",
+      "prompt 3",
+    ]);
     db.close();
   });
 });

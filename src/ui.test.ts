@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Node } from "@cel-tui/types";
+import type { ContainerNode, Node } from "@cel-tui/types";
 import type { AssistantMessage, Model } from "@mariozechner/pi-ai";
 import {
   createAssistantMessageEventStream,
@@ -16,6 +16,7 @@ import {
 } from "@mariozechner/pi-ai";
 import type { AppState } from "./index.ts";
 import {
+  appendPromptHistory,
   createSession,
   createUiMessage,
   loadMessages,
@@ -38,12 +39,14 @@ import {
   type InputController,
   type PendingToolCall,
   previewToolRenderLines,
+  renderActiveOverlay,
   renderAssistantMessage,
   renderBaseLayout,
   renderInputArea,
   renderStatusBar,
   renderStreamingResponse,
   renderToolResult,
+  resetUiState,
   type ToolRenderLine,
 } from "./ui.ts";
 
@@ -78,6 +81,22 @@ function findTextNode(node: Node | null, content: string): Node | null {
   }
   for (const child of node.children) {
     const found = findTextNode(child, content);
+    if (found) {
+      return found;
+    }
+  }
+  return null;
+}
+
+function findNodeWithKeyPress(node: Node | null): ContainerNode | null {
+  if (!node || node.type === "textinput" || node.type === "text") {
+    return null;
+  }
+  if (typeof node.props.onKeyPress === "function") {
+    return node;
+  }
+  for (const child of node.children) {
+    const found = findNodeWithKeyPress(child);
     if (found) {
       return found;
     }
@@ -153,6 +172,7 @@ function makeAssistantWithUsage(
 }
 
 afterEach(() => {
+  resetUiState();
   for (const dir of tempDirs.splice(0)) {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -421,6 +441,43 @@ describe("ui rendering", () => {
         loadMessages(state.db, sessionId).some(
           (message) => message.role === "assistant",
         ),
+      );
+    } finally {
+      await stopRunningTurn(state);
+      process.env.PATH = originalPath;
+      faux.unregister();
+      state.db.close();
+    }
+  });
+
+  test("submitted prompts are stored as raw global input-history entries", async () => {
+    const faux = registerFauxProvider();
+    const state = createTestState();
+    const originalPath = process.env.PATH;
+    process.env.PATH = `${process.env.PATH ?? ""}:/usr/bin:/bin`;
+    state.cwd = process.cwd();
+    state.canonicalCwd = process.cwd();
+    state.model = faux.getModel();
+    faux.setResponses([fauxAssistantMessage("Done.")]);
+
+    try {
+      handleInput("  hello from history  ", state);
+
+      await waitFor(() => state.session !== null);
+      const rows = state.db
+        .query<
+          { text: string; cwd: string; session_id: string | null },
+          []
+        >("SELECT text, cwd, session_id FROM prompt_history ORDER BY id DESC LIMIT 1")
+        .all();
+
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.text).toBe("  hello from history  ");
+      expect(rows[0]?.cwd).toBe(state.cwd);
+      expect(rows[0]?.session_id).toBe(state.session?.id ?? null);
+
+      await waitFor(() =>
+        state.messages.some((message) => message.role === "assistant"),
       );
     } finally {
       await stopRunningTurn(state);
@@ -753,6 +810,132 @@ describe("ui rendering", () => {
       expect(secondInput.props.onFocus).toBe(firstInput.props.onFocus);
       expect(secondInput.props.onBlur).toBe(firstInput.props.onBlur);
       expect(secondInput.props.onKeyPress).toBe(firstInput.props.onKeyPress);
+    } finally {
+      state.db.close();
+    }
+  });
+
+  test("Ctrl+R opens input history with newest prompts first", () => {
+    const state = createTestState();
+
+    try {
+      appendPromptHistory(state.db, {
+        text: "older prompt",
+        cwd: "/tmp/older",
+      });
+      appendPromptHistory(state.db, {
+        text: "newest prompt",
+        cwd: "/tmp/newer",
+      });
+
+      const controller = createInputController(state);
+      const base = renderBaseLayout(state, 80, controller);
+
+      expect(base.type).toBe("vstack");
+      if (base.type !== "vstack") {
+        throw new Error("Expected base layout to be a vstack");
+      }
+
+      base.props.onKeyPress?.("ctrl+r");
+
+      const overlay = renderActiveOverlay(state);
+      const text = collectText(overlay);
+      const newestIndex = text.findIndex((line) =>
+        line.includes("newest prompt"),
+      );
+      const olderIndex = text.findIndex((line) =>
+        line.includes("older prompt"),
+      );
+
+      expect(overlay).not.toBeNull();
+      expect(text).toContain("Input history");
+      expect(newestIndex).toBeGreaterThan(-1);
+      expect(olderIndex).toBeGreaterThan(-1);
+      expect(newestIndex).toBeLessThan(olderIndex);
+    } finally {
+      state.db.close();
+    }
+  });
+
+  test("selecting input history restores the exact raw prompt into the input", () => {
+    const state = createTestState();
+    const rawPrompt = "first line\nsecond line";
+
+    try {
+      appendPromptHistory(state.db, {
+        text: "older prompt",
+        cwd: "/tmp/older",
+      });
+      appendPromptHistory(state.db, {
+        text: rawPrompt,
+        cwd: state.cwd,
+      });
+
+      const controller = createInputController(state);
+      const base = renderBaseLayout(state, 80, controller);
+      if (base.type !== "vstack") {
+        throw new Error("Expected base layout to be a vstack");
+      }
+
+      base.props.onKeyPress?.("ctrl+r");
+
+      const overlay = renderActiveOverlay(state);
+      const selectNode = findNodeWithKeyPress(overlay);
+
+      expect(selectNode).not.toBeNull();
+      if (!selectNode) {
+        throw new Error("Expected overlay to contain a Select root");
+      }
+
+      selectNode.props.onKeyPress?.("enter");
+
+      expect(renderActiveOverlay(state)).toBeNull();
+      const input = renderInputArea(state.theme, controller);
+      if (input.type !== "textinput") {
+        throw new Error("Expected input area to render a TextInput");
+      }
+      expect(input.props.value).toBe(rawPrompt);
+    } finally {
+      state.db.close();
+    }
+  });
+
+  test("dismissing input history keeps the current draft unchanged", () => {
+    const state = createTestState();
+    const draft = "draft prompt";
+
+    try {
+      appendPromptHistory(state.db, {
+        text: "saved prompt",
+        cwd: state.cwd,
+      });
+
+      const controller = createInputController(state);
+      controller.onChange(draft);
+
+      const base = renderBaseLayout(state, 80, controller);
+      if (base.type !== "vstack") {
+        throw new Error("Expected base layout to be a vstack");
+      }
+
+      base.props.onKeyPress?.("ctrl+r");
+
+      const overlay = renderActiveOverlay(state);
+      const selectNode = findNodeWithKeyPress(overlay);
+
+      expect(selectNode).not.toBeNull();
+      if (!selectNode) {
+        throw new Error("Expected overlay to contain a Select root");
+      }
+
+      selectNode.props.onBlur?.();
+
+      expect(renderActiveOverlay(state)).toBeNull();
+      const input = renderInputArea(state.theme, controller);
+      if (input.type !== "textinput") {
+        throw new Error("Expected input area to render a TextInput");
+      }
+      expect(input.props.value).toBe(draft);
     } finally {
       state.db.close();
     }

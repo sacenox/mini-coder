@@ -83,6 +83,9 @@ export { DEFAULT_SHOW_REASONING, DEFAULT_VERBOSE } from "./settings.ts";
 /** Maximum sessions to keep per CWD. */
 export const MAX_SESSIONS_PER_CWD = 20;
 
+/** Maximum raw prompt-history entries to retain globally. */
+export const MAX_PROMPT_HISTORY = 1_000;
+
 // ---------------------------------------------------------------------------
 // OAuth credential persistence
 // ---------------------------------------------------------------------------

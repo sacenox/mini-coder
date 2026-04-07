@@ -519,6 +519,7 @@ Multi-line text input with no prompt prefix — the blinking cursor is the affor
 Supports:
 
 - `Tab` for file path autocomplete.
+- `Ctrl+R` for global input history search. Opens the same centered Select overlay pattern used by interactive commands, populated with previously submitted raw prompt text from all sessions and working directories, newest first. The list is searchable, selecting an entry restores the exact raw prompt into the input for editing (it does not auto-submit), and dismissing the overlay leaves the current draft unchanged.
 - `/command` prefix for slash commands.
 - `/skill:skill-name` prefix to inject a skill's body into the user message. The `/skill:name` prefix is stripped from the input and the skill's `SKILL.md` body is prepended to the user message content. The rest of the input becomes the user's instruction. Example: `/skill:code-review check the auth module` sends the code-review skill body + "check the auth module" as the user message.
 - Image embedding: if we autocomplete a file path ending in `.png`, `.jpg`, `.jpeg`, `.gif`, or `.webp`, and the file exists, it is embedded as `ImageContent` in the user message (base64-encoded). Only when the current model supports image input (`Model.input` includes `"image"`). If the model doesn't support images, or the file doesn't exist, or the input contains other text, the path is sent as plain text. This is intentionally simple — no inline detection within sentences.
@@ -531,6 +532,7 @@ Supports:
 | `Shift+Enter` | Input focused | Insert newline                                    |
 | `Escape`      | Agent working | Interrupt current turn, preserve partial response |
 | `Tab`         | Input focused | File path autocomplete                            |
+| `Ctrl+R`      | Input focused | Search global raw input history                   |
 | `Ctrl+C`      | Any           | Graceful exit                                     |
 | `Ctrl+D`      | Input empty   | Graceful exit (EOF)                               |
 | `Ctrl+Z`      | Any           | Suspend/background process                        |
@@ -623,6 +625,16 @@ CREATE TABLE messages (
 );
 
 CREATE INDEX idx_messages_session ON messages(session_id, turn);
+
+CREATE TABLE prompt_history (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  text        TEXT NOT NULL,      -- exact raw submitted prompt text
+  cwd         TEXT NOT NULL,      -- working directory where it was submitted
+  session_id  TEXT,               -- optional originating session id for display/context only
+  created_at  INTEGER NOT NULL    -- unix ms
+);
+
+CREATE INDEX idx_prompt_history_created_at ON prompt_history(created_at, id);
 ```
 
 ### Design decisions
@@ -638,6 +650,8 @@ CREATE INDEX idx_messages_session ON messages(session_id, turn);
 **Model/effort on the session**: stored at creation for display in `/session` list. The user can change models and effort mid-session via `/model` and `/effort`; those commands update the current in-memory state and global user settings, but the session record still reflects the initial values for that session. Individual assistant messages record their actual model via pi-ai's `AssistantMessage.model`.
 
 **Session truncation**: sessions are truncated per cwd to keep only the 20 most recently updated sessions (`updated_at DESC`), deleting older sessions and their messages via cascade.
+
+**Raw input history is global and append-only**: submitted prompt text is also recorded separately in `prompt_history` as the exact raw input the user entered before any `/skill:name` expansion or image conversion. This history is global across sessions and working directories, ordered newest first for `Ctrl+R` search, and is independent from conversational turn state — `/undo` does not remove entries from it. To bound storage, only the 1000 most recent prompt-history rows are kept.
 
 ### Operations
 
