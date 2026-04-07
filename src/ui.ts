@@ -9,7 +9,9 @@
  */
 
 import { exec } from "node:child_process";
+import { readdirSync, readFileSync } from "node:fs";
 import { homedir, platform } from "node:os";
+import { isAbsolute, join } from "node:path";
 import type { SelectInstance } from "@cel-tui/components";
 import { Markdown, Select, Spacer } from "@cel-tui/components";
 import {
@@ -28,6 +30,7 @@ import type {
   ThinkingContent,
   ThinkingLevel,
   ToolCall,
+  UserMessage,
 } from "@mariozechner/pi-ai";
 import type { OAuthProviderInterface } from "@mariozechner/pi-ai/oauth";
 import { getOAuthProviders } from "@mariozechner/pi-ai/oauth";
@@ -65,6 +68,7 @@ import {
 } from "./session.ts";
 import { updateSettings } from "./settings.ts";
 import type { Theme } from "./theme.ts";
+import { executeReadImage } from "./tools.ts";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -989,22 +993,6 @@ export function buildConversationLog(state: AppState): Node[] {
     );
   }
 
-  // Empty state
-  if (nodes.length === 0) {
-    nodes.push(Spacer());
-    nodes.push(
-      VStack({ alignItems: "center" }, [
-        Text(
-          state.model
-            ? "Ready. Type a message to start."
-            : "No providers configured. Use /login to authenticate.",
-          { fgColor: state.theme.mutedText, italic: true },
-        ),
-      ]),
-    );
-    nodes.push(Spacer());
-  }
-
   return nodes;
 }
 
@@ -1130,6 +1118,82 @@ export interface InputController {
   onKeyPress: (key: string) => boolean | undefined;
 }
 
+function getLongestCommonPrefix(values: readonly string[]): string {
+  if (values.length === 0) {
+    return "";
+  }
+
+  let prefix = values[0]!;
+  for (let i = 1; i < values.length && prefix.length > 0; i++) {
+    const value = values[i]!;
+    let j = 0;
+    while (j < prefix.length && j < value.length && prefix[j] === value[j]) {
+      j++;
+    }
+    prefix = prefix.slice(0, j);
+  }
+
+  return prefix;
+}
+
+function autocompleteInputPath(state: AppState): void {
+  const tokenMatch = /(^|\s)(\S+)$/.exec(inputValue);
+  if (!tokenMatch?.[2]) {
+    return;
+  }
+
+  const token = tokenMatch[2];
+  const tokenStart = tokenMatch.index + tokenMatch[1]!.length;
+  const slashIndex = token.lastIndexOf("/");
+  const dirToken = slashIndex >= 0 ? token.slice(0, slashIndex + 1) : "";
+  const partial = token.slice(slashIndex + 1);
+  const searchDir = isAbsolute(token)
+    ? dirToken || "/"
+    : join(state.cwd, dirToken || ".");
+
+  const entries = (() => {
+    try {
+      return readdirSync(searchDir, {
+        encoding: "utf8",
+        withFileTypes: true,
+      });
+    } catch {
+      return null;
+    }
+  })();
+  if (!entries) {
+    return;
+  }
+
+  const showHidden = partial.startsWith(".");
+  const matches = entries
+    .filter((entry) => (showHidden ? true : !entry.name.startsWith(".")))
+    .filter((entry) => entry.name.startsWith(partial))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  if (matches.length === 0) {
+    return;
+  }
+
+  let completedName: string | null = null;
+  if (matches.length === 1) {
+    const match = matches[0]!;
+    completedName = `${match.name}${match.isDirectory() ? "/" : ""}`;
+  } else {
+    const prefix = getLongestCommonPrefix(matches.map((entry) => entry.name));
+    if (prefix.length > partial.length) {
+      completedName = prefix;
+    }
+  }
+
+  if (!completedName) {
+    return;
+  }
+
+  inputValue = `${inputValue.slice(0, tokenStart)}${dirToken}${completedName}`;
+  cel.render();
+}
+
 /**
  * Create stable handlers for the main TextInput.
  *
@@ -1162,8 +1226,12 @@ export function createInputController(state: AppState): InputController {
         handleInput(raw, state);
         return false;
       }
-      if (key === "tab" && inputValue.startsWith("/")) {
-        showCommandAutocomplete(state);
+      if (key === "tab") {
+        if (inputValue.startsWith("/")) {
+          showCommandAutocomplete(state);
+        } else {
+          autocompleteInputPath(state);
+        }
         return false;
       }
     },
@@ -1849,9 +1917,83 @@ function handleCommand(command: string, state: AppState): boolean {
 // Agent loop wiring
 // ---------------------------------------------------------------------------
 
+function stripSkillFrontmatter(content: string): string {
+  const frontmatter = content.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/);
+  return frontmatter ? content.slice(frontmatter[0].length) : content;
+}
+
+function buildSkillMessageContent(
+  skillName: string,
+  userText: string,
+  state: AppState,
+): string | null {
+  const skill = state.skills.find((entry) => entry.name === skillName);
+  if (!skill) {
+    appendInfoMessage(`Unknown skill: ${skillName}`, state);
+    return null;
+  }
+
+  let skillBody: string;
+  try {
+    skillBody = stripSkillFrontmatter(readFileSync(skill.path, "utf-8")).trim();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    appendInfoMessage(`Failed to read skill ${skillName}: ${message}`, state);
+    return null;
+  }
+
+  const parts = [skillBody, userText].filter((part) => part.length > 0);
+  return parts.length > 0 ? parts.join("\n\n") : null;
+}
+
+function buildImageMessageContent(
+  imagePath: string,
+  rawInput: string,
+  state: AppState,
+): UserMessage["content"] | null {
+  const displayPath = rawInput.trim();
+
+  try {
+    const result = executeReadImage({ path: imagePath }, state.cwd);
+    if (result.isError) {
+      return displayPath || null;
+    }
+
+    return [
+      { type: "text", text: displayPath },
+      ...result.content.filter((block) => block.type === "image"),
+    ];
+  } catch {
+    return displayPath || null;
+  }
+}
+
+function isEmptyUserContent(content: UserMessage["content"]): boolean {
+  if (typeof content === "string") {
+    return content.trim().length === 0;
+  }
+
+  return content.every(
+    (block) => block.type === "text" && block.text.trim().length === 0,
+  );
+}
+
+function submitMessageAsync(
+  content: UserMessage["content"],
+  state: AppState,
+  rawInput: string,
+): void {
+  submitMessage(content, state, rawInput).catch((err) => {
+    console.error("Submit error:", err);
+  });
+}
+
 /** Route raw user input through parseInput and dispatch accordingly. */
 export function handleInput(raw: string, state: AppState): void {
-  const parsed = parseInput(raw);
+  const parsed = parseInput(raw, {
+    supportsImages: state.model?.input.includes("image") ?? false,
+    cwd: state.cwd,
+  });
 
   switch (parsed.type) {
     case "command":
@@ -1859,24 +2001,39 @@ export function handleInput(raw: string, state: AppState): void {
         // Unimplemented command — ignore for now
       }
       break;
-    case "text":
-      if (parsed.text) {
-        submitMessage(parsed.text, state, raw).catch((err) => {
-          console.error("Submit error:", err);
-        });
+    case "skill": {
+      const content = buildSkillMessageContent(
+        parsed.skillName,
+        parsed.userText,
+        state,
+      );
+      if (content) {
+        submitMessageAsync(content, state, raw);
       }
       break;
-    // skill and image handling will be added in Phase 4d
+    }
+    case "image": {
+      const content = buildImageMessageContent(parsed.path, raw, state);
+      if (content) {
+        submitMessageAsync(content, state, raw);
+      }
+      break;
+    }
+    case "text":
+      if (parsed.text) {
+        submitMessageAsync(parsed.text, state, raw);
+      }
+      break;
   }
 }
 
-/** Send a plain text message and run the agent loop. */
+/** Send a user message and run the agent loop. */
 async function submitMessage(
-  text: string,
+  content: UserMessage["content"],
   state: AppState,
-  rawInput = text,
+  rawInput: string,
 ): Promise<void> {
-  if (!text.trim() || !state.model || state.running) return;
+  if (isEmptyUserContent(content) || !state.model || state.running) return;
 
   const session = ensureSession(state);
   appendPromptHistory(state.db, {
@@ -1888,7 +2045,7 @@ async function submitMessage(
 
   const userMessage: Message = {
     role: "user",
-    content: text,
+    content,
     timestamp: Date.now(),
   };
 

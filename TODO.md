@@ -7,17 +7,9 @@ The spec.md and code are the sources of truth, not this file, don't assume anyth
 
 ## Spec alignment
 
-### Core behavior
-
-- [ ] **Implement `/skill:name` submission flow** (`ui.ts`) — strip the prefix from input, prepend the selected skill body to the user message, and send the rest of the user text as the instruction.
-
-- [ ] **Implement image submission flow** (`ui.ts`) — when `parseInput()` returns an image, send it as `ImageContent` in the user message when the active model supports images.
-
-- [ ] **Implement file path autocomplete** (`ui.ts`) — `Tab` should autocomplete file paths in normal input mode. When the input starts with `/`, `Tab` should open command selection instead.
-
-- [ ] **Remove the empty-state banner** (`ui.ts`) — spec says no banner/splash screen. The empty conversation view should not show `Ready. Type a message to start.`.
-
 ### Robustness
+
+- [ ] **Fix turn-end streaming/render mismatch** (`ui.ts`) — the streamed `Thinking... N lines.` placeholder disappears at turn end and the UI flashes because the in-progress render path does not match the final committed render. Debug the split-brain rendering and make turn completion visually stable.
 
 - [ ] **Catch tool handler exceptions in the agent loop** (`agent.ts`) — if a built-in tool or future extension throws, the loop should convert that into an error tool result, still emit `tool_end`, append a `ToolResultMessage`, and continue or fail cleanly instead of crashing the loop.
 

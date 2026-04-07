@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ContainerNode, Node } from "@cel-tui/types";
@@ -450,6 +450,22 @@ describe("ui rendering", () => {
     }
   });
 
+  test("empty conversation log renders no splash banner", () => {
+    const faux = registerFauxProvider();
+    const withoutModel = createTestState();
+    const withModel = createTestState();
+    withModel.model = faux.getModel();
+
+    try {
+      expect(buildConversationLog(withoutModel)).toEqual([]);
+      expect(buildConversationLog(withModel)).toEqual([]);
+    } finally {
+      faux.unregister();
+      withoutModel.db.close();
+      withModel.db.close();
+    }
+  });
+
   test("first user message creates the session lazily", async () => {
     const faux = registerFauxProvider();
     const state = createTestState();
@@ -516,6 +532,136 @@ describe("ui rendering", () => {
       await waitFor(() =>
         state.messages.some((message) => message.role === "assistant"),
       );
+    } finally {
+      await stopRunningTurn(state);
+      process.env.PATH = originalPath;
+      faux.unregister();
+      state.db.close();
+    }
+  });
+
+  test("/skill:name prepends the selected skill body to the submitted user message", async () => {
+    const faux = registerFauxProvider();
+    const state = createTestState();
+    const originalPath = process.env.PATH;
+    const skillRoot = createTempDir();
+    const skillPath = join(skillRoot, "code-review", "SKILL.md");
+    mkdirSync(join(skillRoot, "code-review"), { recursive: true });
+    writeFileSync(
+      skillPath,
+      [
+        "---",
+        "name: code-review",
+        'description: "Review code for issues"',
+        "---",
+        "# Review Checklist",
+        "- Find bugs",
+        "- Note missing tests",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+    process.env.PATH = `${process.env.PATH ?? ""}:/usr/bin:/bin`;
+    state.cwd = skillRoot;
+    state.canonicalCwd = skillRoot;
+    state.model = faux.getModel();
+    state.skills = [
+      {
+        name: "code-review",
+        description: "Review code for issues",
+        path: skillPath,
+      },
+    ];
+    faux.setResponses([fauxAssistantMessage("Done.")]);
+
+    try {
+      handleInput("/skill:code-review check the auth module", state);
+
+      await waitFor(() =>
+        state.messages.some((message) => message.role === "assistant"),
+      );
+
+      const sessionId = state.session?.id;
+      if (!sessionId) {
+        throw new Error("Expected a session to be created");
+      }
+
+      const messages = loadMessages(state.db, sessionId);
+      const userMessage = messages.find((message) => message.role === "user");
+      if (!userMessage || typeof userMessage.content !== "string") {
+        throw new Error("Expected a text user message");
+      }
+
+      expect(userMessage.content).toBe(
+        "# Review Checklist\n- Find bugs\n- Note missing tests\n\ncheck the auth module",
+      );
+      expect(userMessage.content).not.toContain("name: code-review");
+
+      const history = state.db
+        .query<
+          { text: string },
+          []
+        >("SELECT text FROM prompt_history ORDER BY id DESC LIMIT 1")
+        .all();
+      expect(history[0]?.text).toBe("/skill:code-review check the auth module");
+    } finally {
+      await stopRunningTurn(state);
+      process.env.PATH = originalPath;
+      faux.unregister();
+      state.db.close();
+    }
+  });
+
+  test("image inputs are submitted as ImageContent when the active model supports images", async () => {
+    const faux = registerFauxProvider();
+    const state = createTestState();
+    const originalPath = process.env.PATH;
+    const cwd = createTempDir();
+    const imagePath = join(cwd, "diagram.png");
+    writeFileSync(imagePath, Buffer.from("fake-png-data"));
+    process.env.PATH = `${process.env.PATH ?? ""}:/usr/bin:/bin`;
+    state.cwd = cwd;
+    state.canonicalCwd = cwd;
+    state.model = {
+      ...faux.getModel(),
+      input: ["text", "image"],
+    };
+    faux.setResponses([fauxAssistantMessage("Looks good.")]);
+
+    try {
+      handleInput("diagram.png", state);
+
+      await waitFor(() =>
+        state.messages.some((message) => message.role === "assistant"),
+      );
+
+      const sessionId = state.session?.id;
+      if (!sessionId) {
+        throw new Error("Expected a session to be created");
+      }
+
+      const messages = loadMessages(state.db, sessionId);
+      const userMessage = messages.find((message) => message.role === "user");
+      if (!userMessage || typeof userMessage.content === "string") {
+        throw new Error("Expected a multipart user message");
+      }
+
+      expect(userMessage.content).toEqual([
+        { type: "text", text: "diagram.png" },
+        {
+          type: "image",
+          data: Buffer.from("fake-png-data").toString("base64"),
+          mimeType: "image/png",
+        },
+      ]);
+
+      const history = state.db
+        .query<
+          { text: string },
+          []
+        >("SELECT text FROM prompt_history ORDER BY id DESC LIMIT 1")
+        .all();
+      expect(history[0]?.text).toBe("diagram.png");
     } finally {
       await stopRunningTurn(state);
       process.env.PATH = originalPath;
@@ -917,6 +1063,31 @@ describe("ui rendering", () => {
       expect(secondInput.props.onFocus).toBe(firstInput.props.onFocus);
       expect(secondInput.props.onBlur).toBe(firstInput.props.onBlur);
       expect(secondInput.props.onKeyPress).toBe(firstInput.props.onKeyPress);
+    } finally {
+      state.db.close();
+    }
+  });
+
+  test("Tab autocompletes the last file path in normal input mode", () => {
+    const state = createTestState();
+    const cwd = createTempDir();
+    mkdirSync(join(cwd, "src"), { recursive: true });
+    writeFileSync(join(cwd, "src", "ui.ts"), "", "utf-8");
+    state.cwd = cwd;
+    state.canonicalCwd = cwd;
+
+    try {
+      const controller = createInputController(state);
+      controller.onChange("inspect src/u");
+
+      expect(controller.onKeyPress("tab")).toBe(false);
+
+      const input = renderInputArea(state.theme, controller);
+      if (input.type !== "textinput") {
+        throw new Error("Expected input area to render a TextInput");
+      }
+      expect(input.props.value).toBe("inspect src/ui.ts");
+      expect(renderActiveOverlay(state)).toBeNull();
     } finally {
       state.db.close();
     }
