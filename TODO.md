@@ -28,6 +28,7 @@ The spec.md and code are the sources of truth, not this file, don't assume anyth
 
 ## Future ideas
 
+- [ ] Headless one-shot CLI mode for non-interactive runs and benchmark harnesses like Harbor/Terminal-Bench (https://www.tbench.ai/)
 - [ ] Colocate extracted UI module tests under `src/ui/` (`agent.test.ts`, `commands.test.ts`, etc.) instead of keeping them at `src/ui.*.test.ts`
 - [ ] Session list preview — show first user message snippet in `/session` selector
 - [ ] Use dark/cold to warm/bright gradient for the statusbar backgrounds, the model info based on the thinking effort, and the session stats based on context percentage.
