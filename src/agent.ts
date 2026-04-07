@@ -46,8 +46,16 @@ export type { ToolExecResult };
 
 /** Events emitted during the agent loop for UI updates. */
 export type AgentEvent =
-  | { type: "text_delta"; delta: string }
-  | { type: "thinking_delta"; delta: string }
+  | {
+      type: "text_delta";
+      delta: string;
+      content: AssistantMessage["content"];
+    }
+  | {
+      type: "thinking_delta";
+      delta: string;
+      content: AssistantMessage["content"];
+    }
   | { type: "assistant_message"; message: AssistantMessage }
   | {
       type: "tool_start";
@@ -108,6 +116,20 @@ export interface AgentLoopResult {
   messages: Message[];
   /** How the loop ended. */
   stopReason: "stop" | "length" | "error" | "aborted";
+}
+
+function cloneAssistantContent(
+  content: AssistantMessage["content"],
+): AssistantMessage["content"] {
+  return content.map((block) => {
+    if (block.type === "toolCall") {
+      return {
+        ...block,
+        arguments: structuredClone(block.arguments),
+      };
+    }
+    return { ...block };
+  });
 }
 
 /** Merge streamed partial assistant content into the final message content. */
@@ -239,10 +261,18 @@ export async function runAgentLoop(
 
       switch (event.type) {
         case "text_delta":
-          onEvent?.({ type: "text_delta", delta: event.delta });
+          onEvent?.({
+            type: "text_delta",
+            delta: event.delta,
+            content: cloneAssistantContent(event.partial.content),
+          });
           break;
         case "thinking_delta":
-          onEvent?.({ type: "thinking_delta", delta: event.delta });
+          onEvent?.({
+            type: "thinking_delta",
+            delta: event.delta,
+            content: cloneAssistantContent(event.partial.content),
+          });
           break;
         case "toolcall_end":
           // Tool calls are collected from the final assistant message

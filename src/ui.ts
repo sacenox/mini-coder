@@ -27,7 +27,6 @@ import type {
   AssistantMessage,
   Message,
   TextContent,
-  ThinkingContent,
   ThinkingLevel,
   ToolCall,
   UserMessage,
@@ -108,11 +107,8 @@ let dividerTick = 0;
 /** Divider animation timer handle. */
 let dividerTimer: ReturnType<typeof setInterval> | null = null;
 
-/** Streaming text buffer for the current assistant response. */
-let streamingText = "";
-
-/** Streaming thinking buffer for the current assistant response. */
-let streamingThinking = "";
+/** Streaming assistant content for the current response. */
+let streamingContent: AssistantMessage["content"] = [];
 
 /** Whether we are currently streaming a response. */
 let isStreaming = false;
@@ -139,7 +135,7 @@ export interface PendingToolCall {
   done: boolean;
 }
 
-/** Render options shared by completed and streaming assistant content. */
+/** Render options shared by completed and in-progress assistant content. */
 export interface ConversationRenderOpts {
   /** Whether reasoning blocks are visible. */
   showReasoning: boolean;
@@ -149,14 +145,14 @@ export interface ConversationRenderOpts {
   theme: Theme;
 }
 
-/** Display-only assistant content that is still streaming. */
-export interface StreamingRenderState {
-  /** Streamed markdown text so far. */
-  text: string;
-  /** Streamed thinking text so far. */
-  thinking: string;
+/** Display-only assistant state used while a response is still streaming. */
+interface AssistantRenderState {
+  /** Assistant content blocks accumulated so far. */
+  content: AssistantMessage["content"];
   /** Tool calls observed in the current streaming turn. */
-  pendingToolCalls: PendingToolCall[];
+  pendingToolCalls?: PendingToolCall[];
+  /** Optional error text appended below the assistant content. */
+  errorMessage?: string;
 }
 
 /** Semantic line kinds used when rendering tool output in the log. */
@@ -211,8 +207,7 @@ export function resetUiState(): void {
   inputFocused = true;
   dividerTick = 0;
   stopDividerAnimation();
-  streamingText = "";
-  streamingThinking = "";
+  streamingContent = [];
   isStreaming = false;
   pendingToolCalls = [];
   activeOverlay = null;
@@ -486,36 +481,64 @@ function renderMarkdownContent(content: string): Node[] {
   });
 }
 
-/** Render a completed assistant message from history. */
+/** Render a completed or in-progress assistant response. */
 export function renderAssistantMessage(
-  msg: AssistantMessage,
+  assistant: AssistantMessage | AssistantRenderState,
   opts: ConversationRenderOpts,
 ): Node | null {
+  const errorMessage =
+    "role" in assistant
+      ? assistant.stopReason === "error"
+        ? assistant.errorMessage
+        : undefined
+      : assistant.errorMessage;
+  const pendingToolCalls =
+    "role" in assistant ? [] : (assistant.pendingToolCalls ?? []);
   const children: Node[] = [];
 
-  for (const block of msg.content) {
-    if (block.type === "text" && (block as TextContent).text) {
-      children.push(...renderMarkdownContent((block as TextContent).text));
-    } else if (block.type === "thinking" && opts.showReasoning) {
-      const thinking = (block as ThinkingContent).thinking;
-      if (thinking) {
-        children.push(
-          VStack({ padding: { x: 1 } }, [
-            Text(thinking, {
-              wrap: "word",
-              fgColor: opts.theme.mutedText,
-              italic: true,
-            }),
-          ]),
-        );
-      }
+  for (const block of assistant.content) {
+    if (block.type === "text" && block.text) {
+      children.push(...renderMarkdownContent(block.text));
+      continue;
     }
-  }
 
-  if (msg.stopReason === "error" && msg.errorMessage) {
+    if (block.type !== "thinking" || !block.thinking) {
+      continue;
+    }
+
+    if (opts.showReasoning) {
+      children.push(
+        VStack({ padding: { x: 1 } }, [
+          Text(block.thinking, {
+            wrap: "word",
+            fgColor: opts.theme.mutedText,
+            italic: true,
+          }),
+        ]),
+      );
+      continue;
+    }
+
+    const lineCount = block.thinking.split("\n").length;
+    const unit = lineCount === 1 ? "line" : "lines";
     children.push(
       VStack({ padding: { x: 1 } }, [
-        Text(`Error: ${msg.errorMessage}`, {
+        Text(`Thinking... ${lineCount} ${unit}.`, {
+          fgColor: opts.theme.mutedText,
+          italic: true,
+        }),
+      ]),
+    );
+  }
+
+  for (const toolCall of pendingToolCalls) {
+    children.push(renderPendingToolCall(toolCall, opts));
+  }
+
+  if (errorMessage) {
+    children.push(
+      VStack({ padding: { x: 1 } }, [
+        Text(`Error: ${errorMessage}`, {
           fgColor: opts.theme.error,
         }),
       ]),
@@ -782,7 +805,7 @@ export function renderToolResult(
 }
 
 // ---------------------------------------------------------------------------
-// Streaming response rendering
+// Streaming tool-call rendering
 // ---------------------------------------------------------------------------
 
 /** Render a pending tool call, including progressive output when available. */
@@ -864,57 +887,6 @@ function renderPendingToolCall(
   );
 }
 
-/**
- * Render the in-progress streaming response.
- *
- * Shows thinking (if enabled), streamed markdown, and pending tool calls.
- */
-export function renderStreamingResponse(
-  streaming: StreamingRenderState,
-  opts: ConversationRenderOpts,
-): Node | null {
-  const children: Node[] = [];
-
-  if (streaming.thinking) {
-    if (opts.showReasoning) {
-      children.push(
-        VStack({ padding: { x: 1 } }, [
-          Text(streaming.thinking, {
-            wrap: "word",
-            fgColor: opts.theme.mutedText,
-            italic: true,
-          }),
-        ]),
-      );
-    } else {
-      const lineCount = streaming.thinking.split("\n").length;
-      const unit = lineCount === 1 ? "line" : "lines";
-      children.push(
-        VStack({ padding: { x: 1 } }, [
-          Text(`Thinking... ${lineCount} ${unit}.`, {
-            fgColor: opts.theme.mutedText,
-            italic: true,
-          }),
-        ]),
-      );
-    }
-  }
-
-  if (streaming.text) {
-    children.push(...renderMarkdownContent(streaming.text));
-  }
-
-  for (const toolCall of streaming.pendingToolCalls) {
-    children.push(renderPendingToolCall(toolCall, opts));
-  }
-
-  if (children.length === 0) {
-    return null;
-  }
-
-  return VStack({}, children);
-}
-
 // ---------------------------------------------------------------------------
 // Conversation log
 // ---------------------------------------------------------------------------
@@ -982,10 +954,9 @@ export function buildConversationLog(state: AppState): Node[] {
   // Append in-progress streaming response
   if (isStreaming) {
     pushConversationNode(
-      renderStreamingResponse(
+      renderAssistantMessage(
         {
-          text: streamingText,
-          thinking: streamingThinking,
+          content: streamingContent,
           pendingToolCalls,
         },
         renderOpts,
@@ -2065,8 +2036,7 @@ async function submitMessage(
   state.running = true;
   state.abortController = new AbortController();
   isStreaming = true;
-  streamingText = "";
-  streamingThinking = "";
+  streamingContent = [];
   pendingToolCalls = [];
   startDividerAnimation();
   cel.render();
@@ -2093,8 +2063,7 @@ async function submitMessage(
     state.running = false;
     state.abortController = null;
     isStreaming = false;
-    streamingText = "";
-    streamingThinking = "";
+    streamingContent = [];
     pendingToolCalls = [];
     stopDividerAnimation();
     cel.render();
@@ -2105,13 +2074,13 @@ async function submitMessage(
 function handleAgentEvent(event: AgentEvent, state: AppState): void {
   switch (event.type) {
     case "text_delta":
-      streamingText += event.delta;
+      streamingContent = event.content;
       stickToBottom = true;
       cel.render();
       break;
 
     case "thinking_delta":
-      streamingThinking += event.delta;
+      streamingContent = event.content;
       stickToBottom = true;
       cel.render();
       break;
@@ -2119,8 +2088,7 @@ function handleAgentEvent(event: AgentEvent, state: AppState): void {
     case "assistant_message":
       state.messages.push(event.message);
       state.stats = computeStats(state.messages);
-      streamingText = "";
-      streamingThinking = "";
+      streamingContent = [];
       stickToBottom = true;
       cel.render();
       break;
@@ -2177,8 +2145,7 @@ function handleAgentEvent(event: AgentEvent, state: AppState): void {
     case "done":
     case "error":
     case "aborted":
-      streamingText = "";
-      streamingThinking = "";
+      streamingContent = [];
       pendingToolCalls = [];
       isStreaming = false;
       stickToBottom = true;

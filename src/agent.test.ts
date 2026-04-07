@@ -326,6 +326,12 @@ describe("agent loop", () => {
 
     const textDeltas = events.filter((e) => e.type === "text_delta");
     expect(textDeltas.length).toBeGreaterThan(0);
+    const lastTextDelta = textDeltas.at(-1);
+    expect(lastTextDelta).toBeDefined();
+    if (!lastTextDelta || lastTextDelta.type !== "text_delta") {
+      throw new Error("Expected a text delta event");
+    }
+    expect(lastTextDelta.content).toEqual([fauxText("Hello world")]);
 
     const doneEvents = events.filter((e) => e.type === "done");
     expect(doneEvents).toHaveLength(1);
@@ -360,6 +366,14 @@ describe("agent loop", () => {
 
     const thinkingDeltas = events.filter((e) => e.type === "thinking_delta");
     expect(thinkingDeltas.length).toBeGreaterThan(0);
+    const lastThinkingDelta = thinkingDeltas.at(-1);
+    expect(lastThinkingDelta).toBeDefined();
+    if (!lastThinkingDelta || lastThinkingDelta.type !== "thinking_delta") {
+      throw new Error("Expected a thinking delta event");
+    }
+    expect(lastThinkingDelta.content).toEqual([
+      fauxThinking("Need to inspect the failing test."),
+    ]);
   });
 
   test("reconstructs thinking content when the final done message omits it", async () => {

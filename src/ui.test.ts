@@ -44,7 +44,6 @@ import {
   renderBaseLayout,
   renderInputArea,
   renderStatusBar,
-  renderStreamingResponse,
   renderToolResult,
   resetUiState,
   type ToolRenderLine,
@@ -321,7 +320,25 @@ describe("ui rendering", () => {
     expect(thinkingNode.props.fgColor).toBe("color03");
   });
 
-  test("renderStreamingResponse keeps text and tool output inside one top-level container", () => {
+  test("renderAssistantMessage shows a thinking line-count placeholder when reasoning is hidden", () => {
+    const message = fauxAssistantMessage([
+      fauxThinking("line one\nline two\nline three"),
+      fauxText("Done."),
+    ]);
+
+    const node = renderAssistantMessage(message, {
+      ...RENDER_OPTS,
+      showReasoning: false,
+    });
+    const text = collectText(node);
+
+    expect(text).toContain("Thinking... 3 lines.");
+    expect(text).toContain("Done.");
+    expect(text).not.toContain("line one");
+    expect(text).not.toContain("line two");
+  });
+
+  test("renderAssistantMessage keeps in-progress text and tool output inside one top-level container", () => {
     const pendingToolCalls: PendingToolCall[] = [
       {
         toolCallId: "tool-1",
@@ -333,10 +350,9 @@ describe("ui rendering", () => {
       },
     ];
 
-    const node = renderStreamingResponse(
+    const node = renderAssistantMessage(
       {
-        text: "Working...",
-        thinking: "",
+        content: [fauxText("Working...")],
         pendingToolCalls,
       },
       RENDER_OPTS,
@@ -350,12 +366,10 @@ describe("ui rendering", () => {
     expect(node.children.length).toBeGreaterThanOrEqual(2);
   });
 
-  test("renderStreamingResponse shows streaming thinking when reasoning is enabled", () => {
-    const node = renderStreamingResponse(
+  test("renderAssistantMessage shows in-progress thinking when reasoning is enabled", () => {
+    const node = renderAssistantMessage(
       {
-        text: "",
-        thinking: "Reasoning in progress",
-        pendingToolCalls: [],
+        content: [fauxThinking("Reasoning in progress")],
       },
       {
         ...RENDER_OPTS,
@@ -367,32 +381,10 @@ describe("ui rendering", () => {
     expect(text).toContain("Reasoning in progress");
   });
 
-  test("renderStreamingResponse shows line count indicator when reasoning is off", () => {
-    const node = renderStreamingResponse(
+  test("renderAssistantMessage shows a 1-line thinking placeholder for in-progress content", () => {
+    const node = renderAssistantMessage(
       {
-        text: "",
-        thinking: "line one\nline two\nline three",
-        pendingToolCalls: [],
-      },
-      {
-        ...RENDER_OPTS,
-        showReasoning: false,
-      },
-    );
-    const text = collectText(node);
-
-    expect(text).toContain("Thinking... 3 lines.");
-    // Should NOT show actual reasoning content
-    expect(text).not.toContain("line one");
-    expect(text).not.toContain("line two");
-  });
-
-  test("renderStreamingResponse shows 1 line when thinking has no newlines and reasoning is off", () => {
-    const node = renderStreamingResponse(
-      {
-        text: "",
-        thinking: "some thinking",
-        pendingToolCalls: [],
+        content: [fauxThinking("some thinking")],
       },
       {
         ...RENDER_OPTS,
@@ -404,11 +396,10 @@ describe("ui rendering", () => {
     expect(text).toContain("Thinking... 1 line.");
   });
 
-  test("renderStreamingResponse shows partial tool output before the tool finishes", () => {
-    const node = renderStreamingResponse(
+  test("renderAssistantMessage shows partial tool output before the tool finishes", () => {
+    const node = renderAssistantMessage(
       {
-        text: "",
-        thinking: "",
+        content: [],
         pendingToolCalls: [
           {
             toolCallId: "tool-1",
@@ -427,6 +418,158 @@ describe("ui rendering", () => {
     expect(text).toContain("$ echo hi");
     expect(text).toContain("partial output");
     expect(text).toContain("Running...");
+  });
+
+  test("committing a streamed response preserves hidden reasoning placeholder order", async () => {
+    const api = "ui-hidden-reasoning-order-test";
+    const sourceId = "ui-hidden-reasoning-order-test-source";
+    const model: Model<string> = {
+      id: "ui-hidden-reasoning-order-model",
+      name: "UI Hidden Reasoning Order Model",
+      api,
+      provider: "test",
+      baseUrl: "http://localhost:0",
+      reasoning: true,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 128000,
+      maxTokens: 4096,
+    };
+
+    const createFinalMessage = (): AssistantMessage => {
+      const message = fauxAssistantMessage([
+        fauxText("Before"),
+        fauxThinking("line one\nline two"),
+        fauxText("After"),
+      ]);
+      message.api = api;
+      message.provider = model.provider;
+      message.model = model.id;
+      message.usage = {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          total: 0,
+        },
+      };
+      message.stopReason = "stop";
+      message.timestamp = Date.now();
+      return message;
+    };
+
+    const buildProviderStream = () => {
+      const stream = createAssistantMessageEventStream();
+      const finalMessage = createFinalMessage();
+
+      queueMicrotask(() => {
+        stream.push({
+          type: "text_delta",
+          contentIndex: 0,
+          delta: "Before",
+          partial: {
+            ...finalMessage,
+            content: [fauxText("Before")],
+          },
+        });
+        stream.push({
+          type: "thinking_delta",
+          contentIndex: 1,
+          delta: "line one\nline two",
+          partial: {
+            ...finalMessage,
+            content: [fauxText("Before"), fauxThinking("line one\nline two")],
+          },
+        });
+        stream.push({
+          type: "text_delta",
+          contentIndex: 2,
+          delta: "After",
+          partial: {
+            ...finalMessage,
+            content: [
+              fauxText("Before"),
+              fauxThinking("line one\nline two"),
+              fauxText("After"),
+            ],
+          },
+        });
+        setTimeout(() => {
+          stream.push({
+            type: "done",
+            reason: "stop",
+            message: finalMessage,
+          });
+          stream.end(finalMessage);
+        }, 50);
+      });
+
+      return stream;
+    };
+
+    registerApiProvider(
+      {
+        api,
+        stream: (_model, _context, _options) => buildProviderStream(),
+        streamSimple: (_model, _context, _options) => buildProviderStream(),
+      },
+      sourceId,
+    );
+
+    const state = createTestState();
+    state.cwd = process.cwd();
+    state.canonicalCwd = process.cwd();
+    state.model = model;
+    state.showReasoning = false;
+
+    try {
+      handleInput("hello", state);
+
+      const streamedLogText: string[] = [];
+      await waitFor(() => {
+        if (state.messages.some((message) => message.role === "assistant")) {
+          return false;
+        }
+        const logText = collectText({
+          type: "vstack",
+          props: {},
+          children: buildConversationLog(state),
+        }).filter(Boolean);
+        if (
+          logText.includes("Thinking... 2 lines.") &&
+          logText.join("").includes("Before") &&
+          logText.join("").includes("After")
+        ) {
+          streamedLogText.splice(0, streamedLogText.length, ...logText);
+          return true;
+        }
+        return false;
+      });
+
+      const streamedText = streamedLogText.join("\n");
+      expect(streamedText).toBe("hello\nBefore\nThinking... 2 lines.\nAfter");
+
+      await waitFor(() =>
+        state.messages.some((message) => message.role === "assistant"),
+      );
+
+      const committedLogText = collectText({
+        type: "vstack",
+        props: {},
+        children: buildConversationLog(state),
+      }).filter(Boolean);
+      expect(committedLogText.join("\n")).toBe(streamedText);
+    } finally {
+      await stopRunningTurn(state);
+      unregisterApiProviders(sourceId);
+      state.db.close();
+    }
   });
 
   test("/help before the first user message does not create a session", () => {

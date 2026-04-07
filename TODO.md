@@ -9,8 +9,6 @@ The spec.md and code are the sources of truth, not this file, don't assume anyth
 
 ### Robustness
 
-- [ ] **Fix turn-end streaming/render mismatch** (`ui.ts`) — the streamed `Thinking... N lines.` placeholder disappears at turn end and the UI flashes because the in-progress render path does not match the final committed render. Debug the split-brain rendering and make turn completion visually stable.
-
 - [ ] **Catch tool handler exceptions in the agent loop** (`agent.ts`) — if a built-in tool or future extension throws, the loop should convert that into an error tool result, still emit `tool_end`, append a `ToolResultMessage`, and continue or fail cleanly instead of crashing the loop.
 
 - [ ] **Fix the `/undo` abort race** (`ui.ts`) — aborting an active run and undoing immediately can still race with the agent loop writing the aborted assistant message. Track the active loop promise and wait for it to settle before removing the last conversational turn.
