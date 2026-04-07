@@ -871,16 +871,29 @@ export function renderStreamingResponse(
 ): Node | null {
   const children: Node[] = [];
 
-  if (opts.showReasoning && streaming.thinking) {
-    children.push(
-      VStack({ padding: { x: 1 } }, [
-        Text(streaming.thinking, {
-          wrap: "word",
-          fgColor: opts.theme.mutedText,
-          italic: true,
-        }),
-      ]),
-    );
+  if (streaming.thinking) {
+    if (opts.showReasoning) {
+      children.push(
+        VStack({ padding: { x: 1 } }, [
+          Text(streaming.thinking, {
+            wrap: "word",
+            fgColor: opts.theme.mutedText,
+            italic: true,
+          }),
+        ]),
+      );
+    } else {
+      const lineCount = streaming.thinking.split("\n").length;
+      const unit = lineCount === 1 ? "line" : "lines";
+      children.push(
+        VStack({ padding: { x: 1 } }, [
+          Text(`Thinking... ${lineCount} ${unit}.`, {
+            fgColor: opts.theme.mutedText,
+            italic: true,
+          }),
+        ]),
+      );
+    }
   }
 
   if (streaming.text) {
@@ -1942,10 +1955,8 @@ function handleAgentEvent(event: AgentEvent, state: AppState): void {
 
     case "thinking_delta":
       streamingThinking += event.delta;
-      if (state.showReasoning) {
-        stickToBottom = true;
-        cel.render();
-      }
+      stickToBottom = true;
+      cel.render();
       break;
 
     case "assistant_message":

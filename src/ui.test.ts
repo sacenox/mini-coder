@@ -367,6 +367,43 @@ describe("ui rendering", () => {
     expect(text).toContain("Reasoning in progress");
   });
 
+  test("renderStreamingResponse shows line count indicator when reasoning is off", () => {
+    const node = renderStreamingResponse(
+      {
+        text: "",
+        thinking: "line one\nline two\nline three",
+        pendingToolCalls: [],
+      },
+      {
+        ...RENDER_OPTS,
+        showReasoning: false,
+      },
+    );
+    const text = collectText(node);
+
+    expect(text).toContain("Thinking... 3 lines.");
+    // Should NOT show actual reasoning content
+    expect(text).not.toContain("line one");
+    expect(text).not.toContain("line two");
+  });
+
+  test("renderStreamingResponse shows 1 line when thinking has no newlines and reasoning is off", () => {
+    const node = renderStreamingResponse(
+      {
+        text: "",
+        thinking: "some thinking",
+        pendingToolCalls: [],
+      },
+      {
+        ...RENDER_OPTS,
+        showReasoning: false,
+      },
+    );
+    const text = collectText(node);
+
+    expect(text).toContain("Thinking... 1 line.");
+  });
+
   test("renderStreamingResponse shows partial tool output before the tool finishes", () => {
     const node = renderStreamingResponse(
       {
