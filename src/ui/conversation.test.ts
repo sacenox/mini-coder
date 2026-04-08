@@ -127,6 +127,52 @@ describe("ui/conversation", () => {
     expect(text).not.toContain("Exit code: 0");
   });
 
+  test("buildConversationLogNodes keeps hidden tool call args available when rendering a sliced window", () => {
+    const nodes = buildConversationLogNodes(
+      {
+        messages: [
+          fauxAssistantMessage([
+            fauxToolCall(
+              "edit",
+              {
+                path: "src/app.ts",
+                oldText: "before",
+                newText: "after",
+              },
+              { id: "tool-1" },
+            ),
+          ]),
+          {
+            role: "toolResult" as const,
+            toolCallId: "tool-1",
+            toolName: "edit",
+            content: [{ type: "text" as const, text: "Updated src/app.ts" }],
+            isError: false,
+            timestamp: Date.now(),
+          },
+        ],
+        showReasoning: false,
+        verbose: false,
+        theme: DEFAULT_THEME,
+      },
+      {
+        isStreaming: false,
+        content: [],
+        pendingToolResults: [],
+      },
+      1,
+    );
+    const text = collectText({
+      type: "vstack",
+      props: {},
+      children: nodes,
+    });
+
+    expect(text).toContain("@@ -1,1 +1,1 @@");
+    expect(text).toContain("-before");
+    expect(text).toContain("+after");
+  });
+
   test("buildConversationLogNodes reuses cached committed nodes when the log is unchanged", () => {
     const state = {
       messages: [fauxAssistantMessage("Committed response")],

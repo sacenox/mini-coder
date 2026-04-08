@@ -72,14 +72,20 @@ type ToolCallRenderInfo = {
   args: Record<string, unknown>;
 };
 
+interface ToolCallArgsCache {
+  messages: readonly ConversationMessage[] | null;
+  count: number;
+  entries: Map<string, ToolCallRenderInfo>;
+}
+
 interface ConversationRenderCache {
   messages: readonly ConversationMessage[] | null;
+  startIndex: number;
   count: number;
   showReasoning: boolean;
   verbose: boolean;
   theme: Theme | null;
   nodes: Node[];
-  toolCallArgs: Map<string, ToolCallRenderInfo>;
 }
 
 const EMPTY_STREAMING_CONTENT: AssistantMessage["content"] = [];
@@ -87,14 +93,20 @@ const EMPTY_PENDING_TOOL_RESULTS: readonly PendingToolResult[] = [];
 const EMPTY_RENDER_NODES: Node[] = [];
 const EMPTY_TOOL_RESULT_ARGS: Record<string, unknown> = Object.freeze({});
 
+const toolCallArgsCache: ToolCallArgsCache = {
+  messages: null,
+  count: 0,
+  entries: new Map(),
+};
+
 const conversationRenderCache: ConversationRenderCache = {
   messages: null,
+  startIndex: 0,
   count: 0,
   showReasoning: false,
   verbose: false,
   theme: null,
   nodes: EMPTY_RENDER_NODES,
-  toolCallArgs: new Map(),
 };
 
 let editToolDiffCache = new WeakMap<
@@ -104,13 +116,16 @@ let editToolDiffCache = new WeakMap<
 
 /** Reset cached committed conversation renders and derived edit diffs. */
 export function resetConversationRenderCache(): void {
+  toolCallArgsCache.messages = null;
+  toolCallArgsCache.count = 0;
+  toolCallArgsCache.entries = new Map();
   conversationRenderCache.messages = null;
+  conversationRenderCache.startIndex = 0;
   conversationRenderCache.count = 0;
   conversationRenderCache.showReasoning = false;
   conversationRenderCache.verbose = false;
   conversationRenderCache.theme = null;
   conversationRenderCache.nodes = EMPTY_RENDER_NODES;
-  conversationRenderCache.toolCallArgs = new Map();
   editToolDiffCache = new WeakMap();
 }
 
@@ -824,11 +839,33 @@ function renderConversationMessage(
   );
 }
 
+function cacheToolCallArgs(messages: readonly ConversationMessage[]): void {
+  if (
+    toolCallArgsCache.messages !== messages ||
+    toolCallArgsCache.count > messages.length
+  ) {
+    toolCallArgsCache.messages = messages;
+    toolCallArgsCache.count = 0;
+    toolCallArgsCache.entries = new Map();
+  }
+
+  for (let index = toolCallArgsCache.count; index < messages.length; index++) {
+    const message = messages[index];
+    if (message?.role === "assistant") {
+      rememberToolCallArgs(message, toolCallArgsCache.entries);
+    }
+  }
+
+  toolCallArgsCache.count = messages.length;
+}
+
 function canReuseCommittedConversationCache(
   state: Pick<AppState, "messages" | "showReasoning" | "verbose" | "theme">,
+  startIndex: number,
 ): boolean {
   return (
     conversationRenderCache.messages === state.messages &&
+    conversationRenderCache.startIndex === startIndex &&
     conversationRenderCache.showReasoning === state.showReasoning &&
     conversationRenderCache.verbose === state.verbose &&
     conversationRenderCache.theme === state.theme &&
@@ -839,15 +876,18 @@ function canReuseCommittedConversationCache(
 function cacheCommittedConversation(
   state: Pick<AppState, "messages" | "showReasoning" | "verbose" | "theme">,
   renderOpts: ConversationRenderOpts,
+  startIndex: number,
 ): void {
-  if (!canReuseCommittedConversationCache(state)) {
+  cacheToolCallArgs(state.messages);
+
+  if (!canReuseCommittedConversationCache(state, startIndex)) {
     conversationRenderCache.messages = state.messages;
-    conversationRenderCache.count = 0;
+    conversationRenderCache.startIndex = startIndex;
+    conversationRenderCache.count = startIndex;
     conversationRenderCache.showReasoning = state.showReasoning;
     conversationRenderCache.verbose = state.verbose;
     conversationRenderCache.theme = state.theme;
     conversationRenderCache.nodes = [];
-    conversationRenderCache.toolCallArgs = new Map();
   }
 
   for (
@@ -860,7 +900,7 @@ function cacheCommittedConversation(
       renderConversationMessage(
         state.messages[index]!,
         renderOpts,
-        conversationRenderCache.toolCallArgs,
+        toolCallArgsCache.entries,
         state.theme,
       ),
     );
@@ -882,11 +922,13 @@ function hasStreamingTail(streaming: StreamingConversationState): boolean {
  *
  * @param state - Conversation rendering state.
  * @param streaming - Current in-progress assistant tail, if any.
+ * @param startIndex - Index of the first committed message to render.
  * @returns The rendered conversation log nodes.
  */
 export function buildConversationLogNodes(
   state: Pick<AppState, "messages" | "showReasoning" | "verbose" | "theme">,
   streaming: StreamingConversationState,
+  startIndex = 0,
 ): Node[] {
   const renderOpts: ConversationRenderOpts = {
     showReasoning: state.showReasoning,
@@ -894,7 +936,7 @@ export function buildConversationLogNodes(
     theme: state.theme,
   };
 
-  cacheCommittedConversation(state, renderOpts);
+  cacheCommittedConversation(state, renderOpts, startIndex);
 
   if (!hasStreamingTail(streaming)) {
     return conversationRenderCache.nodes;
@@ -912,9 +954,7 @@ export function buildConversationLogNodes(
   );
 
   for (const pendingToolResult of streaming.pendingToolResults) {
-    const info = conversationRenderCache.toolCallArgs.get(
-      pendingToolResult.toolCallId,
-    );
+    const info = toolCallArgsCache.entries.get(pendingToolResult.toolCallId);
     pushConversationNode(
       nodes,
       renderToolResultMessage(

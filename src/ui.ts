@@ -10,7 +10,14 @@
 
 import { exec } from "node:child_process";
 import { platform } from "node:os";
-import { cel, HStack, ProcessTerminal, Text, VStack } from "@cel-tui/core";
+import {
+  cel,
+  HStack,
+  measureContentHeight,
+  ProcessTerminal,
+  Text,
+  VStack,
+} from "@cel-tui/core";
 import type { Node } from "@cel-tui/types";
 import type { AppState } from "./index.ts";
 import {
@@ -55,6 +62,9 @@ const DIVIDER_FRAME_MS = 60;
 /** Width of the bright pulse segment in the animated divider. */
 const PULSE_WIDTH = 5;
 
+/** Maximum number of committed messages rendered before older history is chunked. */
+const CONVERSATION_CHUNK_MESSAGES = 50;
+
 // ---------------------------------------------------------------------------
 // UI state (module-scoped, not in AppState)
 // ---------------------------------------------------------------------------
@@ -64,6 +74,9 @@ let scrollOffset = 0;
 
 /** Whether the log auto-scrolls to the bottom. */
 let stickToBottom = true;
+
+/** First visible committed message when older history is chunked. */
+let visibleConversationStart = 0;
 
 /** Current text in the input area. */
 let inputValue = "";
@@ -95,6 +108,7 @@ let activeOverlay: ActiveOverlay | null = null;
 export function resetUiState(): void {
   scrollOffset = 0;
   stickToBottom = true;
+  visibleConversationStart = 0;
   inputValue = "";
   inputFocused = true;
   dividerTick = 0;
@@ -173,9 +187,57 @@ function renderDivider(state: AppState, width: number): Node {
 // Conversation log
 // ---------------------------------------------------------------------------
 
+function getLatestConversationChunkStart(messageCount: number): number {
+  return Math.max(0, messageCount - CONVERSATION_CHUNK_MESSAGES);
+}
+
+function getVisibleConversationStart(messageCount: number): number {
+  if (stickToBottom) {
+    return getLatestConversationChunkStart(messageCount);
+  }
+
+  visibleConversationStart = Math.min(
+    visibleConversationStart,
+    getLatestConversationChunkStart(messageCount),
+  );
+  return visibleConversationStart;
+}
+
 /** Build the full conversation log as an array of nodes. */
 export function buildConversationLog(state: AppState): Node[] {
-  return buildConversationLogNodes(state, getStreamingConversationState());
+  return buildConversationLogNodes(
+    state,
+    getStreamingConversationState(),
+    getVisibleConversationStart(state.messages.length),
+  );
+}
+
+function measureConversationHeight(
+  state: AppState,
+  width: number,
+  startIndex: number,
+): number {
+  return measureContentHeight(
+    VStack(
+      {},
+      buildConversationLogNodes(
+        state,
+        getStreamingConversationState(),
+        startIndex,
+      ),
+    ),
+    { width: Math.max(1, width) },
+  );
+}
+
+function prependConversationChunk(state: AppState, width: number): void {
+  const currentStart = visibleConversationStart;
+  const nextStart = Math.max(0, currentStart - CONVERSATION_CHUNK_MESSAGES);
+  const currentHeight = measureConversationHeight(state, width, currentStart);
+  const nextHeight = measureConversationHeight(state, width, nextStart);
+
+  visibleConversationStart = nextStart;
+  scrollOffset += Math.max(0, nextHeight - currentHeight);
 }
 
 // ---------------------------------------------------------------------------
@@ -317,6 +379,10 @@ function ensureSession(state: AppState): NonNullable<AppState["session"]> {
   return session;
 }
 
+function scrollConversationToBottom(): void {
+  stickToBottom = true;
+}
+
 /**
  * Append a UI-only info message to the conversation log.
  *
@@ -332,7 +398,7 @@ function appendInfoMessage(text: string, state: AppState): void {
     appendMessage(state.db, state.session.id, msg);
   }
   state.messages.push(msg);
-  stickToBottom = true;
+  scrollConversationToBottom();
   cel.render();
 }
 
@@ -344,9 +410,7 @@ const commandController = createCommandController({
     inputValue = value;
   },
   appendInfoMessage,
-  scrollConversationToBottom: () => {
-    stickToBottom = true;
-  },
+  scrollConversationToBottom,
   render: () => {
     cel.render();
   },
@@ -367,9 +431,7 @@ const agentController = createUiAgentController({
   render: () => {
     cel.render();
   },
-  scrollConversationToBottom: () => {
-    stickToBottom = true;
-  },
+  scrollConversationToBottom,
   startDividerAnimation,
   stopDividerAnimation,
 });
@@ -457,7 +519,7 @@ export function suspendToBackground(
 // Main
 // ---------------------------------------------------------------------------
 
-function renderConversationLog(state: AppState): Node {
+function renderConversationLog(state: AppState, width: number): Node {
   return VStack(
     {
       flex: 1,
@@ -465,8 +527,21 @@ function renderConversationLog(state: AppState): Node {
       scrollbar: true,
       scrollOffset: stickToBottom ? Infinity : scrollOffset,
       onScroll: (offset, maxOffset) => {
+        const wasStickToBottom = stickToBottom;
         scrollOffset = offset;
+
+        if (wasStickToBottom && offset < maxOffset) {
+          visibleConversationStart = getLatestConversationChunkStart(
+            state.messages.length,
+          );
+        }
+
         stickToBottom = offset >= maxOffset;
+
+        if (!stickToBottom && offset === 0 && visibleConversationStart > 0) {
+          prependConversationChunk(state, width);
+        }
+
         cel.render();
       },
     },
@@ -520,7 +595,7 @@ export function renderBaseLayout(
     },
     [
       // ── Conversation log ──
-      renderConversationLog(state),
+      renderConversationLog(state, cols),
 
       // ── Animated divider (pulse when agent is working) ──
       renderDivider(state, cols),

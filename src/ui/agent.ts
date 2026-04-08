@@ -278,7 +278,6 @@ export function createUiAgentController(
       case "toolcall_delta":
       case "toolcall_end":
         streamingContent = event.content;
-        runtime.scrollConversationToBottom();
         runtime.render();
         break;
 
@@ -286,7 +285,6 @@ export function createUiAgentController(
         state.messages.push(event.message);
         state.stats = addMessageToStats(state.stats, event.message);
         streamingContent = [];
-        runtime.scrollConversationToBottom();
         runtime.render();
         break;
 
@@ -310,7 +308,6 @@ export function createUiAgentController(
             isError: event.result.isError,
           });
         }
-        runtime.scrollConversationToBottom();
         runtime.render();
         break;
       }
@@ -320,7 +317,6 @@ export function createUiAgentController(
         pendingToolResults = pendingToolResults.filter(
           (toolResult) => toolResult.toolCallId !== event.message.toolCallId,
         );
-        runtime.scrollConversationToBottom();
         runtime.render();
         break;
 
@@ -328,7 +324,6 @@ export function createUiAgentController(
       case "error":
       case "aborted":
         resetUiAgentState();
-        runtime.scrollConversationToBottom();
         runtime.render();
         break;
     }

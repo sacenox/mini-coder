@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { measureContentHeight, VStack } from "@cel-tui/core";
 import type { ContainerNode, Node } from "@cel-tui/types";
 import type { AssistantMessage, Model } from "@mariozechner/pi-ai";
 import {
@@ -26,6 +27,7 @@ import {
 } from "./session.ts";
 import { DEFAULT_SHOW_REASONING, DEFAULT_VERBOSE } from "./settings.ts";
 import { DEFAULT_THEME } from "./theme.ts";
+import { buildConversationLogNodes } from "./ui/conversation.ts";
 import {
   buildConversationLog,
   createInputController,
@@ -63,6 +65,67 @@ function expectVStack(node: Node): ContainerNode {
     throw new Error("Expected app layout to be a vstack");
   }
   return node;
+}
+
+function findConversationLogNode(node: Node): ContainerNode {
+  const found = findConversationLogNodeOrNull(node);
+  if (!found) {
+    throw new Error("Expected to find the scrollable conversation log");
+  }
+  return found;
+}
+
+function findConversationLogNodeOrNull(node: Node): ContainerNode | null {
+  if (
+    node.type === "vstack" &&
+    node.props.overflow === "scroll" &&
+    node.props.scrollbar === true
+  ) {
+    return node;
+  }
+  if (node.type === "text" || node.type === "textinput") {
+    return null;
+  }
+  for (const child of node.children) {
+    const nested = findConversationLogNodeOrNull(child);
+    if (nested) {
+      return nested;
+    }
+  }
+  return null;
+}
+
+function getVisibleMessageIndexes(state: AppState): number[] {
+  return collectText({
+    type: "vstack",
+    props: {},
+    children: buildConversationLog(state),
+  }).flatMap((line) => {
+    const match = /^message (\d+)(?:$|\s)/.exec(line);
+    return match ? [Number(match[1])] : [];
+  });
+}
+
+function measureConversationHeight(
+  state: Pick<AppState, "messages" | "showReasoning" | "verbose" | "theme">,
+  width: number,
+  startIndex: number,
+): number {
+  return measureContentHeight(
+    VStack(
+      {},
+      buildConversationLogNodes(
+        state,
+        {
+          isStreaming: false,
+          content: [],
+          pendingToolResults: [],
+        },
+        startIndex,
+      ),
+    ),
+    { width },
+  );
 }
 
 function createDeferred<T = void>() {
@@ -1433,6 +1496,215 @@ describe("ui rendering", () => {
       expect(olderIndex).toBeGreaterThan(-1);
       expect(newestIndex).toBeLessThan(olderIndex);
     } finally {
+      state.db.close();
+    }
+  });
+
+  test("buildConversationLog initially renders only the latest chunk of a long session and reloads older chunks at the top", () => {
+    const state = createTestState();
+    const controller = createInputController(state);
+    state.messages = Array.from({ length: 1_000 }, (_, index) => ({
+      role: "user" as const,
+      content: `message ${index}`,
+      timestamp: index,
+    }));
+
+    try {
+      const initialIndexes = getVisibleMessageIndexes(state);
+      const initialMin = Math.min(...initialIndexes);
+
+      expect(initialIndexes).not.toContain(0);
+      expect(Math.max(...initialIndexes)).toBe(999);
+
+      const initialLayout = renderBaseLayout(state, 80, controller);
+      findConversationLogNode(initialLayout).props.onScroll?.(0, 10);
+
+      const expandedIndexes = getVisibleMessageIndexes(state);
+      expect(Math.min(...expandedIndexes)).toBeLessThan(initialMin);
+      expect(expandedIndexes.length).toBeGreaterThan(initialIndexes.length);
+      expect(Math.max(...expandedIndexes)).toBe(999);
+
+      const expandedLayout = renderBaseLayout(state, 80, controller);
+      findConversationLogNode(expandedLayout).props.onScroll?.(10, 10);
+
+      const collapsedIndexes = getVisibleMessageIndexes(state);
+      expect(Math.min(...collapsedIndexes)).toBe(initialMin);
+      expect(Math.max(...collapsedIndexes)).toBe(999);
+    } finally {
+      state.db.close();
+    }
+  });
+
+  test("renderBaseLayout preserves the viewport anchor when loading an older wrapped chunk at the top", () => {
+    const state = createTestState();
+    const controller = createInputController(state);
+    const width = 20;
+    state.messages = Array.from({ length: 120 }, (_, index) => ({
+      role: "user" as const,
+      content: `message ${index} ${"wrapped ".repeat(8)}`.trim(),
+      timestamp: index,
+    }));
+
+    try {
+      const initialIndexes = getVisibleMessageIndexes(state);
+      const initialStart = Math.min(...initialIndexes);
+
+      const initialLayout = renderBaseLayout(state, width, controller);
+      findConversationLogNode(initialLayout).props.onScroll?.(0, 10);
+
+      const expandedLayout = renderBaseLayout(state, width, controller);
+      const expandedIndexes = getVisibleMessageIndexes(state);
+      const nextStart = Math.min(...expandedIndexes);
+      const expectedAddedHeight =
+        measureConversationHeight(state, width, nextStart) -
+        measureConversationHeight(state, width, initialStart);
+
+      expect(nextStart).toBeLessThan(initialStart);
+      expect(expectedAddedHeight).toBeGreaterThan(50);
+      expect(findConversationLogNode(expandedLayout).props.scrollOffset).toBe(
+        expectedAddedHeight,
+      );
+    } finally {
+      state.db.close();
+    }
+  });
+
+  test("renderBaseLayout keeps autoscroll paused when the user scrolls mid-turn", async () => {
+    const api = "ui-mid-turn-scroll-pause-test";
+    const sourceId = "ui-mid-turn-scroll-pause-test-source";
+    const model: Model<string> = {
+      id: "ui-mid-turn-scroll-pause-model",
+      name: "UI Mid-turn Scroll Pause Model",
+      api,
+      provider: "test",
+      baseUrl: "http://localhost:0",
+      reasoning: true,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 128000,
+      maxTokens: 4096,
+    };
+
+    const releaseSecondDelta = createDeferred<void>();
+    const finishStream = createDeferred<void>();
+    const finalMessage: AssistantMessage = {
+      role: "assistant",
+      content: [fauxText("first second")],
+      api,
+      provider: model.provider,
+      model: model.id,
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          total: 0,
+        },
+      },
+      stopReason: "stop",
+      timestamp: Date.now(),
+    };
+
+    const buildProviderStream = () => {
+      const stream = createAssistantMessageEventStream();
+
+      queueMicrotask(() => {
+        stream.push({
+          type: "text_delta",
+          contentIndex: 0,
+          delta: "first",
+          partial: {
+            ...finalMessage,
+            content: [fauxText("first")],
+          },
+        });
+
+        void releaseSecondDelta.promise.then(() => {
+          stream.push({
+            type: "text_delta",
+            contentIndex: 0,
+            delta: " second",
+            partial: finalMessage,
+          });
+
+          void finishStream.promise.then(() => {
+            stream.push({
+              type: "done",
+              reason: "stop",
+              message: finalMessage,
+            });
+            stream.end(finalMessage);
+          });
+        });
+      });
+
+      return stream;
+    };
+
+    registerApiProvider(
+      {
+        api,
+        stream: () => buildProviderStream(),
+        streamSimple: () => buildProviderStream(),
+      },
+      sourceId,
+    );
+
+    const state = createTestState();
+    const controller = createInputController(state);
+    state.cwd = process.cwd();
+    state.canonicalCwd = process.cwd();
+    state.model = model;
+
+    try {
+      handleInput("hello", state);
+
+      await waitFor(() => {
+        const text = collectText({
+          type: "vstack",
+          props: {},
+          children: buildConversationLog(state),
+        });
+        return state.running && text.includes("first");
+      });
+
+      const beforeScroll = renderBaseLayout(state, 80, controller);
+      expect(findConversationLogNode(beforeScroll).props.scrollOffset).toBe(
+        Infinity,
+      );
+
+      findConversationLogNode(beforeScroll).props.onScroll?.(3, 10);
+
+      const pausedLayout = renderBaseLayout(state, 80, controller);
+      expect(findConversationLogNode(pausedLayout).props.scrollOffset).toBe(3);
+
+      releaseSecondDelta.resolve();
+
+      await waitFor(() => {
+        const text = collectText({
+          type: "vstack",
+          props: {},
+          children: buildConversationLog(state),
+        });
+        return text.includes("first second");
+      });
+
+      const afterSecondDelta = renderBaseLayout(state, 80, controller);
+      expect(findConversationLogNode(afterSecondDelta).props.scrollOffset).toBe(
+        3,
+      );
+
+      finishStream.resolve();
+      await waitFor(() => !state.running);
+    } finally {
+      await stopRunningTurn(state);
+      unregisterApiProviders(sourceId);
       state.db.close();
     }
   });
