@@ -31,7 +31,7 @@ export const COMMANDS = [
 ] as const;
 
 /** A recognized slash command name. */
-export type Command = (typeof COMMANDS)[number];
+type Command = (typeof COMMANDS)[number];
 
 const COMMAND_SET: ReadonlySet<string> = new Set(COMMANDS);
 
@@ -49,14 +49,14 @@ const IMAGE_EXTENSIONS: ReadonlySet<string> = new Set([
 // ---------------------------------------------------------------------------
 
 /** Result of parsing user input. */
-export type ParsedInput =
+type ParsedInput =
   | { type: "command"; command: Command; args: string }
   | { type: "skill"; skillName: string; userText: string }
   | { type: "image"; path: string }
   | { type: "text"; text: string };
 
 /** Options for input parsing. */
-export interface ParseInputOpts {
+interface ParseInputOpts {
   /** Whether the current model supports image input. */
   supportsImages?: boolean;
   /** Working directory for resolving relative image paths. */

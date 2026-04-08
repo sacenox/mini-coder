@@ -9,6 +9,7 @@ import { COMMANDS } from "../input.ts";
 import { appendPromptHistory, openDatabase } from "../session.ts";
 import { loadSettings } from "../settings.ts";
 import { DEFAULT_THEME } from "../theme.ts";
+import * as commandsModule from "./commands.ts";
 import {
   createCommandController,
   formatPromptHistoryPreview,
@@ -91,6 +92,13 @@ afterEach(() => {
 });
 
 describe("ui/commands", () => {
+  test("commands.ts keeps selection helpers private", () => {
+    const exports = Object.keys(commandsModule);
+
+    expect(exports).not.toContain("applyEffortSelection");
+    expect(exports).not.toContain("applyModelSelection");
+  });
+
   test("showCommandAutocomplete clears the current draft and opens the commands overlay", () => {
     const state = createTestState();
     const runtimeState = { overlay: null as ActiveOverlay | null };

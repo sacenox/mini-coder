@@ -43,7 +43,7 @@ function getErrorMessage(error: unknown): string {
 }
 
 /** Runtime hooks injected from the stateful UI module. */
-export interface UiCommandRuntime {
+interface UiCommandRuntime {
   /** Open an overlay and trigger a re-render. */
   openOverlay: (overlay: ActiveOverlay) => void;
   /** Dismiss the active overlay and trigger a re-render. */
@@ -63,7 +63,7 @@ export interface UiCommandRuntime {
 }
 
 /** Public command actions consumed by `ui.ts` and unit tests. */
-export interface UiCommandController {
+interface UiCommandController {
   /** Apply a model selection and persist it to settings. */
   applyModelSelection: (
     state: AppState,
@@ -85,10 +85,7 @@ export interface UiCommandController {
  * @param state - Application state.
  * @param model - Selected model.
  */
-export function applyModelSelection(
-  state: AppState,
-  model: Model<string>,
-): void {
+function applyModelSelection(state: AppState, model: Model<string>): void {
   state.model = model;
   state.settings = updateSettings(state.settingsPath, {
     defaultModel: `${model.provider}/${model.id}`,
@@ -101,10 +98,7 @@ export function applyModelSelection(
  * @param state - Application state.
  * @param effort - Selected reasoning effort.
  */
-export function applyEffortSelection(
-  state: AppState,
-  effort: ThinkingLevel,
-): void {
+function applyEffortSelection(state: AppState, effort: ThinkingLevel): void {
   state.effort = effort;
   state.settings = updateSettings(state.settingsPath, {
     defaultEffort: effort,

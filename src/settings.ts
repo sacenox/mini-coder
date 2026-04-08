@@ -12,7 +12,7 @@ import { dirname } from "node:path";
 import type { ThinkingLevel } from "@mariozechner/pi-ai";
 
 /** Default reasoning effort when no saved setting exists. */
-export const DEFAULT_EFFORT: ThinkingLevel = "medium";
+const DEFAULT_EFFORT: ThinkingLevel = "medium";
 
 /** Default reasoning visibility when no saved setting exists. */
 export const DEFAULT_SHOW_REASONING = true;
@@ -33,7 +33,7 @@ export interface UserSettings {
 }
 
 /** Resolved startup settings after applying defaults and availability checks. */
-export interface StartupSettings {
+interface StartupSettings {
   /** Model to use for this launch, or `null` if none are available. */
   modelId: string | null;
   /** Effective reasoning effort. */

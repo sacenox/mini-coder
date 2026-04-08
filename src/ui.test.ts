@@ -23,6 +23,7 @@ import {
 } from "./session.ts";
 import { DEFAULT_SHOW_REASONING, DEFAULT_VERBOSE } from "./settings.ts";
 import { DEFAULT_THEME } from "./theme.ts";
+import * as uiModule from "./ui.ts";
 import {
   buildConversationLog,
   createInputController,
@@ -146,6 +147,20 @@ async function stopRunningTurn(
 }
 
 describe("ui rendering", () => {
+  test("ui.ts keeps command and render helpers private", () => {
+    const exports = Object.keys(uiModule);
+
+    expect(exports).not.toContain("applyEffortSelection");
+    expect(exports).not.toContain("applyModelSelection");
+    expect(exports).not.toContain("buildHelpText");
+    expect(exports).not.toContain("formatPromptHistoryPreview");
+    expect(exports).not.toContain("formatRelativeDate");
+    expect(exports).not.toContain("previewToolRenderLines");
+    expect(exports).not.toContain("renderAssistantMessage");
+    expect(exports).not.toContain("renderStatusBar");
+    expect(exports).not.toContain("renderToolResult");
+  });
+
   test("reasoning defaults on and verbose defaults off", () => {
     expect(DEFAULT_SHOW_REASONING).toBe(true);
     expect(DEFAULT_VERBOSE).toBe(false);

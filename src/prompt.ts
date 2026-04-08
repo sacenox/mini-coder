@@ -27,7 +27,7 @@ export interface AgentsMdFile {
 }
 
 /** Options for building the system prompt. */
-export interface BuildSystemPromptOpts {
+interface BuildSystemPromptOpts {
   /** Current working directory. */
   cwd: string;
   /** Current date string (YYYY-MM-DD). */

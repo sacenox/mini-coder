@@ -40,24 +40,7 @@ import {
 import { type ActiveOverlay, renderOverlay } from "./ui/overlay.ts";
 import { renderStatusBar } from "./ui/status.ts";
 
-export {
-  applyEffortSelection,
-  applyModelSelection,
-  formatPromptHistoryPreview,
-  formatRelativeDate,
-} from "./ui/commands.ts";
-export {
-  type ConversationRenderOpts,
-  type PendingToolCall,
-  previewToolRenderLines,
-  renderAssistantMessage,
-  renderToolResult,
-  type ToolRenderLine,
-  type ToolRenderLineKind,
-} from "./ui/conversation.ts";
-export { buildHelpText, type HelpRenderState } from "./ui/help.ts";
 export type { InputController } from "./ui/input.ts";
-export { renderStatusBar } from "./ui/status.ts";
 
 // ---------------------------------------------------------------------------
 // Constants

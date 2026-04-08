@@ -60,7 +60,7 @@ export interface SessionStats {
 }
 
 /** A raw submitted prompt stored for global input-history search. */
-export interface PromptHistoryEntry {
+interface PromptHistoryEntry {
   /** Monotonic row id. */
   id: number;
   /** Exact raw prompt text as submitted by the user. */
@@ -74,7 +74,7 @@ export interface PromptHistoryEntry {
 }
 
 /** Options for appending a raw prompt-history entry. */
-export interface AppendPromptHistoryOpts {
+interface AppendPromptHistoryOpts {
   /** Exact raw prompt text as submitted by the user. */
   text: string;
   /** Working directory where the prompt was submitted. */
@@ -96,7 +96,7 @@ export interface UiMessage {
 }
 
 /** Any message persisted in session history. */
-export type PersistedMessage = Message | UiMessage;
+type PersistedMessage = Message | UiMessage;
 
 /** Options for creating a new session. */
 interface CreateSessionOpts {
@@ -352,7 +352,7 @@ export function createUiMessage(content: string): UiMessage {
  * @param message - Message to inspect.
  * @returns `true` when the message is a {@link UiMessage}.
  */
-export function isUiMessage(message: PersistedMessage): message is UiMessage {
+function isUiMessage(message: PersistedMessage): message is UiMessage {
   return message.role === "ui";
 }
 

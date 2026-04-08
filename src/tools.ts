@@ -62,7 +62,7 @@ function normalizeLineEndings(
 // ---------------------------------------------------------------------------
 
 /** Arguments for the `edit` tool. */
-export interface EditArgs {
+interface EditArgs {
   /** File path (absolute or relative to cwd). */
   path: string;
   /** Exact text to find. Empty string means "create new file". */
@@ -139,13 +139,13 @@ export function executeEdit(args: EditArgs, cwd: string): ToolExecResult {
 // ---------------------------------------------------------------------------
 
 /** Arguments for the `shell` tool. */
-export interface ShellArgs {
+interface ShellArgs {
   /** The command to run. */
   command: string;
 }
 
 /** Options for shell execution. */
-export interface ShellOpts {
+interface ShellOpts {
   /** Maximum output lines before truncation. Default: 1000. */
   maxLines?: number;
   /** Maximum UTF-8 bytes before truncation. Default: 50_000. */
@@ -476,7 +476,7 @@ const IMAGE_MIME_TYPES: Record<string, string> = {
 };
 
 /** Arguments for the `readImage` tool. */
-export interface ReadImageArgs {
+interface ReadImageArgs {
   /** File path (absolute or relative to cwd). */
   path: string;
 }

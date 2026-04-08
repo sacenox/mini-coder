@@ -42,7 +42,7 @@ export interface PendingToolCall {
 }
 
 /** Render options shared by completed and in-progress assistant content. */
-export interface ConversationRenderOpts {
+interface ConversationRenderOpts {
   /** Whether reasoning blocks are visible. */
   showReasoning: boolean;
   /** Whether tool output should be truncated in the UI. */
@@ -72,7 +72,7 @@ interface AssistantRenderState {
 }
 
 /** Semantic line kinds used when rendering tool output in the log. */
-export type ToolRenderLineKind =
+type ToolRenderLineKind =
   | "command"
   | "path"
   | "toolName"

@@ -46,7 +46,7 @@ let isStreaming = false;
 let pendingToolCalls: PendingToolCall[] = [];
 
 /** Hooks implemented by `ui.ts` to bridge controller logic with runtime UI state. */
-export interface UiAgentRuntime {
+interface UiAgentRuntime {
   /** Ensure a persisted session exists for the active conversation. */
   ensureSession: (state: AppState) => NonNullable<AppState["session"]>;
   /** Append a UI-only informational message to the conversation log. */
@@ -64,7 +64,7 @@ export interface UiAgentRuntime {
 }
 
 /** Public controller API for raw input dispatch and streaming state. */
-export interface UiAgentController {
+interface UiAgentController {
   /** Route raw user input through parseInput and dispatch accordingly. */
   handleInput: (raw: string, state: AppState) => void;
 }

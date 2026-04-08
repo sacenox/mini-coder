@@ -41,6 +41,16 @@ test("package.json bin points to a checked-in mc launcher", async () => {
   expect(Bun.file(join(REPO_ROOT, launcher)).size).toBeGreaterThan(0);
 });
 
+test("package.json declares direct UI types and omits redundant diff typings", async () => {
+  const pkg = (await Bun.file(join(REPO_ROOT, "package.json")).json()) as {
+    dependencies?: Record<string, string>;
+    devDependencies?: Record<string, string>;
+  };
+
+  expect(pkg.dependencies).toHaveProperty("@cel-tui/types");
+  expect(pkg.devDependencies).not.toHaveProperty("@types/diff");
+});
+
 test("pack dry-run includes the mc launcher and runtime entrypoint", async () => {
   const result = await packDryRun();
 

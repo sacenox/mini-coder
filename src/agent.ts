@@ -81,7 +81,7 @@ export type AgentEvent =
   | { type: "aborted"; message: AssistantMessage };
 
 /** Options for the agent loop. */
-export interface RunAgentOpts {
+interface RunAgentOpts {
   /** Open database handle. */
   db: Database;
   /** Current session ID. */
@@ -111,7 +111,7 @@ export interface RunAgentOpts {
 }
 
 /** Result of the agent loop. */
-export interface AgentLoopResult {
+interface AgentLoopResult {
   /** The updated message history. */
   messages: Message[];
   /** How the loop ended. */
