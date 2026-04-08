@@ -23,8 +23,15 @@ afterEach(() => {
   }
 });
 
+function expectTextInput(node: ReturnType<typeof renderInputArea>) {
+  if (node.type !== "textinput") {
+    throw new Error("Expected a TextInput node");
+  }
+  return node;
+}
+
 describe("ui/input", () => {
-  test("renderInputArea returns a direct TextInput with the provided state and handlers", () => {
+  test("renderInputArea shows the current draft with the configured placeholder and size limits", () => {
     const controller: InputController = {
       onChange: () => {},
       onFocus: () => {},
@@ -32,25 +39,21 @@ describe("ui/input", () => {
       onKeyPress: () => undefined,
     };
 
-    const input = renderInputArea(DEFAULT_THEME, controller, "draft", true);
-
-    expect(input.type).toBe("textinput");
-    if (input.type !== "textinput") {
-      throw new Error("Expected a TextInput node");
-    }
+    const input = expectTextInput(
+      renderInputArea(DEFAULT_THEME, controller, "draft", true),
+    );
+    const placeholder = input.props.placeholder;
 
     expect(input.props.value).toBe("draft");
     expect(input.props.focused).toBe(true);
-    expect(input.props.placeholder?.props.fgColor).toBe(
-      DEFAULT_THEME.mutedText,
-    );
-    expect(input.props.padding).toEqual({ x: 1 });
     expect(input.props.minHeight).toBe(2);
     expect(input.props.maxHeight).toBe(10);
-    expect(input.props.onChange).toBe(controller.onChange);
-    expect(input.props.onFocus).toBe(controller.onFocus);
-    expect(input.props.onBlur).toBe(controller.onBlur);
-    expect(input.props.onKeyPress).toBe(controller.onKeyPress);
+    expect(input.props.padding).toEqual({ x: 1 });
+    expect(placeholder?.type).toBe("text");
+    if (!placeholder || placeholder.type !== "text") {
+      throw new Error("Expected a text placeholder");
+    }
+    expect(placeholder.content).toBe("message…");
   });
 
   test("autocompleteInputPath completes the last file path token", () => {

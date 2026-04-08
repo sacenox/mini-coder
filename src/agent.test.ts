@@ -63,6 +63,38 @@ const ZERO_USAGE: Usage = {
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 };
 
+function isEventType<TType extends AgentEvent["type"]>(
+  event: AgentEvent,
+  type: TType,
+): event is Extract<AgentEvent, { type: TType }> {
+  return event.type === type;
+}
+
+function expectEvent<TType extends AgentEvent["type"]>(
+  events: AgentEvent[],
+  type: TType,
+): Extract<AgentEvent, { type: TType }> {
+  const event = events.find((candidate) => isEventType(candidate, type));
+  if (!event) {
+    throw new Error(`Expected a ${type} event`);
+  }
+  return event;
+}
+
+function expectLastEvent<TType extends AgentEvent["type"]>(
+  events: AgentEvent[],
+  type: TType,
+): Extract<AgentEvent, { type: TType }> {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event && isEventType(event, type)) {
+      return event;
+    }
+  }
+
+  throw new Error(`Expected a ${type} event`);
+}
+
 /** Built-in tool definitions for tests. */
 function builtinToolDefs(): Tool[] {
   return [shellTool, editTool];
@@ -324,13 +356,9 @@ describe("agent loop", () => {
       onEvent: (e) => events.push(e),
     });
 
-    const textDeltas = events.filter((e) => e.type === "text_delta");
+    const textDeltas = events.filter((event) => event.type === "text_delta");
     expect(textDeltas.length).toBeGreaterThan(0);
-    const lastTextDelta = textDeltas.at(-1);
-    expect(lastTextDelta).toBeDefined();
-    if (!lastTextDelta || lastTextDelta.type !== "text_delta") {
-      throw new Error("Expected a text delta event");
-    }
+    const lastTextDelta = expectLastEvent(events, "text_delta");
     expect(lastTextDelta.content).toEqual([fauxText("Hello world")]);
 
     const doneEvents = events.filter((e) => e.type === "done");
@@ -364,13 +392,11 @@ describe("agent loop", () => {
       onEvent: (e) => events.push(e),
     });
 
-    const thinkingDeltas = events.filter((e) => e.type === "thinking_delta");
+    const thinkingDeltas = events.filter(
+      (event) => event.type === "thinking_delta",
+    );
     expect(thinkingDeltas.length).toBeGreaterThan(0);
-    const lastThinkingDelta = thinkingDeltas.at(-1);
-    expect(lastThinkingDelta).toBeDefined();
-    if (!lastThinkingDelta || lastThinkingDelta.type !== "thinking_delta") {
-      throw new Error("Expected a thinking delta event");
-    }
+    const lastThinkingDelta = expectLastEvent(events, "thinking_delta");
     expect(lastThinkingDelta.content).toEqual([
       fauxThinking("Need to inspect the failing test."),
     ]);
@@ -506,40 +532,11 @@ describe("agent loop", () => {
         onEvent: (event) => events.push(event),
       });
 
-      const toolCallStart = events.find(
-        (event) => event.type === "toolcall_start",
-      );
-      const toolCallDelta = events.find(
-        (event) => event.type === "toolcall_delta",
-      );
-      const toolCallEnd = events.find((event) => event.type === "toolcall_end");
-      const assistantMessage = events.find(
-        (event) => event.type === "assistant_message",
-      );
-      const toolStart = events.find((event) => event.type === "tool_start");
-
-      expect(toolCallStart).toBeDefined();
-      expect(toolCallDelta).toBeDefined();
-      expect(toolCallEnd).toBeDefined();
-      expect(assistantMessage).toBeDefined();
-      expect(toolStart).toBeDefined();
-
-      if (
-        !toolCallStart ||
-        toolCallStart.type !== "toolcall_start" ||
-        !toolCallDelta ||
-        toolCallDelta.type !== "toolcall_delta" ||
-        !toolCallEnd ||
-        toolCallEnd.type !== "toolcall_end" ||
-        !assistantMessage ||
-        assistantMessage.type !== "assistant_message" ||
-        !toolStart ||
-        toolStart.type !== "tool_start"
-      ) {
-        throw new Error(
-          "Expected streamed tool-call, assistant-message, and tool-start events",
-        );
-      }
+      const toolCallStart = expectEvent(events, "toolcall_start");
+      const toolCallDelta = expectEvent(events, "toolcall_delta");
+      const toolCallEnd = expectEvent(events, "toolcall_end");
+      const assistantMessage = expectEvent(events, "assistant_message");
+      const toolStart = expectEvent(events, "tool_start");
 
       expect(toolCallStart.toolCallId).toBe("tool-1");
       expect(toolCallStart.name).toBe("shell");
@@ -853,24 +850,9 @@ describe("agent loop", () => {
       onEvent: (e) => events.push(e),
     });
 
-    const toolStart = events.find((event) => event.type === "tool_start");
-    const toolDelta = events.find((event) => event.type === "tool_delta");
-    const toolEnd = events.find((event) => event.type === "tool_end");
-
-    expect(toolStart).toBeDefined();
-    expect(toolDelta).toBeDefined();
-    expect(toolEnd).toBeDefined();
-
-    if (
-      !toolStart ||
-      toolStart.type !== "tool_start" ||
-      !toolDelta ||
-      toolDelta.type !== "tool_delta" ||
-      !toolEnd ||
-      toolEnd.type !== "tool_end"
-    ) {
-      throw new Error("Expected tool start, delta, and end events");
-    }
+    const toolStart = expectEvent(events, "tool_start");
+    const toolDelta = expectEvent(events, "tool_delta");
+    const toolEnd = expectEvent(events, "tool_end");
 
     expect(toolDelta.toolCallId).toBe(toolStart.toolCallId);
     expect(toolEnd.toolCallId).toBe(toolStart.toolCallId);
@@ -1098,11 +1080,13 @@ describe("agent loop", () => {
     // Should still complete — the error tool result lets the model self-correct
     expect(result.messages.length).toBeGreaterThanOrEqual(4);
     // The tool result should be an error
-    const toolResult = result.messages.find((m) => m.role === "toolResult");
-    expect(toolResult).toBeDefined();
-    if (toolResult?.role === "toolResult") {
-      expect(toolResult.isError).toBe(true);
+    const toolResult = result.messages.find(
+      (message) => message.role === "toolResult",
+    );
+    if (!toolResult || toolResult.role !== "toolResult") {
+      throw new Error("Expected tool result message");
     }
+    expect(toolResult.isError).toBe(true);
   });
 
   test("converts thrown tool handler errors into error tool results", async () => {
@@ -1146,7 +1130,6 @@ describe("agent loop", () => {
     const toolResult = result.messages.find(
       (message) => message.role === "toolResult",
     );
-    expect(toolResult).toBeDefined();
     if (!toolResult || toolResult.role !== "toolResult") {
       throw new Error("Expected tool result message");
     }
@@ -1155,26 +1138,9 @@ describe("agent loop", () => {
       { type: "text", text: "Tool shell failed: kaboom" },
     ]);
 
-    const toolStart = events.find((event) => event.type === "tool_start");
-    const toolEnd = events.find((event) => event.type === "tool_end");
-    const toolResultEvent = events.find(
-      (event) => event.type === "tool_result",
-    );
-
-    expect(toolStart).toBeDefined();
-    expect(toolEnd).toBeDefined();
-    expect(toolResultEvent).toBeDefined();
-
-    if (
-      !toolStart ||
-      toolStart.type !== "tool_start" ||
-      !toolEnd ||
-      toolEnd.type !== "tool_end" ||
-      !toolResultEvent ||
-      toolResultEvent.type !== "tool_result"
-    ) {
-      throw new Error("Expected tool start/end/result events");
-    }
+    const toolStart = expectEvent(events, "tool_start");
+    const toolEnd = expectEvent(events, "tool_end");
+    const toolResultEvent = expectEvent(events, "tool_result");
 
     expect(toolEnd.result.isError).toBe(true);
     expect(toolEnd.result.content).toEqual([

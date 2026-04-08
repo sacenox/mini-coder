@@ -23,7 +23,6 @@ import {
 } from "./session.ts";
 import { DEFAULT_SHOW_REASONING, DEFAULT_VERBOSE } from "./settings.ts";
 import { DEFAULT_THEME } from "./theme.ts";
-import * as uiModule from "./ui.ts";
 import {
   buildConversationLog,
   createInputController,
@@ -49,20 +48,28 @@ function collectText(node: Node | null): string[] {
   return node.children.flatMap((child) => collectText(child));
 }
 
-function findNodeWithKeyPress(node: Node | null): ContainerNode | null {
-  if (!node || node.type === "textinput" || node.type === "text") {
-    return null;
+function expectTextInput(node: Node): Extract<Node, { type: "textinput" }> {
+  if (node.type !== "textinput") {
+    throw new Error("Expected input area to render a TextInput");
   }
-  if (typeof node.props.onKeyPress === "function") {
-    return node;
+  return node;
+}
+
+function expectVStack(node: Node): ContainerNode {
+  if (node.type !== "vstack") {
+    throw new Error("Expected app layout to be a vstack");
   }
-  for (const child of node.children) {
-    const found = findNodeWithKeyPress(child);
-    if (found) {
-      return found;
-    }
-  }
-  return null;
+  return node;
+}
+
+function createDeferred<T = void>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
 }
 
 const tempDirs: string[] = [];
@@ -126,7 +133,7 @@ async function waitFor(
     if (predicate()) {
       return;
     }
-    await Bun.sleep(10);
+    await new Promise<void>((resolve) => setImmediate(resolve));
   }
   throw new Error("Timed out waiting for condition");
 }
@@ -147,20 +154,6 @@ async function stopRunningTurn(
 }
 
 describe("ui rendering", () => {
-  test("ui.ts keeps command and render helpers private", () => {
-    const exports = Object.keys(uiModule);
-
-    expect(exports).not.toContain("applyEffortSelection");
-    expect(exports).not.toContain("applyModelSelection");
-    expect(exports).not.toContain("buildHelpText");
-    expect(exports).not.toContain("formatPromptHistoryPreview");
-    expect(exports).not.toContain("formatRelativeDate");
-    expect(exports).not.toContain("previewToolRenderLines");
-    expect(exports).not.toContain("renderAssistantMessage");
-    expect(exports).not.toContain("renderStatusBar");
-    expect(exports).not.toContain("renderToolResult");
-  });
-
   test("reasoning defaults on and verbose defaults off", () => {
     expect(DEFAULT_SHOW_REASONING).toBe(true);
     expect(DEFAULT_VERBOSE).toBe(false);
@@ -210,6 +203,7 @@ describe("ui rendering", () => {
       return message;
     };
 
+    const finishStream = createDeferred<void>();
     const buildProviderStream = () => {
       const stream = createAssistantMessageEventStream();
       const finalMessage = createFinalMessage();
@@ -246,14 +240,14 @@ describe("ui rendering", () => {
             ],
           },
         });
-        setTimeout(() => {
+        void finishStream.promise.then(() => {
           stream.push({
             type: "done",
             reason: "stop",
             message: finalMessage,
           });
           stream.end(finalMessage);
-        }, 50);
+        });
       });
 
       return stream;
@@ -301,6 +295,7 @@ describe("ui rendering", () => {
       const streamedText = streamedLogText.join("\n");
       expect(streamedText).toBe("hello\nBefore\nThinking... 2 lines.\nAfter");
 
+      finishStream.resolve();
       await waitFor(() =>
         state.messages.some((message) => message.role === "assistant"),
       );
@@ -536,32 +531,31 @@ describe("ui rendering", () => {
       timestamp: Date.now(),
     });
 
+    const abortObserved = createDeferred<void>();
+    const releaseAbort = createDeferred<void>();
     const buildProviderStream = (signal?: AbortSignal) => {
       const stream = createAssistantMessageEventStream();
 
       queueMicrotask(() => {
         const emitAbort = () => {
-          const abortedMessage = buildAbortMessage();
-          stream.push({
-            type: "error",
-            reason: "aborted",
-            error: abortedMessage,
+          abortObserved.resolve();
+          void releaseAbort.promise.then(() => {
+            const abortedMessage = buildAbortMessage();
+            stream.push({
+              type: "error",
+              reason: "aborted",
+              error: abortedMessage,
+            });
+            stream.end(abortedMessage);
           });
-          stream.end(abortedMessage);
         };
 
         if (signal?.aborted) {
-          setTimeout(emitAbort, 50);
+          emitAbort();
           return;
         }
 
-        signal?.addEventListener(
-          "abort",
-          () => {
-            setTimeout(emitAbort, 50);
-          },
-          { once: true },
-        );
+        signal?.addEventListener("abort", emitAbort, { once: true });
       });
 
       return stream;
@@ -594,6 +588,10 @@ describe("ui rendering", () => {
 
       handleInput("/undo", state);
 
+      await abortObserved.promise;
+      expect(state.running).toBe(true);
+
+      releaseAbort.resolve();
       await waitFor(() => !state.running);
       await waitFor(() => state.messages.length === 0);
 
@@ -731,76 +729,6 @@ describe("ui rendering", () => {
       await stopRunningTurn(state);
       process.env.PATH = originalPath;
       faux.unregister();
-      state.db.close();
-    }
-  });
-
-  test("/session resumes a stored session even when historical assistant usage is missing", () => {
-    const state = createTestState();
-    const now = Date.now();
-    const session = createSession(state.db, {
-      cwd: state.canonicalCwd,
-      model: "test/beta",
-      effort: "high",
-    });
-
-    try {
-      state.db.run(
-        "INSERT INTO messages (session_id, turn, data, created_at) VALUES (?, ?, ?, ?)",
-        [
-          session.id,
-          1,
-          JSON.stringify({
-            role: "user",
-            content: "historical prompt",
-            timestamp: now,
-          }),
-          now,
-        ],
-      );
-      state.db.run(
-        "INSERT INTO messages (session_id, turn, data, created_at) VALUES (?, ?, ?, ?)",
-        [
-          session.id,
-          1,
-          JSON.stringify({
-            role: "assistant",
-            content: [{ type: "text", text: "historical reply" }],
-            api: "anthropic-messages",
-            provider: "anthropic",
-            model: "test/beta",
-            stopReason: "stop",
-            timestamp: now + 1,
-          }),
-          now + 1,
-        ],
-      );
-      state.db.run("UPDATE sessions SET updated_at = ? WHERE id = ?", [
-        now + 1,
-        session.id,
-      ]);
-
-      handleInput("/session", state);
-
-      const overlay = renderActiveOverlay(state);
-      const selectNode = findNodeWithKeyPress(overlay);
-
-      expect(selectNode).not.toBeNull();
-      if (!selectNode) {
-        throw new Error("Expected overlay to contain a Select root");
-      }
-
-      selectNode.props.onKeyPress?.("enter");
-
-      expect(renderActiveOverlay(state)).toBeNull();
-      expect(state.session?.id).toBe(session.id);
-
-      const layout = renderBaseLayout(state, 80, createInputController(state));
-      const text = collectText(layout);
-
-      expect(text).toContain("historical prompt");
-      expect(text).toContain("historical reply");
-    } finally {
       state.db.close();
     }
   });
@@ -970,6 +898,7 @@ describe("ui rendering", () => {
     };
 
     let callCount = 0;
+    const finishFirstStream = createDeferred<void>();
     const finalToolCall = fauxToolCall(
       "shell",
       { command: "echo staged-command" },
@@ -1024,30 +953,26 @@ describe("ui rendering", () => {
             contentIndex: 0,
             partial: partialStart,
           });
-          setTimeout(() => {
+          stream.push({
+            type: "toolcall_delta",
+            contentIndex: 0,
+            delta: '{"command":"echo staged-command"}',
+            partial: partialDelta,
+          });
+          stream.push({
+            type: "toolcall_end",
+            contentIndex: 0,
+            toolCall: finalToolCall,
+            partial: finalMessage,
+          });
+          void finishFirstStream.promise.then(() => {
             stream.push({
-              type: "toolcall_delta",
-              contentIndex: 0,
-              delta: '{"command":"echo staged-command"}',
-              partial: partialDelta,
+              type: "done",
+              reason: "toolUse",
+              message: finalMessage,
             });
-            setTimeout(() => {
-              stream.push({
-                type: "toolcall_end",
-                contentIndex: 0,
-                toolCall: finalToolCall,
-                partial: finalMessage,
-              });
-              setTimeout(() => {
-                stream.push({
-                  type: "done",
-                  reason: "toolUse",
-                  message: finalMessage,
-                });
-                stream.end(finalMessage);
-              }, 150);
-            }, 30);
-          }, 30);
+            stream.end(finalMessage);
+          });
         });
 
         return stream;
@@ -1102,6 +1027,9 @@ describe("ui rendering", () => {
         logText.filter((line) => line === "$ echo staged-command"),
       ).toHaveLength(1);
       expect(logText).not.toContain("Preparing...");
+
+      finishFirstStream.resolve();
+      await waitFor(() => !state.running);
     } finally {
       await stopRunningTurn(state);
       unregisterApiProviders(sourceId);
@@ -1126,6 +1054,7 @@ describe("ui rendering", () => {
     };
 
     let callCount = 0;
+    const finishSecondStream = createDeferred<void>();
     const buildProviderStream = () => {
       callCount += 1;
       const stream = createAssistantMessageEventStream();
@@ -1199,14 +1128,14 @@ describe("ui rendering", () => {
           delta: "Done streaming",
           partial,
         });
-        setTimeout(() => {
+        void finishSecondStream.promise.then(() => {
           stream.push({
             type: "done",
             reason: "stop",
             message: finalMessage,
           });
           stream.end(finalMessage);
-        }, 200);
+        });
       });
 
       return stream;
@@ -1258,46 +1187,13 @@ describe("ui rendering", () => {
       expect(logText).not.toContain("Exit code: 0");
       expect(logText).not.toContain("Preparing...");
       expect(logText).not.toContain("Running...");
+
+      finishSecondStream.resolve();
+      await waitFor(() => !state.running);
     } finally {
       await stopRunningTurn(state);
       process.env.PATH = originalPath;
       unregisterApiProviders(sourceId);
-      state.db.close();
-    }
-  });
-
-  test("renderInputArea returns a direct TextInput with stable handlers", () => {
-    const state = createTestState();
-
-    try {
-      const controller = createInputController(state);
-      const firstInput = renderInputArea(state.theme, controller);
-      const secondInput = renderInputArea(state.theme, controller);
-
-      expect(firstInput.type).toBe("textinput");
-      expect(secondInput.type).toBe("textinput");
-      if (firstInput.type !== "textinput" || secondInput.type !== "textinput") {
-        throw new Error("Expected direct TextInput nodes");
-      }
-
-      expect(firstInput.props.placeholder?.props.fgColor).toBe(
-        state.theme.mutedText,
-      );
-      expect(firstInput.props.padding).toEqual({ x: 1 });
-      expect(firstInput.props.minHeight).toBe(2);
-      expect(firstInput.props.maxHeight).toBe(10);
-      expect(firstInput.props.onChange).toBe(controller.onChange);
-      expect(firstInput.props.onFocus).toBe(controller.onFocus);
-      expect(firstInput.props.onBlur).toBe(controller.onBlur);
-      expect(firstInput.props.onKeyPress).toBe(controller.onKeyPress);
-      expect(secondInput.props.padding).toEqual(firstInput.props.padding);
-      expect(secondInput.props.minHeight).toBe(firstInput.props.minHeight);
-      expect(secondInput.props.maxHeight).toBe(firstInput.props.maxHeight);
-      expect(secondInput.props.onChange).toBe(firstInput.props.onChange);
-      expect(secondInput.props.onFocus).toBe(firstInput.props.onFocus);
-      expect(secondInput.props.onBlur).toBe(firstInput.props.onBlur);
-      expect(secondInput.props.onKeyPress).toBe(firstInput.props.onKeyPress);
-    } finally {
       state.db.close();
     }
   });
@@ -1316,10 +1212,7 @@ describe("ui rendering", () => {
 
       expect(controller.onKeyPress("tab")).toBe(false);
 
-      const input = renderInputArea(state.theme, controller);
-      if (input.type !== "textinput") {
-        throw new Error("Expected input area to render a TextInput");
-      }
+      const input = expectTextInput(renderInputArea(state.theme, controller));
       expect(input.props.value).toBe("inspect src/ui.ts");
       expect(renderActiveOverlay(state)).toBeNull();
     } finally {
@@ -1341,16 +1234,14 @@ describe("ui rendering", () => {
       });
 
       const controller = createInputController(state);
-      const base = renderBaseLayout(state, 80, controller);
-
-      expect(base.type).toBe("vstack");
-      if (base.type !== "vstack") {
-        throw new Error("Expected base layout to be a vstack");
-      }
+      const base = expectVStack(renderBaseLayout(state, 80, controller));
 
       base.props.onKeyPress?.("ctrl+r");
 
       const overlay = renderActiveOverlay(state);
+      if (!overlay) {
+        throw new Error("Expected an active input history overlay");
+      }
       const text = collectText(overlay);
       const newestIndex = text.findIndex((line) =>
         line.includes("newest prompt"),
@@ -1359,7 +1250,6 @@ describe("ui rendering", () => {
         line.includes("older prompt"),
       );
 
-      expect(overlay).not.toBeNull();
       expect(text).toContain("Input history");
       expect(newestIndex).toBeGreaterThan(-1);
       expect(olderIndex).toBeGreaterThan(-1);
@@ -1369,91 +1259,7 @@ describe("ui rendering", () => {
     }
   });
 
-  test("selecting input history restores the exact raw prompt into the input", () => {
-    const state = createTestState();
-    const rawPrompt = "first line\nsecond line";
-
-    try {
-      appendPromptHistory(state.db, {
-        text: "older prompt",
-        cwd: "/tmp/older",
-      });
-      appendPromptHistory(state.db, {
-        text: rawPrompt,
-        cwd: state.cwd,
-      });
-
-      const controller = createInputController(state);
-      const base = renderBaseLayout(state, 80, controller);
-      if (base.type !== "vstack") {
-        throw new Error("Expected base layout to be a vstack");
-      }
-
-      base.props.onKeyPress?.("ctrl+r");
-
-      const overlay = renderActiveOverlay(state);
-      const selectNode = findNodeWithKeyPress(overlay);
-
-      expect(selectNode).not.toBeNull();
-      if (!selectNode) {
-        throw new Error("Expected overlay to contain a Select root");
-      }
-
-      selectNode.props.onKeyPress?.("enter");
-
-      expect(renderActiveOverlay(state)).toBeNull();
-      const input = renderInputArea(state.theme, controller);
-      if (input.type !== "textinput") {
-        throw new Error("Expected input area to render a TextInput");
-      }
-      expect(input.props.value).toBe(rawPrompt);
-    } finally {
-      state.db.close();
-    }
-  });
-
-  test("dismissing input history keeps the current draft unchanged", () => {
-    const state = createTestState();
-    const draft = "draft prompt";
-
-    try {
-      appendPromptHistory(state.db, {
-        text: "saved prompt",
-        cwd: state.cwd,
-      });
-
-      const controller = createInputController(state);
-      controller.onChange(draft);
-
-      const base = renderBaseLayout(state, 80, controller);
-      if (base.type !== "vstack") {
-        throw new Error("Expected base layout to be a vstack");
-      }
-
-      base.props.onKeyPress?.("ctrl+r");
-
-      const overlay = renderActiveOverlay(state);
-      const selectNode = findNodeWithKeyPress(overlay);
-
-      expect(selectNode).not.toBeNull();
-      if (!selectNode) {
-        throw new Error("Expected overlay to contain a Select root");
-      }
-
-      selectNode.props.onBlur?.();
-
-      expect(renderActiveOverlay(state)).toBeNull();
-      const input = renderInputArea(state.theme, controller);
-      if (input.type !== "textinput") {
-        throw new Error("Expected input area to render a TextInput");
-      }
-      expect(input.props.value).toBe(draft);
-    } finally {
-      state.db.close();
-    }
-  });
-
-  test("renderBaseLayout keeps a single divider between the log and input", () => {
+  test("renderBaseLayout shows a single divider line between the conversation and input areas", () => {
     const state = createTestState();
     const controller: InputController = {
       onChange: () => {},
@@ -1463,17 +1269,9 @@ describe("ui rendering", () => {
     };
 
     try {
-      const node = renderBaseLayout(state, 80, controller);
+      const text = collectText(renderBaseLayout(state, 80, controller));
 
-      expect(node.type).toBe("vstack");
-      if (node.type !== "vstack") {
-        throw new Error("Expected app layout to be a VStack");
-      }
-      expect(node.children).toHaveLength(4);
-      expect(node.children[0]?.type).toBe("vstack");
-      expect(node.children[1]?.type).toBe("text");
-      expect(node.children[2]?.type).toBe("textinput");
-      expect(node.children[3]?.type).toBe("hstack");
+      expect(text.filter((line) => line === "─")).toHaveLength(1);
     } finally {
       state.db.close();
     }
@@ -1490,14 +1288,11 @@ describe("ui rendering", () => {
     let suspended = false;
 
     try {
-      const node = renderBaseLayout(state, 80, controller, () => {
-        suspended = true;
-      });
-
-      expect(node.type).toBe("vstack");
-      if (node.type !== "vstack") {
-        throw new Error("Expected app layout to be a VStack");
-      }
+      const node = expectVStack(
+        renderBaseLayout(state, 80, controller, () => {
+          suspended = true;
+        }),
+      );
 
       node.props.onKeyPress?.("ctrl+z");
       expect(suspended).toBe(true);

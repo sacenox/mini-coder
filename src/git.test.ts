@@ -25,6 +25,15 @@ afterEach(() => {
   rmSync(tmp, { recursive: true, force: true });
 });
 
+function expectGitState(
+  state: Awaited<ReturnType<typeof getGitState>>,
+): NonNullable<Awaited<ReturnType<typeof getGitState>>> {
+  if (!state) {
+    throw new Error("Expected a git state snapshot");
+  }
+  return state;
+}
+
 /** Run a git command in the temp directory. */
 async function git(args: string, cwd = tmp): Promise<string> {
   const proc = Bun.spawn(["git", ...args.split(" ")], {
@@ -64,37 +73,36 @@ describe("getGitState", () => {
 
   test("detects repo root", async () => {
     await initRepo();
-    const state = await getGitState(tmp);
-    expect(state).not.toBeNull();
-    expect(state!.root).toBe(canonicalizePath(tmp));
+    const state = expectGitState(await getGitState(tmp));
+    expect(state.root).toBe(canonicalizePath(tmp));
   });
 
   test("gets current branch name", async () => {
     await initRepo();
-    const state = await getGitState(tmp);
-    expect(state!.branch).toBeOneOf(["main", "master"]);
+    const state = expectGitState(await getGitState(tmp));
+    expect(state.branch).toBeOneOf(["main", "master"]);
   });
 
   test("counts untracked files", async () => {
     await initRepo();
     writeFileSync(join(tmp, "new.txt"), "untracked");
-    const state = await getGitState(tmp);
-    expect(state!.untracked).toBe(1);
+    const state = expectGitState(await getGitState(tmp));
+    expect(state.untracked).toBe(1);
   });
 
   test("counts modified files", async () => {
     await initRepo();
     writeFileSync(join(tmp, "README.md"), "modified\n");
-    const state = await getGitState(tmp);
-    expect(state!.modified).toBe(1);
+    const state = expectGitState(await getGitState(tmp));
+    expect(state.modified).toBe(1);
   });
 
   test("counts staged files", async () => {
     await initRepo();
     writeFileSync(join(tmp, "README.md"), "staged\n");
     await git("add README.md");
-    const state = await getGitState(tmp);
-    expect(state!.staged).toBe(1);
+    const state = expectGitState(await getGitState(tmp));
+    expect(state.staged).toBe(1);
   });
 
   test("counts mixed states correctly", async () => {
@@ -107,17 +115,17 @@ describe("getGitState", () => {
     // Add a modified (but not staged) file — modify README again after staging
     writeFileSync(join(tmp, "README.md"), "staged then modified\n");
 
-    const state = await getGitState(tmp);
-    expect(state!.staged).toBe(1);
-    expect(state!.modified).toBe(1);
-    expect(state!.untracked).toBe(1);
+    const state = expectGitState(await getGitState(tmp));
+    expect(state.staged).toBe(1);
+    expect(state.modified).toBe(1);
+    expect(state.untracked).toBe(1);
   });
 
   test("returns zero ahead/behind when no upstream", async () => {
     await initRepo();
-    const state = await getGitState(tmp);
-    expect(state!.ahead).toBe(0);
-    expect(state!.behind).toBe(0);
+    const state = expectGitState(await getGitState(tmp));
+    expect(state.ahead).toBe(0);
+    expect(state.behind).toBe(0);
   });
 
   test("detects ahead count relative to upstream", async () => {
@@ -138,9 +146,9 @@ describe("getGitState", () => {
     await git("add .", work);
     await git("commit -m second", work);
 
-    const state = await getGitState(work);
-    expect(state!.ahead).toBe(1);
-    expect(state!.behind).toBe(0);
+    const state = expectGitState(await getGitState(work));
+    expect(state.ahead).toBe(1);
+    expect(state.behind).toBe(0);
   });
 
   test("works from a subdirectory", async () => {
@@ -148,9 +156,8 @@ describe("getGitState", () => {
     const sub = join(tmp, "src", "deep");
     mkdirSync(sub, { recursive: true });
 
-    const state = await getGitState(sub);
-    expect(state).not.toBeNull();
-    expect(state!.root).toBe(canonicalizePath(tmp));
+    const state = expectGitState(await getGitState(sub));
+    expect(state.root).toBe(canonicalizePath(tmp));
   });
 
   test("returns the canonical repo root when accessed through a symlink", async () => {
@@ -158,8 +165,7 @@ describe("getGitState", () => {
     mkdirSync(join(tmp, "src"), { recursive: true });
     symlinkSync(tmp, join(tmp, "alias"));
 
-    const state = await getGitState(join(tmp, "alias", "src"));
-    expect(state).not.toBeNull();
-    expect(state!.root).toBe(canonicalizePath(tmp));
+    const state = expectGitState(await getGitState(join(tmp, "alias", "src")));
+    expect(state.root).toBe(canonicalizePath(tmp));
   });
 });

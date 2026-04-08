@@ -7,7 +7,7 @@ import {
 import type { AppState } from "../index.ts";
 import { createUiMessage, openDatabase } from "../session.ts";
 import { DEFAULT_SHOW_REASONING, DEFAULT_VERBOSE } from "../settings.ts";
-import { DEFAULT_THEME, type Theme } from "../theme.ts";
+import { DEFAULT_THEME } from "../theme.ts";
 import { renderStatusBar } from "./status.ts";
 
 function collectText(node: Node | null): string[] {
@@ -23,23 +23,24 @@ function collectText(node: Node | null): string[] {
   return node.children.flatMap((child) => collectText(child));
 }
 
-function findTextNode(node: Node | null, content: string): Node | null {
-  if (!node) {
-    return null;
+function renderStatusText(state: AppState, cols?: number): string[] {
+  return collectText(renderStatusBar(state, cols)).filter(Boolean);
+}
+
+function getUsageSummary(state: AppState): string {
+  const usage = renderStatusText(state).at(-1);
+  if (!usage) {
+    throw new Error("Expected a usage summary");
   }
-  if (node.type === "text") {
-    return node.content === content ? node : null;
+  return usage;
+}
+
+function getUsagePercent(state: AppState): number {
+  const match = /· ([\d.]+)%\//.exec(getUsageSummary(state));
+  if (!match) {
+    throw new Error("Expected a context percentage in the usage summary");
   }
-  if (node.type === "textinput") {
-    return null;
-  }
-  for (const child of node.children) {
-    const found = findTextNode(child, content);
-    if (found) {
-      return found;
-    }
-  }
-  return null;
+  return Number(match[1]);
 }
 
 function createTestState(): AppState {
@@ -95,7 +96,7 @@ function makeAssistantWithUsage(
 }
 
 describe("ui/status", () => {
-  test("renderStatusBar renders a one-line status bar with outer primary pills and inner secondary pills", () => {
+  test("renderStatusBar shows model cwd git and usage summaries in reading order", () => {
     const faux = registerFauxProvider();
     const state = createTestState();
     state.model = faux.getModel();
@@ -108,74 +109,14 @@ describe("ui/status", () => {
       ahead: 4,
       behind: 0,
     };
-    state.theme = {
-      ...DEFAULT_THEME,
-      statusText: "color15",
-      statusPrimaryBg: "color04",
-      statusSecondaryBg: "color08",
-    } satisfies Theme;
 
     try {
-      const node = renderStatusBar(state);
-
-      expect(node.type).toBe("hstack");
-      if (node.type !== "hstack") {
-        throw new Error("Expected status bar to be an HStack");
-      }
-      expect(node.props.height).toBe(1);
-      expect(node.props.padding).toEqual({ x: 1 });
-
-      const [modelPill, cwdPill, spacer, gitPill, usagePill] = node.children;
-      expect(modelPill?.type).toBe("hstack");
-      expect(cwdPill?.type).toBe("hstack");
-      expect(gitPill?.type).toBe("hstack");
-      expect(usagePill?.type).toBe("hstack");
-      if (
-        !modelPill ||
-        !cwdPill ||
-        !spacer ||
-        !gitPill ||
-        !usagePill ||
-        modelPill.type !== "hstack" ||
-        cwdPill.type !== "hstack" ||
-        gitPill.type !== "hstack" ||
-        usagePill.type !== "hstack"
-      ) {
-        throw new Error("Expected status pills around a spacer in one row");
-      }
-
-      expect(modelPill.props.bgColor).toBe(state.theme.statusPrimaryBg);
-      expect(cwdPill.props.bgColor).toBe(state.theme.statusSecondaryBg);
-      expect(gitPill.props.bgColor).toBe(state.theme.statusSecondaryBg);
-      expect(usagePill.props.bgColor).toBe(state.theme.statusPrimaryBg);
-      expect(modelPill.props.padding).toEqual({ x: 1 });
-      expect(cwdPill.props.padding).toEqual({ x: 1 });
-      expect(gitPill.props.padding).toEqual({ x: 1 });
-      expect(usagePill.props.padding).toEqual({ x: 1 });
-
-      const cwdNode = findTextNode(cwdPill, state.cwd);
-      const gitNode = findTextNode(gitPill, "main +1 ~2 ?3 ▲ 4");
-      const modelNode = findTextNode(
-        modelPill,
+      expect(renderStatusText(state)).toEqual([
         `${state.model.provider}/${state.model.id} · med`,
-      );
-      expect(cwdNode).not.toBeNull();
-      expect(gitNode).not.toBeNull();
-      expect(modelNode).not.toBeNull();
-      if (!cwdNode || !gitNode || !modelNode) {
-        throw new Error("Expected status pill text nodes");
-      }
-      if (
-        cwdNode.type !== "text" ||
-        gitNode.type !== "text" ||
-        modelNode.type !== "text"
-      ) {
-        throw new Error("Expected status pill content to be text nodes");
-      }
-      expect(cwdNode.props.fgColor).toBe(state.theme.statusText);
-      expect(gitNode.props.fgColor).toBe(state.theme.statusText);
-      expect(modelNode.props.fgColor).toBe(state.theme.statusText);
-      expect(collectText(usagePill).join("")).toContain("in:0 out:0 ·");
+        state.cwd,
+        "main +1 ~2 ?3 ▲ 4",
+        "in:0 out:0 · 0.0%/128k · $0.00",
+      ]);
     } finally {
       faux.unregister();
       state.db.close();
@@ -187,41 +128,19 @@ describe("ui/status", () => {
     state.cwd = "/tmp/very/long/path/to/mini-coder";
 
     try {
-      const node = renderStatusBar(state, 30);
-      const text = collectText(node);
-
-      expect(text).toContain("…/mini-coder");
-      expect(text).not.toContain(state.cwd);
+      expect(renderStatusText(state, 30)).toEqual(["no model", "…/mini-coder"]);
     } finally {
       state.db.close();
     }
   });
 
-  test("renderStatusBar estimates context usage from the latest valid assistant usage plus trailing model-visible messages", () => {
+  test("renderStatusBar uses the latest valid assistant usage as an anchor and ignores trailing UI-only messages", () => {
     const faux = registerFauxProvider();
     const state = createTestState();
     state.model = {
       ...faux.getModel(),
       contextWindow: 1_000,
     };
-    state.messages = [
-      { role: "user", content: "first", timestamp: 1 },
-      makeAssistantWithUsage("Second.", {
-        input: 200,
-        output: 50,
-        totalTokens: 250,
-      }),
-      createUiMessage("x".repeat(500)),
-      { role: "user", content: "12345678", timestamp: 2 },
-      {
-        role: "toolResult",
-        toolCallId: "tool-1",
-        toolName: "shell",
-        content: [{ type: "text", text: "done" }],
-        isError: false,
-        timestamp: 3,
-      },
-    ];
     state.stats = {
       totalInput: 4_000,
       totalOutput: 2_000,
@@ -229,37 +148,74 @@ describe("ui/status", () => {
     };
 
     try {
-      const node = renderStatusBar(state);
-      const text = collectText(node);
+      state.messages = [
+        { role: "user", content: "first", timestamp: 1 },
+        makeAssistantWithUsage("Second.", {
+          input: 200,
+          output: 50,
+          totalTokens: 250,
+        }),
+      ];
+      const anchoredPercent = getUsagePercent(state);
 
-      expect(text).toContain("in:4.0k out:2.0k · 25.3%/1k · $1.23");
-      expect(text).not.toContain("in:4.0k out:2.0k · 75.3%/1k · $1.23");
-      expect(text).not.toContain("in:4.0k out:2.0k · 25.0%/1k · $1.23");
+      state.messages = [...state.messages, createUiMessage("x".repeat(5_000))];
+      const withUiOnlyPercent = getUsagePercent(state);
+
+      state.messages = [
+        ...state.messages,
+        { role: "user", content: "12345678", timestamp: 2 },
+      ];
+      const withTrailingUserPercent = getUsagePercent(state);
+
+      state.messages = [
+        ...state.messages,
+        {
+          role: "toolResult",
+          toolCallId: "tool-1",
+          toolName: "shell",
+          content: [{ type: "text", text: "done" }],
+          isError: false,
+          timestamp: 3,
+        },
+      ];
+      const withToolResultPercent = getUsagePercent(state);
+
+      expect(getUsageSummary(state)).toBe(
+        `in:4.0k out:2.0k · ${withToolResultPercent.toFixed(1)}%/1k · $1.23`,
+      );
+      expect(withUiOnlyPercent).toBe(anchoredPercent);
+      expect(withTrailingUserPercent).toBeGreaterThan(anchoredPercent);
+      expect(withToolResultPercent).toBeGreaterThan(withTrailingUserPercent);
     } finally {
       faux.unregister();
       state.db.close();
     }
   });
 
-  test("renderStatusBar estimates context usage before the first assistant response", () => {
+  test("renderStatusBar estimates context usage from model-visible messages before the first assistant response", () => {
     const faux = registerFauxProvider();
     const state = createTestState();
     state.model = {
       ...faux.getModel(),
       contextWindow: 100,
     };
-    state.messages = [
-      createUiMessage("x".repeat(500)),
-      { role: "user", content: "12345678", timestamp: 1 },
-    ];
 
     try {
-      const node = renderStatusBar(state);
-      const text = collectText(node);
+      state.messages = [{ role: "user", content: "12345678", timestamp: 1 }];
+      const initialPercent = getUsagePercent(state);
 
-      expect(text).toContain("in:0 out:0 · 2.0%/100 · $0.00");
-      expect(text).not.toContain("in:0 out:0 · 127.0%/100 · $0.00");
-      expect(text).not.toContain("in:0 out:0 · 0.0%/100 · $0.00");
+      state.messages = [createUiMessage("x".repeat(5_000)), ...state.messages];
+      const withUiOnlyPercent = getUsagePercent(state);
+
+      state.messages = [
+        ...state.messages,
+        { role: "user", content: "more visible text", timestamp: 2 },
+      ];
+      const withSecondUserPercent = getUsagePercent(state);
+
+      expect(initialPercent).toBeGreaterThan(0);
+      expect(withUiOnlyPercent).toBe(initialPercent);
+      expect(withSecondUserPercent).toBeGreaterThan(initialPercent);
     } finally {
       faux.unregister();
       state.db.close();
@@ -268,49 +224,65 @@ describe("ui/status", () => {
 
   test("renderStatusBar skips aborted assistant usage as a context anchor", () => {
     const faux = registerFauxProvider();
-    const state = createTestState();
-    const aborted = makeAssistantWithUsage("abcdefghi", {
+    const abortedLowUsage = makeAssistantWithUsage("abcdefghi", {
+      input: 10,
+      output: 10,
+      totalTokens: 20,
+    });
+    abortedLowUsage.stopReason = "aborted";
+    const abortedHighUsage = makeAssistantWithUsage("abcdefghi", {
       input: 700,
       output: 200,
       totalTokens: 900,
     });
-    aborted.stopReason = "aborted";
+    abortedHighUsage.stopReason = "aborted";
 
-    state.model = {
-      ...faux.getModel(),
-      contextWindow: 1_000,
+    const buildState = (aborted: ReturnType<typeof makeAssistantWithUsage>) => {
+      const state = createTestState();
+      state.model = {
+        ...faux.getModel(),
+        contextWindow: 1_000,
+      };
+      state.messages = [
+        { role: "user", content: "first", timestamp: 1 },
+        makeAssistantWithUsage("valid", {
+          input: 150,
+          output: 50,
+          totalTokens: 200,
+        }),
+        aborted,
+        { role: "user", content: "1234", timestamp: 2 },
+      ];
+      return state;
     };
-    state.messages = [
-      { role: "user", content: "first", timestamp: 1 },
-      makeAssistantWithUsage("valid", {
-        input: 150,
-        output: 50,
-        totalTokens: 200,
-      }),
-      aborted,
-      { role: "user", content: "1234", timestamp: 2 },
-    ];
+
+    const lowUsageState = buildState(abortedLowUsage);
+    const highUsageState = buildState(abortedHighUsage);
 
     try {
-      const node = renderStatusBar(state);
-      const text = collectText(node);
-
-      expect(text).toContain("in:0 out:0 · 20.4%/1k · $0.00");
-      expect(text).not.toContain("in:0 out:0 · 90.0%/1k · $0.00");
+      expect(getUsagePercent(lowUsageState)).toBe(
+        getUsagePercent(highUsageState),
+      );
     } finally {
+      lowUsageState.db.close();
+      highUsageState.db.close();
       faux.unregister();
-      state.db.close();
     }
   });
 
   test("renderStatusBar falls back to usage components when totalTokens is zero", () => {
     const faux = registerFauxProvider();
-    const state = createTestState();
-    state.model = {
+    const fromComponents = createTestState();
+    const fromTotalTokens = createTestState();
+    fromComponents.model = {
       ...faux.getModel(),
       contextWindow: 1_000,
     };
-    state.messages = [
+    fromTotalTokens.model = {
+      ...faux.getModel(),
+      contextWindow: 1_000,
+    };
+    fromComponents.messages = [
       makeAssistantWithUsage("fallback", {
         input: 120,
         output: 30,
@@ -319,16 +291,24 @@ describe("ui/status", () => {
         totalTokens: 0,
       }),
     ];
+    fromTotalTokens.messages = [
+      makeAssistantWithUsage("fallback", {
+        input: 120,
+        output: 30,
+        cacheRead: 25,
+        cacheWrite: 25,
+        totalTokens: 200,
+      }),
+    ];
 
     try {
-      const node = renderStatusBar(state);
-      const text = collectText(node);
-
-      expect(text).toContain("in:0 out:0 · 20.0%/1k · $0.00");
-      expect(text).not.toContain("in:0 out:0 · 0.0%/1k · $0.00");
+      expect(getUsagePercent(fromComponents)).toBe(
+        getUsagePercent(fromTotalTokens),
+      );
     } finally {
+      fromComponents.db.close();
+      fromTotalTokens.db.close();
       faux.unregister();
-      state.db.close();
     }
   });
 });

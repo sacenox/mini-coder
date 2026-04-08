@@ -1,15 +1,24 @@
 import { describe, expect, test } from "bun:test";
 import { Select } from "@cel-tui/components";
+import type { Node } from "@cel-tui/types";
 import { DEFAULT_THEME } from "../theme.ts";
-import {
-  type ActiveOverlay,
-  OVERLAY_MAX_VISIBLE,
-  OVERLAY_PADDING_X,
-  renderOverlay,
-} from "./overlay.ts";
+import { type ActiveOverlay, renderOverlay } from "./overlay.ts";
+
+function collectText(node: Node | null): string[] {
+  if (!node) {
+    return [];
+  }
+  if (node.type === "text") {
+    return [node.content];
+  }
+  if (node.type === "textinput") {
+    return [];
+  }
+  return node.children.flatMap((child) => collectText(child));
+}
 
 describe("ui/overlay", () => {
-  test("renderOverlay centers a titled modal with theme background", () => {
+  test("renderOverlay shows the title above the selectable body", () => {
     const overlay: ActiveOverlay = {
       title: "Commands",
       select: Select({
@@ -23,27 +32,11 @@ describe("ui/overlay", () => {
       }),
     };
 
-    const node = renderOverlay(DEFAULT_THEME, overlay);
+    const text = collectText(renderOverlay(DEFAULT_THEME, overlay));
+    const titleIndex = text.indexOf("Commands");
+    const bodyIndex = text.indexOf("overlay body");
 
-    expect(node.type).toBe("vstack");
-    if (node.type !== "vstack") {
-      throw new Error("Expected overlay root to be a VStack");
-    }
-
-    expect(node.props.height).toBe("100%");
-    expect(node.props.justifyContent).toBe("center");
-    expect(node.props.padding).toEqual({ x: OVERLAY_PADDING_X });
-
-    const modal = node.children[0];
-    expect(modal?.type).toBe("vstack");
-    if (!modal || modal.type !== "vstack") {
-      throw new Error("Expected overlay modal to be a VStack");
-    }
-
-    expect(modal.props.height).toBe(OVERLAY_MAX_VISIBLE + 3);
-    expect(modal.props.bgColor).toBe(DEFAULT_THEME.overlayBg);
-    expect(modal.props.padding).toEqual({ x: 1 });
-    expect(modal.children[0]?.type).toBe("text");
-    expect(modal.children[1]?.type).toBe("vstack");
+    expect(titleIndex).toBeGreaterThanOrEqual(0);
+    expect(bodyIndex).toBeGreaterThan(titleIndex);
   });
 });

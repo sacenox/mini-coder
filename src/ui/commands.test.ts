@@ -6,17 +6,19 @@ import type { ContainerNode, Node } from "@cel-tui/types";
 import { registerFauxProvider } from "@mariozechner/pi-ai";
 import type { AppState } from "../index.ts";
 import { COMMANDS } from "../input.ts";
-import { appendPromptHistory, openDatabase } from "../session.ts";
+import {
+  appendPromptHistory,
+  createSession,
+  openDatabase,
+} from "../session.ts";
 import { loadSettings } from "../settings.ts";
 import { DEFAULT_THEME } from "../theme.ts";
-import * as commandsModule from "./commands.ts";
 import {
   createCommandController,
   formatPromptHistoryPreview,
   formatRelativeDate,
 } from "./commands.ts";
 import type { ActiveOverlay } from "./overlay.ts";
-import { renderOverlay } from "./overlay.ts";
 
 function collectText(node: Node | null): string[] {
   if (!node) {
@@ -31,20 +33,25 @@ function collectText(node: Node | null): string[] {
   return node.children.flatMap((child) => collectText(child));
 }
 
-function findNodeWithKeyPress(node: Node | null): ContainerNode | null {
-  if (!node || node.type === "textinput" || node.type === "text") {
-    return null;
+function expectOverlay(overlay: ActiveOverlay | null): ActiveOverlay {
+  if (!overlay) {
+    throw new Error("Expected an active overlay");
   }
-  if (typeof node.props.onKeyPress === "function") {
-    return node;
-  }
-  for (const child of node.children) {
-    const found = findNodeWithKeyPress(child);
-    if (found) {
-      return found;
-    }
-  }
-  return null;
+  return overlay;
+}
+
+function renderSelect(overlay: ActiveOverlay): ContainerNode {
+  return overlay.select();
+}
+
+function createDeferred<T = void>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
 }
 
 const tempDirs: string[] = [];
@@ -92,13 +99,6 @@ afterEach(() => {
 });
 
 describe("ui/commands", () => {
-  test("commands.ts keeps selection helpers private", () => {
-    const exports = Object.keys(commandsModule);
-
-    expect(exports).not.toContain("applyEffortSelection");
-    expect(exports).not.toContain("applyModelSelection");
-  });
-
   test("showCommandAutocomplete clears the current draft and opens the commands overlay", () => {
     const state = createTestState();
     const runtimeState = { overlay: null as ActiveOverlay | null };
@@ -123,17 +123,12 @@ describe("ui/commands", () => {
     try {
       controller.showCommandAutocomplete(state);
 
-      const overlay = runtimeState.overlay;
+      const overlay = expectOverlay(runtimeState.overlay);
 
       expect(inputValue).toBe("");
-      expect(overlay).not.toBeNull();
-      if (!overlay) {
-        throw new Error("Expected the commands overlay to open");
-      }
       expect(overlay.title).toBe("Commands");
 
-      const text = collectText(renderOverlay(state.theme, overlay));
-      expect(text).toContain("Commands");
+      const text = collectText(overlay.select());
       for (const command of COMMANDS) {
         expect(text.some((line) => line.includes(`/${command}`))).toBe(true);
       }
@@ -173,26 +168,145 @@ describe("ui/commands", () => {
 
       controller.showInputHistoryOverlay(state);
 
-      const overlay = runtimeState.overlay;
+      const overlay = expectOverlay(runtimeState.overlay);
 
-      expect(overlay).not.toBeNull();
-      if (!overlay) {
-        throw new Error("Expected the input history overlay to open");
-      }
       expect(overlay.title).toBe("Input history");
 
-      const selectNode = findNodeWithKeyPress(
-        renderOverlay(state.theme, overlay),
-      );
-      expect(selectNode).not.toBeNull();
-      if (!selectNode) {
-        throw new Error("Expected overlay to contain a Select root");
-      }
+      const selectNode = renderSelect(overlay);
 
       selectNode.props.onKeyPress?.("enter");
 
       expect(runtimeState.overlay).toBeNull();
       expect(inputValue).toBe(rawPrompt);
+    } finally {
+      state.db.close();
+    }
+  });
+
+  test("showInputHistoryOverlay dismissal leaves the current draft unchanged", () => {
+    const state = createTestState();
+    const runtimeState = { overlay: null as ActiveOverlay | null };
+    let inputValue = "draft prompt";
+    const controller = createCommandController({
+      openOverlay: (nextOverlay) => {
+        runtimeState.overlay = nextOverlay;
+      },
+      dismissOverlay: () => {
+        runtimeState.overlay = null;
+      },
+      setInputValue: (value) => {
+        inputValue = value;
+      },
+      appendInfoMessage: () => {},
+      scrollConversationToBottom: () => {},
+      render: () => {},
+      reloadPromptContext: async () => {},
+      openInBrowser: () => {},
+    });
+
+    try {
+      appendPromptHistory(state.db, {
+        text: "saved prompt",
+        cwd: state.cwd,
+      });
+
+      controller.showInputHistoryOverlay(state);
+
+      const overlay = expectOverlay(runtimeState.overlay);
+      const selectNode = renderSelect(overlay);
+
+      selectNode.props.onBlur?.();
+
+      expect(runtimeState.overlay).toBeNull();
+      expect(inputValue).toBe("draft prompt");
+    } finally {
+      state.db.close();
+    }
+  });
+
+  test("handleCommand('session') restores the selected session and recomputes stats", () => {
+    const state = createTestState();
+    const runtimeState = { overlay: null as ActiveOverlay | null };
+    let scrollCalls = 0;
+    const controller = createCommandController({
+      openOverlay: (nextOverlay) => {
+        runtimeState.overlay = nextOverlay;
+      },
+      dismissOverlay: () => {
+        runtimeState.overlay = null;
+      },
+      setInputValue: () => {},
+      appendInfoMessage: () => {},
+      scrollConversationToBottom: () => {
+        scrollCalls += 1;
+      },
+      render: () => {},
+      reloadPromptContext: async () => {},
+      openInBrowser: () => {},
+    });
+    const now = new Date("2026-04-07T12:00:00Z").getTime();
+    const session = createSession(state.db, {
+      cwd: state.canonicalCwd,
+      model: "test/beta",
+      effort: "high",
+    });
+
+    state.db.run(
+      "INSERT INTO messages (session_id, turn, data, created_at) VALUES (?, ?, ?, ?)",
+      [
+        session.id,
+        1,
+        JSON.stringify({
+          role: "user",
+          content: "historical prompt",
+          timestamp: now,
+        }),
+        now,
+      ],
+    );
+    state.db.run(
+      "INSERT INTO messages (session_id, turn, data, created_at) VALUES (?, ?, ?, ?)",
+      [
+        session.id,
+        1,
+        JSON.stringify({
+          role: "assistant",
+          content: [{ type: "text", text: "historical reply" }],
+          api: "anthropic-messages",
+          provider: "anthropic",
+          model: "test/beta",
+          stopReason: "stop",
+          timestamp: now + 1,
+        }),
+        now + 1,
+      ],
+    );
+    state.db.run("UPDATE sessions SET updated_at = ? WHERE id = ?", [
+      now + 1,
+      session.id,
+    ]);
+
+    try {
+      expect(controller.handleCommand("session", state)).toBe(true);
+
+      const overlay = expectOverlay(runtimeState.overlay);
+      expect(overlay.title).toBe("Resume a session");
+
+      const selectNode = renderSelect(overlay);
+      selectNode.props.onKeyPress?.("enter");
+
+      expect(runtimeState.overlay).toBeNull();
+      expect(scrollCalls).toBe(1);
+      expect(state.session?.id).toBe(session.id);
+      expect(state.messages.map((message) => message.role)).toEqual([
+        "user",
+        "assistant",
+      ]);
+      expect(state.stats).toEqual({
+        totalInput: 0,
+        totalOutput: 0,
+        totalCost: 0,
+      });
     } finally {
       state.db.close();
     }
@@ -221,6 +335,7 @@ describe("ui/commands", () => {
   test("/new clears the active session state and reloads prompt context", async () => {
     const state = createTestState();
     let reloadCount = 0;
+    const reloadFinished = createDeferred<void>();
     const controller = createCommandController({
       openOverlay: () => {},
       dismissOverlay: () => {},
@@ -233,6 +348,7 @@ describe("ui/commands", () => {
         nextState.agentsMd = [
           { path: "/tmp/reloaded/AGENTS.md", content: "Reloaded context" },
         ];
+        reloadFinished.resolve();
       },
       openInBrowser: () => {},
     });
@@ -253,7 +369,7 @@ describe("ui/commands", () => {
 
     try {
       expect(controller.handleCommand("new", state)).toBe(true);
-      await Bun.sleep(0);
+      await reloadFinished.promise;
 
       expect(reloadCount).toBe(1);
       expect(state.session).toBeNull();

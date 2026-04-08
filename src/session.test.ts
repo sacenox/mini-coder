@@ -77,41 +77,46 @@ function makeUiMessage(text: string) {
   return createUiMessage(text);
 }
 
+function loadSessionOrThrow(db: ReturnType<typeof openDatabase>, id: string) {
+  const session = getSession(db, id);
+  if (!session) {
+    throw new Error(`Expected session ${id} to exist`);
+  }
+  return session;
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
 describe("session persistence", () => {
-  test("openDatabase returns a usable database", () => {
-    const db = openDatabase(":memory:");
-    expect(db).toBeDefined();
-    db.close();
-  });
-
-  test("createSession inserts a session record", () => {
+  test("createSession inserts a persisted session record with the requested fields", () => {
     const db = openDatabase(":memory:");
     const session = createSession(db, {
       cwd: "/tmp/test",
       model: "anthropic/claude-sonnet-4-20250514",
       effort: "medium",
     });
-    expect(session.id).toBeString();
-    expect(session.cwd).toBe("/tmp/test");
-    expect(session.model).toBe("anthropic/claude-sonnet-4-20250514");
-    expect(session.effort).toBe("medium");
-    expect(session.forkedFrom).toBeNull();
-    expect(session.createdAt).toBeNumber();
-    expect(session.updatedAt).toBe(session.createdAt);
+
+    const loaded = loadSessionOrThrow(db, session.id);
+
+    expect(session.id.length).toBeGreaterThan(0);
+    expect(loaded).toEqual(session);
+    expect(loaded.cwd).toBe("/tmp/test");
+    expect(loaded.model).toBe("anthropic/claude-sonnet-4-20250514");
+    expect(loaded.effort).toBe("medium");
+    expect(loaded.forkedFrom).toBeNull();
+    expect(loaded.createdAt).toBeGreaterThan(0);
+    expect(loaded.updatedAt).toBe(loaded.createdAt);
     db.close();
   });
 
-  test("getSession retrieves a session by id", () => {
+  test("getSession retrieves the stored session for a known id", () => {
     const db = openDatabase(":memory:");
     const created = createSession(db, { cwd: "/tmp/test" });
-    const loaded = getSession(db, created.id);
-    expect(loaded).not.toBeNull();
-    expect(loaded?.id).toBe(created.id);
-    expect(loaded?.cwd).toBe("/tmp/test");
+    const loaded = loadSessionOrThrow(db, created.id);
+    expect(loaded.id).toBe(created.id);
+    expect(loaded.cwd).toBe("/tmp/test");
     db.close();
   });
 
@@ -244,19 +249,17 @@ describe("message persistence and turn numbering", () => {
     db.close();
   });
 
-  test("appendMessage updates session updated_at", () => {
+  test("appendMessage updates the persisted session timestamp", () => {
     const db = openDatabase(":memory:");
     const session = createSession(db, { cwd: "/tmp/test" });
     const before = session.updatedAt;
 
-    // Small delay to ensure timestamp differs
     const msg = makeUser("hello");
     msg.timestamp = before + 100;
     appendMessage(db, session.id, msg);
 
-    const updated = getSession(db, session.id);
-    expect(updated).not.toBeNull();
-    expect(updated?.updatedAt).toBeGreaterThanOrEqual(before);
+    const updated = loadSessionOrThrow(db, session.id);
+    expect(updated.updatedAt).toBeGreaterThanOrEqual(before);
     db.close();
   });
 });
