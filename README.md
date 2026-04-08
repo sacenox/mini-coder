@@ -50,9 +50,9 @@ Plugins can add more tools, but the core stays intentionally small.
 ## Features
 
 - **Multi-provider model support** — Anthropic, OpenAI, Google, Bedrock, Mistral, Groq, xAI, OpenRouter, Ollama, Copilot, and more via pi-ai.
-- **Streaming TUI** — markdown conversation log, tool blocks with diffs, animated divider, multi-line input, and a one-line pill status bar.
+- **Streaming TUI** — markdown conversation log, tool blocks with diffs, animated divider, multi-line input, and a one-line pill status bar with independent ANSI16 effort/context tones.
 - **Session persistence** — SQLite-backed sessions with undo, fork, resume, and cumulative usage stats. Sessions are scoped to the working directory.
-- **Reasoning and verbosity controls** — toggle thinking visibility and full tool output on demand. Preferences persist across launches.
+- **Reasoning and verbosity controls** — toggle thinking visibility and verbose tool rendering on demand. Preferences persist across launches.
 - **[AGENTS.md](https://agents.md) support** — project-specific instructions discovered root-to-leaf, with `~/.agents/` for global instructions.
 - **[Agent Skills](https://agentskills.io)** — skill catalogs exposed in the prompt. `/skill:name` injects a skill body into the next user message.
 - **Plugins** — optional tools, integrations, theme overrides, and prompt suffixes without bloating the core.
@@ -67,10 +67,10 @@ Plugins can add more tools, but the core stays intentionally small.
 | `/fork`      | Copy the conversation into a new session and continue independently.   |
 | `/undo`      | Remove the last conversational turn (does not revert file changes).    |
 | `/reasoning` | Toggle thinking visibility. Persisted and restored on launch.          |
-| `/verbose`   | Toggle full shell output and edit diff display.                        |
+| `/verbose`   | Toggle verbose shell rendering plus edit previews/errors in the log.   |
 | `/login`     | Interactive OAuth login for supported providers.                       |
 | `/logout`    | Clear saved OAuth credentials for a logged-in provider.                |
-| `/effort`    | Set reasoning effort: low, med, high, or xhigh.                        |
+| `/effort`    | Set reasoning effort: low, medium, high, or xhigh.                     |
 | `/help`      | List commands, loaded AGENTS.md files, discovered skills, and plugins. |
 
 ## Key bindings

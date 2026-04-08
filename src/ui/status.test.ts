@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import type { Node } from "@cel-tui/types";
 import {
   fauxAssistantMessage,
   registerFauxProvider,
@@ -10,29 +9,64 @@ import { DEFAULT_SHOW_REASONING, DEFAULT_VERBOSE } from "../settings.ts";
 import { DEFAULT_THEME } from "../theme.ts";
 import { renderStatusBar } from "./status.ts";
 
-function collectText(node: Node | null): string[] {
-  if (!node) {
-    return [];
+interface RenderedStatusPill {
+  text: string;
+  bgColor: string | undefined;
+  fgColor: string | undefined;
+}
+
+function renderStatusPills(
+  state: AppState,
+  cols?: number,
+): RenderedStatusPill[] {
+  const bar = renderStatusBar(state, cols);
+  if (bar.type !== "hstack") {
+    throw new Error("Expected the status bar root to be an hstack");
   }
-  if (node.type === "text") {
-    return [node.content];
-  }
-  if (node.type === "textinput") {
-    return [];
-  }
-  return node.children.flatMap((child) => collectText(child));
+
+  return bar.children.flatMap((child) => {
+    if (child.type !== "hstack") {
+      return [];
+    }
+    const [textNode] = child.children;
+    if (!textNode || textNode.type !== "text") {
+      return [];
+    }
+    return [
+      {
+        text: textNode.content,
+        bgColor: child.props.bgColor,
+        fgColor: textNode.props.fgColor,
+      },
+    ];
+  });
 }
 
 function renderStatusText(state: AppState, cols?: number): string[] {
-  return collectText(renderStatusBar(state, cols)).filter(Boolean);
+  return renderStatusPills(state, cols)
+    .map((pill) => pill.text)
+    .filter(Boolean);
+}
+
+function getModelPill(state: AppState): RenderedStatusPill {
+  const [modelPill] = renderStatusPills(state);
+  if (!modelPill) {
+    throw new Error("Expected a model pill");
+  }
+  return modelPill;
+}
+
+function getUsagePill(state: AppState): RenderedStatusPill {
+  const pills = renderStatusPills(state);
+  const usage = pills.at(-1);
+  if (!usage) {
+    throw new Error("Expected a usage pill");
+  }
+  return usage;
 }
 
 function getUsageSummary(state: AppState): string {
-  const usage = renderStatusText(state).at(-1);
-  if (!usage) {
-    throw new Error("Expected a usage summary");
-  }
-  return usage;
+  return getUsagePill(state).text;
 }
 
 function getUsagePercent(state: AppState): number {
@@ -130,6 +164,108 @@ describe("ui/status", () => {
     try {
       expect(renderStatusText(state, 30)).toEqual(["no model", "…/mini-coder"]);
     } finally {
+      state.db.close();
+    }
+  });
+
+  test("renderStatusBar maps reasoning effort levels to the model pill tone scale", () => {
+    const faux = registerFauxProvider();
+    const state = createTestState();
+    state.model = faux.getModel();
+
+    try {
+      const cases = [
+        { effort: "low", bgColor: "color02", fgColor: "color00" },
+        { effort: "medium", bgColor: "color06", fgColor: "color00" },
+        { effort: "high", bgColor: "color05", fgColor: "color15" },
+        { effort: "xhigh", bgColor: "color09", fgColor: "color00" },
+      ] as const;
+
+      for (const testCase of cases) {
+        state.effort = testCase.effort;
+        expect(getModelPill(state)).toMatchObject({
+          text: `${state.model.provider}/${state.model.id} · ${testCase.effort === "medium" ? "med" : testCase.effort}`,
+          bgColor: testCase.bgColor,
+          fgColor: testCase.fgColor,
+        });
+      }
+    } finally {
+      faux.unregister();
+      state.db.close();
+    }
+  });
+
+  test("renderStatusBar maps context usage bands to the usage pill tone scale", () => {
+    const faux = registerFauxProvider();
+    const state = createTestState();
+    state.model = {
+      ...faux.getModel(),
+      contextWindow: 100,
+    };
+
+    try {
+      const cases = [
+        { totalTokens: 10, bgColor: "color02", fgColor: "color00" },
+        { totalTokens: 30, bgColor: "color06", fgColor: "color00" },
+        { totalTokens: 60, bgColor: "color05", fgColor: "color15" },
+        { totalTokens: 80, bgColor: "color01", fgColor: "color15" },
+        { totalTokens: 95, bgColor: "color09", fgColor: "color00" },
+      ] as const;
+
+      for (const testCase of cases) {
+        state.messages = [
+          makeAssistantWithUsage("context anchor", {
+            totalTokens: testCase.totalTokens,
+          }),
+        ];
+        expect(getUsagePill(state)).toMatchObject({
+          text: `in:0 out:0 · ${testCase.totalTokens.toFixed(1)}%/100 · $0.00`,
+          bgColor: testCase.bgColor,
+          fgColor: testCase.fgColor,
+        });
+      }
+    } finally {
+      faux.unregister();
+      state.db.close();
+    }
+  });
+
+  test("renderStatusBar colors the model and usage pills independently", () => {
+    const faux = registerFauxProvider();
+    const state = createTestState();
+    state.model = {
+      ...faux.getModel(),
+      contextWindow: 100,
+    };
+
+    try {
+      state.effort = "xhigh";
+      state.messages = [
+        makeAssistantWithUsage("cold context", { totalTokens: 10 }),
+      ];
+      expect(getModelPill(state)).toMatchObject({
+        bgColor: "color09",
+        fgColor: "color00",
+      });
+      expect(getUsagePill(state)).toMatchObject({
+        bgColor: "color02",
+        fgColor: "color00",
+      });
+
+      state.effort = "low";
+      state.messages = [
+        makeAssistantWithUsage("hot context", { totalTokens: 95 }),
+      ];
+      expect(getModelPill(state)).toMatchObject({
+        bgColor: "color02",
+        fgColor: "color00",
+      });
+      expect(getUsagePill(state)).toMatchObject({
+        bgColor: "color09",
+        fgColor: "color00",
+      });
+    } finally {
+      faux.unregister();
       state.db.close();
     }
   });

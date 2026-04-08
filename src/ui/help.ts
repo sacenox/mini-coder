@@ -22,7 +22,7 @@ export interface HelpRenderState {
   plugins: AppState["plugins"];
   /** Whether reasoning blocks are shown in the log. */
   showReasoning: AppState["showReasoning"];
-  /** Whether full tool output is shown in the log. */
+  /** Whether verbose tool rendering is enabled in the log. */
   verbose: AppState["verbose"];
 }
 
@@ -35,7 +35,7 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   fork: "Fork session",
   undo: "Undo last turn",
   reasoning: "Toggle thinking display",
-  verbose: "Toggle full output",
+  verbose: "Toggle verbose tool rendering",
   login: "OAuth login",
   logout: "OAuth logout",
   help: "Show help",

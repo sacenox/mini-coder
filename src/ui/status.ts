@@ -15,7 +15,7 @@ import type { Node } from "@cel-tui/types";
 import type { AssistantMessage, Message } from "@mariozechner/pi-ai";
 import type { AppState } from "../index.ts";
 import { filterModelMessages, getAssistantUsage } from "../session.ts";
-import type { Theme } from "../theme.ts";
+import type { StatusTone, Theme } from "../theme.ts";
 
 /** Conservative fixed estimate for an image block's token footprint. */
 const ESTIMATED_IMAGE_TOKENS = 1_200;
@@ -214,28 +214,59 @@ function estimateCurrentContextTokens(state: AppState): number {
   return total;
 }
 
+/** Estimate current context usage as a percentage of the active model window. */
+function getContextPercentage(state: AppState): number {
+  if (!state.model || state.model.contextWindow <= 0) {
+    return 0;
+  }
+  const contextTokens = estimateCurrentContextTokens(state);
+  return (contextTokens / state.model.contextWindow) * 100;
+}
+
 /** Format cumulative session totals plus estimated current context usage for the status bar. */
-function formatUsage(state: AppState): string {
+function formatUsage(state: AppState, contextPct: number): string {
   if (!state.model) return "";
   const input = formatTokens(state.stats.totalInput);
   const output = formatTokens(state.stats.totalOutput);
-  const contextTokens = estimateCurrentContextTokens(state);
-  const contextPct =
-    state.model.contextWindow > 0
-      ? (contextTokens / state.model.contextWindow) * 100
-      : 0;
   const contextWindow = formatTokenCapacity(state.model.contextWindow);
   return `in:${input} out:${output} · ${contextPct.toFixed(1)}%/${contextWindow} · ${formatCost(state.stats.totalCost)}`;
 }
 
+/** Select the model/effort pill tone for the current reasoning effort. */
+function getEffortTone(theme: Theme, effort: string): StatusTone {
+  switch (effort) {
+    case "xhigh":
+      return theme.statusEffortScale[3];
+    case "high":
+      return theme.statusEffortScale[2];
+    case "medium":
+      return theme.statusEffortScale[1];
+    default:
+      return theme.statusEffortScale[0];
+  }
+}
+
+/** Select the usage/context pill tone for the current context pressure. */
+function getContextTone(theme: Theme, contextPct: number): StatusTone {
+  if (contextPct >= 90) {
+    return theme.statusContextScale[4];
+  }
+  if (contextPct >= 75) {
+    return theme.statusContextScale[3];
+  }
+  if (contextPct >= 50) {
+    return theme.statusContextScale[2];
+  }
+  if (contextPct >= 25) {
+    return theme.statusContextScale[1];
+  }
+  return theme.statusContextScale[0];
+}
+
 /** Render a single compact status pill. */
-function renderStatusPill(
-  text: string,
-  bgColor: Theme["statusPrimaryBg"] | Theme["statusSecondaryBg"],
-  theme: Theme,
-): Node {
-  return HStack({ bgColor, padding: { x: 1 } }, [
-    Text(text, { fgColor: theme.statusText }),
+function renderStatusPill(text: string, tone: StatusTone): Node {
+  return HStack({ bgColor: tone.bg, padding: { x: 1 } }, [
+    Text(text, { fgColor: tone.fg }),
   ]);
 }
 
@@ -276,8 +307,9 @@ function leftTruncate(text: string, maxWidth: number): string {
 /**
  * Render the one-line status bar as compact padded pills.
  *
- * Outer pills use the primary background and inner pills use the secondary
- * background. The git pill is omitted outside repositories.
+ * The inner pills use the neutral secondary tone. The model pill uses a
+ * reasoning-effort tone scale, and the usage pill uses an independent
+ * context-pressure tone scale. The git pill is omitted outside repositories.
  *
  * @param state - Application state.
  * @param cols - Current terminal width in columns.
@@ -290,7 +322,8 @@ export function renderStatusBar(
   const fullCwd = abbreviatePath(state.cwd);
   const gitStatus = formatGitStatus(state);
   const modelInfo = formatModelInfo(state);
-  const usage = formatUsage(state);
+  const contextPct = getContextPercentage(state);
+  const usage = formatUsage(state, contextPct);
   const reservedWidth =
     2 +
     measureStatusPill(modelInfo) +
@@ -301,18 +334,17 @@ export function renderStatusBar(
     ? leftTruncate(fullCwd, Math.max(Math.floor(cols) - reservedWidth, 1))
     : fullCwd;
 
+  const secondaryTone = state.theme.statusSecondary;
   const children: Node[] = [
-    renderStatusPill(modelInfo, state.theme.statusPrimaryBg, state.theme),
-    renderStatusPill(cwd, state.theme.statusSecondaryBg, state.theme),
+    renderStatusPill(modelInfo, getEffortTone(state.theme, state.effort)),
+    renderStatusPill(cwd, secondaryTone),
     Spacer(),
   ];
   if (gitStatus) {
-    children.push(
-      renderStatusPill(gitStatus, state.theme.statusSecondaryBg, state.theme),
-    );
+    children.push(renderStatusPill(gitStatus, secondaryTone));
   }
   children.push(
-    renderStatusPill(usage, state.theme.statusPrimaryBg, state.theme),
+    renderStatusPill(usage, getContextTone(state.theme, contextPct)),
   );
 
   return HStack(

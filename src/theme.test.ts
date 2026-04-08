@@ -12,9 +12,9 @@ const THEME_KEYS = [
   "diffRemoved",
   "divider",
   "dividerPulse",
-  "statusText",
-  "statusPrimaryBg",
-  "statusSecondaryBg",
+  "statusSecondary",
+  "statusEffortScale",
+  "statusContextScale",
   "error",
   "overlayBg",
 ] as const;
@@ -24,10 +24,24 @@ describe("theme", () => {
     expect(Object.keys(DEFAULT_THEME).sort()).toEqual([...THEME_KEYS].sort());
   });
 
-  test("DEFAULT_THEME uses explicit ANSI16 colors for status pills", () => {
-    expect(DEFAULT_THEME.statusText).toBe("color15");
-    expect(DEFAULT_THEME.statusPrimaryBg).toBe("color04");
-    expect(DEFAULT_THEME.statusSecondaryBg).toBe("color08");
+  test("DEFAULT_THEME uses stepped ANSI16 tones for status pills", () => {
+    expect(DEFAULT_THEME.statusSecondary).toEqual({
+      fg: "color15",
+      bg: "color08",
+    });
+    expect(DEFAULT_THEME.statusEffortScale).toEqual([
+      { fg: "color00", bg: "color02" },
+      { fg: "color00", bg: "color06" },
+      { fg: "color15", bg: "color05" },
+      { fg: "color00", bg: "color09" },
+    ]);
+    expect(DEFAULT_THEME.statusContextScale).toEqual([
+      { fg: "color00", bg: "color02" },
+      { fg: "color00", bg: "color06" },
+      { fg: "color15", bg: "color05" },
+      { fg: "color15", bg: "color01" },
+      { fg: "color00", bg: "color09" },
+    ]);
   });
 
   test("mergeThemes with no overrides returns base unchanged", () => {

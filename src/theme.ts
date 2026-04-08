@@ -21,6 +21,14 @@ type ThemeColor = Color | undefined;
 // Types
 // ---------------------------------------------------------------------------
 
+/** Foreground/background pair for a single status pill tone. */
+export interface StatusTone {
+  /** Pill foreground color. */
+  fg: ThemeColor;
+  /** Pill background color. */
+  bg: ThemeColor;
+}
+
 /**
  * Complete set of UI colors.
  *
@@ -48,12 +56,18 @@ export interface Theme {
   divider: ThemeColor;
   /** Divider scanning pulse highlight color (active state). */
   dividerPulse: ThemeColor;
-  /** Status pill foreground. */
-  statusText: ThemeColor;
-  /** Primary status pill background (outer pills: model/effort + usage/context/cost). */
-  statusPrimaryBg: ThemeColor;
-  /** Secondary status pill background (inner pills: CWD + git). */
-  statusSecondaryBg: ThemeColor;
+  /** Neutral status pill tone for the inner CWD/git pills. */
+  statusSecondary: StatusTone;
+  /** Model/effort pill tones from low/cold to xhigh/warm. */
+  statusEffortScale: readonly [StatusTone, StatusTone, StatusTone, StatusTone];
+  /** Usage/context pill tones from empty/cold to near-full/hot. */
+  statusContextScale: readonly [
+    StatusTone,
+    StatusTone,
+    StatusTone,
+    StatusTone,
+    StatusTone,
+  ];
   /** Error text. */
   error: ThemeColor;
   /** Overlay modal background. */
@@ -68,9 +82,10 @@ export interface Theme {
  * The default theme.
  *
  * Uses terminal palette colors so it looks reasonable across light and
- * dark terminal themes without any configuration. The outer status pills
- * use a blue primary background, the inner pills use a dim gray secondary
- * background, and bright text keeps the badges readable.
+ * dark terminal themes without any configuration. The inner status pills
+ * stay neutral, while the outer pills use stepped ANSI16 tone scales so
+ * reasoning effort and context pressure move through green, cyan, purple,
+ * and red as they trend from cold/dark to warm/bright.
  */
 export const DEFAULT_THEME: Theme = {
   userMsgBg: "color08",
@@ -83,9 +98,23 @@ export const DEFAULT_THEME: Theme = {
   diffRemoved: "color01",
   divider: "color08",
   dividerPulse: "color04",
-  statusText: "color15",
-  statusPrimaryBg: "color04",
-  statusSecondaryBg: "color08",
+  statusSecondary: {
+    fg: "color15",
+    bg: "color08",
+  },
+  statusEffortScale: [
+    { fg: "color00", bg: "color02" },
+    { fg: "color00", bg: "color06" },
+    { fg: "color15", bg: "color05" },
+    { fg: "color00", bg: "color09" },
+  ],
+  statusContextScale: [
+    { fg: "color00", bg: "color02" },
+    { fg: "color00", bg: "color06" },
+    { fg: "color15", bg: "color05" },
+    { fg: "color15", bg: "color01" },
+    { fg: "color00", bg: "color09" },
+  ],
   error: "color01",
   overlayBg: "color08",
 };
@@ -98,7 +127,9 @@ export const DEFAULT_THEME: Theme = {
  * Merge partial theme overrides on top of a base theme.
  *
  * Applies overrides left-to-right — later overrides win for the same key.
- * Returns a new {@link Theme}; the base is not mutated.
+ * This is a shallow merge, so nested status tones and tone scales are
+ * replaced as whole values. Returns a new {@link Theme}; the base is not
+ * mutated.
  *
  * @param base - The base theme to start from.
  * @param overrides - Partial theme objects to merge (from plugins).

@@ -422,11 +422,11 @@ VStack({ height: "100%" }, [
   TextInput({ minHeight: 2, maxHeight: 10, padding: { x: 1 } }),
   // Status pills — fixed 1 line, backgrounds only behind the text
   HStack({ height: 1, padding: { x: 1 } }, [
-    statusPill(modelInfo, theme.statusPrimaryBg),
-    statusPill(cwd, theme.statusSecondaryBg),
+    statusPill(modelInfo, effortTone(theme, effort)),
+    statusPill(cwd, theme.statusSecondary),
     Spacer(),
-    gitStatus && statusPill(gitStatus, theme.statusSecondaryBg),
-    statusPill(usage, theme.statusPrimaryBg),
+    gitStatus && statusPill(gitStatus, theme.statusSecondary),
+    statusPill(usage, contextTone(theme, contextPct)),
   ]),
 ]);
 ```
@@ -436,6 +436,13 @@ VStack({ height: "100%" }, [
 All UI colors are defined in a single `Theme` object. The UI never hardcodes colors — it reads from the active theme. Plugins can return a `Partial<Theme>` in their `PluginResult` to override any color. Multiple plugin overrides are merged left-to-right (last wins).
 
 ```ts
+interface StatusTone {
+  /** Pill foreground. */
+  fg: Color | undefined;
+  /** Pill background. */
+  bg: Color | undefined;
+}
+
 interface Theme {
   /** User message background. */
   userMsgBg: Color | undefined;
@@ -455,12 +462,18 @@ interface Theme {
   divider: Color | undefined;
   /** Divider scanning pulse highlight color (active state). */
   dividerPulse: Color | undefined;
-  /** Status pill foreground. */
-  statusText: Color | undefined;
-  /** Primary status pill background (outer pills: model/effort + usage/context/cost). */
-  statusPrimaryBg: Color | undefined;
-  /** Secondary status pill background (inner pills: CWD + git). */
-  statusSecondaryBg: Color | undefined;
+  /** Neutral status pill tone for the inner CWD/git pills. */
+  statusSecondary: StatusTone;
+  /** Model/effort pill tones from low/cold to xhigh/warm. */
+  statusEffortScale: [StatusTone, StatusTone, StatusTone, StatusTone];
+  /** Usage/context pill tones from empty/cold to near-full/hot. */
+  statusContextScale: [
+    StatusTone,
+    StatusTone,
+    StatusTone,
+    StatusTone,
+    StatusTone,
+  ];
   /** Error text. */
   error: Color | undefined;
   /** Overlay modal background. */
@@ -468,7 +481,7 @@ interface Theme {
 }
 ```
 
-The default theme uses the full ANSI 16-color terminal palette where semantic accents or pill styling benefit from it, including bright variants (`color08`-`color15`) rather than restricting itself to the base 8 colors. Semantic colors should still map sensibly (for example, greens for additions/success and reds for removals/errors), but status pill styling may draw from the wider ANSI 16 range to create restrained outer/inner separation. Status pill backgrounds are applied only behind the text and padding, never across the full width of the status area. Default status colors must remain legible on both light and dark terminals. Theme values are cel-tui colors; `undefined` means "use the terminal default".
+The default theme uses the full ANSI 16-color terminal palette where semantic accents or pill styling benefit from it, including bright variants (`color08`-`color15`) rather than restricting itself to the base 8 colors. Semantic colors should still map sensibly (for example, greens for additions/success and reds for removals/errors), but the status bar now uses independent stepped tone scales rather than one shared outer-pill background. The inner CWD/git pills stay neutral, while the model pill and usage pill each move from cold/dark to warm/bright on their own scale. The default outer-pill palette families are green → cyan → purple → red, with the hottest context band using a brighter red than the regular red band. Each status tone includes both foreground and background colors so contrast remains acceptable on both light and dark terminals. Status pill backgrounds are applied only behind the text and padding, never across the full width of the status area. Theme values are cel-tui colors; `undefined` means "use the terminal default".
 
 ### Status bar
 
@@ -479,20 +492,23 @@ One line, two-sided, rendered as compact padded pills rather than a full-width f
 ```
 
 - Background is applied only behind each pill's text + padding; there is no bottom divider below the input and no full-width colored block.
-- The outer pills (`model/effort` on the left, `usage/context/cost` on the right) use `statusPrimaryBg`.
-- The inner pills (`cwd` on the left, `git` on the right) use `statusSecondaryBg`.
-- All status pill text uses `statusText`, chosen to remain legible against both pill backgrounds on light and dark terminals.
+- The inner pills (`cwd` on the left, `git` on the right) use the neutral `statusSecondary` tone.
+- The outer-left `model/effort` pill chooses its tone from `statusEffortScale`, mapped to reasoning effort from low/cold to xhigh/warm.
+- The outer-right `usage/context/cost` pill chooses its tone from `statusContextScale`, mapped to estimated context pressure from empty/cold to near-full/hot.
+- The two outer pills are independent; high effort does not force a hot context pill, and high context usage does not force a hot effort pill.
 - The git pill is omitted outside a repo, preserving the current omission behavior.
 
 **Left side:**
 
 - Outer-left: `provider/model · effort`. Effort shown as `low`, `med`, `high`, `xhigh`.
+- Effort tone mapping: `low` → scale 0, `medium` → scale 1, `high` → scale 2, `xhigh` → scale 3.
 - Inner-left: CWD, abbreviated with `~` for home. Truncated from the left (`…/mini-coder`) on narrow terminals.
 
 **Right side:**
 
 - Inner-right: git branch, working tree counts (+ staged, ~ modified, ? untracked), ahead of remote (▲ N). Omitted outside a repo.
 - Outer-right: `in:input out:output · context%/window · $cost`. `in`, `out`, and `$cost` are **cumulative for the session**. `context%/window` shows the **estimated current context usage for the next model request** as a percentage of the active model's context window.
+- Context tone mapping: `<25%` → scale 0, `25-49.9%` → scale 1, `50-74.9%` → scale 2, `75-89.9%` → scale 3, `>=90%` → scale 4.
 
 Token counts use human-friendly units (1.2k, 45k, 1.2M). Context usage is estimated from the current model-visible conversation, not just the last assistant message. Use the most recent valid assistant `usage` as an anchor (`totalTokens` when present, otherwise `input + output + cacheRead + cacheWrite`) and add heuristic estimates for any later messages. If no assistant `usage` exists yet, estimate the full current model-visible history heuristically. UI-only messages are excluded from this estimate.
 
@@ -563,7 +579,7 @@ Supports:
 | `/verbose`   | Toggle [verbose tool rendering](#verbose-tool-rendering) for shell previews/results, edit previews, and edit errors. Successful edit diffs always render in full.                                                                                                                                                                                                                                          |
 | `/login`     | Interactive OAuth login. Shows a selector with available OAuth providers and their login status (logged in / not logged in). Selecting a provider starts the browser-based OAuth flow. Uses pi-ai's OAuth registry. Credentials are persisted to the app data directory and used for provider discovery on subsequent launches.                                                                            |
 | `/logout`    | Interactive OAuth logout. Shows a selector with logged-in OAuth providers. Selecting one clears its saved credentials.                                                                                                                                                                                                                                                                                     |
-| `/effort`    | Interactive effort selector. Shows the four reasoning levels (`low`, `med`, `high`, `xhigh`) with the current level highlighted. Updates the status bar immediately, and the selected effort is persisted immediately as the user's global default. The session record's `effort` field is not updated (it reflects the initial choice, like `/model`).                                                    |
+| `/effort`    | Interactive effort selector. Shows the four reasoning levels (`low`, `medium`, `high`, `xhigh`) with the current level highlighted. Updates the status bar immediately, and the selected effort is persisted immediately as the user's global default. The session record's `effort` field is not updated (it reflects the initial choice, like `/model`).                                                 |
 | `/help`      | List available commands, including the current on/off state of `/reasoning` and `/verbose`, plus loaded AGENTS.md files, discovered skills, and active plugins.                                                                                                                                                                                                                                            |
 
 Commands are discoverable when the input starts with `/`: pressing `Tab` in that state switches from file-path autocomplete to interactive command select/filter.

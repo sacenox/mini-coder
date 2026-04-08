@@ -19,6 +19,8 @@ describe("ui/help", () => {
     expect(text).toContain(
       `/reasoning  Toggle thinking display (currently ${DEFAULT_SHOW_REASONING ? "on" : "off"})`,
     );
-    expect(text).toContain("/verbose  Toggle full output (currently off)");
+    expect(text).toContain(
+      "/verbose  Toggle verbose tool rendering (currently off)",
+    );
   });
 });
