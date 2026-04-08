@@ -56,6 +56,8 @@ export interface UiCommandRuntime {
   scrollConversationToBottom: () => void;
   /** Trigger a UI re-render. */
   render: () => void;
+  /** Reload prompt/session context at a boundary like `/new`. */
+  reloadPromptContext: (state: AppState) => Promise<void>;
   /** Open a URL in the user's default browser. */
   openInBrowser: (url: string) => void;
 }
@@ -325,13 +327,14 @@ export function createCommandController(
     );
   };
 
-  const handleNewCommand = (state: AppState): void => {
+  const handleNewCommand = async (state: AppState): Promise<void> => {
     if (state.running) {
       return;
     }
     state.session = null;
     state.messages = [];
     state.stats = { totalInput: 0, totalOutput: 0, totalCost: 0 };
+    await runtime.reloadPromptContext(state);
     runtime.scrollConversationToBottom();
     runtime.render();
   };
@@ -522,7 +525,12 @@ export function createCommandController(
         handleLogoutCommand(state);
         return true;
       case "new":
-        handleNewCommand(state);
+        handleNewCommand(state).catch((error) => {
+          runtime.appendInfoMessage(
+            `New session failed: ${getErrorMessage(error)}`,
+            state,
+          );
+        });
         return true;
       case "fork":
         handleForkCommand(state);

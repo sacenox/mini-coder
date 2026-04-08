@@ -10,7 +10,7 @@
 
 import { homedir } from "node:os";
 import { Spacer } from "@cel-tui/components";
-import { HStack, Text } from "@cel-tui/core";
+import { HStack, Text, visibleWidth } from "@cel-tui/core";
 import type { Node } from "@cel-tui/types";
 import type { AssistantMessage, Message } from "@mariozechner/pi-ai";
 import type { AppState } from "../index.ts";
@@ -211,6 +211,40 @@ function renderStatusPill(
   ]);
 }
 
+function measureStatusPill(text: string): number {
+  return visibleWidth(text) + 2;
+}
+
+function leftTruncate(text: string, maxWidth: number): string {
+  if (maxWidth <= 0) {
+    return "";
+  }
+  if (visibleWidth(text) <= maxWidth) {
+    return text;
+  }
+  if (maxWidth === 1) {
+    return "…";
+  }
+
+  for (let i = text.lastIndexOf("/"); i > 0; i = text.lastIndexOf("/", i - 1)) {
+    const candidate = text.slice(i);
+    if (visibleWidth(candidate) <= maxWidth - 1) {
+      return `…${candidate}`;
+    }
+  }
+
+  let suffix = "";
+  for (const char of Array.from(text).reverse()) {
+    const next = `${char}${suffix}`;
+    if (visibleWidth(next) > maxWidth - 1) {
+      break;
+    }
+    suffix = next;
+  }
+
+  return `…${suffix}`;
+}
+
 /**
  * Render the one-line status bar as compact padded pills.
  *
@@ -218,13 +252,26 @@ function renderStatusPill(
  * background. The git pill is omitted outside repositories.
  *
  * @param state - Application state.
+ * @param cols - Current terminal width in columns.
  * @returns The rendered status bar node.
  */
-export function renderStatusBar(state: AppState): Node {
-  const cwd = abbreviatePath(state.cwd);
+export function renderStatusBar(
+  state: AppState,
+  cols = Number.POSITIVE_INFINITY,
+): Node {
+  const fullCwd = abbreviatePath(state.cwd);
   const gitStatus = formatGitStatus(state);
   const modelInfo = formatModelInfo(state);
   const usage = formatUsage(state);
+  const reservedWidth =
+    2 +
+    measureStatusPill(modelInfo) +
+    measureStatusPill(usage) +
+    (gitStatus ? measureStatusPill(gitStatus) : 0) +
+    2;
+  const cwd = Number.isFinite(cols)
+    ? leftTruncate(fullCwd, Math.max(Math.floor(cols) - reservedWidth, 1))
+    : fullCwd;
 
   const children: Node[] = [
     renderStatusPill(modelInfo, state.theme.statusPrimaryBg, state.theme),

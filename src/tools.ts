@@ -258,10 +258,8 @@ export async function executeShell(
     );
 
     const isError = exitCode !== 0;
-    const prefix = isError ? `Command failed with exit code ${exitCode}\n` : "";
-    const text = prefix + output;
-
-    return textResult(text || "(no output)", isError);
+    const body = output || "(no output)";
+    return textResult(`Exit code: ${exitCode}\n${body}`, isError);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return textResult(`Shell error: ${message}`, true);

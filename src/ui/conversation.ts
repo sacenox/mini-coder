@@ -253,6 +253,35 @@ function buildShellToolLines(
   ];
 }
 
+function buildStructuredDiffLines(
+  oldText: string,
+  newText: string,
+): ToolRenderLine[] {
+  const patch = structuredPatch("", "", oldText, newText, "", "", {
+    context: 2,
+  });
+  const diffLines: ToolRenderLine[] = [];
+
+  for (const hunk of patch.hunks) {
+    diffLines.push({
+      kind: "text",
+      text: `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`,
+    });
+
+    for (const line of hunk.lines) {
+      if (line.startsWith("+")) {
+        diffLines.push({ kind: "diffAdded", text: line });
+      } else if (line.startsWith("-")) {
+        diffLines.push({ kind: "diffRemoved", text: line });
+      } else {
+        diffLines.push({ kind: "text", text: line });
+      }
+    }
+  }
+
+  return diffLines;
+}
+
 /** Build the logical render lines for an edit tool result. */
 function buildEditToolLines(
   filePath: string,
@@ -272,33 +301,16 @@ function buildEditToolLines(
     ];
   }
 
-  if (oldText === "") {
-    return [
-      { kind: "path", text: `~ ${filePath}` },
-      { kind: "diffAdded", text: "(new file)" },
-    ];
-  }
-
-  const patch = structuredPatch("", "", oldText, newText, "", "", {
-    context: 2,
-  });
-  const diffLines: ToolRenderLine[] = [];
-
-  for (const hunk of patch.hunks) {
-    for (const line of hunk.lines) {
-      if (line.startsWith("+")) {
-        diffLines.push({ kind: "diffAdded", text: line });
-      } else if (line.startsWith("-")) {
-        diffLines.push({ kind: "diffRemoved", text: line });
-      } else {
-        diffLines.push({ kind: "text", text: line });
-      }
-    }
-  }
+  const diffLines = buildStructuredDiffLines(oldText, newText);
 
   return [
     { kind: "path", text: `~ ${filePath}` },
-    ...previewToolRenderLines(diffLines, verbose),
+    ...previewToolRenderLines(
+      diffLines.length > 0
+        ? diffLines
+        : [{ kind: "summary", text: "(empty file)" }],
+      verbose,
+    ),
   ];
 }
 

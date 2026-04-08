@@ -46,6 +46,7 @@ import {
   renderStatusBar,
   renderToolResult,
   resetUiState,
+  suspendToBackground,
   type ToolRenderLine,
 } from "./ui.ts";
 
@@ -1659,6 +1660,21 @@ describe("ui rendering", () => {
     }
   });
 
+  test("renderStatusBar left-truncates the cwd on narrow terminals", () => {
+    const state = createTestState();
+    state.cwd = "/tmp/very/long/path/to/mini-coder";
+
+    try {
+      const node = renderStatusBar(state, 30);
+      const text = collectText(node);
+
+      expect(text).toContain("…/mini-coder");
+      expect(text).not.toContain(state.cwd);
+    } finally {
+      state.db.close();
+    }
+  });
+
   test("renderBaseLayout keeps a single divider between the log and input", () => {
     const state = createTestState();
     const controller: InputController = {
@@ -1683,6 +1699,64 @@ describe("ui rendering", () => {
     } finally {
       state.db.close();
     }
+  });
+
+  test("renderBaseLayout delegates Ctrl+Z to the suspend handler", () => {
+    const state = createTestState();
+    const controller: InputController = {
+      onChange: () => {},
+      onFocus: () => {},
+      onBlur: () => {},
+      onKeyPress: () => undefined,
+    };
+    let suspended = false;
+
+    try {
+      const node = renderBaseLayout(state, 80, controller, () => {
+        suspended = true;
+      });
+
+      expect(node.type).toBe("vstack");
+      if (node.type !== "vstack") {
+        throw new Error("Expected app layout to be a VStack");
+      }
+
+      node.props.onKeyPress?.("ctrl+z");
+      expect(suspended).toBe(true);
+    } finally {
+      state.db.close();
+    }
+  });
+
+  test("suspendToBackground stops immediately and resumes on SIGCONT", () => {
+    const calls: string[] = [];
+    let resumeHandler = (): void => {
+      throw new Error(
+        "Expected suspendToBackground to register a resume handler",
+      );
+    };
+
+    suspendToBackground(
+      () => {
+        calls.push("resume");
+      },
+      {
+        stop: () => {
+          calls.push("stop");
+        },
+        onResume: (handler: () => void) => {
+          calls.push("onResume");
+          resumeHandler = handler;
+        },
+        suspend: () => {
+          calls.push("suspend");
+        },
+      },
+    );
+
+    expect(calls).toEqual(["stop", "onResume", "suspend"]);
+    resumeHandler();
+    expect(calls).toEqual(["stop", "onResume", "suspend", "resume"]);
   });
 
   test("renderStatusBar estimates context usage from the latest valid assistant usage plus trailing model-visible messages", () => {

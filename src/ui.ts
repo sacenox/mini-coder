@@ -13,7 +13,11 @@ import { platform } from "node:os";
 import { cel, HStack, ProcessTerminal, Text, VStack } from "@cel-tui/core";
 import type { Node } from "@cel-tui/types";
 import type { AppState } from "./index.ts";
-import { MAX_SESSIONS_PER_CWD, shutdown } from "./index.ts";
+import {
+  MAX_SESSIONS_PER_CWD,
+  reloadPromptContext,
+  shutdown,
+} from "./index.ts";
 import {
   appendMessage,
   createSession,
@@ -87,6 +91,9 @@ let dividerTick = 0;
 /** Divider animation timer handle. */
 let dividerTimer: ReturnType<typeof setInterval> | null = null;
 
+/** Whether stdin was already in raw mode before the TUI initialized. */
+let stdinWasRaw = false;
+
 // ---------------------------------------------------------------------------
 // Overlay state
 // ---------------------------------------------------------------------------
@@ -108,6 +115,7 @@ export function resetUiState(): void {
   stopDividerAnimation();
   resetUiAgentState();
   activeOverlay = null;
+  stdinWasRaw = false;
 }
 
 // ---------------------------------------------------------------------------
@@ -355,6 +363,7 @@ const commandController = createCommandController({
   render: () => {
     cel.render();
   },
+  reloadPromptContext,
   openInBrowser,
 });
 
@@ -396,6 +405,67 @@ async function gracefulExit(state: AppState): Promise<void> {
   process.exit(0);
 }
 
+/** Restore the terminal to the shell before suspending. */
+function suspendTerminalUi(): void {
+  stopDividerAnimation();
+  process.stdout.write("\x1b[?1006l\x1b[?1000l");
+  process.stdout.write("\x1b[<u");
+  process.stdout.write("\x1b[?25h");
+  process.stdout.write("\x1b[?1049l");
+  process.stdin.pause();
+  if (process.stdin.setRawMode) {
+    process.stdin.setRawMode(stdinWasRaw);
+  }
+}
+
+/** Re-enter the TUI terminal modes after a suspended process is resumed. */
+function resumeTerminalUi(): void {
+  if (process.stdin.setRawMode) {
+    process.stdin.setRawMode(true);
+  }
+  process.stdin.resume();
+  process.stdout.write("\x1b[?1049h");
+  process.stdout.write("\x1b[>1u");
+  process.stdout.write("\x1b[?1000h\x1b[?1006h");
+  process.stdout.write("\x1b[?25l");
+}
+
+/** Suspend the app to the background and restore the UI on SIGCONT. */
+export function suspendToBackground(
+  resumeUi: () => void,
+  runtime?: {
+    stop?: () => void;
+    onResume?: (resume: () => void) => void;
+    suspend?: () => void;
+  },
+): void {
+  const stop = runtime?.stop ?? suspendTerminalUi;
+  const onResume =
+    runtime?.onResume ??
+    ((resume: () => void) => {
+      process.once("SIGCONT", resume);
+    });
+  const suspend =
+    runtime?.suspend ??
+    (() => {
+      process.kill(process.pid, "SIGTSTP");
+    });
+  const keepAlive = setInterval(() => {}, 1 << 30);
+
+  stop();
+  onResume(() => {
+    clearInterval(keepAlive);
+    resumeUi();
+  });
+
+  try {
+    suspend();
+  } catch (error) {
+    clearInterval(keepAlive);
+    throw error;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -432,6 +502,7 @@ export function renderBaseLayout(
   state: AppState,
   cols: number,
   inputController: InputController,
+  onSuspend?: () => void,
 ): Node {
   return VStack(
     {
@@ -447,6 +518,10 @@ export function renderBaseLayout(
         }
         if (key === "ctrl+d" && inputValue === "") {
           gracefulExit(state).catch(() => process.exit(1));
+          return;
+        }
+        if (key === "ctrl+z") {
+          onSuspend?.();
           return;
         }
         if (key === "escape" && state.running) {
@@ -467,7 +542,7 @@ export function renderBaseLayout(
       renderInputArea(state.theme, inputController),
 
       // ── Status bar (1 line) ──
-      renderStatusBar(state),
+      renderStatusBar(state, cols),
     ],
   );
 }
@@ -482,13 +557,23 @@ export function renderBaseLayout(
  */
 export function startUI(state: AppState): void {
   resetUiState();
+  stdinWasRaw = process.stdin.isRaw || false;
   const terminal = new ProcessTerminal();
   const inputController = createInputController(state);
   cel.init(terminal);
 
   cel.viewport(() => {
     const cols = terminal.columns;
-    const base = renderBaseLayout(state, cols, inputController);
+    const base = renderBaseLayout(state, cols, inputController, () => {
+      suspendToBackground(() => {
+        resumeTerminalUi();
+        cel._getBuffer()?.clear();
+        if (state.running) {
+          startDividerAnimation();
+        }
+        cel.render();
+      });
+    });
     const overlay = renderActiveOverlay(state);
 
     if (overlay) {
@@ -496,4 +581,8 @@ export function startUI(state: AppState): void {
     }
     return base;
   });
+
+  if (state.running) {
+    startDividerAnimation();
+  }
 }

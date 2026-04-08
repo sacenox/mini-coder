@@ -226,6 +226,7 @@ describe("shell", () => {
   test("returns stdout from a command", async () => {
     const result = await executeShell({ command: "echo hello" }, tmp);
     expect(result.isError).toBe(false);
+    expect(resultText(result)).toContain("Exit code: 0");
     expect(resultText(result)).toContain("hello");
   });
 
@@ -238,7 +239,7 @@ describe("shell", () => {
   test("passes through exit code", async () => {
     const result = await executeShell({ command: "exit 42" }, tmp);
     expect(result.isError).toBe(true);
-    expect(resultText(result)).toContain("exit code 42");
+    expect(resultText(result)).toContain("Exit code: 42");
   });
 
   test("runs in the specified cwd", async () => {

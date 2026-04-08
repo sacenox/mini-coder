@@ -11,8 +11,10 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import type {
   KnownProvider,
+  Message,
   Model,
   OAuthCredentials,
   ThinkingLevel,
@@ -29,11 +31,13 @@ import {
   initPlugins,
   type LoadedPlugin,
   loadPluginConfig,
+  type PluginEntry,
 } from "./plugins.ts";
 import {
   type AgentsMdFile,
   buildSystemPrompt,
   discoverAgentsMd,
+  resolveAgentsScanRoot,
 } from "./prompt.ts";
 import {
   computeStats,
@@ -106,6 +110,14 @@ function saveOAuthCredentials(creds: Record<string, OAuthCredentials>): void {
   writeFileSync(AUTH_PATH, JSON.stringify(creds, null, 2), "utf-8");
 }
 
+/** Return whether refreshed OAuth credentials differ from the persisted value. */
+export function didOAuthCredentialsChange(
+  current: OAuthCredentials | undefined,
+  next: OAuthCredentials,
+): boolean {
+  return !isDeepStrictEqual(current, next);
+}
+
 // ---------------------------------------------------------------------------
 // Provider discovery
 // ---------------------------------------------------------------------------
@@ -148,7 +160,12 @@ async function discoverProviders(): Promise<DiscoveryResult> {
       if (result) {
         providers.set(oauthProvider.id, result.apiKey);
         // Update credentials if they were refreshed
-        if (result.newCredentials !== oauthCredentials[oauthProvider.id]) {
+        if (
+          didOAuthCredentialsChange(
+            oauthCredentials[oauthProvider.id],
+            result.newCredentials,
+          )
+        ) {
           oauthCredentials[oauthProvider.id] = result.newCredentials;
           credsModified = true;
         }
@@ -286,6 +303,88 @@ function getSkillScanPaths(cwd: string, gitRoot: string | null): string[] {
   ];
 }
 
+/** Load AGENTS.md files, skills, plugins, git state, and the merged theme. */
+export async function loadPromptContext(
+  messages: readonly Message[],
+  opts?: {
+    cwd?: string;
+    pluginEntries?: PluginEntry[];
+    pluginConfigPath?: string;
+  },
+): Promise<{
+  cwd: string;
+  canonicalCwd: string;
+  git: GitState | null;
+  agentsMd: AgentsMdFile[];
+  skills: Skill[];
+  plugins: LoadedPlugin[];
+  theme: Theme;
+}> {
+  const cwd = opts?.cwd ?? process.cwd();
+  const canonicalCwd = canonicalizePath(cwd);
+  const git = await getGitState(cwd);
+  const gitRoot = git?.root ?? null;
+  const home = homedir();
+  const scanRoot = resolveAgentsScanRoot(
+    cwd,
+    gitRoot,
+    home,
+    process.env.MC_AGENTS_ROOT,
+  );
+  const agentsMd = discoverAgentsMd(cwd, scanRoot, join(home, ".agents"));
+  const skills = discoverSkills(getSkillScanPaths(canonicalCwd, gitRoot));
+  const pluginEntries =
+    opts?.pluginEntries ??
+    loadPluginConfig(opts?.pluginConfigPath ?? PLUGIN_CONFIG_PATH);
+  const context: AgentContext = {
+    cwd,
+    messages,
+    dataDir: DATA_DIR,
+  };
+  const plugins = await initPlugins(pluginEntries, context, (entry, err) => {
+    console.error(`Plugin "${entry.name}" failed to init: ${err.message}`);
+  });
+  const themeOverrides = plugins
+    .map((plugin) => plugin.result.theme)
+    .filter((theme): theme is Partial<Theme> => theme != null);
+
+  return {
+    cwd,
+    canonicalCwd,
+    git,
+    agentsMd,
+    skills,
+    plugins,
+    theme: mergeThemes(DEFAULT_THEME, ...themeOverrides),
+  };
+}
+
+/** Refresh the current prompt/session context at a reload boundary like `/new`. */
+export async function reloadPromptContext(
+  state: AppState,
+  runtime?: {
+    loadPromptContext?: typeof loadPromptContext;
+    destroyPlugins?: typeof destroyPlugins;
+  },
+): Promise<void> {
+  const loadContext = runtime?.loadPromptContext ?? loadPromptContext;
+  const destroyLoadedPlugins = runtime?.destroyPlugins ?? destroyPlugins;
+  const previousPlugins = state.plugins;
+  const context = await loadContext(filterModelMessages(state.messages));
+
+  state.cwd = context.cwd;
+  state.canonicalCwd = context.canonicalCwd;
+  state.git = context.git;
+  state.agentsMd = context.agentsMd;
+  state.skills = context.skills;
+  state.plugins = context.plugins;
+  state.theme = context.theme;
+
+  await destroyLoadedPlugins(previousPlugins, (entry, err) => {
+    console.error(`Plugin "${entry.name}" failed to destroy: ${err.message}`);
+  });
+}
+
 // ---------------------------------------------------------------------------
 // App state
 // ---------------------------------------------------------------------------
@@ -345,7 +444,6 @@ export interface AppState {
 /** Initialize and return the full app state. */
 export async function init(): Promise<AppState> {
   const cwd = process.cwd();
-  const canonicalCwd = canonicalizePath(cwd);
 
   // Ensure data directory exists
   mkdirSync(DATA_DIR, { recursive: true });
@@ -362,40 +460,14 @@ export async function init(): Promise<AppState> {
   );
   const model = selectModel(availableModels, startup.modelId);
 
-  // Gather git state
-  const git = await getGitState(cwd);
-  const gitRoot = git?.root ?? null;
-
-  // Discover context
-  const home = homedir();
-  const scanRoot = gitRoot ?? home;
-  const agentsMd = discoverAgentsMd(cwd, scanRoot, join(home, ".agents"));
-  const skills = discoverSkills(getSkillScanPaths(canonicalCwd, gitRoot));
-
-  // Load plugins
-  const pluginEntries = loadPluginConfig(PLUGIN_CONFIG_PATH);
-
   // Open database. Sessions are created lazily on the first user message.
   const db = openDatabase(DB_PATH);
   const effort = startup.effort;
   const messages: ReturnType<typeof loadMessages> = [];
   const stats = computeStats(messages);
-
-  // Init plugins
-  const context: AgentContext = {
+  const promptContext = await loadPromptContext(filterModelMessages(messages), {
     cwd,
-    messages: filterModelMessages(messages),
-    dataDir: DATA_DIR,
-  };
-  const plugins = await initPlugins(pluginEntries, context, (entry, err) => {
-    console.error(`Plugin "${entry.name}" failed to init: ${err.message}`);
   });
-
-  // Build theme from defaults + plugin overrides
-  const themeOverrides = plugins
-    .map((p) => p.result.theme)
-    .filter((t): t is Partial<Theme> => t != null);
-  const theme = mergeThemes(DEFAULT_THEME, ...themeOverrides);
 
   return {
     db,
@@ -404,17 +476,17 @@ export async function init(): Promise<AppState> {
     effort,
     messages,
     stats,
-    agentsMd,
-    skills,
-    plugins,
-    theme,
-    git,
+    agentsMd: promptContext.agentsMd,
+    skills: promptContext.skills,
+    plugins: promptContext.plugins,
+    theme: promptContext.theme,
+    git: promptContext.git,
     providers,
     oauthCredentials,
     settings,
     settingsPath: SETTINGS_PATH,
-    cwd,
-    canonicalCwd,
+    cwd: promptContext.cwd,
+    canonicalCwd: promptContext.canonicalCwd,
     running: false,
     abortController: null,
     activeTurnPromise: null,

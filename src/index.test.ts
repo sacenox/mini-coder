@@ -1,9 +1,79 @@
-import { expect, test } from "bun:test";
+import { afterEach, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import {
+  type AppState,
+  didOAuthCredentialsChange,
+  loadPromptContext,
+  reloadPromptContext,
+} from "./index.ts";
+import type { LoadedPlugin } from "./plugins.ts";
+import { openDatabase } from "./session.ts";
+import { DEFAULT_THEME } from "./theme.ts";
 
 const REPO_ROOT = join(import.meta.dir, "..");
 const INDEX_MODULE_URL = pathToFileURL(join(import.meta.dir, "index.ts")).href;
+const tempDirs: string[] = [];
+
+function createTempDir(): string {
+  const dir = mkdtempSync(join(tmpdir(), "mc-index-test-"));
+  tempDirs.push(dir);
+  return dir;
+}
+
+function createTestState(plugins: LoadedPlugin[] = []): AppState {
+  const cwd = createTempDir();
+  return {
+    db: openDatabase(":memory:"),
+    session: null,
+    model: null,
+    effort: "medium",
+    messages: [],
+    stats: { totalInput: 0, totalOutput: 0, totalCost: 0 },
+    agentsMd: [],
+    skills: [],
+    plugins,
+    theme: DEFAULT_THEME,
+    git: null,
+    providers: new Map(),
+    oauthCredentials: {},
+    settings: {},
+    settingsPath: join(cwd, "settings.json"),
+    cwd,
+    canonicalCwd: cwd,
+    running: false,
+    abortController: null,
+    activeTurnPromise: null,
+    showReasoning: true,
+    verbose: false,
+  };
+}
+
+function createLoadedPlugin(name: string): LoadedPlugin {
+  return {
+    entry: { name, module: `${name}.ts` },
+    plugin: {
+      name,
+      description: `${name} plugin`,
+      async init() {
+        return {};
+      },
+      async destroy() {},
+    },
+    result: {
+      systemPromptSuffix: `${name} suffix`,
+      theme: { accentText: "color03" },
+    },
+  };
+}
+
+afterEach(() => {
+  for (const dir of tempDirs.splice(0)) {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 async function importIndexInChild(): Promise<{
   exitCode: number;
@@ -54,4 +124,136 @@ test("importing index.ts does not start the CLI", async () => {
   expect(result.exitCode).toBe(0);
   expect(result.stdout).toBe("imported\n");
   expect(result.stderr).toBe("");
+});
+
+test("didOAuthCredentialsChange compares refreshed credentials structurally", () => {
+  const current = {
+    refresh: "refresh-token",
+    access: "access-token",
+    expires: 123,
+  };
+  const refreshedWithSameValues = {
+    access: "access-token",
+    expires: 123,
+    refresh: "refresh-token",
+  };
+
+  expect(didOAuthCredentialsChange(current, refreshedWithSameValues)).toBe(
+    false,
+  );
+  expect(
+    didOAuthCredentialsChange(current, {
+      ...refreshedWithSameValues,
+      access: "new-access-token",
+    }),
+  ).toBe(true);
+});
+
+test("loadPromptContext loads AGENTS.md, skills, plugins, and theme overrides", async () => {
+  const project = createTempDir();
+  const pluginPath = join(project, "plugin.ts");
+
+  writeFileSync(join(project, "AGENTS.md"), "Project instructions");
+  mkdirSync(join(project, ".agents", "skills", "example-skill"), {
+    recursive: true,
+  });
+  writeFileSync(
+    join(project, ".agents", "skills", "example-skill", "SKILL.md"),
+    [
+      "---",
+      "name: example-skill",
+      'description: "Example skill."',
+      "---",
+      "",
+      "# Example Skill",
+    ].join("\n"),
+  );
+  writeFileSync(
+    pluginPath,
+    [
+      "export default {",
+      '  name: "test-plugin",',
+      '  description: "Adds prompt context.",',
+      "  async init(agent) {",
+      "    return {",
+      `      systemPromptSuffix: \`Plugin cwd: \${agent.cwd}\` ,`,
+      '      theme: { accentText: "color03" },',
+      "    };",
+      "  },",
+      "};",
+    ].join("\n"),
+  );
+
+  const context = await loadPromptContext([], {
+    cwd: project,
+    pluginEntries: [{ name: "test-plugin", module: pluginPath }],
+  });
+
+  expect(context.cwd).toBe(project);
+  expect(context.agentsMd.at(-1)?.content).toBe("Project instructions");
+  expect(context.skills.map((skill) => skill.name)).toContain("example-skill");
+  expect(context.plugins).toHaveLength(1);
+  expect(context.plugins[0]?.result.systemPromptSuffix).toBe(
+    `Plugin cwd: ${project}`,
+  );
+  expect(context.theme.accentText).toBe("color03");
+});
+
+test("reloadPromptContext keeps the current plugin state when loading the replacement context fails", async () => {
+  const plugin = createLoadedPlugin("existing");
+  const state = createTestState([plugin]);
+  let destroyed = false;
+
+  try {
+    await expect(
+      reloadPromptContext(state, {
+        loadPromptContext: async () => {
+          throw new Error("reload failed");
+        },
+        destroyPlugins: async () => {
+          destroyed = true;
+        },
+      }),
+    ).rejects.toThrow("reload failed");
+
+    expect(destroyed).toBe(false);
+    expect(state.plugins).toEqual([plugin]);
+    expect(state.theme).toBe(DEFAULT_THEME);
+  } finally {
+    state.db.close();
+  }
+});
+
+test("reloadPromptContext swaps in the new context before destroying the old plugins", async () => {
+  const previousPlugin = createLoadedPlugin("previous");
+  const nextPlugin = createLoadedPlugin("next");
+  const state = createTestState([previousPlugin]);
+  let destroyedPlugins: LoadedPlugin[] = [];
+
+  try {
+    await reloadPromptContext(state, {
+      loadPromptContext: async () => ({
+        cwd: state.cwd,
+        canonicalCwd: state.canonicalCwd,
+        git: null,
+        agentsMd: [{ path: "/tmp/AGENTS.md", content: "next agents" }],
+        skills: [],
+        plugins: [nextPlugin],
+        theme: { ...DEFAULT_THEME, accentText: "color05" },
+      }),
+      destroyPlugins: async (plugins) => {
+        destroyedPlugins = [...plugins];
+        expect(state.plugins).toEqual([nextPlugin]);
+        expect(state.theme.accentText).toBe("color05");
+      },
+    });
+
+    expect(destroyedPlugins).toEqual([previousPlugin]);
+    expect(state.plugins).toEqual([nextPlugin]);
+    expect(state.agentsMd).toEqual([
+      { path: "/tmp/AGENTS.md", content: "next agents" },
+    ]);
+  } finally {
+    state.db.close();
+  }
 });

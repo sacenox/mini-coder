@@ -9,7 +9,7 @@
  */
 
 import { existsSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import type { GitState } from "./git.ts";
 import { canonicalizePath } from "./paths.ts";
 import { buildSkillCatalog, type Skill } from "./skills.ts";
@@ -49,6 +49,30 @@ export interface BuildSystemPromptOpts {
 /** File name to look for during the AGENTS.md walk. */
 const AGENT_FILENAME = "AGENTS.md";
 
+/** Resolve the AGENTS.md scan root from git/home/env inputs. */
+export function resolveAgentsScanRoot(
+  _cwd: string,
+  gitRoot: string | null,
+  homeDir: string,
+  agentsRootEnv = process.env.MC_AGENTS_ROOT,
+): string {
+  if (gitRoot) {
+    return canonicalizePath(gitRoot);
+  }
+  if (agentsRootEnv === "/") {
+    return canonicalizePath("/");
+  }
+  return canonicalizePath(homeDir);
+}
+
+function isWithinScanRoot(path: string, scanRoot: string): boolean {
+  const relativePath = relative(scanRoot, path);
+  return (
+    relativePath === "" ||
+    (!relativePath.startsWith("..") && relativePath !== "..")
+  );
+}
+
 /**
  * Walk from `cwd` up to `scanRoot`, collecting AGENTS.md files.
  *
@@ -72,17 +96,22 @@ export function discoverAgentsMd(
   // Collect canonical directories from scanRoot to cwd
   const dirs: string[] = [];
   let current = start;
-  while (true) {
-    dirs.push(current);
-    if (current === root) break;
-    const parent = dirname(current);
-    // Safety: stop if we can't go higher (e.g., filesystem root)
-    if (parent === current) break;
-    current = parent;
-  }
 
-  // Reverse so we go root-to-leaf
-  dirs.reverse();
+  if (!isWithinScanRoot(start, root)) {
+    dirs.push(start);
+  } else {
+    while (true) {
+      dirs.push(current);
+      if (current === root) break;
+      const parent = dirname(current);
+      // Safety: stop if we can't go higher (e.g., filesystem root)
+      if (parent === current) break;
+      current = parent;
+    }
+
+    // Reverse so we go root-to-leaf
+    dirs.reverse();
+  }
 
   // Collect files from the global agents dir first
   const files: AgentsMdFile[] = [];

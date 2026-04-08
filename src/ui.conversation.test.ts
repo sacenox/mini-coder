@@ -128,6 +128,35 @@ describe("ui/conversation", () => {
     expect(text).not.toContain("line 21");
   });
 
+  test("renderToolResult shows shell exit codes", () => {
+    const node = renderToolResult(
+      "shell",
+      { command: "exit 42" },
+      "Exit code: 42\n[stderr]\nboom",
+      true,
+      RENDER_OPTS,
+    );
+    const text = collectText(node);
+
+    expect(text).toContain("$ exit 42");
+    expect(text).toContain("Exit code: 42");
+  });
+
+  test("renderToolResult shows a diff for newly created files", () => {
+    const node = renderToolResult(
+      "edit",
+      { path: "src/new.ts", oldText: "", newText: "first\nsecond\n" },
+      "Created src/new.ts",
+      false,
+      { ...RENDER_OPTS, verbose: true },
+    );
+    const text = collectText(node);
+
+    expect(text).toContain("+first");
+    expect(text).toContain("+second");
+    expect(text).not.toContain("(new file)");
+  });
+
   test("renderToolResult shows full edit diffs in verbose mode", () => {
     const oldText = Array.from({ length: 25 }, (_, i) => `old ${i + 1}`).join(
       "\n",

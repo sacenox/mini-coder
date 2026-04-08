@@ -90,6 +90,7 @@ describe("ui/commands", () => {
       appendInfoMessage: () => {},
       scrollConversationToBottom: () => {},
       render: () => {},
+      reloadPromptContext: async () => {},
       openInBrowser: () => {},
     });
 
@@ -133,6 +134,7 @@ describe("ui/commands", () => {
       appendInfoMessage: () => {},
       scrollConversationToBottom: () => {},
       render: () => {},
+      reloadPromptContext: async () => {},
       openInBrowser: () => {},
     });
 
@@ -179,11 +181,65 @@ describe("ui/commands", () => {
       appendInfoMessage: () => {},
       scrollConversationToBottom: () => {},
       render: () => {},
+      reloadPromptContext: async () => {},
       openInBrowser: () => {},
     });
 
     try {
       expect(controller.handleCommand("unknown", state)).toBe(false);
+    } finally {
+      state.db.close();
+    }
+  });
+
+  test("/new clears the active session state and reloads prompt context", async () => {
+    const state = createTestState();
+    let reloadCount = 0;
+    const controller = createCommandController({
+      openOverlay: () => {},
+      dismissOverlay: () => {},
+      setInputValue: () => {},
+      appendInfoMessage: () => {},
+      scrollConversationToBottom: () => {},
+      render: () => {},
+      reloadPromptContext: async (nextState) => {
+        reloadCount++;
+        nextState.agentsMd = [
+          { path: "/tmp/reloaded/AGENTS.md", content: "Reloaded context" },
+        ];
+      },
+      openInBrowser: () => {},
+    });
+
+    state.session = {
+      id: "session-1",
+      cwd: state.canonicalCwd,
+      model: null,
+      effort: state.effort,
+      forkedFrom: null,
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    state.messages = [
+      { role: "ui", kind: "info", content: "old", timestamp: 1 },
+    ];
+    state.stats = { totalInput: 10, totalOutput: 20, totalCost: 0.5 };
+
+    try {
+      expect(controller.handleCommand("new", state)).toBe(true);
+      await Bun.sleep(0);
+
+      expect(reloadCount).toBe(1);
+      expect(state.session).toBeNull();
+      expect(state.messages).toEqual([]);
+      expect(state.stats).toEqual({
+        totalInput: 0,
+        totalOutput: 0,
+        totalCost: 0,
+      });
+      expect(state.agentsMd).toEqual([
+        { path: "/tmp/reloaded/AGENTS.md", content: "Reloaded context" },
+      ]);
     } finally {
       state.db.close();
     }
@@ -200,6 +256,7 @@ describe("ui/commands", () => {
       appendInfoMessage: () => {},
       scrollConversationToBottom: () => {},
       render: () => {},
+      reloadPromptContext: async () => {},
       openInBrowser: () => {},
     });
 

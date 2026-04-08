@@ -14,6 +14,7 @@ import {
   buildSystemPrompt,
   discoverAgentsMd,
   formatGitLine,
+  resolveAgentsScanRoot,
 } from "./prompt.ts";
 import type { Skill } from "./skills.ts";
 
@@ -141,6 +142,51 @@ describe("discoverAgentsMd", () => {
       "Work instructions",
       "Project instructions",
     ]);
+  });
+
+  test("does not walk outside cwd when the scan root is not an ancestor", () => {
+    const home = join(tmp, "home");
+    const project = join(tmp, "outside", "project");
+
+    mkdirSync(home, { recursive: true });
+    mkdirSync(project, { recursive: true });
+
+    writeFileSync(join(tmp, "AGENTS.md"), "Tmp instructions");
+    writeFileSync(join(project, "AGENTS.md"), "Project instructions");
+
+    const files = discoverAgentsMd(project, home);
+    expect(files.map((file) => file.content)).toEqual(["Project instructions"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveAgentsScanRoot
+// ---------------------------------------------------------------------------
+
+describe("resolveAgentsScanRoot", () => {
+  test("prefers the git root when one is available", () => {
+    const project = join(tmp, "project");
+    const home = join(tmp, "home");
+    mkdirSync(project, { recursive: true });
+    mkdirSync(home, { recursive: true });
+
+    expect(resolveAgentsScanRoot(project, project, home, "/")).toBe(
+      canonicalizePath(project),
+    );
+  });
+
+  test("falls back to the home directory unless MC_AGENTS_ROOT=/ is set", () => {
+    const project = join(tmp, "project");
+    const home = join(tmp, "home");
+    mkdirSync(project, { recursive: true });
+    mkdirSync(home, { recursive: true });
+
+    expect(resolveAgentsScanRoot(project, null, home)).toBe(
+      canonicalizePath(home),
+    );
+    expect(resolveAgentsScanRoot(project, null, home, "/")).toBe(
+      canonicalizePath("/"),
+    );
   });
 });
 
