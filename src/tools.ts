@@ -295,42 +295,85 @@ function buildLineTruncation(
   };
 }
 
-/** Slice the largest UTF-8 prefix that fits within `maxBytes`. */
-function sliceUtf8Prefix(input: string, maxBytes: number): string {
+function isHighSurrogate(codeUnit: number): boolean {
+  return codeUnit >= 0xd800 && codeUnit <= 0xdbff;
+}
+
+function isLowSurrogate(codeUnit: number): boolean {
+  return codeUnit >= 0xdc00 && codeUnit <= 0xdfff;
+}
+
+function findUtf8SliceLength(
+  input: string,
+  maxBytes: number,
+  getCandidate: (length: number) => string,
+): number {
   if (maxBytes <= 0 || input === "") {
-    return "";
+    return 0;
   }
+
   let low = 0;
   let high = input.length;
   while (low < high) {
     const mid = Math.ceil((low + high) / 2);
-    const candidate = input.slice(0, mid);
+    const candidate = getCandidate(mid);
     if (Buffer.byteLength(candidate, "utf8") <= maxBytes) {
       low = mid;
     } else {
       high = mid - 1;
     }
   }
-  return input.slice(0, low);
+
+  return low;
+}
+
+function normalizeUtf8PrefixEnd(input: string, end: number): number {
+  if (end <= 0 || end >= input.length) {
+    return end;
+  }
+
+  const previousCodeUnit = input.charCodeAt(end - 1);
+  const nextCodeUnit = input.charCodeAt(end);
+  if (isHighSurrogate(previousCodeUnit) && isLowSurrogate(nextCodeUnit)) {
+    return end - 1;
+  }
+
+  return end;
+}
+
+function normalizeUtf8SuffixStart(input: string, start: number): number {
+  if (start <= 0 || start >= input.length) {
+    return start;
+  }
+
+  const previousCodeUnit = input.charCodeAt(start - 1);
+  const nextCodeUnit = input.charCodeAt(start);
+  if (isHighSurrogate(previousCodeUnit) && isLowSurrogate(nextCodeUnit)) {
+    return start + 1;
+  }
+
+  return start;
+}
+
+/** Slice the largest UTF-8 prefix that fits within `maxBytes`. */
+function sliceUtf8Prefix(input: string, maxBytes: number): string {
+  const end = normalizeUtf8PrefixEnd(
+    input,
+    findUtf8SliceLength(input, maxBytes, (length) => input.slice(0, length)),
+  );
+  return input.slice(0, end);
 }
 
 /** Slice the largest UTF-8 suffix that fits within `maxBytes`. */
 function sliceUtf8Suffix(input: string, maxBytes: number): string {
-  if (maxBytes <= 0 || input === "") {
-    return "";
-  }
-  let low = 0;
-  let high = input.length;
-  while (low < high) {
-    const mid = Math.ceil((low + high) / 2);
-    const candidate = input.slice(input.length - mid);
-    if (Buffer.byteLength(candidate, "utf8") <= maxBytes) {
-      low = mid;
-    } else {
-      high = mid - 1;
-    }
-  }
-  return input.slice(input.length - low);
+  const start = normalizeUtf8SuffixStart(
+    input,
+    input.length -
+      findUtf8SliceLength(input, maxBytes, (length) =>
+        input.slice(input.length - length),
+      ),
+  );
+  return input.slice(start);
 }
 
 /** Fit disjoint head/tail segments plus a marker within a UTF-8 byte budget. */
@@ -357,17 +400,18 @@ function fitSegmentsWithinBytes(
   let remainingBytes = availableBytes - usedBytes;
 
   if (remainingBytes > 0) {
+    const headBytes = Buffer.byteLength(head, "utf8");
     const expandedHead = sliceUtf8Prefix(
       headSource,
-      headBudget + remainingBytes,
+      headBytes + remainingBytes,
     );
-    remainingBytes -=
-      Buffer.byteLength(expandedHead, "utf8") - Buffer.byteLength(head, "utf8");
+    remainingBytes -= Buffer.byteLength(expandedHead, "utf8") - headBytes;
     head = expandedHead;
   }
 
   if (remainingBytes > 0) {
-    tail = sliceUtf8Suffix(tailSource, tailBudget + remainingBytes);
+    const tailBytes = Buffer.byteLength(tail, "utf8");
+    tail = sliceUtf8Suffix(tailSource, tailBytes + remainingBytes);
   }
 
   return head + marker + tail;

@@ -47,6 +47,31 @@ function readFile(name: string): string {
   return readFileSync(join(tmp, name), "utf-8");
 }
 
+function hasUnpairedSurrogate(input: string): boolean {
+  for (let index = 0; index < input.length; index++) {
+    const codeUnit = input.charCodeAt(index);
+    const isHighSurrogate = codeUnit >= 0xd800 && codeUnit <= 0xdbff;
+    const isLowSurrogate = codeUnit >= 0xdc00 && codeUnit <= 0xdfff;
+
+    if (isHighSurrogate) {
+      const nextCodeUnit = input.charCodeAt(index + 1);
+      const nextIsLowSurrogate =
+        nextCodeUnit >= 0xdc00 && nextCodeUnit <= 0xdfff;
+      if (!nextIsLowSurrogate) {
+        return true;
+      }
+      index++;
+      continue;
+    }
+
+    if (isLowSurrogate) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 // ---------------------------------------------------------------------------
 // edit
 // ---------------------------------------------------------------------------
@@ -381,6 +406,17 @@ describe("truncateOutput", () => {
     expect(result.match(/… truncated/g) ?? []).toHaveLength(1);
     expect(result.split("\n").length).toBeLessThanOrEqual(21);
     expect(Buffer.byteLength(result, "utf8")).toBeLessThanOrEqual(2_000);
+  });
+
+  test("preserves surrogate pairs when truncating by UTF-8 byte size", () => {
+    const input = `${"🙂".repeat(6)}ABC${"🙃".repeat(6)}`;
+    const result = truncateOutput(input, 100, 42);
+
+    expect(result).toContain("… truncated for size …");
+    expect(result.startsWith("🙂")).toBe(true);
+    expect(result.endsWith("🙃")).toBe(true);
+    expect(hasUnpairedSurrogate(result)).toBe(false);
+    expect(Buffer.byteLength(result, "utf8")).toBeLessThanOrEqual(42);
   });
 
   test("head and tail do not overlap", () => {
