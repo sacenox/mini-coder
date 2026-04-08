@@ -67,6 +67,59 @@ export interface ParseInputOpts {
 // Parsing
 // ---------------------------------------------------------------------------
 
+function isCommand(value: string): value is Command {
+  return COMMAND_SET.has(value);
+}
+
+function parseSlashInput(trimmed: string): ParsedInput | null {
+  const skillMatch = trimmed.match(/^\/skill:(\S+)(?:\s+(.*))?$/s);
+  if (skillMatch?.[1]) {
+    return {
+      type: "skill",
+      skillName: skillMatch[1],
+      userText: skillMatch[2]?.trim() ?? "",
+    };
+  }
+
+  const commandMatch = trimmed.match(/^\/(\S+)(?:\s+(.*))?$/s);
+  const command = commandMatch?.[1];
+  if (!command || !isCommand(command)) {
+    return null;
+  }
+
+  return {
+    type: "command",
+    command,
+    args: commandMatch[2]?.trim() ?? "",
+  };
+}
+
+function resolveImagePath(input: string, cwd?: string): string {
+  if (isAbsolute(input) || !cwd) {
+    return input;
+  }
+  return join(cwd, input);
+}
+
+function parseImageInput(
+  trimmed: string,
+  opts?: ParseInputOpts,
+): Extract<ParsedInput, { type: "image" }> | null {
+  if (!opts?.supportsImages) {
+    return null;
+  }
+  if (!IMAGE_EXTENSIONS.has(extname(trimmed).toLowerCase())) {
+    return null;
+  }
+
+  const resolvedPath = resolveImagePath(trimmed, opts.cwd);
+  if (!existsSync(resolvedPath)) {
+    return null;
+  }
+
+  return { type: "image", path: resolvedPath };
+}
+
 /**
  * Parse raw user input into a structured result.
  *
@@ -82,52 +135,21 @@ export interface ParseInputOpts {
  */
 export function parseInput(raw: string, opts?: ParseInputOpts): ParsedInput {
   const trimmed = raw.trim();
-
-  // Empty or whitespace-only
   if (trimmed.length === 0) {
     return { type: "text", text: "" };
   }
 
-  // Slash-prefixed: command or skill
   if (trimmed[0] === "/") {
-    // Skill reference: /skill:name [rest]
-    const skillMatch = trimmed.match(/^\/skill:(\S+)(?:\s+(.*))?$/s);
-    if (skillMatch?.[1]) {
-      return {
-        type: "skill",
-        skillName: skillMatch[1],
-        userText: skillMatch[2]?.trim() ?? "",
-      };
-    }
-
-    // Slash command: /name [args]
-    const cmdMatch = trimmed.match(/^\/(\S+)(?:\s+(.*))?$/s);
-    if (cmdMatch?.[1] && COMMAND_SET.has(cmdMatch[1])) {
-      return {
-        type: "command",
-        command: cmdMatch[1] as Command,
-        args: cmdMatch[2]?.trim() ?? "",
-      };
-    }
-
-    // Not a recognized command or skill — fall through to text
-  }
-
-  // Image path detection
-  if (opts?.supportsImages) {
-    const ext = extname(trimmed).toLowerCase();
-    if (IMAGE_EXTENSIONS.has(ext)) {
-      const resolved = isAbsolute(trimmed)
-        ? trimmed
-        : opts.cwd
-          ? join(opts.cwd, trimmed)
-          : trimmed;
-      if (existsSync(resolved)) {
-        return { type: "image", path: resolved };
-      }
+    const slashInput = parseSlashInput(trimmed);
+    if (slashInput) {
+      return slashInput;
     }
   }
 
-  // Plain text
+  const imageInput = parseImageInput(trimmed, opts);
+  if (imageInput) {
+    return imageInput;
+  }
+
   return { type: "text", text: trimmed };
 }

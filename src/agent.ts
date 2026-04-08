@@ -132,6 +132,46 @@ function cloneAssistantContent(
   });
 }
 
+interface MergedAssistantBlock {
+  block: AssistantMessage["content"][number];
+  partialStep: number;
+  finalStep: number;
+}
+
+function mergeAssistantBlocks(
+  partialBlock: AssistantMessage["content"][number] | undefined,
+  finalBlock: AssistantMessage["content"][number] | undefined,
+): MergedAssistantBlock | null {
+  if (!partialBlock && !finalBlock) {
+    return null;
+  }
+  if (!partialBlock && finalBlock) {
+    return { block: finalBlock, partialStep: 0, finalStep: 1 };
+  }
+  if (partialBlock && !finalBlock) {
+    return { block: partialBlock, partialStep: 1, finalStep: 0 };
+  }
+  if (!partialBlock || !finalBlock) {
+    return null;
+  }
+  if (partialBlock.type === finalBlock.type) {
+    const shouldPreservePartialThinking =
+      partialBlock.type === "thinking" &&
+      finalBlock.type === "thinking" &&
+      partialBlock.thinking &&
+      !finalBlock.thinking;
+    return {
+      block: shouldPreservePartialThinking ? partialBlock : finalBlock,
+      partialStep: 1,
+      finalStep: 1,
+    };
+  }
+  if (partialBlock.type === "thinking") {
+    return { block: partialBlock, partialStep: 1, finalStep: 0 };
+  }
+  return { block: finalBlock, partialStep: 1, finalStep: 1 };
+}
+
 /** Merge streamed partial assistant content into the final message content. */
 function mergeAssistantContent(
   partialContent: AssistantMessage["content"],
@@ -148,42 +188,16 @@ function mergeAssistantContent(
     partialIndex < partialContent.length ||
     finalIndex < finalContent.length
   ) {
-    const partialBlock = partialContent[partialIndex];
-    const finalBlock = finalContent[finalIndex];
-
-    if (!partialBlock) {
-      merged.push(finalBlock!);
-      finalIndex++;
-      continue;
+    const nextBlock = mergeAssistantBlocks(
+      partialContent[partialIndex],
+      finalContent[finalIndex],
+    );
+    if (!nextBlock) {
+      break;
     }
-    if (!finalBlock) {
-      merged.push(partialBlock);
-      partialIndex++;
-      continue;
-    }
-    if (partialBlock.type === finalBlock.type) {
-      if (
-        partialBlock.type === "thinking" &&
-        finalBlock.type === "thinking" &&
-        partialBlock.thinking &&
-        !finalBlock.thinking
-      ) {
-        merged.push(partialBlock);
-      } else {
-        merged.push(finalBlock);
-      }
-      partialIndex++;
-      finalIndex++;
-      continue;
-    }
-    if (partialBlock.type === "thinking") {
-      merged.push(partialBlock);
-      partialIndex++;
-      continue;
-    }
-    merged.push(finalBlock);
-    partialIndex++;
-    finalIndex++;
+    merged.push(nextBlock.block);
+    partialIndex += nextBlock.partialStep;
+    finalIndex += nextBlock.finalStep;
   }
 
   return merged;
@@ -212,6 +226,207 @@ function toolErrorResult(name: string, error: unknown): ToolExecResult {
   };
 }
 
+function unknownToolResult(name: string): ToolExecResult {
+  return {
+    content: [{ type: "text", text: `Unknown tool: ${name}` }],
+    isError: true,
+  };
+}
+
+function buildAgentContext(
+  systemPrompt: string,
+  messages: Message[],
+  tools: Tool[],
+) {
+  return tools.length > 0
+    ? { systemPrompt, messages, tools }
+    : { systemPrompt, messages };
+}
+
+function buildStreamOptions(
+  apiKey: string | undefined,
+  effort: ThinkingLevel | undefined,
+  signal: AbortSignal | undefined,
+) {
+  return {
+    ...(apiKey ? { apiKey } : {}),
+    ...(effort ? { reasoning: effort } : {}),
+    ...(signal ? { signal } : {}),
+  };
+}
+
+async function streamAssistantMessage(
+  opts: Pick<
+    RunAgentOpts,
+    | "model"
+    | "systemPrompt"
+    | "tools"
+    | "messages"
+    | "apiKey"
+    | "effort"
+    | "signal"
+    | "onEvent"
+  >,
+): Promise<AssistantMessage> {
+  const eventStream = streamSimple(
+    opts.model,
+    buildAgentContext(opts.systemPrompt, opts.messages, opts.tools),
+    buildStreamOptions(opts.apiKey, opts.effort, opts.signal),
+  );
+  let assistantMessage: AssistantMessage | undefined;
+  let partialAssistantMessage: AssistantMessage | undefined;
+
+  for await (const event of eventStream) {
+    if ("partial" in event) {
+      partialAssistantMessage = event.partial;
+    }
+
+    switch (event.type) {
+      case "text_delta":
+        opts.onEvent?.({
+          type: "text_delta",
+          delta: event.delta,
+          content: cloneAssistantContent(event.partial.content),
+        });
+        continue;
+      case "thinking_delta":
+        opts.onEvent?.({
+          type: "thinking_delta",
+          delta: event.delta,
+          content: cloneAssistantContent(event.partial.content),
+        });
+        continue;
+      case "done":
+        assistantMessage = event.message;
+        continue;
+      case "error":
+        assistantMessage = event.error;
+        continue;
+      case "toolcall_end":
+        continue;
+    }
+  }
+
+  const finalAssistantMessage =
+    assistantMessage ?? (await eventStream.result());
+  if (!partialAssistantMessage) {
+    return finalAssistantMessage;
+  }
+  return mergeAssistantMessage(partialAssistantMessage, finalAssistantMessage);
+}
+
+function appendAssistantMessage(
+  db: Database,
+  sessionId: string,
+  messages: Message[],
+  assistantMessage: AssistantMessage,
+  turn: number,
+  onEvent: RunAgentOpts["onEvent"],
+): void {
+  messages.push(assistantMessage);
+  appendMessage(db, sessionId, assistantMessage, turn);
+  onEvent?.({ type: "assistant_message", message: assistantMessage });
+}
+
+function resolveLoopStopReason(
+  assistantMessage: AssistantMessage,
+  messages: Message[],
+  onEvent: RunAgentOpts["onEvent"],
+): AgentLoopResult | null {
+  if (
+    assistantMessage.stopReason === "error" ||
+    assistantMessage.stopReason === "aborted"
+  ) {
+    const eventType =
+      assistantMessage.stopReason === "error" ? "error" : "aborted";
+    onEvent?.({ type: eventType, message: assistantMessage });
+    return { messages, stopReason: assistantMessage.stopReason };
+  }
+
+  if (
+    assistantMessage.stopReason === "stop" ||
+    assistantMessage.stopReason === "length"
+  ) {
+    onEvent?.({ type: "done", message: assistantMessage });
+    return { messages, stopReason: assistantMessage.stopReason };
+  }
+
+  return null;
+}
+
+function getAssistantToolCalls(message: AssistantMessage): ToolCall[] {
+  return message.content.filter((content): content is ToolCall => {
+    return content.type === "toolCall";
+  });
+}
+
+async function executeToolCall(
+  toolCall: ToolCall,
+  opts: Pick<RunAgentOpts, "toolHandlers" | "cwd" | "signal" | "onEvent">,
+): Promise<ToolExecResult> {
+  const handler = opts.toolHandlers.get(toolCall.name);
+  if (!handler) {
+    return unknownToolResult(toolCall.name);
+  }
+
+  opts.onEvent?.({
+    type: "tool_start",
+    toolCallId: toolCall.id,
+    name: toolCall.name,
+    args: toolCall.arguments,
+  });
+
+  let result: ToolExecResult;
+  try {
+    result = await handler(
+      toolCall.arguments,
+      opts.cwd,
+      opts.signal,
+      (partial) => {
+        opts.onEvent?.({
+          type: "tool_delta",
+          toolCallId: toolCall.id,
+          name: toolCall.name,
+          result: partial,
+        });
+      },
+    );
+  } catch (error) {
+    result = toolErrorResult(toolCall.name, error);
+  }
+
+  opts.onEvent?.({
+    type: "tool_end",
+    toolCallId: toolCall.id,
+    name: toolCall.name,
+    result,
+  });
+  return result;
+}
+
+function appendToolResultMessage(
+  db: Database,
+  sessionId: string,
+  messages: Message[],
+  toolCall: ToolCall,
+  result: ToolExecResult,
+  turn: number,
+  onEvent: RunAgentOpts["onEvent"],
+): void {
+  const toolResultMessage: ToolResultMessage = {
+    role: "toolResult",
+    toolCallId: toolCall.id,
+    toolName: toolCall.name,
+    content: result.content,
+    isError: result.isError,
+    timestamp: Date.now(),
+  };
+
+  messages.push(toolResultMessage);
+  appendMessage(db, sessionId, toolResultMessage, turn);
+  onEvent?.({ type: "tool_result", message: toolResultMessage });
+}
+
 // ---------------------------------------------------------------------------
 // Agent loop
 // ---------------------------------------------------------------------------
@@ -230,168 +445,49 @@ function toolErrorResult(name: string, error: unknown): ToolExecResult {
 export async function runAgentLoop(
   opts: RunAgentOpts,
 ): Promise<AgentLoopResult> {
-  const {
-    db,
-    sessionId,
-    turn,
-    model,
-    systemPrompt,
-    tools,
-    toolHandlers,
-    messages,
-    cwd,
-    apiKey,
-    effort,
-    signal,
-    onEvent,
-  } = opts;
+  const { db, sessionId, turn, messages, signal, onEvent, toolHandlers, cwd } =
+    opts;
 
   while (true) {
-    // Build context for this iteration
-    const context =
-      tools.length > 0
-        ? { systemPrompt, messages, tools }
-        : { systemPrompt, messages };
-
-    // Stream to LLM
-    const streamOpts = {
-      ...(apiKey ? { apiKey } : {}),
-      ...(effort ? { reasoning: effort } : {}),
-      ...(signal ? { signal } : {}),
-    };
-    const eventStream = streamSimple(model, context, streamOpts);
-    let assistantMessage: AssistantMessage | undefined;
-    let partialAssistantMessage: AssistantMessage | undefined;
-
-    for await (const event of eventStream) {
-      if ("partial" in event) {
-        partialAssistantMessage = event.partial;
-      }
-
-      switch (event.type) {
-        case "text_delta":
-          onEvent?.({
-            type: "text_delta",
-            delta: event.delta,
-            content: cloneAssistantContent(event.partial.content),
-          });
-          break;
-        case "thinking_delta":
-          onEvent?.({
-            type: "thinking_delta",
-            delta: event.delta,
-            content: cloneAssistantContent(event.partial.content),
-          });
-          break;
-        case "toolcall_end":
-          // Tool calls are collected from the final assistant message
-          break;
-        case "done":
-          assistantMessage = event.message;
-          break;
-        case "error":
-          assistantMessage = event.error;
-          break;
-      }
-    }
-
-    // If somehow we got no message, fall back to the stream result
-    if (!assistantMessage) {
-      assistantMessage = await eventStream.result();
-    }
-    if (partialAssistantMessage) {
-      assistantMessage = mergeAssistantMessage(
-        partialAssistantMessage,
-        assistantMessage,
-      );
-    }
-
-    // Append assistant message to history and DB
-    messages.push(assistantMessage);
-    appendMessage(db, sessionId, assistantMessage, turn);
-    onEvent?.({ type: "assistant_message", message: assistantMessage });
-
-    // Handle stop reasons
-    if (
-      assistantMessage.stopReason === "error" ||
-      assistantMessage.stopReason === "aborted"
-    ) {
-      const eventType =
-        assistantMessage.stopReason === "error" ? "error" : "aborted";
-      onEvent?.({ type: eventType, message: assistantMessage });
-      return { messages, stopReason: assistantMessage.stopReason };
-    }
-
-    if (
-      assistantMessage.stopReason === "stop" ||
-      assistantMessage.stopReason === "length"
-    ) {
-      onEvent?.({ type: "done", message: assistantMessage });
-      return { messages, stopReason: assistantMessage.stopReason };
-    }
-
-    // stopReason === "toolUse" — execute tool calls and loop
-    const toolCalls = assistantMessage.content.filter(
-      (c): c is ToolCall => c.type === "toolCall",
+    const assistantMessage = await streamAssistantMessage(opts);
+    appendAssistantMessage(
+      db,
+      sessionId,
+      messages,
+      assistantMessage,
+      turn,
+      onEvent,
     );
 
-    for (const toolCall of toolCalls) {
-      const handler = toolHandlers.get(toolCall.name);
+    const stopResult = resolveLoopStopReason(
+      assistantMessage,
+      messages,
+      onEvent,
+    );
+    if (stopResult) {
+      return stopResult;
+    }
 
-      let result: ToolExecResult;
-
-      if (!handler) {
-        result = {
-          content: [{ type: "text", text: `Unknown tool: ${toolCall.name}` }],
-          isError: true,
-        };
-      } else {
-        onEvent?.({
-          type: "tool_start",
-          toolCallId: toolCall.id,
-          name: toolCall.name,
-          args: toolCall.arguments,
-        });
-
-        try {
-          result = await handler(toolCall.arguments, cwd, signal, (partial) => {
-            onEvent?.({
-              type: "tool_delta",
-              toolCallId: toolCall.id,
-              name: toolCall.name,
-              result: partial,
-            });
-          });
-        } catch (error) {
-          result = toolErrorResult(toolCall.name, error);
-        }
-
-        onEvent?.({
-          type: "tool_end",
-          toolCallId: toolCall.id,
-          name: toolCall.name,
-          result,
-        });
-      }
-
-      const toolResultMessage: ToolResultMessage = {
-        role: "toolResult",
-        toolCallId: toolCall.id,
-        toolName: toolCall.name,
-        content: result.content,
-        isError: result.isError,
-        timestamp: Date.now(),
-      };
-
-      messages.push(toolResultMessage);
-      appendMessage(db, sessionId, toolResultMessage, turn);
-      onEvent?.({ type: "tool_result", message: toolResultMessage });
+    for (const toolCall of getAssistantToolCalls(assistantMessage)) {
+      const result = await executeToolCall(toolCall, {
+        toolHandlers,
+        cwd,
+        signal,
+        onEvent,
+      });
+      appendToolResultMessage(
+        db,
+        sessionId,
+        messages,
+        toolCall,
+        result,
+        turn,
+        onEvent,
+      );
 
       if (signal?.aborted) {
         return { messages, stopReason: "aborted" };
       }
     }
-
-    // Loop back to stream with updated context
   }
 }

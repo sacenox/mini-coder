@@ -1,18 +1,21 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ContainerNode, Node } from "@cel-tui/types";
 import { registerFauxProvider } from "@mariozechner/pi-ai";
-import type { AppState } from "./index.ts";
-import { COMMANDS } from "./input.ts";
-import { appendPromptHistory, openDatabase } from "./session.ts";
-import { DEFAULT_THEME } from "./theme.ts";
+import type { AppState } from "../index.ts";
+import { COMMANDS } from "../input.ts";
+import { appendPromptHistory, openDatabase } from "../session.ts";
+import { loadSettings } from "../settings.ts";
+import { DEFAULT_THEME } from "../theme.ts";
 import {
   createCommandController,
   formatPromptHistoryPreview,
   formatRelativeDate,
-} from "./ui/commands.ts";
-import type { ActiveOverlay } from "./ui/overlay.ts";
-import { renderOverlay } from "./ui/overlay.ts";
+} from "./commands.ts";
+import type { ActiveOverlay } from "./overlay.ts";
+import { renderOverlay } from "./overlay.ts";
 
 function collectText(node: Node | null): string[] {
   if (!node) {
@@ -43,9 +46,18 @@ function findNodeWithKeyPress(node: Node | null): ContainerNode | null {
   return null;
 }
 
+const tempDirs: string[] = [];
+
+function createTempDir(): string {
+  const dir = mkdtempSync(join(tmpdir(), "mini-coder-ui-commands-test-"));
+  tempDirs.push(dir);
+  return dir;
+}
+
 function createTestState(): AppState {
   const db = openDatabase(":memory:");
   const cwd = "/tmp/mini-coder-ui-commands-test";
+  const settingsPath = join(createTempDir(), "settings.json");
   return {
     db,
     session: null,
@@ -61,7 +73,7 @@ function createTestState(): AppState {
     providers: new Map(),
     oauthCredentials: {},
     settings: {},
-    settingsPath: join(cwd, "settings.json"),
+    settingsPath,
     cwd,
     canonicalCwd: cwd,
     running: false,
@@ -71,6 +83,12 @@ function createTestState(): AppState {
     verbose: false,
   };
 }
+
+afterEach(() => {
+  for (const dir of tempDirs.splice(0)) {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 describe("ui/commands", () => {
   test("showCommandAutocomplete clears the current draft and opens the commands overlay", () => {
@@ -245,6 +263,54 @@ describe("ui/commands", () => {
     }
   });
 
+  test("/reasoning toggles the UI state and persists it", () => {
+    const state = createTestState();
+    const controller = createCommandController({
+      openOverlay: () => {},
+      dismissOverlay: () => {},
+      setInputValue: () => {},
+      appendInfoMessage: () => {},
+      scrollConversationToBottom: () => {},
+      render: () => {},
+      reloadPromptContext: async () => {},
+      openInBrowser: () => {},
+    });
+
+    try {
+      expect(controller.handleCommand("reasoning", state)).toBe(true);
+      expect(state.showReasoning).toBe(false);
+      expect(state.settings.showReasoning).toBe(false);
+      expect(loadSettings(state.settingsPath)).toEqual({
+        showReasoning: false,
+      });
+    } finally {
+      state.db.close();
+    }
+  });
+
+  test("/verbose toggles the UI state and persists it", () => {
+    const state = createTestState();
+    const controller = createCommandController({
+      openOverlay: () => {},
+      dismissOverlay: () => {},
+      setInputValue: () => {},
+      appendInfoMessage: () => {},
+      scrollConversationToBottom: () => {},
+      render: () => {},
+      reloadPromptContext: async () => {},
+      openInBrowser: () => {},
+    });
+
+    try {
+      expect(controller.handleCommand("verbose", state)).toBe(true);
+      expect(state.verbose).toBe(true);
+      expect(state.settings.verbose).toBe(true);
+      expect(loadSettings(state.settingsPath)).toEqual({ verbose: true });
+    } finally {
+      state.db.close();
+    }
+  });
+
   test("applyModelSelection updates the state and persists the default model", () => {
     const faux = registerFauxProvider();
     const state = createTestState();
@@ -265,8 +331,37 @@ describe("ui/commands", () => {
 
       expect(state.model).toBe(model);
       expect(state.settings.defaultModel).toBe(`${model.provider}/${model.id}`);
+      expect(loadSettings(state.settingsPath)).toEqual({
+        defaultModel: `${model.provider}/${model.id}`,
+      });
     } finally {
       faux.unregister();
+      state.db.close();
+    }
+  });
+
+  test("applyEffortSelection updates the active effort and persists the default effort", () => {
+    const state = createTestState();
+    const controller = createCommandController({
+      openOverlay: () => {},
+      dismissOverlay: () => {},
+      setInputValue: () => {},
+      appendInfoMessage: () => {},
+      scrollConversationToBottom: () => {},
+      render: () => {},
+      reloadPromptContext: async () => {},
+      openInBrowser: () => {},
+    });
+
+    try {
+      controller.applyEffortSelection(state, "xhigh");
+
+      expect(state.effort).toBe("xhigh");
+      expect(state.settings.defaultEffort).toBe("xhigh");
+      expect(loadSettings(state.settingsPath)).toEqual({
+        defaultEffort: "xhigh",
+      });
+    } finally {
       state.db.close();
     }
   });

@@ -2,12 +2,12 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DEFAULT_THEME } from "./theme.ts";
+import { DEFAULT_THEME } from "../theme.ts";
 import {
   autocompleteInputPath,
   type InputController,
   renderInputArea,
-} from "./ui/input.ts";
+} from "./input.ts";
 
 const tempDirs: string[] = [];
 

@@ -59,6 +59,17 @@ async function run(
   return trim ? out.trim() : out;
 }
 
+function isUntrackedStatus(
+  indexStatus: string,
+  workingTreeStatus: string,
+): boolean {
+  return indexStatus === "?" && workingTreeStatus === "?";
+}
+
+function hasTrackedChange(status: string): boolean {
+  return status !== " " && status !== "?";
+}
+
 /**
  * Parse `git status --porcelain` output into staged, modified, and untracked counts.
  *
@@ -79,20 +90,25 @@ function parseStatus(output: string): {
   let modified = 0;
   let untracked = 0;
 
-  if (!output) return { staged, modified, untracked };
-
   for (const line of output.split("\n")) {
-    if (line.length < 2) continue;
-    const x = line[0]; // index status
-    const y = line[1]; // working tree status
+    if (line.length < 2) {
+      continue;
+    }
 
-    if (x === "?" && y === "?") {
+    const indexStatus = line[0];
+    const workingTreeStatus = line[1];
+    if (!indexStatus || !workingTreeStatus) {
+      continue;
+    }
+    if (isUntrackedStatus(indexStatus, workingTreeStatus)) {
       untracked++;
-    } else {
-      // Any non-space in index column = staged change
-      if (x !== " " && x !== "?") staged++;
-      // Any non-space in working tree column = unstaged modification
-      if (y !== " " && y !== "?") modified++;
+      continue;
+    }
+    if (hasTrackedChange(indexStatus)) {
+      staged++;
+    }
+    if (hasTrackedChange(workingTreeStatus)) {
+      modified++;
     }
   }
 

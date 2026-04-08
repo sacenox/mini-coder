@@ -97,50 +97,78 @@ function estimateCharacterTokens(charCount: number): number {
   return Math.ceil(charCount / 4);
 }
 
+type UserMultipartContent = Exclude<
+  Extract<Message, { role: "user" }>["content"],
+  string
+>;
+type TextOrImageContentBlock =
+  | UserMultipartContent[number]
+  | Extract<Message, { role: "toolResult" }>["content"][number];
+
+function estimateTextOrImageContentTokens(
+  content: readonly TextOrImageContentBlock[],
+): number {
+  let chars = 0;
+  let imageTokens = 0;
+
+  for (const block of content) {
+    if (block.type === "text") {
+      chars += block.text.length;
+      continue;
+    }
+    if (block.type === "image") {
+      imageTokens += ESTIMATED_IMAGE_TOKENS;
+    }
+  }
+
+  return estimateCharacterTokens(chars) + imageTokens;
+}
+
+function estimateUserMessageTokens(
+  message: Extract<Message, { role: "user" }>,
+): number {
+  if (typeof message.content === "string") {
+    return estimateCharacterTokens(message.content.length);
+  }
+  return estimateTextOrImageContentTokens(message.content);
+}
+
+function estimateAssistantBlockCharacters(
+  block: Extract<Message, { role: "assistant" }>["content"][number],
+): number {
+  if (block.type === "text") {
+    return block.text.length;
+  }
+  if (block.type === "thinking") {
+    return block.thinking.length;
+  }
+  return block.name.length + JSON.stringify(block.arguments).length;
+}
+
+function estimateAssistantMessageTokens(
+  message: Extract<Message, { role: "assistant" }>,
+): number {
+  const chars = message.content.reduce((total, block) => {
+    return total + estimateAssistantBlockCharacters(block);
+  }, 0);
+  return estimateCharacterTokens(chars);
+}
+
+function estimateToolResultMessageTokens(
+  message: Extract<Message, { role: "toolResult" }>,
+): number {
+  return estimateTextOrImageContentTokens(message.content);
+}
+
 /** Estimate token usage for a model-visible message. */
 function estimateMessageTokens(message: Message): number {
   switch (message.role) {
-    case "user": {
-      if (typeof message.content === "string") {
-        return estimateCharacterTokens(message.content.length);
-      }
-
-      let chars = 0;
-      let imageTokens = 0;
-      for (const block of message.content) {
-        if (block.type === "text") {
-          chars += block.text.length;
-        } else if (block.type === "image") {
-          imageTokens += ESTIMATED_IMAGE_TOKENS;
-        }
-      }
-      return estimateCharacterTokens(chars) + imageTokens;
-    }
-    case "assistant": {
-      let chars = 0;
-      for (const block of message.content) {
-        if (block.type === "text") {
-          chars += block.text.length;
-        } else if (block.type === "thinking") {
-          chars += block.thinking.length;
-        } else if (block.type === "toolCall") {
-          chars += block.name.length + JSON.stringify(block.arguments).length;
-        }
-      }
-      return estimateCharacterTokens(chars);
-    }
-    case "toolResult": {
-      let chars = 0;
-      let imageTokens = 0;
-      for (const block of message.content) {
-        if (block.type === "text") {
-          chars += block.text.length;
-        } else if (block.type === "image") {
-          imageTokens += ESTIMATED_IMAGE_TOKENS;
-        }
-      }
-      return estimateCharacterTokens(chars) + imageTokens;
-    }
+    case "user":
+      return estimateUserMessageTokens(message);
+    case "assistant":
+      return estimateAssistantMessageTokens(message);
+    case "toolResult":
+      return estimateToolResultMessageTokens(message);
   }
 }
 

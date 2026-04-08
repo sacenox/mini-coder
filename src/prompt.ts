@@ -73,6 +73,38 @@ function isWithinScanRoot(path: string, scanRoot: string): boolean {
   );
 }
 
+function collectAgentsSearchDirs(start: string, root: string): string[] {
+  if (!isWithinScanRoot(start, root)) {
+    return [start];
+  }
+
+  const dirs: string[] = [];
+  let current = start;
+  while (true) {
+    dirs.push(current);
+    if (current === root) {
+      return dirs.reverse();
+    }
+
+    const parent = dirname(current);
+    if (parent === current) {
+      return dirs.reverse();
+    }
+    current = parent;
+  }
+}
+
+function readAgentsMdFile(dir: string): AgentsMdFile | null {
+  const filePath = join(dir, AGENT_FILENAME);
+  if (!existsSync(filePath)) {
+    return null;
+  }
+  return {
+    path: filePath,
+    content: readFileSync(filePath, "utf-8"),
+  };
+}
+
 /**
  * Walk from `cwd` up to `scanRoot`, collecting AGENTS.md files.
  *
@@ -92,48 +124,19 @@ export function discoverAgentsMd(
 ): AgentsMdFile[] {
   const root = canonicalizePath(scanRoot);
   const start = canonicalizePath(cwd);
-
-  // Collect canonical directories from scanRoot to cwd
-  const dirs: string[] = [];
-  let current = start;
-
-  if (!isWithinScanRoot(start, root)) {
-    dirs.push(start);
-  } else {
-    while (true) {
-      dirs.push(current);
-      if (current === root) break;
-      const parent = dirname(current);
-      // Safety: stop if we can't go higher (e.g., filesystem root)
-      if (parent === current) break;
-      current = parent;
-    }
-
-    // Reverse so we go root-to-leaf
-    dirs.reverse();
-  }
-
-  // Collect files from the global agents dir first
   const files: AgentsMdFile[] = [];
 
   if (globalAgentsDir) {
-    const filePath = join(globalAgentsDir, AGENT_FILENAME);
-    if (existsSync(filePath)) {
-      files.push({
-        path: filePath,
-        content: readFileSync(filePath, "utf-8"),
-      });
+    const globalFile = readAgentsMdFile(globalAgentsDir);
+    if (globalFile) {
+      files.push(globalFile);
     }
   }
 
-  // Walk from root to cwd
-  for (const dir of dirs) {
-    const filePath = join(dir, AGENT_FILENAME);
-    if (existsSync(filePath)) {
-      files.push({
-        path: filePath,
-        content: readFileSync(filePath, "utf-8"),
-      });
+  for (const dir of collectAgentsSearchDirs(start, root)) {
+    const agentsFile = readAgentsMdFile(dir);
+    if (agentsFile) {
+      files.push(agentsFile);
     }
   }
 

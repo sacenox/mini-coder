@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { DEFAULT_SHOW_REASONING } from "./settings.ts";
-import { buildHelpText, type HelpRenderState } from "./ui/help.ts";
+import { DEFAULT_SHOW_REASONING } from "../settings.ts";
+import { buildHelpText, type HelpRenderState } from "./help.ts";
 
 describe("ui/help", () => {
   test("buildHelpText includes current reasoning and verbose state", () => {

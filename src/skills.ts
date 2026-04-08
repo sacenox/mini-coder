@@ -35,6 +35,63 @@ export interface Skill {
 // Frontmatter parsing
 // ---------------------------------------------------------------------------
 
+function getFrontmatterLines(content: string): string[] | null {
+  if (!content.startsWith("---")) {
+    return null;
+  }
+
+  const endIdx = content.indexOf("\n---", 3);
+  if (endIdx === -1) {
+    return null;
+  }
+
+  return content.slice(4, endIdx).split("\n");
+}
+
+function parseFrontmatterEntry(
+  line: string,
+): { key: string; value: string } | null {
+  const colonIdx = line.indexOf(":");
+  if (colonIdx === -1) {
+    return null;
+  }
+
+  return {
+    key: line.slice(0, colonIdx).trim(),
+    value: line.slice(colonIdx + 1).trim(),
+  };
+}
+
+function isIndentedFrontmatterLine(line: string): boolean {
+  return line.startsWith(" ") || line.startsWith("\t");
+}
+
+function readFoldedFrontmatterValue(
+  lines: string[],
+  startIndex: number,
+): string {
+  const folded: string[] = [];
+  for (let i = startIndex; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line || !isIndentedFrontmatterLine(line)) {
+      break;
+    }
+    folded.push(line.trim());
+  }
+  return folded.join(" ");
+}
+
+function readDescriptionValue(
+  lines: string[],
+  lineIndex: number,
+  value: string,
+): string {
+  if (value === ">") {
+    return readFoldedFrontmatterValue(lines, lineIndex + 1);
+  }
+  return stripQuotes(value);
+}
+
 /**
  * Parse YAML frontmatter from a SKILL.md file's content.
  *
@@ -49,53 +106,25 @@ function parseFrontmatter(content: string): {
   name: string | undefined;
   description: string | undefined;
 } {
-  // Frontmatter must start with ---
-  if (!content.startsWith("---")) {
+  const lines = getFrontmatterLines(content);
+  if (!lines) {
     return { name: undefined, description: undefined };
   }
-
-  const endIdx = content.indexOf("\n---", 3);
-  if (endIdx === -1) {
-    return { name: undefined, description: undefined };
-  }
-
-  const frontmatter = content.slice(4, endIdx); // skip opening "---\n"
-  const lines = frontmatter.split("\n");
 
   let name: string | undefined;
   let description: string | undefined;
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]!;
-
-    const colonIdx = line.indexOf(":");
-    if (colonIdx === -1) continue;
-
-    const key = line.slice(0, colonIdx).trim();
-    const value = line.slice(colonIdx + 1).trim();
-
-    if (key === "name") {
-      name = stripQuotes(value);
-    } else if (key === "description") {
-      // Handle folded scalar (>)
-      if (value === ">") {
-        const folded: string[] = [];
-        for (let j = i + 1; j < lines.length; j++) {
-          const nextLine = lines[j]!;
-          // Continuation lines must be indented
-          if (
-            nextLine.length > 0 &&
-            (nextLine[0] === " " || nextLine[0] === "\t")
-          ) {
-            folded.push(nextLine.trim());
-          } else {
-            break;
-          }
-        }
-        description = folded.join(" ");
-      } else {
-        description = stripQuotes(value);
-      }
+  for (const [index, line] of lines.entries()) {
+    const entry = parseFrontmatterEntry(line);
+    if (!entry) {
+      continue;
+    }
+    if (entry.key === "name") {
+      name = stripQuotes(entry.value);
+      continue;
+    }
+    if (entry.key === "description") {
+      description = readDescriptionValue(lines, index, entry.value);
     }
   }
 
@@ -124,6 +153,45 @@ function stripQuotes(s: string): string {
 // Discovery
 // ---------------------------------------------------------------------------
 
+function listSkillEntries(basePath: string): string[] {
+  if (!existsSync(basePath)) {
+    return [];
+  }
+  try {
+    return readdirSync(basePath);
+  } catch {
+    return [];
+  }
+}
+
+function isDirectory(path: string): boolean {
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+function readSkill(basePath: string, entry: string): Skill | null {
+  const dir = join(basePath, entry);
+  if (!isDirectory(dir)) {
+    return null;
+  }
+
+  const skillPath = join(dir, "SKILL.md");
+  if (!existsSync(skillPath)) {
+    return null;
+  }
+
+  const content = readFileSync(skillPath, "utf-8");
+  const frontmatter = parseFrontmatter(content);
+  return {
+    name: frontmatter.name ?? entry,
+    description: frontmatter.description ?? "",
+    path: skillPath,
+  };
+}
+
 /**
  * Discover agent skills from the given scan paths.
  *
@@ -138,37 +206,12 @@ export function discoverSkills(scanPaths: string[]): Skill[] {
   const seen = new Map<string, Skill>();
 
   for (const basePath of scanPaths) {
-    if (!existsSync(basePath)) continue;
-
-    let entries: string[];
-    try {
-      entries = readdirSync(basePath);
-    } catch {
-      continue;
-    }
-
-    for (const entry of entries) {
-      const dir = join(basePath, entry);
-      const skillPath = join(dir, "SKILL.md");
-
-      // Must be a directory containing SKILL.md
-      try {
-        if (!statSync(dir).isDirectory()) continue;
-      } catch {
+    for (const entry of listSkillEntries(basePath)) {
+      const skill = readSkill(basePath, entry);
+      if (!skill || seen.has(skill.name)) {
         continue;
       }
-      if (!existsSync(skillPath)) continue;
-
-      const content = readFileSync(skillPath, "utf-8");
-      const fm = parseFrontmatter(content);
-
-      const name = fm.name ?? entry;
-      const description = fm.description ?? "";
-
-      // First-seen wins (earlier scan paths have higher priority)
-      if (!seen.has(name)) {
-        seen.set(name, { name, description, path: skillPath });
-      }
+      seen.set(skill.name, skill);
     }
   }
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { isEmptyUserContent, stripSkillFrontmatter } from "./ui/agent.ts";
+import { isEmptyUserContent, stripSkillFrontmatter } from "./agent.ts";
 
 describe("ui/agent", () => {
   test("stripSkillFrontmatter removes frontmatter and keeps the skill body", () => {

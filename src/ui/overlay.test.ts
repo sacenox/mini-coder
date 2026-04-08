@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { Select } from "@cel-tui/components";
-import { DEFAULT_THEME } from "./theme.ts";
+import { DEFAULT_THEME } from "../theme.ts";
 import {
   type ActiveOverlay,
   OVERLAY_MAX_VISIBLE,
   OVERLAY_PADDING_X,
   renderOverlay,
-} from "./ui/overlay.ts";
+} from "./overlay.ts";
 
 describe("ui/overlay", () => {
   test("renderOverlay centers a titled modal with theme background", () => {

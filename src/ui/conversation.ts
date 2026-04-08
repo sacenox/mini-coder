@@ -115,6 +115,64 @@ function renderMarkdownContent(content: string): Node[] {
   });
 }
 
+function getAssistantErrorMessage(
+  assistant: AssistantMessage | AssistantRenderState,
+): string | undefined {
+  if ("role" in assistant && assistant.stopReason === "error") {
+    return assistant.errorMessage;
+  }
+  if ("role" in assistant) {
+    return undefined;
+  }
+  return assistant.errorMessage;
+}
+
+function getPendingToolCalls(
+  assistant: AssistantMessage | AssistantRenderState,
+): readonly PendingToolCall[] {
+  if ("role" in assistant) {
+    return [];
+  }
+  return assistant.pendingToolCalls ?? [];
+}
+
+function renderThinkingBlock(
+  thinking: string,
+  opts: ConversationRenderOpts,
+): Node {
+  if (opts.showReasoning) {
+    return VStack({ padding: { x: 1 } }, [
+      Text(thinking, {
+        wrap: "word",
+        fgColor: opts.theme.mutedText,
+        italic: true,
+      }),
+    ]);
+  }
+
+  const lineCount = thinking.split("\n").length;
+  const unit = lineCount === 1 ? "line" : "lines";
+  return VStack({ padding: { x: 1 } }, [
+    Text(`Thinking... ${lineCount} ${unit}.`, {
+      fgColor: opts.theme.mutedText,
+      italic: true,
+    }),
+  ]);
+}
+
+function renderAssistantContentBlock(
+  block: AssistantMessage["content"][number],
+  opts: ConversationRenderOpts,
+): Node[] {
+  if (block.type === "text" && block.text) {
+    return renderMarkdownContent(block.text);
+  }
+  if (block.type === "thinking" && block.thinking) {
+    return [renderThinkingBlock(block.thinking, opts)];
+  }
+  return [];
+}
+
 /**
  * Render a completed or in-progress assistant response.
  *
@@ -126,55 +184,15 @@ export function renderAssistantMessage(
   assistant: AssistantMessage | AssistantRenderState,
   opts: ConversationRenderOpts,
 ): Node | null {
-  const errorMessage =
-    "role" in assistant
-      ? assistant.stopReason === "error"
-        ? assistant.errorMessage
-        : undefined
-      : assistant.errorMessage;
-  const pendingToolCalls =
-    "role" in assistant ? [] : (assistant.pendingToolCalls ?? []);
-  const children: Node[] = [];
+  const children = assistant.content.flatMap((block) => {
+    return renderAssistantContentBlock(block, opts);
+  });
 
-  for (const block of assistant.content) {
-    if (block.type === "text" && block.text) {
-      children.push(...renderMarkdownContent(block.text));
-      continue;
-    }
-
-    if (block.type !== "thinking" || !block.thinking) {
-      continue;
-    }
-
-    if (opts.showReasoning) {
-      children.push(
-        VStack({ padding: { x: 1 } }, [
-          Text(block.thinking, {
-            wrap: "word",
-            fgColor: opts.theme.mutedText,
-            italic: true,
-          }),
-        ]),
-      );
-      continue;
-    }
-
-    const lineCount = block.thinking.split("\n").length;
-    const unit = lineCount === 1 ? "line" : "lines";
-    children.push(
-      VStack({ padding: { x: 1 } }, [
-        Text(`Thinking... ${lineCount} ${unit}.`, {
-          fgColor: opts.theme.mutedText,
-          italic: true,
-        }),
-      ]),
-    );
-  }
-
-  for (const toolCall of pendingToolCalls) {
+  for (const toolCall of getPendingToolCalls(assistant)) {
     children.push(renderPendingToolCall(toolCall, opts));
   }
 
+  const errorMessage = getAssistantErrorMessage(assistant);
   if (errorMessage) {
     children.push(
       VStack({ padding: { x: 1 } }, [
@@ -472,84 +490,79 @@ export function renderToolResult(
   return renderGenericToolCall(toolName, resultText, isError, opts.theme);
 }
 
+function buildPendingRunningLines(done: boolean): ToolRenderLine[] {
+  return done
+    ? []
+    : [
+        {
+          kind: "summary",
+          text: "Running...",
+        },
+      ];
+}
+
+function buildPendingToolHeader(toolCall: PendingToolCall): ToolRenderLine {
+  if (toolCall.name === "shell") {
+    return {
+      kind: "command",
+      text: `$ ${getToolArgString(toolCall.args, "command")}`,
+    };
+  }
+  if (toolCall.name === "edit") {
+    return {
+      kind: "path",
+      text: `~ ${getToolArgString(toolCall.args, "path")}`,
+    };
+  }
+  return {
+    kind: "toolName",
+    text: toolCall.name,
+  };
+}
+
+function buildPendingToolResultLines(
+  toolCall: PendingToolCall,
+  verbose: boolean,
+): ToolRenderLine[] {
+  if (toolCall.name === "shell") {
+    return buildShellToolLines(
+      getToolArgString(toolCall.args, "command"),
+      toolCall.resultText,
+      verbose,
+    );
+  }
+  if (toolCall.name === "edit") {
+    return [
+      buildPendingToolHeader(toolCall),
+      ...previewToolRenderLines(
+        splitToolTextLines(
+          toolCall.resultText,
+          toolCall.isError ? "error" : "text",
+        ),
+        verbose,
+      ),
+    ];
+  }
+  return [
+    buildPendingToolHeader(toolCall),
+    ...splitToolTextLines(
+      toolCall.resultText,
+      toolCall.isError ? "error" : "text",
+    ),
+  ];
+}
+
 /** Render a pending tool call, including progressive output when available. */
 function renderPendingToolCall(
   toolCall: PendingToolCall,
   opts: Pick<ConversationRenderOpts, "verbose" | "theme">,
 ): Node {
-  const runningLine: ToolRenderLine = {
-    kind: "summary",
-    text: "Running...",
-  };
-
-  if (toolCall.resultText) {
-    if (toolCall.name === "shell") {
-      return renderToolBlock(
-        [
-          ...buildShellToolLines(
-            getToolArgString(toolCall.args, "command"),
-            toolCall.resultText,
-            opts.verbose,
-          ),
-          ...(toolCall.done ? [] : [runningLine]),
-        ],
-        opts.theme,
-      );
-    }
-
-    if (toolCall.name === "edit") {
-      return renderToolBlock(
-        [
-          {
-            kind: "path",
-            text: `~ ${getToolArgString(toolCall.args, "path")}`,
-          },
-          ...previewToolRenderLines(
-            splitToolTextLines(
-              toolCall.resultText,
-              toolCall.isError ? "error" : "text",
-            ),
-            opts.verbose,
-          ),
-          ...(toolCall.done ? [] : [runningLine]),
-        ],
-        opts.theme,
-      );
-    }
-
-    return renderToolBlock(
-      [
-        { kind: "toolName", text: toolCall.name },
-        ...splitToolTextLines(
-          toolCall.resultText,
-          toolCall.isError ? "error" : "text",
-        ),
-        ...(toolCall.done ? [] : [runningLine]),
-      ],
-      opts.theme,
-    );
-  }
-
-  const label =
-    toolCall.name === "shell"
-      ? `$ ${getToolArgString(toolCall.args, "command")}`
-      : toolCall.name === "edit"
-        ? `~ ${getToolArgString(toolCall.args, "path")}`
-        : toolCall.name;
+  const lines = toolCall.resultText
+    ? buildPendingToolResultLines(toolCall, opts.verbose)
+    : [buildPendingToolHeader(toolCall)];
 
   return renderToolBlock(
-    [
-      {
-        kind:
-          toolCall.name === "shell"
-            ? "command"
-            : toolCall.name === "edit"
-              ? "path"
-              : "toolName",
-        text: label,
-      },
-      ...(toolCall.done ? [] : [runningLine]),
-    ],
+    [...lines, ...buildPendingRunningLines(toolCall.done)],
     opts.theme,
   );
 }
@@ -563,6 +576,69 @@ function renderUiMessage(msg: UiMessage, theme: Theme): Node {
       wrap: "word",
     }),
   ]);
+}
+
+type ConversationMessage = AppState["messages"][number];
+
+function pushConversationNode(nodes: Node[], node: Node | null): void {
+  if (!node) {
+    return;
+  }
+  if (nodes.length > 0) {
+    nodes.push(Text(""));
+  }
+  nodes.push(node);
+}
+
+function rememberToolCallArgs(
+  message: AssistantMessage,
+  toolCallArgs: Map<string, { name: string; args: Record<string, unknown> }>,
+): void {
+  for (const block of message.content) {
+    if (block.type !== "toolCall") {
+      continue;
+    }
+    toolCallArgs.set(block.id, {
+      name: block.name,
+      args: block.arguments,
+    });
+  }
+}
+
+function getToolResultMessageText(
+  message: Extract<ConversationMessage, { role: "toolResult" }>,
+): string {
+  return message.content
+    .filter((content): content is TextContent => content.type === "text")
+    .map((content) => content.text)
+    .join("\n");
+}
+
+function renderConversationMessage(
+  message: ConversationMessage,
+  renderOpts: ConversationRenderOpts,
+  toolCallArgs: Map<string, { name: string; args: Record<string, unknown> }>,
+  theme: Theme,
+): Node | null {
+  if (message.role === "ui") {
+    return renderUiMessage(message, theme);
+  }
+  if (message.role === "user") {
+    return renderUserMessage(message, theme);
+  }
+  if (message.role === "assistant") {
+    rememberToolCallArgs(message, toolCallArgs);
+    return renderAssistantMessage(message, renderOpts);
+  }
+
+  const info = toolCallArgs.get(message.toolCallId);
+  return renderToolResult(
+    info?.name ?? message.toolName,
+    info?.args ?? {},
+    getToolResultMessageText(message),
+    message.isError,
+    renderOpts,
+  );
 }
 
 /**
@@ -582,60 +658,21 @@ export function buildConversationLogNodes(
     verbose: state.verbose,
     theme: state.theme,
   };
-
-  const pushConversationNode = (node: Node | null): void => {
-    if (!node) {
-      return;
-    }
-    if (nodes.length > 0) {
-      nodes.push(Text(""));
-    }
-    nodes.push(node);
-  };
-
   const toolCallArgs = new Map<
     string,
     { name: string; args: Record<string, unknown> }
   >();
 
-  for (const msg of state.messages) {
-    if (msg.role === "ui") {
-      pushConversationNode(renderUiMessage(msg, state.theme));
-      continue;
-    }
-
-    if (msg.role === "user") {
-      pushConversationNode(renderUserMessage(msg, state.theme));
-      continue;
-    }
-
-    if (msg.role === "assistant") {
-      for (const block of msg.content) {
-        if (block.type === "toolCall") {
-          toolCallArgs.set(block.id, {
-            name: block.name,
-            args: block.arguments,
-          });
-        }
-      }
-      pushConversationNode(renderAssistantMessage(msg, renderOpts));
-      continue;
-    }
-
-    const info = toolCallArgs.get(msg.toolCallId);
-    const name = info?.name ?? msg.toolName;
-    const args = info?.args ?? {};
-    const text = msg.content
-      .filter((content): content is TextContent => content.type === "text")
-      .map((content) => content.text)
-      .join("\n");
+  for (const message of state.messages) {
     pushConversationNode(
-      renderToolResult(name, args, text, msg.isError, renderOpts),
+      nodes,
+      renderConversationMessage(message, renderOpts, toolCallArgs, state.theme),
     );
   }
 
   if (streaming.isStreaming) {
     pushConversationNode(
+      nodes,
       renderAssistantMessage(
         {
           content: streaming.content,
