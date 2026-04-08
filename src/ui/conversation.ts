@@ -136,6 +136,12 @@ function getPendingToolCalls(
   return assistant.pendingToolCalls ?? [];
 }
 
+function isStreamingAssistant(
+  assistant: AssistantMessage | AssistantRenderState,
+): assistant is AssistantRenderState {
+  return !("role" in assistant);
+}
+
 function renderThinkingBlock(
   thinking: string,
   opts: ConversationRenderOpts,
@@ -163,12 +169,16 @@ function renderThinkingBlock(
 function renderAssistantContentBlock(
   block: AssistantMessage["content"][number],
   opts: ConversationRenderOpts,
+  isStreaming: boolean,
 ): Node[] {
   if (block.type === "text" && block.text) {
     return renderMarkdownContent(block.text);
   }
   if (block.type === "thinking" && block.thinking) {
     return [renderThinkingBlock(block.thinking, opts)];
+  }
+  if (block.type === "toolCall" && isStreaming) {
+    return [renderStreamingToolCall(block, opts)];
   }
   return [];
 }
@@ -184,8 +194,9 @@ export function renderAssistantMessage(
   assistant: AssistantMessage | AssistantRenderState,
   opts: ConversationRenderOpts,
 ): Node | null {
+  const streaming = isStreamingAssistant(assistant);
   const children = assistant.content.flatMap((block) => {
-    return renderAssistantContentBlock(block, opts);
+    return renderAssistantContentBlock(block, opts, streaming);
   });
 
   for (const toolCall of getPendingToolCalls(assistant)) {
@@ -501,23 +512,66 @@ function buildPendingRunningLines(done: boolean): ToolRenderLine[] {
       ];
 }
 
-function buildPendingToolHeader(toolCall: PendingToolCall): ToolRenderLine {
-  if (toolCall.name === "shell") {
-    return {
-      kind: "command",
-      text: `$ ${getToolArgString(toolCall.args, "command")}`,
-    };
+function buildToolHeader(
+  toolName: string,
+  args: Record<string, unknown>,
+): ToolRenderLine {
+  if (toolName === "shell") {
+    const command = getToolArgString(args, "command");
+    if (command) {
+      return {
+        kind: "command",
+        text: `$ ${command}`,
+      };
+    }
   }
-  if (toolCall.name === "edit") {
-    return {
-      kind: "path",
-      text: `~ ${getToolArgString(toolCall.args, "path")}`,
-    };
+  if (toolName === "edit") {
+    const filePath = getToolArgString(args, "path");
+    if (filePath) {
+      return {
+        kind: "path",
+        text: `~ ${filePath}`,
+      };
+    }
   }
   return {
     kind: "toolName",
-    text: toolCall.name,
+    text: toolName,
   };
+}
+
+function buildToolArgumentPreviewLines(
+  args: Record<string, unknown>,
+  verbose: boolean,
+): ToolRenderLine[] {
+  const text = JSON.stringify(args, null, 2);
+  if (!text || text === "{}") {
+    return [];
+  }
+
+  return previewToolRenderLines(splitToolTextLines(text, "text"), verbose);
+}
+
+function buildPendingToolHeader(toolCall: PendingToolCall): ToolRenderLine {
+  return buildToolHeader(toolCall.name, toolCall.args);
+}
+
+function renderStreamingToolCall(
+  toolCall: Extract<AssistantMessage["content"][number], { type: "toolCall" }>,
+  opts: Pick<ConversationRenderOpts, "verbose" | "theme">,
+): Node {
+  const header = buildToolHeader(toolCall.name, toolCall.arguments);
+  const lines: ToolRenderLine[] = [header];
+
+  if (header.kind === "toolName") {
+    lines.push(
+      ...buildToolArgumentPreviewLines(toolCall.arguments, opts.verbose),
+    );
+  }
+
+  lines.push({ kind: "summary", text: "Preparing..." });
+
+  return renderToolBlock(lines, opts.theme);
 }
 
 function buildPendingToolResultLines(

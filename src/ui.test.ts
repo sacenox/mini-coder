@@ -945,6 +945,164 @@ describe("ui rendering", () => {
     }
   });
 
+  test("streamed tool call arguments stay visible before execution begins", async () => {
+    const api = "ui-streaming-toolcall-test";
+    const sourceId = "ui-streaming-toolcall-test-source";
+    const model: Model<string> = {
+      id: "ui-streaming-toolcall-model",
+      name: "UI Streaming Tool Call Model",
+      api,
+      provider: "test",
+      baseUrl: "http://localhost:0",
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 128000,
+      maxTokens: 4096,
+    };
+
+    let callCount = 0;
+    const finalToolCall = fauxToolCall(
+      "shell",
+      { command: "echo staged-command" },
+      { id: "tool-1" },
+    );
+    const buildProviderStream = () => {
+      callCount += 1;
+      const stream = createAssistantMessageEventStream();
+
+      if (callCount === 1) {
+        const finalMessage: AssistantMessage = {
+          role: "assistant",
+          content: [finalToolCall],
+          api,
+          provider: model.provider,
+          model: model.id,
+          usage: {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            totalTokens: 0,
+            cost: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              total: 0,
+            },
+          },
+          stopReason: "toolUse",
+          timestamp: Date.now(),
+        };
+        const partialStart: AssistantMessage = {
+          ...finalMessage,
+          content: [fauxToolCall("shell", {}, { id: "tool-1" })],
+        };
+        const partialDelta: AssistantMessage = {
+          ...finalMessage,
+          content: [
+            fauxToolCall(
+              "shell",
+              { command: "echo staged-command" },
+              { id: "tool-1" },
+            ),
+          ],
+        };
+
+        queueMicrotask(() => {
+          stream.push({
+            type: "toolcall_start",
+            contentIndex: 0,
+            partial: partialStart,
+          });
+          setTimeout(() => {
+            stream.push({
+              type: "toolcall_delta",
+              contentIndex: 0,
+              delta: '{"command":"echo staged-command"}',
+              partial: partialDelta,
+            });
+            setTimeout(() => {
+              stream.push({
+                type: "toolcall_end",
+                contentIndex: 0,
+                toolCall: finalToolCall,
+                partial: finalMessage,
+              });
+              setTimeout(() => {
+                stream.push({
+                  type: "done",
+                  reason: "toolUse",
+                  message: finalMessage,
+                });
+                stream.end(finalMessage);
+              }, 150);
+            }, 30);
+          }, 30);
+        });
+
+        return stream;
+      }
+
+      const finalMessage = fauxAssistantMessage("Done.");
+      queueMicrotask(() => {
+        stream.push({
+          type: "done",
+          reason: "stop",
+          message: finalMessage,
+        });
+        stream.end(finalMessage);
+      });
+
+      return stream;
+    };
+
+    registerApiProvider(
+      {
+        api,
+        stream: (_model, _context, _options) => buildProviderStream(),
+        streamSimple: (_model, _context, _options) => buildProviderStream(),
+      },
+      sourceId,
+    );
+
+    const state = createTestState();
+    state.cwd = process.cwd();
+    state.canonicalCwd = process.cwd();
+    state.model = model;
+
+    try {
+      handleInput("hello", state);
+
+      await waitFor(() => {
+        const logText = collectText({
+          type: "vstack",
+          props: {},
+          children: buildConversationLog(state),
+        });
+        return (
+          state.running &&
+          logText.includes("$ echo staged-command") &&
+          logText.includes("Preparing...")
+        );
+      });
+
+      const logText = collectText({
+        type: "vstack",
+        props: {},
+        children: buildConversationLog(state),
+      });
+
+      expect(logText).toContain("$ echo staged-command");
+      expect(logText).toContain("Preparing...");
+    } finally {
+      await stopRunningTurn(state);
+      unregisterApiProviders(sourceId);
+      state.db.close();
+    }
+  });
+
   test("completed tool results stay visible before the full loop finishes", async () => {
     const api = "ui-streaming-tool-result-test";
     const sourceId = "ui-streaming-tool-result-test-source";

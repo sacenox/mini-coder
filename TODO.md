@@ -5,11 +5,21 @@ Don't keep completed items bloating the file.
 Keep the file structured and minimal.
 The spec.md and code are the sources of truth, not this file, don't assume anything because it's documented here.
 
-## Plugins and API drift (deferred until core/spec alignment is done)
+## Open items
 
-- [ ] **Reconcile the plugin tool execution API with the spec/docs** (`plugins.ts`, `index.ts`, `spec.md`) — the implementation currently needs an undocumented `toolHandlers` map in addition to `tools`, so plugin tools are not actually self-describing the way the spec says.
+- [ ] **Refresh git state after each completed turn** (`ui/agent.ts`) — git state is refreshed before a turn starts but not after agent actions mutate the repo, so the status bar and next prompt footer can go stale.
+
+## Low priority (deffered until further notice)
+
+- [ ] **Prevent `/session` from switching sessions mid-run** (`ui/commands.ts`, `ui/agent.ts`) — selecting a session while a turn is active can desync UI state from the session the loop is still writing to.
+- [ ] **XML-escape generated skill catalog fields** (`skills.ts`) — skill names, descriptions, and paths containing XML metacharacters can break the `<available_skills>` prompt block.
+
+## Plugin related (documented only, no plugin related work is planned right now)
+
+- [ ] **Reconcile the plugin tool execution API with the spec/docs** (`plugins.ts`, `index.ts`, `spec.md`) — the implementation currently needs an undocumented `toolHandlers` map in addition to `tools`, so spec-shaped plugin tools can be advertised to the model but still fail at runtime.
 - [ ] **Current plugin `AgentContext.messages` is stale** (`index.ts`) — plugin context currently gets a startup snapshot instead of the live current session messages.
-- [ ] **Package-name plugin imports do not work** (`plugins.ts`) — plugin config says `module` can be a package name or path, but current loading always resolves as a filesystem path.
+- [ ] **Package-name and config-relative plugin imports do not work** (`plugins.ts`) — plugin config says `module` can be a package name or path, but current loading always resolves as a filesystem path from the process CWD.
+- [ ] **Prefix plugin tool rendering with `plugin/tool` in the log** (`index.ts`, `ui/conversation.ts`) — generic plugin tool blocks currently show only the bare tool name, so collisions are ambiguous and the UI does not match the spec.
 
 ## Future ideas
 

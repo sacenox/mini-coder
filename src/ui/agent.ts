@@ -276,12 +276,10 @@ export function createUiAgentController(
   const handleAgentEvent = (event: AgentEvent, state: AppState): void => {
     switch (event.type) {
       case "text_delta":
-        streamingContent = event.content;
-        runtime.scrollConversationToBottom();
-        runtime.render();
-        break;
-
       case "thinking_delta":
+      case "toolcall_start":
+      case "toolcall_delta":
+      case "toolcall_end":
         streamingContent = event.content;
         runtime.scrollConversationToBottom();
         runtime.render();

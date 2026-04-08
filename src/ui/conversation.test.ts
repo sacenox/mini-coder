@@ -4,6 +4,7 @@ import {
   fauxAssistantMessage,
   fauxText,
   fauxThinking,
+  fauxToolCall,
 } from "@mariozechner/pi-ai";
 import { DEFAULT_THEME, type Theme } from "../theme.ts";
 import {
@@ -166,6 +167,21 @@ describe("ui/conversation", () => {
     const text = collectText(node);
 
     expect(text).toContain("Thinking... 1 line.");
+  });
+
+  test("renderAssistantMessage shows streamed tool call arguments before execution begins", () => {
+    const node = renderAssistantMessage(
+      {
+        content: [
+          fauxToolCall("shell", { command: "echo hi" }, { id: "tool-1" }),
+        ],
+      },
+      RENDER_OPTS,
+    );
+    const text = collectText(node);
+
+    expect(text).toContain("$ echo hi");
+    expect(text).toContain("Preparing...");
   });
 
   test("renderAssistantMessage shows partial tool output before the tool finishes", () => {

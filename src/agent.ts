@@ -11,6 +11,7 @@
 import type { Database } from "bun:sqlite";
 import type {
   AssistantMessage,
+  AssistantMessageEvent,
   Message,
   Model,
   ThinkingLevel,
@@ -54,6 +55,28 @@ export type AgentEvent =
   | {
       type: "thinking_delta";
       delta: string;
+      content: AssistantMessage["content"];
+    }
+  | {
+      type: "toolcall_start";
+      toolCallId: string;
+      name: string;
+      args: Record<string, unknown>;
+      content: AssistantMessage["content"];
+    }
+  | {
+      type: "toolcall_delta";
+      toolCallId: string;
+      name: string;
+      args: Record<string, unknown>;
+      delta: string;
+      content: AssistantMessage["content"];
+    }
+  | {
+      type: "toolcall_end";
+      toolCallId: string;
+      name: string;
+      args: Record<string, unknown>;
       content: AssistantMessage["content"];
     }
   | { type: "assistant_message"; message: AssistantMessage }
@@ -255,6 +278,104 @@ function buildStreamOptions(
   };
 }
 
+interface StreamedToolCallEventPayload {
+  toolCallId: string;
+  name: string;
+  args: Record<string, unknown>;
+  content: AssistantMessage["content"];
+}
+
+function buildStreamedToolCallEventPayload(
+  partial: AssistantMessage,
+  contentIndex: number,
+  toolCall?: ToolCall,
+): StreamedToolCallEventPayload | null {
+  const block = toolCall ?? partial.content[contentIndex];
+  if (!block || block.type !== "toolCall") {
+    return null;
+  }
+
+  return {
+    toolCallId: block.id,
+    name: block.name,
+    args: structuredClone(block.arguments),
+    content: cloneAssistantContent(partial.content),
+  };
+}
+
+function handleAssistantStreamEvent(
+  event: AssistantMessageEvent,
+  onEvent: RunAgentOpts["onEvent"],
+): AssistantMessage | null {
+  switch (event.type) {
+    case "text_delta":
+      onEvent?.({
+        type: "text_delta",
+        delta: event.delta,
+        content: cloneAssistantContent(event.partial.content),
+      });
+      return null;
+    case "thinking_delta":
+      onEvent?.({
+        type: "thinking_delta",
+        delta: event.delta,
+        content: cloneAssistantContent(event.partial.content),
+      });
+      return null;
+    case "toolcall_start": {
+      const payload = buildStreamedToolCallEventPayload(
+        event.partial,
+        event.contentIndex,
+      );
+      if (payload) {
+        onEvent?.({
+          type: "toolcall_start",
+          ...payload,
+        });
+      }
+      return null;
+    }
+    case "toolcall_delta": {
+      const payload = buildStreamedToolCallEventPayload(
+        event.partial,
+        event.contentIndex,
+      );
+      if (payload) {
+        onEvent?.({
+          type: "toolcall_delta",
+          delta: event.delta,
+          ...payload,
+        });
+      }
+      return null;
+    }
+    case "toolcall_end": {
+      const payload = buildStreamedToolCallEventPayload(
+        event.partial,
+        event.contentIndex,
+        event.toolCall,
+      );
+      if (payload) {
+        onEvent?.({
+          type: "toolcall_end",
+          ...payload,
+        });
+      }
+      return null;
+    }
+    case "done":
+      return event.message;
+    case "error":
+      return event.error;
+    case "start":
+    case "text_start":
+    case "text_end":
+    case "thinking_start":
+    case "thinking_end":
+      return null;
+  }
+}
+
 async function streamAssistantMessage(
   opts: Pick<
     RunAgentOpts,
@@ -281,30 +402,8 @@ async function streamAssistantMessage(
       partialAssistantMessage = event.partial;
     }
 
-    switch (event.type) {
-      case "text_delta":
-        opts.onEvent?.({
-          type: "text_delta",
-          delta: event.delta,
-          content: cloneAssistantContent(event.partial.content),
-        });
-        continue;
-      case "thinking_delta":
-        opts.onEvent?.({
-          type: "thinking_delta",
-          delta: event.delta,
-          content: cloneAssistantContent(event.partial.content),
-        });
-        continue;
-      case "done":
-        assistantMessage = event.message;
-        continue;
-      case "error":
-        assistantMessage = event.error;
-        continue;
-      case "toolcall_end":
-        continue;
-    }
+    assistantMessage =
+      handleAssistantStreamEvent(event, opts.onEvent) ?? assistantMessage;
   }
 
   const finalAssistantMessage =

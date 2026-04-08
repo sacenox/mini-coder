@@ -376,6 +376,195 @@ describe("agent loop", () => {
     ]);
   });
 
+  test("emits streamed tool-call construction events before execution starts", async () => {
+    const api = "toolcall-stream-test";
+    const sourceId = "toolcall-stream-test-source";
+    const model: Model<string> = {
+      id: "toolcall-stream-model",
+      name: "Tool Call Stream Model",
+      api,
+      provider: "test",
+      baseUrl: "http://localhost:0",
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 128000,
+      maxTokens: 4096,
+    };
+
+    let callCount = 0;
+    const finalToolCall = fauxToolCall(
+      "shell",
+      { command: "echo streamed-tool" },
+      { id: "tool-1" },
+    );
+    const buildProviderStream = () => {
+      callCount += 1;
+      const stream = createAssistantMessageEventStream();
+
+      if (callCount === 1) {
+        const finalMessage: AssistantMessage = {
+          role: "assistant",
+          content: [finalToolCall],
+          api,
+          provider: model.provider,
+          model: model.id,
+          usage: ZERO_USAGE,
+          stopReason: "toolUse",
+          timestamp: Date.now(),
+        };
+        const partialStart: AssistantMessage = {
+          ...finalMessage,
+          content: [fauxToolCall("shell", {}, { id: "tool-1" })],
+        };
+        const partialDelta: AssistantMessage = {
+          ...finalMessage,
+          content: [
+            fauxToolCall(
+              "shell",
+              { command: "echo streamed" },
+              { id: "tool-1" },
+            ),
+          ],
+        };
+
+        queueMicrotask(() => {
+          stream.push({
+            type: "toolcall_start",
+            contentIndex: 0,
+            partial: partialStart,
+          });
+          stream.push({
+            type: "toolcall_delta",
+            contentIndex: 0,
+            delta: '{"command":"echo streamed"}',
+            partial: partialDelta,
+          });
+          stream.push({
+            type: "toolcall_end",
+            contentIndex: 0,
+            toolCall: finalToolCall,
+            partial: finalMessage,
+          });
+          stream.push({
+            type: "done",
+            reason: "toolUse",
+            message: finalMessage,
+          });
+          stream.end(finalMessage);
+        });
+
+        return stream;
+      }
+
+      const finalMessage = fauxAssistantMessage("Done.");
+      queueMicrotask(() => {
+        stream.push({
+          type: "done",
+          reason: "stop",
+          message: finalMessage,
+        });
+        stream.end(finalMessage);
+      });
+
+      return stream;
+    };
+
+    registerApiProvider(
+      {
+        api,
+        stream: (_model, _context, _options) => buildProviderStream(),
+        streamSimple: (_model, _context, _options) => buildProviderStream(),
+      },
+      sourceId,
+    );
+
+    try {
+      const events: AgentEvent[] = [];
+      const session = createSession(db, { cwd: tmp });
+      const userMsg = makeUser("hi");
+      const turn = appendMessage(db, session.id, userMsg);
+
+      await runAgentLoop({
+        db,
+        sessionId: session.id,
+        turn,
+        model,
+        systemPrompt: "Test",
+        tools: [shellTool],
+        toolHandlers: new Map<string, ToolHandler>([
+          [
+            "shell",
+            () => ({
+              content: [{ type: "text", text: "tool output" }],
+              isError: false,
+            }),
+          ],
+        ]),
+        messages: [userMsg],
+        cwd: tmp,
+        onEvent: (event) => events.push(event),
+      });
+
+      const toolCallStart = events.find(
+        (event) => event.type === "toolcall_start",
+      );
+      const toolCallDelta = events.find(
+        (event) => event.type === "toolcall_delta",
+      );
+      const toolCallEnd = events.find((event) => event.type === "toolcall_end");
+      const assistantMessage = events.find(
+        (event) => event.type === "assistant_message",
+      );
+      const toolStart = events.find((event) => event.type === "tool_start");
+
+      expect(toolCallStart).toBeDefined();
+      expect(toolCallDelta).toBeDefined();
+      expect(toolCallEnd).toBeDefined();
+      expect(assistantMessage).toBeDefined();
+      expect(toolStart).toBeDefined();
+
+      if (
+        !toolCallStart ||
+        toolCallStart.type !== "toolcall_start" ||
+        !toolCallDelta ||
+        toolCallDelta.type !== "toolcall_delta" ||
+        !toolCallEnd ||
+        toolCallEnd.type !== "toolcall_end" ||
+        !assistantMessage ||
+        assistantMessage.type !== "assistant_message" ||
+        !toolStart ||
+        toolStart.type !== "tool_start"
+      ) {
+        throw new Error(
+          "Expected streamed tool-call, assistant-message, and tool-start events",
+        );
+      }
+
+      expect(toolCallStart.toolCallId).toBe("tool-1");
+      expect(toolCallStart.name).toBe("shell");
+      expect(toolCallStart.args).toEqual({});
+      expect(toolCallDelta.args).toEqual({ command: "echo streamed" });
+      expect(toolCallEnd.args).toEqual({ command: "echo streamed-tool" });
+      expect(toolCallEnd.content).toEqual([finalToolCall]);
+      expect(assistantMessage.message.stopReason).toBe("toolUse");
+      expect(toolStart.args).toEqual({ command: "echo streamed-tool" });
+
+      const toolCallStartIndex = events.indexOf(toolCallStart);
+      const toolCallDeltaIndex = events.indexOf(toolCallDelta);
+      const toolCallEndIndex = events.indexOf(toolCallEnd);
+      const assistantMessageIndex = events.indexOf(assistantMessage);
+      const toolStartIndex = events.indexOf(toolStart);
+
+      expect(toolCallStartIndex).toBeLessThan(toolCallDeltaIndex);
+      expect(toolCallDeltaIndex).toBeLessThan(toolCallEndIndex);
+      expect(toolCallEndIndex).toBeLessThan(assistantMessageIndex);
+      expect(assistantMessageIndex).toBeLessThan(toolStartIndex);
+    } finally {
+      unregisterApiProviders(sourceId);
+    }
+  });
+
   test("reconstructs thinking content when the final done message omits it", async () => {
     const api = "reasoning-drop-test";
     const sourceId = "reasoning-drop-test-source";
