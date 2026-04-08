@@ -270,7 +270,11 @@ describe("ui/conversation", () => {
     });
 
     expect(previewNodes).not.toBe(verboseNodes);
-    expect(previewText).toContain("And 5 lines more");
+    expect(previewText).toContain("line 18");
+    expect(previewText).toContain("line 25");
+    expect(previewText).toContain("And 17 lines more");
+    expect(previewText).not.toContain("line 17");
+    expect(verboseText).toContain("line 17");
     expect(verboseText).toContain("line 25");
   });
 
@@ -318,6 +322,26 @@ describe("ui/conversation", () => {
     expect(text).toContain("$ echo hi");
     expect(text).not.toContain('"command": "echo hi"');
     expect(text).not.toContain("Preparing...");
+  });
+
+  test("renderAssistantMessage shows the last 8 lines of multi-line shell commands when verbose mode is off", () => {
+    const command = Array.from({ length: 10 }, (_, i) => `echo ${i + 1}`).join(
+      "\n",
+    );
+
+    const node = renderAssistantMessage(
+      {
+        content: [fauxToolCall("shell", { command }, { id: "tool-1" })],
+      },
+      RENDER_OPTS,
+    );
+    const text = collectText(node);
+
+    expect(text.some((line) => /(^|\s)echo 3$/.test(line))).toBe(true);
+    expect(text.some((line) => /(^|\s)echo 10$/.test(line))).toBe(true);
+    expect(text).toContain("And 2 lines more");
+    expect(text.some((line) => /(^|\s)echo 1$/.test(line))).toBe(false);
+    expect(text.some((line) => /(^|\s)echo 2$/.test(line))).toBe(false);
   });
 
   test("renderAssistantMessage shows streamed readImage arguments semantically", () => {
@@ -374,24 +398,24 @@ describe("ui/conversation", () => {
     expect(preview).toEqual(lines);
   });
 
-  test("previewToolRenderLines shows first 20 lines plus a summary when verbose mode is off", () => {
+  test("previewToolRenderLines shows the last 8 lines plus a summary when verbose mode is off", () => {
     const lines: ToolRenderLine[] = Array.from({ length: 25 }, (_, i) => ({
       kind: "text",
       text: `line ${i + 1}`,
     }));
 
-    const preview = previewToolRenderLines(lines, false, 20);
+    const preview = previewToolRenderLines(lines, false);
 
-    expect(preview).toHaveLength(21);
-    expect(preview.at(0)?.text).toBe("line 1");
-    expect(preview.at(19)?.text).toBe("line 20");
-    expect(preview.at(20)).toEqual({
+    expect(preview).toHaveLength(9);
+    expect(preview.at(0)?.text).toBe("line 18");
+    expect(preview.at(7)?.text).toBe("line 25");
+    expect(preview.at(8)).toEqual({
       kind: "summary",
-      text: "And 5 lines more",
+      text: "And 17 lines more",
     });
   });
 
-  test("renderToolResult truncates shell output in non-verbose mode", () => {
+  test("renderToolResult shows the last 8 shell-output lines in non-verbose mode", () => {
     const output = Array.from({ length: 25 }, (_, i) => `line ${i + 1}`).join(
       "\n",
     );
@@ -405,10 +429,10 @@ describe("ui/conversation", () => {
     );
     const text = collectText(node);
 
-    expect(text).toContain("line 1");
-    expect(text).toContain("line 20");
-    expect(text).toContain("And 5 lines more");
-    expect(text).not.toContain("line 21");
+    expect(text).toContain("line 18");
+    expect(text).toContain("line 25");
+    expect(text).toContain("And 17 lines more");
+    expect(text).not.toContain("line 17");
     expect(text).not.toContain("$ seq 1 25");
   });
 
@@ -460,6 +484,26 @@ describe("ui/conversation", () => {
     expect(text).not.toContain("~ diagram.png");
   });
 
+  test("renderToolResult shows full readImage errors even in non-verbose mode", () => {
+    const errorText = Array.from(
+      { length: 25 },
+      (_, i) => `error ${i + 1}`,
+    ).join("\n");
+
+    const node = renderToolResult(
+      "readImage",
+      { path: "diagram.png" },
+      errorText,
+      true,
+      RENDER_OPTS,
+    );
+    const text = collectText(node);
+
+    expect(text).toContain("error 1");
+    expect(text).toContain("error 25");
+    expect(text.some((line) => /^And \d+ lines more$/.test(line))).toBe(false);
+  });
+
   test("renderToolResult shows a diff for newly created files", () => {
     const node = renderToolResult(
       "edit",
@@ -475,7 +519,7 @@ describe("ui/conversation", () => {
     expect(text).not.toContain("(new file)");
   });
 
-  test("renderToolResult truncates edit diffs in non-verbose mode", () => {
+  test("renderToolResult shows full edit diffs even in non-verbose mode", () => {
     const oldText = Array.from({ length: 25 }, (_, i) => `old ${i + 1}`).join(
       "\n",
     );
@@ -493,8 +537,8 @@ describe("ui/conversation", () => {
     const text = collectText(node);
 
     expect(text).not.toContain("~ src/file.ts");
-    expect(text.at(-1)).toMatch(/^And \d+ lines more$/);
-    expect(text).not.toContain("+new 11");
+    expect(text).toContain("+new 25");
+    expect(text.some((line) => /^And \d+ lines more$/.test(line))).toBe(false);
   });
 
   test("renderToolResult shows full edit diffs in verbose mode", () => {
@@ -516,5 +560,30 @@ describe("ui/conversation", () => {
 
     expect(text).toContain("+new 25");
     expect(text.some((line) => /^And \d+ lines more$/.test(line))).toBe(false);
+  });
+
+  test("renderToolResult previews edit errors in non-verbose mode", () => {
+    const errorText = Array.from(
+      { length: 25 },
+      (_, i) => `error ${i + 1}`,
+    ).join("\n");
+
+    const node = renderToolResult(
+      "edit",
+      {
+        path: "src/file.ts",
+        oldText: "before",
+        newText: "after",
+      },
+      errorText,
+      true,
+      RENDER_OPTS,
+    );
+    const text = collectText(node);
+
+    expect(text).toContain("error 18");
+    expect(text).toContain("error 25");
+    expect(text).toContain("And 17 lines more");
+    expect(text).not.toContain("error 17");
   });
 });

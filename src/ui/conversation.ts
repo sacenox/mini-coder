@@ -22,8 +22,8 @@ import type { AppState } from "../index.ts";
 import type { UiMessage } from "../session.ts";
 import type { Theme } from "../theme.ts";
 
-/** Max body lines shown for tool results when verbose mode is off. */
-const UI_TOOL_PREVIEW_LINES = 20;
+/** Max body lines shown for tool previews/results when verbose mode is off. */
+const UI_TOOL_PREVIEW_LINES = 8;
 
 /** A pending tool result shown in the streaming tail. */
 export interface PendingToolResult {
@@ -261,10 +261,7 @@ export function renderAssistantMessage(
 /** Split multi-line tool text into logical render lines. */
 function splitToolTextLines(
   text: string,
-  kind: Exclude<
-    ToolRenderLineKind,
-    "command" | "path" | "toolName" | "summary"
-  >,
+  kind: Exclude<ToolRenderLineKind, "path" | "toolName" | "summary">,
 ): ToolRenderLine[] {
   if (text === "") {
     return [];
@@ -281,8 +278,8 @@ function getToolArgString(args: Record<string, unknown>, key: string): string {
 /**
  * Apply the UI preview policy to tool body lines.
  *
- * When verbose mode is off, only the first `maxLines` body lines are shown,
- * followed by a summary line reporting how many lines remain hidden.
+ * When verbose mode is off, only the last `maxLines` body lines are shown,
+ * followed by a summary line reporting how many earlier lines were hidden.
  *
  * @param lines - Full body lines for the tool output.
  * @param verbose - Whether verbose mode is enabled.
@@ -299,7 +296,7 @@ export function previewToolRenderLines(
   }
 
   return [
-    ...lines.slice(0, maxLines),
+    ...lines.slice(-maxLines),
     {
       kind: "summary",
       text: `And ${lines.length - maxLines} lines more`,
@@ -532,13 +529,9 @@ function buildEditToolLines(
   }
 
   const diffLines = getCachedEditToolDiffLines(args);
-
-  return previewToolRenderLines(
-    diffLines.length > 0
-      ? diffLines
-      : [{ kind: "summary", text: "(empty file)" }],
-    verbose,
-  );
+  return diffLines.length > 0
+    ? diffLines
+    : [{ kind: "summary", text: "(empty file)" }];
 }
 
 /** Render a single styled text node for a tool line. */
@@ -601,17 +594,42 @@ function buildToolHeaderLine(
   toolName: string,
   args: Record<string, unknown>,
 ): ToolRenderLine | null {
-  if (toolName === "shell") {
-    const command = getToolArgString(args, "command");
-    return command ? { kind: "command", text: `$ ${command}` } : null;
-  }
-
   if (toolName === "edit" || toolName === "readImage") {
     const filePath = getToolArgString(args, "path");
     return filePath ? { kind: "path", text: `~ ${filePath}` } : null;
   }
 
   return { kind: "toolName", text: toolName };
+}
+
+function prefixFirstLine(
+  lines: readonly ToolRenderLine[],
+  prefix: string,
+): ToolRenderLine[] {
+  if (lines.length === 0) {
+    return [];
+  }
+
+  return lines.map((line, index) => {
+    if (index !== 0 || line.kind === "summary") {
+      return line;
+    }
+
+    return {
+      ...line,
+      text: `${prefix}${line.text}`,
+    };
+  });
+}
+
+function buildShellToolCallLines(
+  command: string,
+  verbose: boolean,
+): ToolRenderLine[] {
+  return prefixFirstLine(
+    previewToolRenderLines(splitToolTextLines(command, "command"), verbose),
+    "$ ",
+  );
 }
 
 function buildEditToolCallLines(
@@ -641,7 +659,11 @@ function buildToolCallLines(
   args: Record<string, unknown>,
   verbose: boolean,
 ): ToolRenderLine[] {
-  if (toolName === "shell" || toolName === "readImage") {
+  if (toolName === "shell") {
+    return buildShellToolCallLines(getToolArgString(args, "command"), verbose);
+  }
+
+  if (toolName === "readImage") {
     const header = buildToolHeaderLine(toolName, args);
     return header ? [header] : [];
   }
@@ -682,13 +704,10 @@ function renderToolCall(
 function buildReadImageToolLines(
   content: ToolResultMessage["content"],
   isError: boolean,
-  verbose: boolean,
+  _verbose: boolean,
 ): ToolRenderLine[] {
   if (isError) {
-    return previewToolRenderLines(
-      splitToolTextLines(getToolContentText(content), "error"),
-      verbose,
-    );
+    return splitToolTextLines(getToolContentText(content), "error");
   }
 
   return [{ kind: "text", text: "Read image." }];
