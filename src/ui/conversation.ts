@@ -14,10 +14,10 @@ import type { Node } from "@cel-tui/types";
 import type {
   AssistantMessage,
   TextContent,
+  ToolResultMessage,
   UserMessage,
 } from "@mariozechner/pi-ai";
 import { structuredPatch } from "diff";
-import type { AgentEvent } from "../agent.ts";
 import type { AppState } from "../index.ts";
 import type { UiMessage } from "../session.ts";
 import type { Theme } from "../theme.ts";
@@ -25,20 +25,16 @@ import type { Theme } from "../theme.ts";
 /** Max body lines shown for tool results when verbose mode is off. */
 const UI_TOOL_PREVIEW_LINES = 20;
 
-/** A pending tool call shown in the streaming tail. */
-export interface PendingToolCall {
+/** A pending tool result shown in the streaming tail. */
+export interface PendingToolResult {
   /** Tool call id from the assistant message. */
   toolCallId: string;
   /** Tool name. */
-  name: string;
-  /** Tool call arguments. */
-  args: Record<string, unknown>;
-  /** Progressive text output captured so far. */
-  resultText: string;
+  toolName: string;
+  /** Progressive or final tool-result content captured so far. */
+  content: ToolResultMessage["content"];
   /** Whether the tool result was an error. */
   isError: boolean;
-  /** Whether the tool has finished. */
-  done: boolean;
 }
 
 /** Render options shared by completed and in-progress assistant content. */
@@ -57,16 +53,14 @@ export interface StreamingConversationState {
   isStreaming: boolean;
   /** Assistant content accumulated so far. */
   content: AssistantMessage["content"];
-  /** Tool calls observed during the current streaming turn. */
-  pendingToolCalls: readonly PendingToolCall[];
+  /** Tool results observed during the current streaming turn. */
+  pendingToolResults: readonly PendingToolResult[];
 }
 
 /** Display-only assistant state used while a response is still streaming. */
 interface AssistantRenderState {
   /** Assistant content blocks accumulated so far. */
   content: AssistantMessage["content"];
-  /** Tool calls observed in the current streaming turn. */
-  pendingToolCalls?: readonly PendingToolCall[];
   /** Optional error text appended below the assistant content. */
   errorMessage?: string;
 }
@@ -127,21 +121,6 @@ function getAssistantErrorMessage(
   return assistant.errorMessage;
 }
 
-function getPendingToolCalls(
-  assistant: AssistantMessage | AssistantRenderState,
-): readonly PendingToolCall[] {
-  if ("role" in assistant) {
-    return [];
-  }
-  return assistant.pendingToolCalls ?? [];
-}
-
-function isStreamingAssistant(
-  assistant: AssistantMessage | AssistantRenderState,
-): assistant is AssistantRenderState {
-  return !("role" in assistant);
-}
-
 function renderThinkingBlock(
   thinking: string,
   opts: ConversationRenderOpts,
@@ -169,7 +148,6 @@ function renderThinkingBlock(
 function renderAssistantContentBlock(
   block: AssistantMessage["content"][number],
   opts: ConversationRenderOpts,
-  isStreaming: boolean,
 ): Node[] {
   if (block.type === "text" && block.text) {
     return renderMarkdownContent(block.text);
@@ -177,8 +155,8 @@ function renderAssistantContentBlock(
   if (block.type === "thinking" && block.thinking) {
     return [renderThinkingBlock(block.thinking, opts)];
   }
-  if (block.type === "toolCall" && isStreaming) {
-    return [renderStreamingToolCall(block, opts)];
+  if (block.type === "toolCall") {
+    return renderToolCall(block, opts);
   }
   return [];
 }
@@ -194,14 +172,9 @@ export function renderAssistantMessage(
   assistant: AssistantMessage | AssistantRenderState,
   opts: ConversationRenderOpts,
 ): Node | null {
-  const streaming = isStreamingAssistant(assistant);
   const children = assistant.content.flatMap((block) => {
-    return renderAssistantContentBlock(block, opts, streaming);
+    return renderAssistantContentBlock(block, opts);
   });
-
-  for (const toolCall of getPendingToolCalls(assistant)) {
-    children.push(renderPendingToolCall(toolCall, opts));
-  }
 
   const errorMessage = getAssistantErrorMessage(assistant);
   if (errorMessage) {
@@ -270,16 +243,22 @@ export function previewToolRenderLines(
   ];
 }
 
+/** Strip shell execution labels that should not appear in the UI. */
+function normalizeShellOutput(output: string): string {
+  return output
+    .replace(/^Exit code: \d+\n?/, "")
+    .replace(/(^|\n)\[stderr\]\n/g, "$1");
+}
+
 /** Build the logical render lines for a shell tool result. */
 function buildShellToolLines(
-  command: string,
   output: string,
   verbose: boolean,
 ): ToolRenderLine[] {
-  return [
-    { kind: "command", text: `$ ${command}` },
-    ...previewToolRenderLines(splitToolTextLines(output, "text"), verbose),
-  ];
+  return previewToolRenderLines(
+    splitToolTextLines(normalizeShellOutput(output), "text"),
+    verbose,
+  );
 }
 
 function buildStructuredDiffLines(
@@ -311,9 +290,29 @@ function buildStructuredDiffLines(
   return diffLines;
 }
 
+function splitPrefixedToolTextLines(
+  text: string,
+  kind: "diffAdded" | "diffRemoved",
+  prefix: string,
+): ToolRenderLine[] {
+  if (text === "") {
+    return [];
+  }
+
+  const lines = text.split("\n");
+  if (lines.at(-1) === "") {
+    lines.pop();
+  }
+
+  return lines.map((line) => ({
+    kind,
+    text: `${prefix}${line}`,
+  }));
+}
+
 /** Build the logical render lines for an edit tool result. */
 function buildEditToolLines(
-  filePath: string,
+  _filePath: string,
   oldText: string,
   newText: string,
   isError: boolean,
@@ -321,26 +320,20 @@ function buildEditToolLines(
   verbose: boolean,
 ): ToolRenderLine[] {
   if (isError) {
-    return [
-      { kind: "path", text: `~ ${filePath}` },
-      ...previewToolRenderLines(
-        splitToolTextLines(resultText, "error"),
-        verbose,
-      ),
-    ];
+    return previewToolRenderLines(
+      splitToolTextLines(resultText, "error"),
+      verbose,
+    );
   }
 
   const diffLines = buildStructuredDiffLines(oldText, newText);
 
-  return [
-    { kind: "path", text: `~ ${filePath}` },
-    ...previewToolRenderLines(
-      diffLines.length > 0
-        ? diffLines
-        : [{ kind: "summary", text: "(empty file)" }],
-      verbose,
-    ),
-  ];
+  return previewToolRenderLines(
+    diffLines.length > 0
+      ? diffLines
+      : [{ kind: "summary", text: "(empty file)" }],
+    verbose,
+  );
 }
 
 /** Render a single styled text node for a tool line. */
@@ -392,69 +385,158 @@ function renderToolBlock(lines: readonly ToolRenderLine[], theme: Theme): Node {
   ]);
 }
 
-/**
- * Extract text blocks from a streamed tool result for UI rendering.
- *
- * @param result - Incremental or final tool result event payload.
- * @returns Concatenated text blocks joined with newlines.
- */
-export function getToolResultText(
-  result: Extract<AgentEvent, { type: "tool_delta" | "tool_end" }>["result"],
-): string {
-  return result.content
-    .filter((content): content is TextContent => content.type === "text")
-    .map((content) => content.text)
+function getToolContentText(content: ToolResultMessage["content"]): string {
+  return content
+    .filter((entry): entry is TextContent => entry.type === "text")
+    .map((entry) => entry.text)
     .join("\n");
 }
 
-/** Render a shell tool call with left border. */
-function renderShellToolCall(
-  command: string,
-  output: string,
-  _isError: boolean,
-  opts: Pick<ConversationRenderOpts, "verbose" | "theme">,
-): Node {
-  return renderToolBlock(
-    buildShellToolLines(command, output, opts.verbose),
-    opts.theme,
-  );
+function buildToolHeaderLine(
+  toolName: string,
+  args: Record<string, unknown>,
+): ToolRenderLine | null {
+  if (toolName === "shell") {
+    const command = getToolArgString(args, "command");
+    return command ? { kind: "command", text: `$ ${command}` } : null;
+  }
+
+  if (toolName === "edit" || toolName === "readImage") {
+    const filePath = getToolArgString(args, "path");
+    return filePath ? { kind: "path", text: `~ ${filePath}` } : null;
+  }
+
+  return { kind: "toolName", text: toolName };
 }
 
-/** Render an edit tool call with file path and unified diff. */
-function renderEditToolCall(
+function buildEditToolCallLines(
   filePath: string,
   oldText: string,
   newText: string,
-  isError: boolean,
-  resultText: string,
-  opts: Pick<ConversationRenderOpts, "verbose" | "theme">,
-): Node {
-  return renderToolBlock(
-    buildEditToolLines(
-      filePath,
-      oldText,
-      newText,
-      isError,
-      resultText,
-      opts.verbose,
-    ),
-    opts.theme,
+  verbose: boolean,
+): ToolRenderLine[] {
+  const lines: ToolRenderLine[] = [];
+  if (filePath) {
+    lines.push({ kind: "path", text: `~ ${filePath}` });
+  }
+
+  const bodyLines = previewToolRenderLines(
+    [
+      ...splitPrefixedToolTextLines(oldText, "diffRemoved", "-"),
+      ...splitPrefixedToolTextLines(newText, "diffAdded", "+"),
+    ],
+    verbose,
   );
+
+  return [...lines, ...bodyLines];
 }
 
-/** Render a generic (plugin) tool call with left border. */
-function renderGenericToolCall(
+function buildToolCallLines(
+  toolName: string,
+  args: Record<string, unknown>,
+  verbose: boolean,
+): ToolRenderLine[] {
+  if (toolName === "shell" || toolName === "readImage") {
+    const header = buildToolHeaderLine(toolName, args);
+    return header ? [header] : [];
+  }
+
+  if (toolName === "edit") {
+    return buildEditToolCallLines(
+      getToolArgString(args, "path"),
+      getToolArgString(args, "oldText"),
+      getToolArgString(args, "newText"),
+      verbose,
+    );
+  }
+
+  const text = JSON.stringify(args, null, 2);
+  if (!text || text === "{}") {
+    const header = buildToolHeaderLine(toolName, args);
+    return header ? [header] : [];
+  }
+
+  return [
+    { kind: "toolName", text: toolName },
+    ...previewToolRenderLines(splitToolTextLines(text, "text"), verbose),
+  ];
+}
+
+function renderToolCall(
+  toolCall: Extract<AssistantMessage["content"][number], { type: "toolCall" }>,
+  opts: Pick<ConversationRenderOpts, "verbose" | "theme">,
+): Node[] {
+  const lines = buildToolCallLines(
+    toolCall.name,
+    toolCall.arguments,
+    opts.verbose,
+  );
+  return lines.length > 0 ? [renderToolBlock(lines, opts.theme)] : [];
+}
+
+function buildReadImageToolLines(
+  content: ToolResultMessage["content"],
+  isError: boolean,
+  verbose: boolean,
+): ToolRenderLine[] {
+  if (isError) {
+    return previewToolRenderLines(
+      splitToolTextLines(getToolContentText(content), "error"),
+      verbose,
+    );
+  }
+
+  return [{ kind: "text", text: "Read image." }];
+}
+
+function buildGenericToolLines(
   toolName: string,
   output: string,
   isError: boolean,
-  theme: Theme,
-): Node {
-  const lines: ToolRenderLine[] = [
+): ToolRenderLine[] {
+  return [
     { kind: "toolName", text: toolName },
     ...splitToolTextLines(output, isError ? "error" : "text"),
   ];
+}
 
-  return renderToolBlock(lines, theme);
+function renderToolResultContent(
+  toolName: string,
+  args: Record<string, unknown>,
+  content: ToolResultMessage["content"],
+  isError: boolean,
+  opts: Pick<ConversationRenderOpts, "verbose" | "theme">,
+): Node {
+  if (toolName === "shell") {
+    return renderToolBlock(
+      buildShellToolLines(getToolContentText(content), opts.verbose),
+      opts.theme,
+    );
+  }
+  if (toolName === "edit") {
+    return renderToolBlock(
+      buildEditToolLines(
+        getToolArgString(args, "path"),
+        getToolArgString(args, "oldText"),
+        getToolArgString(args, "newText"),
+        isError,
+        getToolContentText(content),
+        opts.verbose,
+      ),
+      opts.theme,
+    );
+  }
+  if (toolName === "readImage") {
+    return renderToolBlock(
+      buildReadImageToolLines(content, isError, opts.verbose),
+      opts.theme,
+    );
+  }
+
+  return renderToolBlock(
+    buildGenericToolLines(toolName, getToolContentText(content), isError),
+    opts.theme,
+  );
 }
 
 /**
@@ -474,151 +556,11 @@ export function renderToolResult(
   isError: boolean,
   opts: ConversationRenderOpts,
 ): Node {
-  if (toolName === "shell") {
-    return renderShellToolCall(
-      getToolArgString(args, "command"),
-      resultText,
-      isError,
-      {
-        verbose: opts.verbose,
-        theme: opts.theme,
-      },
-    );
-  }
-  if (toolName === "edit") {
-    return renderEditToolCall(
-      getToolArgString(args, "path"),
-      getToolArgString(args, "oldText"),
-      getToolArgString(args, "newText"),
-      isError,
-      resultText,
-      {
-        verbose: opts.verbose,
-        theme: opts.theme,
-      },
-    );
-  }
-  return renderGenericToolCall(toolName, resultText, isError, opts.theme);
-}
+  const content: ToolResultMessage["content"] = resultText
+    ? [{ type: "text", text: resultText }]
+    : [];
 
-function buildPendingRunningLines(done: boolean): ToolRenderLine[] {
-  return done
-    ? []
-    : [
-        {
-          kind: "summary",
-          text: "Running...",
-        },
-      ];
-}
-
-function buildToolHeader(
-  toolName: string,
-  args: Record<string, unknown>,
-): ToolRenderLine {
-  if (toolName === "shell") {
-    const command = getToolArgString(args, "command");
-    if (command) {
-      return {
-        kind: "command",
-        text: `$ ${command}`,
-      };
-    }
-  }
-  if (toolName === "edit") {
-    const filePath = getToolArgString(args, "path");
-    if (filePath) {
-      return {
-        kind: "path",
-        text: `~ ${filePath}`,
-      };
-    }
-  }
-  return {
-    kind: "toolName",
-    text: toolName,
-  };
-}
-
-function buildToolArgumentPreviewLines(
-  args: Record<string, unknown>,
-  verbose: boolean,
-): ToolRenderLine[] {
-  const text = JSON.stringify(args, null, 2);
-  if (!text || text === "{}") {
-    return [];
-  }
-
-  return previewToolRenderLines(splitToolTextLines(text, "text"), verbose);
-}
-
-function buildPendingToolHeader(toolCall: PendingToolCall): ToolRenderLine {
-  return buildToolHeader(toolCall.name, toolCall.args);
-}
-
-function renderStreamingToolCall(
-  toolCall: Extract<AssistantMessage["content"][number], { type: "toolCall" }>,
-  opts: Pick<ConversationRenderOpts, "verbose" | "theme">,
-): Node {
-  const header = buildToolHeader(toolCall.name, toolCall.arguments);
-  const lines: ToolRenderLine[] = [header];
-
-  if (header.kind === "toolName") {
-    lines.push(
-      ...buildToolArgumentPreviewLines(toolCall.arguments, opts.verbose),
-    );
-  }
-
-  lines.push({ kind: "summary", text: "Preparing..." });
-
-  return renderToolBlock(lines, opts.theme);
-}
-
-function buildPendingToolResultLines(
-  toolCall: PendingToolCall,
-  verbose: boolean,
-): ToolRenderLine[] {
-  if (toolCall.name === "shell") {
-    return buildShellToolLines(
-      getToolArgString(toolCall.args, "command"),
-      toolCall.resultText,
-      verbose,
-    );
-  }
-  if (toolCall.name === "edit") {
-    return [
-      buildPendingToolHeader(toolCall),
-      ...previewToolRenderLines(
-        splitToolTextLines(
-          toolCall.resultText,
-          toolCall.isError ? "error" : "text",
-        ),
-        verbose,
-      ),
-    ];
-  }
-  return [
-    buildPendingToolHeader(toolCall),
-    ...splitToolTextLines(
-      toolCall.resultText,
-      toolCall.isError ? "error" : "text",
-    ),
-  ];
-}
-
-/** Render a pending tool call, including progressive output when available. */
-function renderPendingToolCall(
-  toolCall: PendingToolCall,
-  opts: Pick<ConversationRenderOpts, "verbose" | "theme">,
-): Node {
-  const lines = toolCall.resultText
-    ? buildPendingToolResultLines(toolCall, opts.verbose)
-    : [buildPendingToolHeader(toolCall)];
-
-  return renderToolBlock(
-    [...lines, ...buildPendingRunningLines(toolCall.done)],
-    opts.theme,
-  );
+  return renderToolResultContent(toolName, args, content, isError, opts);
 }
 
 /** Render an internal UI message in the conversation log. */
@@ -659,13 +601,14 @@ function rememberToolCallArgs(
   }
 }
 
-function getToolResultMessageText(
-  message: Extract<ConversationMessage, { role: "toolResult" }>,
-): string {
-  return message.content
-    .filter((content): content is TextContent => content.type === "text")
-    .map((content) => content.text)
-    .join("\n");
+function renderToolResultMessage(
+  toolName: string,
+  args: Record<string, unknown>,
+  content: ToolResultMessage["content"],
+  isError: boolean,
+  renderOpts: ConversationRenderOpts,
+): Node {
+  return renderToolResultContent(toolName, args, content, isError, renderOpts);
 }
 
 function renderConversationMessage(
@@ -686,10 +629,10 @@ function renderConversationMessage(
   }
 
   const info = toolCallArgs.get(message.toolCallId);
-  return renderToolResult(
+  return renderToolResultMessage(
     info?.name ?? message.toolName,
     info?.args ?? {},
-    getToolResultMessageText(message),
+    message.content,
     message.isError,
     renderOpts,
   );
@@ -724,14 +667,25 @@ export function buildConversationLogNodes(
     );
   }
 
-  if (streaming.isStreaming) {
+  pushConversationNode(
+    nodes,
+    renderAssistantMessage(
+      {
+        content: streaming.content,
+      },
+      renderOpts,
+    ),
+  );
+
+  for (const pendingToolResult of streaming.pendingToolResults) {
+    const info = toolCallArgs.get(pendingToolResult.toolCallId);
     pushConversationNode(
       nodes,
-      renderAssistantMessage(
-        {
-          content: streaming.content,
-          pendingToolCalls: streaming.pendingToolCalls,
-        },
+      renderToolResultMessage(
+        info?.name ?? pendingToolResult.toolName,
+        info?.args ?? {},
+        pendingToolResult.content,
+        pendingToolResult.isError,
         renderOpts,
       ),
     );

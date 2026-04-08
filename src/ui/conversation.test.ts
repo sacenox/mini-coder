@@ -8,7 +8,8 @@ import {
 } from "@mariozechner/pi-ai";
 import { DEFAULT_THEME, type Theme } from "../theme.ts";
 import {
-  type PendingToolCall,
+  buildConversationLogNodes,
+  type PendingToolResult,
   previewToolRenderLines,
   renderAssistantMessage,
   renderToolResult,
@@ -111,32 +112,44 @@ describe("ui/conversation", () => {
     expect(text).not.toContain("line two");
   });
 
-  test("renderAssistantMessage keeps in-progress text and tool output inside one top-level container", () => {
-    const pendingToolCalls: PendingToolCall[] = [
+  test("buildConversationLogNodes keeps tool call args and streamed shell output append-only", () => {
+    const pendingToolResults: PendingToolResult[] = [
       {
         toolCallId: "tool-1",
-        name: "shell",
-        args: { command: "echo hi" },
-        resultText: "hi",
+        toolName: "shell",
+        content: [{ type: "text", text: "Exit code: 0\npartial output" }],
         isError: false,
-        done: true,
       },
     ];
 
-    const node = renderAssistantMessage(
+    const nodes = buildConversationLogNodes(
       {
-        content: [fauxText("Working...")],
-        pendingToolCalls,
+        messages: [
+          fauxAssistantMessage([
+            fauxText("Working..."),
+            fauxToolCall("shell", { command: "echo hi" }, { id: "tool-1" }),
+          ]),
+        ],
+        showReasoning: false,
+        verbose: false,
+        theme: DEFAULT_THEME,
       },
-      RENDER_OPTS,
+      {
+        isStreaming: true,
+        content: [],
+        pendingToolResults,
+      },
     );
+    const text = collectText({
+      type: "vstack",
+      props: {},
+      children: nodes,
+    });
 
-    expect(node).not.toBeNull();
-    expect(node?.type).toBe("vstack");
-    if (!node || node.type !== "vstack") {
-      throw new Error("Expected a vstack container");
-    }
-    expect(node.children.length).toBeGreaterThanOrEqual(2);
+    expect(text).toContain("Working...");
+    expect(text.filter((line) => line === "$ echo hi")).toHaveLength(1);
+    expect(text).toContain("partial output");
+    expect(text).not.toContain("Exit code: 0");
   });
 
   test("renderAssistantMessage shows in-progress thinking when reasoning is enabled", () => {
@@ -169,7 +182,7 @@ describe("ui/conversation", () => {
     expect(text).toContain("Thinking... 1 line.");
   });
 
-  test("renderAssistantMessage shows streamed tool call arguments before execution begins", () => {
+  test("renderAssistantMessage shows streamed shell arguments semantically", () => {
     const node = renderAssistantMessage(
       {
         content: [
@@ -181,31 +194,53 @@ describe("ui/conversation", () => {
     const text = collectText(node);
 
     expect(text).toContain("$ echo hi");
-    expect(text).toContain("Preparing...");
+    expect(text).not.toContain('"command": "echo hi"');
+    expect(text).not.toContain("Preparing...");
   });
 
-  test("renderAssistantMessage shows partial tool output before the tool finishes", () => {
+  test("renderAssistantMessage shows streamed readImage arguments semantically", () => {
     const node = renderAssistantMessage(
       {
-        content: [],
-        pendingToolCalls: [
-          {
-            toolCallId: "tool-1",
-            name: "shell",
-            args: { command: "echo hi" },
-            resultText: "partial output",
-            isError: false,
-            done: false,
-          },
+        content: [
+          fauxToolCall(
+            "readImage",
+            { path: "assets/preview.png" },
+            { id: "tool-1" },
+          ),
         ],
       },
       RENDER_OPTS,
     );
     const text = collectText(node);
 
-    expect(text).toContain("$ echo hi");
-    expect(text).toContain("partial output");
-    expect(text).toContain("Running...");
+    expect(text).toContain("~ assets/preview.png");
+    expect(text).not.toContain("{");
+  });
+
+  test("renderAssistantMessage shows streamed edit arguments semantically", () => {
+    const node = renderAssistantMessage(
+      {
+        content: [
+          fauxToolCall(
+            "edit",
+            {
+              path: "src/file.ts",
+              oldText: "old line",
+              newText: "new line",
+            },
+            { id: "tool-1" },
+          ),
+        ],
+      },
+      RENDER_OPTS,
+    );
+    const text = collectText(node);
+
+    expect(text).toContain("~ src/file.ts");
+    expect(text).toContain("-old line");
+    expect(text).toContain("+new line");
+    expect(text).not.toContain("-");
+    expect(text).not.toContain("+");
   });
 
   test("previewToolRenderLines keeps all lines in verbose mode", () => {
@@ -236,26 +271,31 @@ describe("ui/conversation", () => {
     });
   });
 
-  test("renderToolResult uses themed accent colors for tool headers", () => {
+  test("tool call headers use themed accent colors", () => {
     const theme: Theme = {
       ...DEFAULT_THEME,
       accentText: "color04",
       secondaryAccentText: "color05",
     };
 
-    const shellNode = renderToolResult(
-      "shell",
-      { command: "seq 1 3" },
-      "1\n2\n3",
-      false,
+    const editCallNode = renderAssistantMessage(
+      {
+        content: [
+          fauxToolCall(
+            "edit",
+            { path: "src/file.ts", oldText: "old", newText: "new" },
+            { id: "tool-1" },
+          ),
+        ],
+      },
       { ...RENDER_OPTS, theme },
     );
-    const shellHeader = findTextNode(shellNode, "$ seq 1 3");
-    expect(shellHeader).not.toBeNull();
-    if (!shellHeader || shellHeader.type !== "text") {
-      throw new Error("Expected shell header to be a text node");
+    const editHeader = findTextNode(editCallNode, "~ src/file.ts");
+    expect(editHeader).not.toBeNull();
+    if (!editHeader || editHeader.type !== "text") {
+      throw new Error("Expected edit header to be a text node");
     }
-    expect(shellHeader.props.fgColor).toBe(theme.accentText);
+    expect(editHeader.props.fgColor).toBe(theme.accentText);
 
     const pluginNode = renderToolResult("plugin-tool", {}, "ok", false, {
       ...RENDER_OPTS,
@@ -283,11 +323,11 @@ describe("ui/conversation", () => {
     );
     const text = collectText(node);
 
-    expect(text).toContain("$ seq 1 25");
     expect(text).toContain("line 1");
     expect(text).toContain("line 20");
     expect(text).toContain("And 5 lines more");
     expect(text).not.toContain("line 21");
+    expect(text).not.toContain("$ seq 1 25");
   });
 
   test("renderToolResult shows full shell output in verbose mode", () => {
@@ -308,7 +348,7 @@ describe("ui/conversation", () => {
     expect(text).not.toContain("And 5 lines more");
   });
 
-  test("renderToolResult shows shell exit codes", () => {
+  test("renderToolResult strips shell exit-code and stderr labels in the UI", () => {
     const node = renderToolResult(
       "shell",
       { command: "exit 42" },
@@ -318,8 +358,24 @@ describe("ui/conversation", () => {
     );
     const text = collectText(node);
 
-    expect(text).toContain("$ exit 42");
-    expect(text).toContain("Exit code: 42");
+    expect(text).toContain("boom");
+    expect(text).not.toContain("$ exit 42");
+    expect(text).not.toContain("Exit code: 42");
+    expect(text).not.toContain("[stderr]");
+  });
+
+  test("renderToolResult shows a readImage success message", () => {
+    const node = renderToolResult(
+      "readImage",
+      { path: "diagram.png" },
+      "",
+      false,
+      RENDER_OPTS,
+    );
+    const text = collectText(node);
+
+    expect(text).toContain("Read image.");
+    expect(text).not.toContain("~ diagram.png");
   });
 
   test("renderToolResult shows a diff for newly created files", () => {
@@ -354,7 +410,7 @@ describe("ui/conversation", () => {
     );
     const text = collectText(node);
 
-    expect(text).toContain("~ src/file.ts");
+    expect(text).not.toContain("~ src/file.ts");
     expect(text.at(-1)).toMatch(/^And \d+ lines more$/);
     expect(text).not.toContain("+new 11");
   });

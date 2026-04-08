@@ -909,7 +909,7 @@ describe("ui rendering", () => {
       fauxAssistantMessage(
         [
           fauxText("I'll inspect the command output first."),
-          fauxToolCall("shell", { command: "sleep 0.2; echo tool-output" }),
+          fauxToolCall("shell", { command: "echo tool-output; sleep 0.2" }),
         ],
         { stopReason: "toolUse" },
       ),
@@ -925,7 +925,11 @@ describe("ui rendering", () => {
           props: {},
           children: buildConversationLog(state),
         });
-        return logText.includes("Running...");
+        return (
+          state.running &&
+          logText.includes("$ echo tool-output; sleep 0.2") &&
+          logText.includes("tool-output")
+        );
       });
 
       const logText = collectText({
@@ -935,8 +939,12 @@ describe("ui rendering", () => {
       });
 
       expect(logText).toContain("I'll inspect the command output first.");
-      expect(logText).toContain("$ sleep 0.2; echo tool-output");
-      expect(logText).toContain("Running...");
+      expect(
+        logText.filter((line) => line === "$ echo tool-output; sleep 0.2"),
+      ).toHaveLength(1);
+      expect(logText).toContain("tool-output");
+      expect(logText).not.toContain("Exit code: 0");
+      expect(logText).not.toContain("Running...");
     } finally {
       await stopRunningTurn(state);
       process.env.PATH = originalPath;
@@ -1081,11 +1089,7 @@ describe("ui rendering", () => {
           props: {},
           children: buildConversationLog(state),
         });
-        return (
-          state.running &&
-          logText.includes("$ echo staged-command") &&
-          logText.includes("Preparing...")
-        );
+        return state.running && logText.includes("$ echo staged-command");
       });
 
       const logText = collectText({
@@ -1094,8 +1098,10 @@ describe("ui rendering", () => {
         children: buildConversationLog(state),
       });
 
-      expect(logText).toContain("$ echo staged-command");
-      expect(logText).toContain("Preparing...");
+      expect(
+        logText.filter((line) => line === "$ echo staged-command"),
+      ).toHaveLength(1);
+      expect(logText).not.toContain("Preparing...");
     } finally {
       await stopRunningTurn(state);
       unregisterApiProviders(sourceId);
@@ -1244,9 +1250,14 @@ describe("ui rendering", () => {
         children: buildConversationLog(state),
       });
 
-      expect(logText).toContain("$ echo tool-output");
+      expect(
+        logText.filter((line) => line === "$ echo tool-output"),
+      ).toHaveLength(1);
       expect(logText).toContain("tool-output");
       expect(logText).toContain("Done streaming");
+      expect(logText).not.toContain("Exit code: 0");
+      expect(logText).not.toContain("Preparing...");
+      expect(logText).not.toContain("Running...");
     } finally {
       await stopRunningTurn(state);
       process.env.PATH = originalPath;

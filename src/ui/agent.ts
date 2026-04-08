@@ -30,10 +30,9 @@ import {
   truncatePromptHistory,
 } from "../session.ts";
 import { executeReadImage } from "../tools.ts";
-import {
-  getToolResultText,
-  type PendingToolCall,
-  type StreamingConversationState,
+import type {
+  PendingToolResult,
+  StreamingConversationState,
 } from "./conversation.ts";
 
 /** Streaming assistant content for the current response. */
@@ -42,8 +41,8 @@ let streamingContent: AssistantMessage["content"] = [];
 /** Whether a response is currently streaming. */
 let isStreaming = false;
 
-/** Tool calls collected during the current streaming turn. */
-let pendingToolCalls: PendingToolCall[] = [];
+/** Tool results collected during the current streaming turn. */
+let pendingToolResults: PendingToolResult[] = [];
 
 /** Hooks implemented by `ui.ts` to bridge controller logic with runtime UI state. */
 interface UiAgentRuntime {
@@ -77,19 +76,19 @@ interface UiAgentController {
 export function resetUiAgentState(): void {
   streamingContent = [];
   isStreaming = false;
-  pendingToolCalls = [];
+  pendingToolResults = [];
 }
 
 /**
  * Read the current streaming tail state for conversation rendering.
  *
- * @returns The in-progress assistant content and pending tool calls.
+ * @returns The in-progress assistant content and pending tool results.
  */
 export function getStreamingConversationState(): StreamingConversationState {
   return {
     isStreaming,
     content: streamingContent,
-    pendingToolCalls,
+    pendingToolResults,
   };
 }
 
@@ -220,7 +219,7 @@ export function createUiAgentController(
     state.abortController = new AbortController();
     isStreaming = true;
     streamingContent = [];
-    pendingToolCalls = [];
+    pendingToolResults = [];
     runtime.startDividerAnimation();
     runtime.render();
 
@@ -294,39 +293,25 @@ export function createUiAgentController(
         break;
 
       case "tool_start":
-        pendingToolCalls.push({
-          toolCallId: event.toolCallId,
-          name: event.name,
-          args: event.args,
-          resultText: "",
-          isError: false,
-          done: false,
-        });
-        runtime.scrollConversationToBottom();
-        runtime.render();
         break;
 
-      case "tool_delta": {
-        const pending = pendingToolCalls.find(
-          (toolCall) => toolCall.toolCallId === event.toolCallId,
-        );
-        if (pending) {
-          pending.resultText = getToolResultText(event.result);
-          pending.isError = event.result.isError;
-        }
-        runtime.scrollConversationToBottom();
-        runtime.render();
-        break;
-      }
-
+      case "tool_delta":
       case "tool_end": {
-        const pending = pendingToolCalls.find(
-          (toolCall) => toolCall.toolCallId === event.toolCallId,
+        const pending = pendingToolResults.find(
+          (toolResult) => toolResult.toolCallId === event.toolCallId,
         );
+        const content = structuredClone(event.result.content);
         if (pending) {
-          pending.resultText = getToolResultText(event.result);
+          pending.toolName = event.name;
+          pending.content = content;
           pending.isError = event.result.isError;
-          pending.done = true;
+        } else {
+          pendingToolResults.push({
+            toolCallId: event.toolCallId,
+            toolName: event.name,
+            content,
+            isError: event.result.isError,
+          });
         }
         runtime.scrollConversationToBottom();
         runtime.render();
@@ -335,8 +320,8 @@ export function createUiAgentController(
 
       case "tool_result":
         state.messages.push(event.message);
-        pendingToolCalls = pendingToolCalls.filter(
-          (toolCall) => toolCall.toolCallId !== event.message.toolCallId,
+        pendingToolResults = pendingToolResults.filter(
+          (toolResult) => toolResult.toolCallId !== event.message.toolCallId,
         );
         runtime.scrollConversationToBottom();
         runtime.render();
