@@ -158,6 +158,7 @@ interface ShellOpts {
 
 const DEFAULT_MAX_LINES = 1000;
 const DEFAULT_MAX_BYTES = 50_000;
+const SHELL_UPDATE_INTERVAL_MS = 75;
 
 /** Format combined stdout/stderr for display in tool results. */
 function formatShellOutput(stdout: string, stderr: string): string {
@@ -215,6 +216,7 @@ export async function executeShell(
   const shell = process.env.SHELL || "/bin/sh";
   const maxLines = opts?.maxLines ?? DEFAULT_MAX_LINES;
   const maxBytes = opts?.maxBytes ?? DEFAULT_MAX_BYTES;
+  let updateTimer: ReturnType<typeof setTimeout> | null = null;
 
   try {
     const spawnOpts: Parameters<typeof Bun.spawn>[1] = {
@@ -227,40 +229,90 @@ export async function executeShell(
 
     let stdoutBuf = "";
     let stderrBuf = "";
-    const reportUpdate = (): void => {
-      const output = truncateOutput(
+    let lastReportedOutput = "";
+    let lastReportAt = 0;
+
+    const clearPendingUpdate = (): void => {
+      if (updateTimer) {
+        clearTimeout(updateTimer);
+        updateTimer = null;
+      }
+    };
+
+    const buildProgressOutput = (): string => {
+      return truncateOutput(
         formatShellOutput(stdoutBuf, stderrBuf),
         maxLines,
         maxBytes,
       );
-      if (!output) {
+    };
+
+    const emitUpdate = (): void => {
+      clearPendingUpdate();
+      if (!opts?.onUpdate) {
         return;
       }
-      opts?.onUpdate?.(textResult(output, false));
+
+      const output = buildProgressOutput();
+      if (!output || output === lastReportedOutput) {
+        return;
+      }
+
+      lastReportedOutput = output;
+      lastReportAt = Date.now();
+      opts.onUpdate(textResult(output, false));
+    };
+
+    const scheduleUpdate = (): void => {
+      if (!opts?.onUpdate) {
+        return;
+      }
+
+      const elapsed = Date.now() - lastReportAt;
+      if (elapsed >= SHELL_UPDATE_INTERVAL_MS) {
+        emitUpdate();
+        return;
+      }
+      if (updateTimer) {
+        return;
+      }
+
+      updateTimer = setTimeout(() => {
+        emitUpdate();
+      }, SHELL_UPDATE_INTERVAL_MS - elapsed);
     };
 
     const [stdout, stderr, exitCode] = await Promise.all([
       consumeShellStream(proc.stdout as ReadableStream<Uint8Array>, (chunk) => {
         stdoutBuf += chunk;
-        reportUpdate();
+        scheduleUpdate();
       }),
       consumeShellStream(proc.stderr as ReadableStream<Uint8Array>, (chunk) => {
         stderrBuf += chunk;
-        reportUpdate();
+        scheduleUpdate();
       }),
       proc.exited,
     ]);
 
+    clearPendingUpdate();
     const output = truncateOutput(
       formatShellOutput(stdout.trimEnd(), stderr.trimEnd()),
       maxLines,
       maxBytes,
     );
+    if (opts?.onUpdate && output && output !== lastReportedOutput) {
+      lastReportedOutput = output;
+      opts.onUpdate(textResult(output, false));
+    }
 
     const isError = exitCode !== 0;
     const body = output || "(no output)";
     return textResult(`Exit code: ${exitCode}\n${body}`, isError);
   } catch (err) {
+    if (updateTimer) {
+      clearTimeout(updateTimer);
+      updateTimer = null;
+    }
     const message = err instanceof Error ? err.message : String(err);
     return textResult(`Shell error: ${message}`, true);
   }

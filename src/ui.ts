@@ -31,7 +31,10 @@ import {
   resetUiAgentState,
 } from "./ui/agent.ts";
 import { createCommandController } from "./ui/commands.ts";
-import { buildConversationLogNodes } from "./ui/conversation.ts";
+import {
+  buildConversationLogNodes,
+  resetConversationRenderCache,
+} from "./ui/conversation.ts";
 import type { InputController } from "./ui/input.ts";
 import {
   autocompleteInputPath,
@@ -97,6 +100,7 @@ export function resetUiState(): void {
   dividerTick = 0;
   stopDividerAnimation();
   resetUiAgentState();
+  resetConversationRenderCache();
   activeOverlay = null;
   stdinWasRaw = false;
 }

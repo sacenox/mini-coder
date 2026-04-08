@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import type { Node } from "@cel-tui/types";
 import {
   fauxAssistantMessage,
@@ -13,6 +13,7 @@ import {
   previewToolRenderLines,
   renderAssistantMessage,
   renderToolResult,
+  resetConversationRenderCache,
   type ToolRenderLine,
 } from "./conversation.ts";
 
@@ -34,6 +35,10 @@ function collectText(node: Node | null): string[] {
   }
   return node.children.flatMap((child) => collectText(child));
 }
+
+afterEach(() => {
+  resetConversationRenderCache();
+});
 
 describe("ui/conversation", () => {
   test("renderAssistantMessage preserves visible paragraph order in streamed markdown", () => {
@@ -120,6 +125,107 @@ describe("ui/conversation", () => {
     expect(text.filter((line) => line === "$ echo hi")).toHaveLength(1);
     expect(text).toContain("partial output");
     expect(text).not.toContain("Exit code: 0");
+  });
+
+  test("buildConversationLogNodes reuses cached committed nodes when the log is unchanged", () => {
+    const state = {
+      messages: [fauxAssistantMessage("Committed response")],
+      showReasoning: false,
+      verbose: false,
+      theme: DEFAULT_THEME,
+    };
+    const streaming = {
+      isStreaming: false,
+      content: [],
+      pendingToolResults: [],
+    };
+
+    const first = buildConversationLogNodes(state, streaming);
+    const second = buildConversationLogNodes(state, streaming);
+
+    expect(second).toBe(first);
+  });
+
+  test("buildConversationLogNodes reuses the committed prefix when only the streaming tail changes", () => {
+    const state = {
+      messages: [fauxAssistantMessage("Committed response")],
+      showReasoning: false,
+      verbose: false,
+      theme: DEFAULT_THEME,
+    };
+
+    const committed = buildConversationLogNodes(state, {
+      isStreaming: false,
+      content: [],
+      pendingToolResults: [],
+    });
+    const withStreamingTail = buildConversationLogNodes(state, {
+      isStreaming: true,
+      content: [fauxText("Streaming tail")],
+      pendingToolResults: [],
+    });
+    const text = collectText({
+      type: "vstack",
+      props: {},
+      children: withStreamingTail,
+    });
+
+    expect(withStreamingTail[0]).toBe(committed[0]);
+    expect(text).toContain("Committed response");
+    expect(text).toContain("Streaming tail");
+  });
+
+  test("buildConversationLogNodes rebuilds cached tool nodes when verbose mode changes", () => {
+    const output = Array.from({ length: 25 }, (_, i) => `line ${i + 1}`).join(
+      "\n",
+    );
+    const state = {
+      messages: [
+        fauxAssistantMessage([
+          fauxToolCall("shell", { command: "seq 1 25" }, { id: "tool-1" }),
+        ]),
+        {
+          role: "toolResult" as const,
+          toolCallId: "tool-1",
+          toolName: "shell",
+          content: [{ type: "text" as const, text: output }],
+          isError: false,
+          timestamp: Date.now(),
+        },
+      ],
+      showReasoning: false,
+      verbose: false,
+      theme: DEFAULT_THEME,
+    };
+
+    const previewNodes = buildConversationLogNodes(state, {
+      isStreaming: false,
+      content: [],
+      pendingToolResults: [],
+    });
+    const previewText = collectText({
+      type: "vstack",
+      props: {},
+      children: previewNodes,
+    });
+
+    const verboseNodes = buildConversationLogNodes(
+      { ...state, verbose: true },
+      {
+        isStreaming: false,
+        content: [],
+        pendingToolResults: [],
+      },
+    );
+    const verboseText = collectText({
+      type: "vstack",
+      props: {},
+      children: verboseNodes,
+    });
+
+    expect(previewNodes).not.toBe(verboseNodes);
+    expect(previewText).toContain("And 5 lines more");
+    expect(verboseText).toContain("line 25");
   });
 
   test("renderAssistantMessage shows in-progress thinking when reasoning is enabled", () => {

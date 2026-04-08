@@ -14,10 +14,13 @@ import {
   registerFauxProvider,
   unregisterApiProviders,
 } from "@mariozechner/pi-ai";
+import { getGitState } from "./git.ts";
 import type { AppState } from "./index.ts";
 import {
+  appendMessage,
   appendPromptHistory,
   createSession,
+  createUiMessage,
   loadMessages,
   openDatabase,
 } from "./session.ts";
@@ -420,6 +423,122 @@ describe("ui rendering", () => {
       await stopRunningTurn(state);
       process.env.PATH = originalPath;
       faux.unregister();
+      state.db.close();
+    }
+  });
+
+  test("completed turns keep in-memory messages and stats authoritative", async () => {
+    const api = "ui-authoritative-state-test";
+    const sourceId = "ui-authoritative-state-test-source";
+    const model: Model<string> = {
+      id: "ui-authoritative-state-model",
+      name: "UI Authoritative State Model",
+      api,
+      provider: "test",
+      baseUrl: "http://localhost:0",
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 128000,
+      maxTokens: 4096,
+    };
+
+    const releaseStream = createDeferred<void>();
+    const finalMessage: AssistantMessage = {
+      role: "assistant",
+      content: [fauxText("Done.")],
+      api,
+      provider: model.provider,
+      model: model.id,
+      usage: {
+        input: 123,
+        output: 45,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 168,
+        cost: {
+          input: 0.001,
+          output: 0.002,
+          cacheRead: 0,
+          cacheWrite: 0,
+          total: 0.003,
+        },
+      },
+      stopReason: "stop",
+      timestamp: Date.now(),
+    };
+
+    const buildProviderStream = () => {
+      const stream = createAssistantMessageEventStream();
+
+      queueMicrotask(() => {
+        void releaseStream.promise.then(() => {
+          stream.push({
+            type: "done",
+            reason: "stop",
+            message: finalMessage,
+          });
+          stream.end(finalMessage);
+        });
+      });
+
+      return stream;
+    };
+
+    registerApiProvider(
+      {
+        api,
+        stream: () => buildProviderStream(),
+        streamSimple: () => buildProviderStream(),
+      },
+      sourceId,
+    );
+
+    const state = createTestState();
+    state.cwd = process.cwd();
+    state.canonicalCwd = process.cwd();
+    state.model = model;
+
+    try {
+      handleInput("hello", state);
+
+      await waitFor(() => state.running && state.session !== null);
+      const sessionId = state.session?.id;
+      if (!sessionId) {
+        throw new Error("Expected a session to be created");
+      }
+
+      appendMessage(state.db, sessionId, createUiMessage("Injected from DB"));
+      releaseStream.resolve();
+
+      await waitFor(() => !state.running);
+      await waitFor(() =>
+        state.messages.some(
+          (message) =>
+            message.role === "assistant" &&
+            typeof message.content !== "string" &&
+            message.content[0]?.type === "text" &&
+            message.content[0].text === "Done.",
+        ),
+      );
+
+      expect(state.messages.map((message) => message.role)).toEqual([
+        "user",
+        "assistant",
+      ]);
+      expect(state.stats).toEqual({
+        totalInput: 123,
+        totalOutput: 45,
+        totalCost: 0.003,
+      });
+
+      const persistedRoles = loadMessages(state.db, sessionId).map(
+        (message) => message.role,
+      );
+      expect(persistedRoles).toEqual(["user", "ui", "assistant"]);
+    } finally {
+      await stopRunningTurn(state);
+      unregisterApiProviders(sourceId);
       state.db.close();
     }
   });
@@ -873,6 +992,65 @@ describe("ui rendering", () => {
       expect(logText).toContain("tool-output");
       expect(logText).not.toContain("Exit code: 0");
       expect(logText).not.toContain("Running...");
+    } finally {
+      await stopRunningTurn(state);
+      process.env.PATH = originalPath;
+      faux.unregister();
+      state.db.close();
+    }
+  });
+
+  test("git status refreshes after a completed turn mutates the repo", async () => {
+    const faux = registerFauxProvider();
+    const state = createTestState();
+    const repo = createTempDir();
+    const originalPath = process.env.PATH;
+    process.env.PATH = `${process.env.PATH ?? ""}:/usr/bin:/bin`;
+
+    const runGit = (...args: string[]) => {
+      const result = Bun.spawnSync(["git", ...args], {
+        cwd: repo,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      if (result.exitCode !== 0) {
+        throw new Error(
+          `git ${args.join(" ")} failed: ${result.stderr.toString()}`,
+        );
+      }
+    };
+
+    runGit("init");
+    runGit("config", "user.name", "Mini Coder");
+    runGit("config", "user.email", "mini-coder@example.com");
+    writeFileSync(join(repo, "tracked.txt"), "initial\n", "utf-8");
+    runGit("add", "tracked.txt");
+    runGit("commit", "-m", "init");
+
+    state.cwd = repo;
+    state.canonicalCwd = repo;
+    state.model = faux.getModel();
+    state.git = await getGitState(repo);
+    faux.setResponses([
+      fauxAssistantMessage(
+        [
+          fauxToolCall("shell", {
+            command: "printf 'updated\\n' >> tracked.txt",
+          }),
+        ],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("Done."),
+    ]);
+
+    try {
+      expect(state.git?.modified).toBe(0);
+
+      handleInput("update the repo", state);
+
+      await waitFor(() => state.running);
+      await waitFor(() => !state.running);
+      expect(state.git?.modified).toBe(1);
     } finally {
       await stopRunningTurn(state);
       process.env.PATH = originalPath;

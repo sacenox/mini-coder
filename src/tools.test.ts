@@ -357,6 +357,27 @@ describe("shell", () => {
     expect(updates.some((text) => text.includes("first"))).toBe(true);
     expect(updates.at(-1)).toContain("second");
   });
+
+  test("throttles progressive output updates for chatty commands", async () => {
+    const updates: string[] = [];
+
+    const result = await executeShell(
+      {
+        command:
+          "i=1; while [ $i -le 20 ]; do printf '%s\\n' \"$i\"; sleep 0.01; i=$((i + 1)); done",
+      },
+      tmp,
+      {
+        onUpdate: (partial) => {
+          updates.push(resultText(partial));
+        },
+      },
+    );
+
+    expect(result.isError).toBe(false);
+    expect(updates.at(-1)).toContain("20");
+    expect(updates.length).toBeLessThanOrEqual(6);
+  });
 });
 
 // ---------------------------------------------------------------------------

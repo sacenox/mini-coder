@@ -7,7 +7,7 @@ The spec.md and code are the sources of truth, not this file, don't assume anyth
 
 ## Open items
 
-- [ ] **Refresh git state after each completed turn** (`ui/agent.ts`) — git state is refreshed before a turn starts but not after agent actions mutate the repo, so the status bar and next prompt footer can go stale.
+- None right now.
 
 ## Low priority (deffered until further notice)
 

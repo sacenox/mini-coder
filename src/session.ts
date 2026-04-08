@@ -732,22 +732,44 @@ export function forkSession(db: Database, sourceId: string): Session {
  * @param messages - The full persisted message history for a session.
  * @returns Aggregated {@link SessionStats}.
  */
+/**
+ * Add one persisted message's assistant usage to cumulative session stats.
+ *
+ * Non-assistant messages and assistant messages without valid `usage` are
+ * ignored and return the original totals unchanged.
+ *
+ * @param stats - Running cumulative session totals.
+ * @param message - Persisted message to fold into the totals.
+ * @returns Updated cumulative session stats.
+ */
+export function addMessageToStats(
+  stats: SessionStats,
+  message: PersistedMessage,
+): SessionStats {
+  const usage = getAssistantUsage(message);
+  if (!usage) {
+    return stats;
+  }
+
+  return {
+    totalInput: stats.totalInput + usage.input,
+    totalOutput: stats.totalOutput + usage.output,
+    totalCost: stats.totalCost + usage.cost.total,
+  };
+}
+
 export function computeStats(
   messages: readonly PersistedMessage[],
 ): SessionStats {
-  let totalInput = 0;
-  let totalOutput = 0;
-  let totalCost = 0;
+  let stats: SessionStats = {
+    totalInput: 0,
+    totalOutput: 0,
+    totalCost: 0,
+  };
 
-  for (const msg of messages) {
-    const usage = getAssistantUsage(msg);
-    if (!usage) {
-      continue;
-    }
-    totalInput += usage.input;
-    totalOutput += usage.output;
-    totalCost += usage.cost.total;
+  for (const message of messages) {
+    stats = addMessageToStats(stats, message);
   }
 
-  return { totalInput, totalOutput, totalCost };
+  return stats;
 }

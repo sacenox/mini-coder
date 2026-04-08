@@ -65,6 +65,55 @@ interface AssistantRenderState {
   errorMessage?: string;
 }
 
+type ConversationMessage = AppState["messages"][number];
+
+type ToolCallRenderInfo = {
+  name: string;
+  args: Record<string, unknown>;
+};
+
+interface ConversationRenderCache {
+  messages: readonly ConversationMessage[] | null;
+  count: number;
+  showReasoning: boolean;
+  verbose: boolean;
+  theme: Theme | null;
+  nodes: Node[];
+  toolCallArgs: Map<string, ToolCallRenderInfo>;
+}
+
+const EMPTY_STREAMING_CONTENT: AssistantMessage["content"] = [];
+const EMPTY_PENDING_TOOL_RESULTS: readonly PendingToolResult[] = [];
+const EMPTY_RENDER_NODES: Node[] = [];
+const EMPTY_TOOL_RESULT_ARGS: Record<string, unknown> = Object.freeze({});
+
+const conversationRenderCache: ConversationRenderCache = {
+  messages: null,
+  count: 0,
+  showReasoning: false,
+  verbose: false,
+  theme: null,
+  nodes: EMPTY_RENDER_NODES,
+  toolCallArgs: new Map(),
+};
+
+let editToolDiffCache = new WeakMap<
+  Record<string, unknown>,
+  ToolRenderLine[]
+>();
+
+/** Reset cached committed conversation renders and derived edit diffs. */
+export function resetConversationRenderCache(): void {
+  conversationRenderCache.messages = null;
+  conversationRenderCache.count = 0;
+  conversationRenderCache.showReasoning = false;
+  conversationRenderCache.verbose = false;
+  conversationRenderCache.theme = null;
+  conversationRenderCache.nodes = EMPTY_RENDER_NODES;
+  conversationRenderCache.toolCallArgs = new Map();
+  editToolDiffCache = new WeakMap();
+}
+
 /** Semantic line kinds used when rendering tool output in the log. */
 type ToolRenderLineKind =
   | "command"
@@ -261,10 +310,137 @@ function buildShellToolLines(
   );
 }
 
+function splitDiffSourceLines(text: string): string[] {
+  if (text === "") {
+    return [];
+  }
+
+  const lines = text.split("\n");
+  if (lines.at(-1) === "") {
+    lines.pop();
+  }
+  return lines;
+}
+
+function findSharedPrefixLineCount(
+  oldLines: readonly string[],
+  newLines: readonly string[],
+): number {
+  let prefixCount = 0;
+  while (
+    prefixCount < oldLines.length &&
+    prefixCount < newLines.length &&
+    oldLines[prefixCount] === newLines[prefixCount]
+  ) {
+    prefixCount += 1;
+  }
+  return prefixCount;
+}
+
+function findSharedSuffixBounds(
+  oldLines: readonly string[],
+  newLines: readonly string[],
+  prefixCount: number,
+): { oldSuffixIndex: number; newSuffixIndex: number } {
+  let oldSuffixIndex = oldLines.length - 1;
+  let newSuffixIndex = newLines.length - 1;
+
+  while (
+    oldSuffixIndex >= prefixCount &&
+    newSuffixIndex >= prefixCount &&
+    oldLines[oldSuffixIndex] === newLines[newSuffixIndex]
+  ) {
+    oldSuffixIndex -= 1;
+    newSuffixIndex -= 1;
+  }
+
+  return { oldSuffixIndex, newSuffixIndex };
+}
+
+function hasSharedMiddleLine(
+  removedLines: readonly string[],
+  addedLines: readonly string[],
+): boolean {
+  const largerMiddle =
+    removedLines.length >= addedLines.length ? removedLines : addedLines;
+  const smallerMiddle =
+    removedLines.length >= addedLines.length ? addedLines : removedLines;
+  const largerMiddleSet = new Set(largerMiddle);
+  return smallerMiddle.some((line) => largerMiddleSet.has(line));
+}
+
+function pushPrefixedDiffLines(
+  lines: ToolRenderLine[],
+  content: readonly string[],
+  kind: "text" | "diffAdded" | "diffRemoved",
+  prefix: string,
+): void {
+  for (const line of content) {
+    lines.push({ kind, text: `${prefix}${line}` });
+  }
+}
+
+function buildSimpleStructuredDiffLines(
+  oldText: string,
+  newText: string,
+): ToolRenderLine[] | null {
+  const context = 2;
+  const oldLines = splitDiffSourceLines(oldText);
+  const newLines = splitDiffSourceLines(newText);
+  const prefixCount = findSharedPrefixLineCount(oldLines, newLines);
+  const { oldSuffixIndex, newSuffixIndex } = findSharedSuffixBounds(
+    oldLines,
+    newLines,
+    prefixCount,
+  );
+  const removedLines = oldLines.slice(prefixCount, oldSuffixIndex + 1);
+  const addedLines = newLines.slice(prefixCount, newSuffixIndex + 1);
+
+  if (removedLines.length === 0 && addedLines.length === 0) {
+    return [];
+  }
+  if (hasSharedMiddleLine(removedLines, addedLines)) {
+    return null;
+  }
+
+  const contextStart = Math.max(0, prefixCount - context);
+  const unchangedPrefix = oldLines.slice(contextStart, prefixCount);
+  const unchangedSuffix = oldLines.slice(
+    oldSuffixIndex + 1,
+    Math.min(oldLines.length, oldSuffixIndex + 1 + context),
+  );
+  const oldStart =
+    contextStart === 0 ? (removedLines.length > 0 ? 1 : 0) : contextStart + 1;
+  const newStart =
+    contextStart === 0 ? (addedLines.length > 0 ? 1 : 0) : contextStart + 1;
+  const oldLineCount =
+    unchangedPrefix.length + removedLines.length + unchangedSuffix.length;
+  const newLineCount =
+    unchangedPrefix.length + addedLines.length + unchangedSuffix.length;
+  const diffLines: ToolRenderLine[] = [
+    {
+      kind: "text",
+      text: `@@ -${oldStart},${oldLineCount} +${newStart},${newLineCount} @@`,
+    },
+  ];
+
+  pushPrefixedDiffLines(diffLines, unchangedPrefix, "text", " ");
+  pushPrefixedDiffLines(diffLines, removedLines, "diffRemoved", "-");
+  pushPrefixedDiffLines(diffLines, addedLines, "diffAdded", "+");
+  pushPrefixedDiffLines(diffLines, unchangedSuffix, "text", " ");
+
+  return diffLines;
+}
+
 function buildStructuredDiffLines(
   oldText: string,
   newText: string,
 ): ToolRenderLine[] {
+  const fastDiffLines = buildSimpleStructuredDiffLines(oldText, newText);
+  if (fastDiffLines !== null) {
+    return fastDiffLines;
+  }
+
   const patch = structuredPatch("", "", oldText, newText, "", "", {
     context: 2,
   });
@@ -290,6 +466,22 @@ function buildStructuredDiffLines(
   return diffLines;
 }
 
+function getCachedEditToolDiffLines(
+  args: Record<string, unknown>,
+): ToolRenderLine[] {
+  const cached = editToolDiffCache.get(args);
+  if (cached) {
+    return cached;
+  }
+
+  const diffLines = buildStructuredDiffLines(
+    getToolArgString(args, "oldText"),
+    getToolArgString(args, "newText"),
+  );
+  editToolDiffCache.set(args, diffLines);
+  return diffLines;
+}
+
 function splitPrefixedToolTextLines(
   text: string,
   kind: "diffAdded" | "diffRemoved",
@@ -312,9 +504,7 @@ function splitPrefixedToolTextLines(
 
 /** Build the logical render lines for an edit tool result. */
 function buildEditToolLines(
-  _filePath: string,
-  oldText: string,
-  newText: string,
+  args: Record<string, unknown>,
   isError: boolean,
   resultText: string,
   verbose: boolean,
@@ -326,7 +516,7 @@ function buildEditToolLines(
     );
   }
 
-  const diffLines = buildStructuredDiffLines(oldText, newText);
+  const diffLines = getCachedEditToolDiffLines(args);
 
   return previewToolRenderLines(
     diffLines.length > 0
@@ -516,9 +706,7 @@ function renderToolResultContent(
   if (toolName === "edit") {
     return renderToolBlock(
       buildEditToolLines(
-        getToolArgString(args, "path"),
-        getToolArgString(args, "oldText"),
-        getToolArgString(args, "newText"),
+        args,
         isError,
         getToolContentText(content),
         opts.verbose,
@@ -574,8 +762,6 @@ function renderUiMessage(msg: UiMessage, theme: Theme): Node {
   ]);
 }
 
-type ConversationMessage = AppState["messages"][number];
-
 function pushConversationNode(nodes: Node[], node: Node | null): void {
   if (!node) {
     return;
@@ -588,7 +774,7 @@ function pushConversationNode(nodes: Node[], node: Node | null): void {
 
 function rememberToolCallArgs(
   message: AssistantMessage,
-  toolCallArgs: Map<string, { name: string; args: Record<string, unknown> }>,
+  toolCallArgs: Map<string, ToolCallRenderInfo>,
 ): void {
   for (const block of message.content) {
     if (block.type !== "toolCall") {
@@ -614,7 +800,7 @@ function renderToolResultMessage(
 function renderConversationMessage(
   message: ConversationMessage,
   renderOpts: ConversationRenderOpts,
-  toolCallArgs: Map<string, { name: string; args: Record<string, unknown> }>,
+  toolCallArgs: Map<string, ToolCallRenderInfo>,
   theme: Theme,
 ): Node | null {
   if (message.role === "ui") {
@@ -631,10 +817,63 @@ function renderConversationMessage(
   const info = toolCallArgs.get(message.toolCallId);
   return renderToolResultMessage(
     info?.name ?? message.toolName,
-    info?.args ?? {},
+    info?.args ?? EMPTY_TOOL_RESULT_ARGS,
     message.content,
     message.isError,
     renderOpts,
+  );
+}
+
+function canReuseCommittedConversationCache(
+  state: Pick<AppState, "messages" | "showReasoning" | "verbose" | "theme">,
+): boolean {
+  return (
+    conversationRenderCache.messages === state.messages &&
+    conversationRenderCache.showReasoning === state.showReasoning &&
+    conversationRenderCache.verbose === state.verbose &&
+    conversationRenderCache.theme === state.theme &&
+    conversationRenderCache.count <= state.messages.length
+  );
+}
+
+function cacheCommittedConversation(
+  state: Pick<AppState, "messages" | "showReasoning" | "verbose" | "theme">,
+  renderOpts: ConversationRenderOpts,
+): void {
+  if (!canReuseCommittedConversationCache(state)) {
+    conversationRenderCache.messages = state.messages;
+    conversationRenderCache.count = 0;
+    conversationRenderCache.showReasoning = state.showReasoning;
+    conversationRenderCache.verbose = state.verbose;
+    conversationRenderCache.theme = state.theme;
+    conversationRenderCache.nodes = [];
+    conversationRenderCache.toolCallArgs = new Map();
+  }
+
+  for (
+    let index = conversationRenderCache.count;
+    index < state.messages.length;
+    index++
+  ) {
+    pushConversationNode(
+      conversationRenderCache.nodes,
+      renderConversationMessage(
+        state.messages[index]!,
+        renderOpts,
+        conversationRenderCache.toolCallArgs,
+        state.theme,
+      ),
+    );
+  }
+
+  conversationRenderCache.count = state.messages.length;
+}
+
+function hasStreamingTail(streaming: StreamingConversationState): boolean {
+  return (
+    (streaming.content !== EMPTY_STREAMING_CONTENT ||
+      streaming.pendingToolResults !== EMPTY_PENDING_TOOL_RESULTS) &&
+    (streaming.content.length > 0 || streaming.pendingToolResults.length > 0)
   );
 }
 
@@ -649,24 +888,19 @@ export function buildConversationLogNodes(
   state: Pick<AppState, "messages" | "showReasoning" | "verbose" | "theme">,
   streaming: StreamingConversationState,
 ): Node[] {
-  const nodes: Node[] = [];
   const renderOpts: ConversationRenderOpts = {
     showReasoning: state.showReasoning,
     verbose: state.verbose,
     theme: state.theme,
   };
-  const toolCallArgs = new Map<
-    string,
-    { name: string; args: Record<string, unknown> }
-  >();
 
-  for (const message of state.messages) {
-    pushConversationNode(
-      nodes,
-      renderConversationMessage(message, renderOpts, toolCallArgs, state.theme),
-    );
+  cacheCommittedConversation(state, renderOpts);
+
+  if (!hasStreamingTail(streaming)) {
+    return conversationRenderCache.nodes;
   }
 
+  const nodes = [...conversationRenderCache.nodes];
   pushConversationNode(
     nodes,
     renderAssistantMessage(
@@ -678,12 +912,14 @@ export function buildConversationLogNodes(
   );
 
   for (const pendingToolResult of streaming.pendingToolResults) {
-    const info = toolCallArgs.get(pendingToolResult.toolCallId);
+    const info = conversationRenderCache.toolCallArgs.get(
+      pendingToolResult.toolCallId,
+    );
     pushConversationNode(
       nodes,
       renderToolResultMessage(
         info?.name ?? pendingToolResult.toolName,
-        info?.args ?? {},
+        info?.args ?? EMPTY_TOOL_RESULT_ARGS,
         pendingToolResult.content,
         pendingToolResult.isError,
         renderOpts,

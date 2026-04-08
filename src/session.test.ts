@@ -6,6 +6,7 @@ import type {
   UserMessage,
 } from "@mariozechner/pi-ai";
 import {
+  addMessageToStats,
   appendMessage,
   appendPromptHistory,
   computeStats,
@@ -492,6 +493,37 @@ describe("prompt history", () => {
 });
 
 describe("cumulative stats", () => {
+  test("addMessageToStats adds assistant usage and ignores non-assistant messages", () => {
+    let stats = {
+      totalInput: 0,
+      totalOutput: 0,
+      totalCost: 0,
+    };
+
+    stats = addMessageToStats(
+      stats,
+      makeAssistant("done", {
+        input: 200,
+        output: 80,
+        totalTokens: 280,
+        cost: {
+          input: 0.002,
+          output: 0.003,
+          cacheRead: 0,
+          cacheWrite: 0,
+          total: 0.005,
+        },
+      }),
+    );
+    stats = addMessageToStats(stats, makeUser("hello"));
+
+    expect(stats).toEqual({
+      totalInput: 200,
+      totalOutput: 80,
+      totalCost: 0.005,
+    });
+  });
+
   test("computeStats sums usage from assistant messages", () => {
     const messages: Message[] = [
       makeUser("hello"),

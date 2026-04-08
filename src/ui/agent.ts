@@ -22,11 +22,10 @@ import type { AppState } from "../index.ts";
 import { buildPrompt, buildToolList, MAX_PROMPT_HISTORY } from "../index.ts";
 import { parseInput } from "../input.ts";
 import {
+  addMessageToStats,
   appendMessage,
   appendPromptHistory,
-  computeStats,
   filterModelMessages,
-  loadMessages,
   truncatePromptHistory,
 } from "../session.ts";
 import { executeReadImage } from "../tools.ts";
@@ -239,8 +238,7 @@ export function createUiAgentController(
         signal: state.abortController.signal,
         onEvent: (event) => handleAgentEvent(event, state),
       });
-      state.messages = loadMessages(state.db, session.id);
-      state.stats = computeStats(state.messages);
+      state.git = await getGitState(state.cwd);
     } finally {
       state.running = false;
       state.abortController = null;
@@ -286,7 +284,7 @@ export function createUiAgentController(
 
       case "assistant_message":
         state.messages.push(event.message);
-        state.stats = computeStats(state.messages);
+        state.stats = addMessageToStats(state.stats, event.message);
         streamingContent = [];
         runtime.scrollConversationToBottom();
         runtime.render();
@@ -300,16 +298,15 @@ export function createUiAgentController(
         const pending = pendingToolResults.find(
           (toolResult) => toolResult.toolCallId === event.toolCallId,
         );
-        const content = structuredClone(event.result.content);
         if (pending) {
           pending.toolName = event.name;
-          pending.content = content;
+          pending.content = event.result.content;
           pending.isError = event.result.isError;
         } else {
           pendingToolResults.push({
             toolCallId: event.toolCallId,
             toolName: event.name,
-            content,
+            content: event.result.content,
             isError: event.result.isError,
           });
         }
