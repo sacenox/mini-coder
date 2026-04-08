@@ -41,6 +41,12 @@ export interface Session {
   updatedAt: number;
 }
 
+/** Session row used by the `/session` picker. */
+export interface SessionListEntry extends Session {
+  /** First conversational user message collapsed into a single-line preview, or `null` when none exists. */
+  firstUserPreview: string | null;
+}
+
 /**
  * Cumulative input/output token and cost statistics for a session.
  *
@@ -123,6 +129,11 @@ type SessionRow = {
   updated_at: number;
 };
 
+/** Row shape returned by the `/session` picker query. */
+type SessionListRow = SessionRow & {
+  first_user_message_data: string | null;
+};
+
 /** Row shape for `SELECT MAX(turn)` queries. */
 type MaxTurnRow = { max_turn: number | null };
 
@@ -143,8 +154,20 @@ type PromptHistoryRow = {
 // ---------------------------------------------------------------------------
 
 const SQL = {
-  listSessions:
-    "SELECT * FROM sessions WHERE cwd = ? ORDER BY updated_at DESC, rowid DESC",
+  listSessions: `
+    SELECT
+      sessions.*,
+      (
+        SELECT data
+        FROM messages
+        WHERE session_id = sessions.id AND turn IS NOT NULL
+        ORDER BY id
+        LIMIT 1
+      ) AS first_user_message_data
+    FROM sessions
+    WHERE cwd = ?
+    ORDER BY updated_at DESC, rowid DESC
+  `,
   maxTurn: "SELECT MAX(turn) as max_turn FROM messages WHERE session_id = ?",
   loadMessages: "SELECT data FROM messages WHERE session_id = ? ORDER BY id",
   listPromptHistory:
@@ -271,15 +294,54 @@ export function getSession(db: Database, id: string): Session | null {
   };
 }
 
+/** Collapse preview text into a single readable line. */
+function collapsePreviewText(text: string): string | null {
+  const collapsed = text.replace(/\s+/g, " ").trim();
+  return collapsed.length > 0 ? collapsed : null;
+}
+
+function getMultipartUserPreview(
+  content: Extract<Message, { role: "user" }>["content"],
+): string | null {
+  if (typeof content === "string") {
+    return collapsePreviewText(content);
+  }
+
+  const text = content
+    .filter(
+      (block): block is Extract<(typeof content)[number], { type: "text" }> => {
+        return block.type === "text";
+      },
+    )
+    .map((block) => block.text)
+    .join(" ");
+
+  return collapsePreviewText(text);
+}
+
+/** Read the first-user preview cached by the session-list query. */
+function readFirstUserPreview(messageData: string | null): string | null {
+  if (!messageData) {
+    return null;
+  }
+
+  const message = JSON.parse(messageData) as PersistedMessage;
+  if (message.role !== "user") {
+    return null;
+  }
+
+  return getMultipartUserPreview(message.content);
+}
+
 /**
  * List sessions for a working directory, most recently updated first.
  *
  * @param db - Open database handle.
  * @param cwd - Working directory to filter by.
- * @returns An array of {@link Session} records ordered by `updatedAt` descending.
+ * @returns Session rows ordered by `updatedAt` descending, enriched with the first-user preview.
  */
-export function listSessions(db: Database, cwd: string): Session[] {
-  const rows = db.query<SessionRow, [string]>(SQL.listSessions).all(cwd);
+export function listSessions(db: Database, cwd: string): SessionListEntry[] {
+  const rows = db.query<SessionListRow, [string]>(SQL.listSessions).all(cwd);
   return rows.map((row) => ({
     id: row.id,
     cwd: row.cwd,
@@ -288,6 +350,7 @@ export function listSessions(db: Database, cwd: string): Session[] {
     forkedFrom: row.forked_from,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    firstUserPreview: readFirstUserPreview(row.first_user_message_data),
   }));
 }
 

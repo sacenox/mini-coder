@@ -23,6 +23,7 @@ import {
   listPromptHistory,
   listSessions,
   loadMessages,
+  type SessionListEntry,
   undoLastTurn,
 } from "../session.ts";
 import { updateSettings } from "../settings.ts";
@@ -135,6 +136,80 @@ export function formatPromptHistoryPreview(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
 
+const HISTORY_PREVIEW_MAX_CHARS = 32;
+const HISTORY_CWD_MAX_CHARS = 18;
+const SESSION_PREVIEW_MAX_CHARS = 27;
+const SESSION_MODEL_MAX_CHARS = 17;
+
+function truncateTrailingText(text: string, maxChars: number): string {
+  if (text.length <= maxChars) {
+    return text;
+  }
+  if (maxChars <= 1) {
+    return "…";
+  }
+  return `${text.slice(0, maxChars - 1)}…`;
+}
+
+function truncateLeadingText(text: string, maxChars: number): string {
+  if (text.length <= maxChars) {
+    return text;
+  }
+  if (maxChars <= 1) {
+    return "…";
+  }
+  return `…${text.slice(text.length - (maxChars - 1))}`;
+}
+
+/**
+ * Format a prompt-history row for the Select overlay.
+ *
+ * @param text - Raw prompt text.
+ * @param cwd - Prompt working directory.
+ * @param date - Relative date label.
+ * @returns A single-line prompt-history label with stable metadata suffixes.
+ */
+export function formatPromptHistoryLabel(
+  text: string,
+  cwd: string,
+  date: string,
+): string {
+  const preview = truncateTrailingText(
+    formatPromptHistoryPreview(text),
+    HISTORY_PREVIEW_MAX_CHARS,
+  );
+  const displayCwd = truncateLeadingText(
+    abbreviatePath(cwd),
+    HISTORY_CWD_MAX_CHARS,
+  );
+  return `${preview}  ·  ${displayCwd}  ·  ${date}`;
+}
+
+/**
+ * Format a session-picker row for the Select overlay.
+ *
+ * @param session - Session metadata and first-user preview.
+ * @param date - Relative date label.
+ * @param isCurrent - Whether this is the active session.
+ * @returns A single-line session label with readable preview and metadata.
+ */
+export function formatSessionLabel(
+  session: Pick<SessionListEntry, "model" | "firstUserPreview">,
+  date: string,
+  isCurrent: boolean,
+): string {
+  const preview = truncateTrailingText(
+    session.firstUserPreview ?? "No messages yet",
+    SESSION_PREVIEW_MAX_CHARS,
+  );
+  const model = truncateTrailingText(
+    session.model ?? "no model",
+    SESSION_MODEL_MAX_CHARS,
+  );
+  const current = isCurrent ? "  ·  current" : "";
+  return `${preview}  ·  ${model}  ·  ${date}${current}`;
+}
+
 /** Lightweight item shape used by the shared Select-overlay helper. */
 interface OverlayItem {
   /** Label shown in the Select list. */
@@ -201,10 +276,9 @@ export function createCommandController(
     }
 
     const items = history.map((entry) => {
-      const preview = formatPromptHistoryPreview(entry.text);
       const date = formatRelativeDate(new Date(entry.createdAt));
       return {
-        label: `${preview}  ·  ${abbreviatePath(entry.cwd)}  ·  ${date}`,
+        label: formatPromptHistoryLabel(entry.text, entry.cwd, date),
         value: String(entry.id),
         filterText: `${entry.text} ${entry.cwd}`,
       };
@@ -293,11 +367,14 @@ export function createCommandController(
     const items = sessions.map((session) => {
       const dateStr = formatRelativeDate(new Date(session.updatedAt));
       const model = session.model ?? "no model";
-      const current = session.id === currentSessionId ? " (current)" : "";
       return {
-        label: `${dateStr}  ${model}${current}`,
+        label: formatSessionLabel(
+          session,
+          dateStr,
+          session.id === currentSessionId,
+        ),
         value: session.id,
-        filterText: `${dateStr} ${model}`,
+        filterText: `${session.firstUserPreview ?? ""} ${model} ${dateStr}`,
       };
     });
 

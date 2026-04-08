@@ -147,6 +147,38 @@ describe("session persistence", () => {
     db.close();
   });
 
+  test("listSessions_firstUserPreview_ignoresLeadingUiMessagesAndUsesTheFirstTurn", () => {
+    const db = openDatabase(":memory:");
+    const session = createSession(db, {
+      cwd: "/tmp/test",
+      model: "test/beta",
+    });
+
+    appendMessage(db, session.id, makeUiMessage("Help output"));
+    const firstTurn = appendMessage(db, session.id, {
+      role: "user",
+      content: "  first\n\n prompt\tpreview  ",
+      timestamp: 1,
+    });
+    appendMessage(db, session.id, makeAssistant("reply"), firstTurn);
+    appendMessage(db, session.id, makeUser("later prompt"));
+
+    const [entry] = listSessions(db, "/tmp/test");
+
+    expect(entry?.firstUserPreview).toBe("first prompt preview");
+    db.close();
+  });
+
+  test("listSessions_firstUserPreview_returnsNullWhenTheSessionHasNoMessages", () => {
+    const db = openDatabase(":memory:");
+    createSession(db, { cwd: "/tmp/test" });
+
+    const [entry] = listSessions(db, "/tmp/test");
+
+    expect(entry?.firstUserPreview).toBeNull();
+    db.close();
+  });
+
   test("deleteSession removes session and cascades to messages", () => {
     const db = openDatabase(":memory:");
     const session = createSession(db, { cwd: "/tmp/test" });

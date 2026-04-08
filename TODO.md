@@ -11,7 +11,9 @@ The spec.md and code are the sources of truth, not this file, don't assume anyth
 
 ## Low priority (deffered until further notice)
 
+- [ ] **Reduce duplicate edit rendering in the conversation log** (`ui/conversation.ts`) — large edits currently appear twice in a row (tool-call preview and tool-result diff), which adds a lot of vertical noise.
 - [ ] **Prevent `/session` from switching sessions mid-run** (`ui/commands.ts`, `ui/agent.ts`) — selecting a session while a turn is active can desync UI state from the session the loop is still writing to.
+- [ ] **Compact reasoning-heavy turns a bit better when `/reasoning` is on** (`ui/conversation.ts`) — for trivial prompts, visible reasoning can dominate the screen and bury the actual answer.
 - [ ] **XML-escape generated skill catalog fields** (`skills.ts`) — skill names, descriptions, and paths containing XML metacharacters can break the `<available_skills>` prompt block.
 
 ## Plugin related (documented only, no plugin related work is planned right now)
@@ -24,7 +26,6 @@ The spec.md and code are the sources of truth, not this file, don't assume anyth
 ## Future ideas
 
 - [ ] Headless one-shot CLI mode for non-interactive runs and benchmark harnesses like Harbor/Terminal-Bench (https://www.tbench.ai/)
-- [ ] Session list preview — show first user message snippet in `/session` selector
 - [ ] Use dark/cold to warm/bright gradient for the statusbar backgrounds, the model info based on the thinking effort, and the session stats based on context percentage.
 - [ ] Divider theme plugin — customizable divider animations (scanning pulse, breathing, flowing dots, wave)
 - [ ] Backward-compatibility and migration policy for 1.0 (session/app data versioning, explicit migration strategy)

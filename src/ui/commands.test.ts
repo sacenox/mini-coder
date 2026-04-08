@@ -15,8 +15,10 @@ import { loadSettings } from "../settings.ts";
 import { DEFAULT_THEME } from "../theme.ts";
 import {
   createCommandController,
+  formatPromptHistoryLabel,
   formatPromptHistoryPreview,
   formatRelativeDate,
+  formatSessionLabel,
 } from "./commands.ts";
 import type { ActiveOverlay } from "./overlay.ts";
 
@@ -219,6 +221,71 @@ describe("ui/commands", () => {
 
       expect(runtimeState.overlay).toBeNull();
       expect(inputValue).toBe("draft prompt");
+    } finally {
+      state.db.close();
+    }
+  });
+
+  test("handleCommand('session') overlay includes the first user preview for disambiguation", () => {
+    const state = createTestState();
+    const runtimeState = { overlay: null as ActiveOverlay | null };
+    const controller = createCommandController({
+      openOverlay: (nextOverlay) => {
+        runtimeState.overlay = nextOverlay;
+      },
+      dismissOverlay: () => {
+        runtimeState.overlay = null;
+      },
+      setInputValue: () => {},
+      appendInfoMessage: () => {},
+      scrollConversationToBottom: () => {},
+      render: () => {},
+      reloadPromptContext: async () => {},
+      openInBrowser: () => {},
+    });
+    const session = createSession(state.db, {
+      cwd: state.canonicalCwd,
+      model: "test/beta",
+      effort: "high",
+    });
+
+    state.db.run(
+      "INSERT INTO messages (session_id, turn, data, created_at) VALUES (?, ?, ?, ?)",
+      [
+        session.id,
+        null,
+        JSON.stringify({
+          role: "ui",
+          kind: "info",
+          content: "Help output",
+          timestamp: 1,
+        }),
+        1,
+      ],
+    );
+    state.db.run(
+      "INSERT INTO messages (session_id, turn, data, created_at) VALUES (?, ?, ?, ?)",
+      [
+        session.id,
+        1,
+        JSON.stringify({
+          role: "user",
+          content: "Investigate\nthis session label",
+          timestamp: 2,
+        }),
+        2,
+      ],
+    );
+
+    try {
+      expect(controller.handleCommand("session", state)).toBe(true);
+
+      const overlay = expectOverlay(runtimeState.overlay);
+      const text = collectText(renderSelect(overlay));
+
+      expect(
+        text.some((line) => line.includes("Investigate this session")),
+      ).toBe(true);
     } finally {
       state.db.close();
     }
@@ -510,6 +577,34 @@ describe("ui/commands", () => {
   test("formatPromptHistoryPreview collapses whitespace into one line", () => {
     expect(formatPromptHistoryPreview("  first\n\n second\tthird  ")).toBe(
       "first second third",
+    );
+  });
+
+  test("formatPromptHistoryLabel_longPromptAndCwd_returnsATruncatedSingleLineLabel", () => {
+    expect(
+      formatPromptHistoryLabel(
+        "  Investigate\n\n this prompt history row because it is much too wide for the overlay  ",
+        "/tmp/projects/very/deeply/nested/mini-coder-audit",
+        "5m ago",
+      ),
+    ).toBe(
+      "Investigate this prompt history…  ·  …/mini-coder-audit  ·  5m ago",
+    );
+  });
+
+  test("formatSessionLabel_longPreviewAndModel_returnsATruncatedReadableLabel", () => {
+    expect(
+      formatSessionLabel(
+        {
+          model: "openai-codex/gpt-5.4-super-long-variant",
+          firstUserPreview:
+            "Audit the session selector because every entry looks identical in real usage",
+        },
+        "just now",
+        true,
+      ),
+    ).toBe(
+      "Audit the session selector…  ·  openai-codex/gpt…  ·  just now  ·  current",
     );
   });
 });
