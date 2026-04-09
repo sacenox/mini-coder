@@ -28,12 +28,40 @@
 - Runtime: Bun. Use `bun run`, `bun test`, `bun install`, `bunx`.
 - Toolchain split: **prettier** formats, **biome** lints + sorts imports. CI runs `bun test`, `bun run check`, `bun run format`, and `bun run typecheck`. Lefthook runs the same steps sequentially.
 - App data dir: `~/.config/mini-coder/`.
-- Local manual CLI testing on this machine uses `bun add -g /home/xonecas/src/mini-coder`, which links the working tree into `~/.bun/bin/mc`.
 - Published CLI entrypoint is `mc` via `bin/mc.ts` → `src/index.ts`. Do not point `package.json#bin` at `dist/` unless publish actually produces it.
 - All exports need JSDoc; interface fields get single-line JSDoc. See `session.ts` for the pattern.
 - Dependency references:
   - pi-ai: `~/src/pi-mono/packages/ai/` (`src/types.ts`, `src/stream.ts`, `src/utils/oauth/`, `src/providers/faux.ts`)
   - cel-tui: `~/src/cel-tui/` (`~/src/cel-tui/spec.md`, `examples/chat.ts`, `packages/components/src/markdown.ts`)
+
+## Release process
+
+- Release instructions live here now; do not rely on `.agents/skills/release`.
+- This repo does not have a build step. Do not run `bun run build` for releases.
+- The published package ships the checked-in Bun launcher (`bin/mc.ts`) and runtime source (`src/index.ts`). The release-time publishability check is `bun pm pack --dry-run --ignore-scripts`.
+- Before mutating anything for a release:
+  - ensure the current branch is `main`
+  - ensure `git status --porcelain` is empty
+  - run `git fetch origin --tags` and ensure `HEAD` matches `origin/main`
+  - read `package.json` to capture the package `name` and release `version`
+  - if `package.json` is already ahead of npm, treat that version as the intended release version and do not bump again unless the user explicitly asks
+  - ensure `git tag v<version>` does not already exist locally or on origin
+  - ensure `npm view <name>@<version> version` does not already exist
+- Release verification suite:
+  - `bun test`
+  - `bun run check`
+  - `bun run format`
+  - `bun run typecheck`
+  - `bun pm pack --dry-run --ignore-scripts`
+- Release flow:
+  - if the version needs to change, update only `package.json`
+  - review the diff with the user before committing
+  - commit with `chore: release v<version>`
+  - create an annotated tag `v<version>`
+  - push `main` and the exact tag explicitly
+  - run `npm publish`
+  - verify the publish with `npm view <name>@<version> version`
+- If any check fails, stop and report the failure instead of improvising around it.
 
 ## Project rules
 
