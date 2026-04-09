@@ -38,7 +38,7 @@
 
 - Release instructions live here now; do not rely on `.agents/skills/release`.
 - This repo does not have a build step. Do not run `bun run build` for releases.
-- The published package ships the checked-in Bun launcher (`bin/mc.ts`) and runtime source (`src/index.ts`). The release-time publishability check is `bun pm pack --dry-run --ignore-scripts`.
+- The published package ships the checked-in Bun launcher (`bin/mc.ts`), runtime source (`src/index.ts`), and `README.md` so npm shows the package docs. The release-time publishability check is `bun pm pack --dry-run --ignore-scripts`.
 - Before mutating anything for a release:
   - ensure the current branch is `main`
   - ensure `git status --porcelain` is empty
@@ -52,7 +52,7 @@
   - `bun run check`
   - `bun run format`
   - `bun run typecheck`
-  - `bun pm pack --dry-run --ignore-scripts`
+  - `bun pm pack --dry-run --ignore-scripts` and confirm the packed file list includes `README.md`
 - Pre-release docs sync:
   - audit `README.md` against `spec.md` and the current command/CLI sources (`src/input.ts`, `src/ui/help.ts`, `src/cli.ts`, `src/headless.ts`, `package.json`)
   - update `README.md` on `main` first
@@ -66,7 +66,7 @@
   - commit with `chore: release v<version>`
   - create an annotated tag `v<version>`
   - push `main` and the exact tag explicitly
-  - run `npm publish`
+  - run `npm publish --ignore-scripts`
   - verify the publish with `npm view <name>@<version> version`
 - If any check fails, stop and report the failure instead of improvising around it.
 

@@ -51,12 +51,13 @@ test("package.json declares direct UI types and omits redundant diff typings", a
   expect(pkg.devDependencies).not.toHaveProperty("@types/diff");
 });
 
-test("pack dry-run includes the mc launcher and runtime entrypoint", async () => {
+test("pack dry-run includes the README, mc launcher, and runtime entrypoint", async () => {
   const result = await packDryRun();
 
   expect(result.exitCode).toBe(0);
   expect(result.stderr).toBe("");
   expect(result.stdout).toContain("packed ");
+  expect(result.stdout).toContain("README.md");
   expect(result.stdout).toContain("bin/mc.ts");
   expect(result.stdout).toContain("src/index.ts");
   expect(result.stdout).not.toContain("src/package.test.ts");
