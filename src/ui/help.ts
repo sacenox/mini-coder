@@ -78,6 +78,12 @@ export function buildHelpText(state: HelpRenderState): string {
 
   const providerNames = Array.from(state.providers.keys());
   lines.push("");
+  lines.push("Note:");
+  lines.push("  While a turn is running, Escape blurs the input first.");
+  lines.push("  Tab re-focuses the input.");
+  lines.push("  Escape again interrupts the current turn.");
+
+  lines.push("");
   lines.push(
     providerNames.length > 0
       ? `Providers: ${providerNames.join(", ")}`

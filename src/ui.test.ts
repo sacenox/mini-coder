@@ -1559,6 +1559,28 @@ describe("ui rendering", () => {
     }
   });
 
+  test("Escape while running blurs the input first and a second Escape aborts", () => {
+    const state = createTestState();
+    state.running = true;
+    state.abortController = new AbortController();
+
+    try {
+      const controller = createInputController(state);
+      const base = expectVStack(renderBaseLayout(state, 80, controller));
+
+      controller.onBlur();
+
+      const input = expectTextInput(renderInputArea(state.theme, controller));
+      expect(input.props.focused).toBe(false);
+      expect(state.abortController.signal.aborted).toBe(false);
+
+      base.props.onKeyPress?.("escape");
+      expect(state.abortController.signal.aborted).toBe(true);
+    } finally {
+      state.db.close();
+    }
+  });
+
   test("Tab autocompletes the last file path in normal input mode", () => {
     const state = createTestState();
     const cwd = createTempDir();

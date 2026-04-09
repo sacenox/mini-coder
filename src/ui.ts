@@ -324,9 +324,7 @@ export function createInputController(state: AppState): InputController {
       cel.render();
     },
     onBlur: () => {
-      if (!state.running) {
-        inputFocused = false;
-      }
+      inputFocused = false;
       cel.render();
     },
     onKeyPress: (key) => {
