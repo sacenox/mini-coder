@@ -31,6 +31,7 @@ import {
 import { createCommandController } from "./ui/commands.ts";
 import {
   buildConversationLogNodes,
+  CONVERSATION_GAP,
   resetConversationRenderCache,
 } from "./ui/conversation.ts";
 import type { InputController } from "./ui/input.ts";
@@ -195,11 +196,15 @@ function getVisibleConversationStart(messageCount: number): number {
 }
 
 /** Build the full conversation log as an array of nodes. */
-export function buildConversationLog(state: AppState): Node[] {
+export function buildConversationLog(
+  state: AppState,
+  width = Number.POSITIVE_INFINITY,
+): Node[] {
   return buildConversationLogNodes(
     state,
     getStreamingConversationState(),
     getVisibleConversationStart(state.messages.length),
+    width,
   );
 }
 
@@ -210,11 +215,12 @@ function measureConversationHeight(
 ): number {
   return measureContentHeight(
     VStack(
-      {},
+      { gap: CONVERSATION_GAP },
       buildConversationLogNodes(
         state,
         getStreamingConversationState(),
         startIndex,
+        width,
       ),
     ),
     { width: Math.max(1, width) },
@@ -481,6 +487,7 @@ function renderConversationLog(state: AppState, width: number): Node {
   return VStack(
     {
       flex: 1,
+      gap: CONVERSATION_GAP,
       overflow: "scroll",
       scrollbar: true,
       scrollOffset: stickToBottom ? Infinity : scrollOffset,
@@ -503,7 +510,7 @@ function renderConversationLog(state: AppState, width: number): Node {
         cel.render();
       },
     },
-    buildConversationLog(state),
+    buildConversationLog(state, width),
   );
 }
 

@@ -27,7 +27,10 @@ import {
 } from "./session.ts";
 import { DEFAULT_SHOW_REASONING, DEFAULT_VERBOSE } from "./settings.ts";
 import { DEFAULT_THEME } from "./theme.ts";
-import { buildConversationLogNodes } from "./ui/conversation.ts";
+import {
+  buildConversationLogNodes,
+  CONVERSATION_GAP,
+} from "./ui/conversation.ts";
 import {
   buildConversationLog,
   createInputController,
@@ -113,7 +116,7 @@ function measureConversationHeight(
 ): number {
   return measureContentHeight(
     VStack(
-      {},
+      { gap: CONVERSATION_GAP },
       buildConversationLogNodes(
         state,
         {
@@ -122,6 +125,7 @@ function measureConversationHeight(
           pendingToolResults: [],
         },
         startIndex,
+        width,
       ),
     ),
     { width },
@@ -1037,7 +1041,8 @@ describe("ui rendering", () => {
         });
         return (
           state.running &&
-          logText.includes("$ echo tool-output; sleep 0.2") &&
+          logText.includes("[shell ->]") &&
+          logText.includes("echo tool-output; sleep 0.2") &&
           logText.includes("tool-output")
         );
       });
@@ -1049,8 +1054,9 @@ describe("ui rendering", () => {
       });
 
       expect(logText).toContain("I'll inspect the command output first.");
+      expect(logText.filter((line) => line === "[shell ->]")).toHaveLength(1);
       expect(
-        logText.filter((line) => line === "$ echo tool-output; sleep 0.2"),
+        logText.filter((line) => line === "echo tool-output; sleep 0.2"),
       ).toHaveLength(1);
       expect(logText).toContain("tool-output");
       expect(logText).not.toContain("Exit code: 0");
@@ -1255,7 +1261,11 @@ describe("ui rendering", () => {
           props: {},
           children: buildConversationLog(state),
         });
-        return state.running && logText.includes("$ echo staged-command");
+        return (
+          state.running &&
+          logText.includes("[shell ->]") &&
+          logText.includes("echo staged-command")
+        );
       });
 
       const logText = collectText({
@@ -1264,8 +1274,9 @@ describe("ui rendering", () => {
         children: buildConversationLog(state),
       });
 
+      expect(logText.filter((line) => line === "[shell ->]")).toHaveLength(1);
       expect(
-        logText.filter((line) => line === "$ echo staged-command"),
+        logText.filter((line) => line === "echo staged-command"),
       ).toHaveLength(1);
       expect(logText).not.toContain("Preparing...");
 
@@ -1420,8 +1431,9 @@ describe("ui rendering", () => {
         children: buildConversationLog(state),
       });
 
+      expect(logText.filter((line) => line === "[shell ->]")).toHaveLength(1);
       expect(
-        logText.filter((line) => line === "$ echo tool-output"),
+        logText.filter((line) => line === "echo tool-output"),
       ).toHaveLength(1);
       expect(logText).toContain("tool-output");
       expect(logText).toContain("Done streaming");

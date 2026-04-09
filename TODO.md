@@ -1,9 +1,13 @@
 # TODO
 
 Keep this always updated so work can continue across sessions.
-Don't keep completed items bloating the file.
+Don't keep completed items bloating the file, remove them before committing.
 Keep the file structured and minimal.
 The spec.md and code are the sources of truth, not this file, don't assume anything because it's documented here.
+
+## In progress
+
+- None right now.
 
 ## Open items
 
@@ -11,9 +15,7 @@ The spec.md and code are the sources of truth, not this file, don't assume anyth
 
 ## Low priority (deffered until further notice)
 
-- [ ] **Reduce duplicate edit rendering in the conversation log** (`ui/conversation.ts`) — large edits currently appear twice in a row (tool-call preview and tool-result diff), which adds a lot of vertical noise.
 - [ ] **Prevent `/session` from switching sessions mid-run** (`ui/commands.ts`, `ui/agent.ts`) — selecting a session while a turn is active can desync UI state from the session the loop is still writing to.
-- [ ] **Compact reasoning-heavy turns a bit better when `/reasoning` is on** (`ui/conversation.ts`) — for trivial prompts, visible reasoning can dominate the screen and bury the actual answer.
 - [ ] **XML-escape generated skill catalog fields** (`skills.ts`) — skill names, descriptions, and paths containing XML metacharacters can break the `<available_skills>` prompt block.
 
 ## Plugin related (documented only, no plugin related work is planned right now)

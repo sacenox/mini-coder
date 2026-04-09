@@ -9,7 +9,7 @@
  */
 
 import { Markdown } from "@cel-tui/components";
-import { HStack, Text, VStack } from "@cel-tui/core";
+import { HStack, measureContentHeight, Text, VStack } from "@cel-tui/core";
 import type { Node } from "@cel-tui/types";
 import type {
   AssistantMessage,
@@ -17,13 +17,21 @@ import type {
   ToolResultMessage,
   UserMessage,
 } from "@mariozechner/pi-ai";
-import { structuredPatch } from "diff";
 import type { AppState } from "../index.ts";
 import type { UiMessage } from "../session.ts";
 import type { Theme } from "../theme.ts";
 
-/** Max body lines shown for tool previews/results when verbose mode is off. */
-const UI_TOOL_PREVIEW_LINES = 8;
+/** Single blank-line gap used between conversation-level blocks. */
+export const CONVERSATION_GAP = 1;
+
+/** Fixed rendered height for non-verbose tool previews. */
+const UI_TOOL_PREVIEW_ROWS = 8;
+
+/** Default width used when preview measurements do not receive one explicitly. */
+const DEFAULT_TOOL_PREVIEW_WIDTH = 80;
+
+/** Horizontal columns consumed by tool-block padding and the left border. */
+const TOOL_BLOCK_CHROME_WIDTH = 4;
 
 /** A pending tool result shown in the streaming tail. */
 export interface PendingToolResult {
@@ -45,6 +53,8 @@ interface ConversationRenderOpts {
   verbose: boolean;
   /** Active UI theme. */
   theme: Theme;
+  /** Available terminal width for width-aware tool previews. */
+  previewWidth?: number;
 }
 
 /** A single streaming assistant tail appended after persisted messages. */
@@ -84,8 +94,39 @@ interface ConversationRenderCache {
   count: number;
   showReasoning: boolean;
   verbose: boolean;
+  previewWidth: number;
   theme: Theme | null;
   nodes: Node[];
+}
+
+type ToolRenderDirection = "->" | "<-";
+
+type ToolRenderLineKind =
+  | "command"
+  | "path"
+  | "text"
+  | "diffAdded"
+  | "diffRemoved"
+  | "summary"
+  | "error";
+
+interface ToolBlockSpec {
+  /** Tool name shown in the header pill. */
+  toolName: string;
+  /** Direction shown in the header pill. */
+  direction: ToolRenderDirection;
+  /** Logical body lines for the tool block. */
+  bodyLines: readonly ToolRenderLine[];
+  /** Whether `/verbose` preview rules apply to the body. */
+  previewBody: boolean;
+}
+
+/** A single logical line in a rendered tool block. */
+export interface ToolRenderLine {
+  /** Semantic line kind for styling. */
+  kind: ToolRenderLineKind;
+  /** Text content for this line. */
+  text: string;
 }
 
 const EMPTY_STREAMING_CONTENT: AssistantMessage["content"] = [];
@@ -105,16 +146,12 @@ const conversationRenderCache: ConversationRenderCache = {
   count: 0,
   showReasoning: false,
   verbose: false,
+  previewWidth: DEFAULT_TOOL_PREVIEW_WIDTH,
   theme: null,
   nodes: EMPTY_RENDER_NODES,
 };
 
-let editToolDiffCache = new WeakMap<
-  Record<string, unknown>,
-  ToolRenderLine[]
->();
-
-/** Reset cached committed conversation renders and derived edit diffs. */
+/** Reset cached committed conversation renders. */
 export function resetConversationRenderCache(): void {
   toolCallArgsCache.messages = null;
   toolCallArgsCache.count = 0;
@@ -124,28 +161,9 @@ export function resetConversationRenderCache(): void {
   conversationRenderCache.count = 0;
   conversationRenderCache.showReasoning = false;
   conversationRenderCache.verbose = false;
+  conversationRenderCache.previewWidth = DEFAULT_TOOL_PREVIEW_WIDTH;
   conversationRenderCache.theme = null;
   conversationRenderCache.nodes = EMPTY_RENDER_NODES;
-  editToolDiffCache = new WeakMap();
-}
-
-/** Semantic line kinds used when rendering tool output in the log. */
-type ToolRenderLineKind =
-  | "command"
-  | "path"
-  | "toolName"
-  | "text"
-  | "diffAdded"
-  | "diffRemoved"
-  | "summary"
-  | "error";
-
-/** A single logical line in a rendered tool block. */
-export interface ToolRenderLine {
-  /** Semantic line kind for styling. */
-  kind: ToolRenderLineKind;
-  /** Text content for this line. */
-  text: string;
 }
 
 /** Render a user message with a subtle background. */
@@ -163,14 +181,16 @@ function renderUserMessage(msg: UserMessage, theme: Theme): Node {
   ]);
 }
 
-/** Render markdown blocks with stable top-level containers. */
-function renderMarkdownContent(content: string): Node[] {
-  return Markdown(content).map((node) => {
+/** Render a markdown block with stable internal paragraph spacing. */
+function renderMarkdownBlock(content: string): Node | null {
+  const children = Markdown(content).map((node) => {
     if (node.type === "text" && node.content === "") {
       return node;
     }
     return HStack({ padding: { x: 1 } }, [VStack({ flex: 1 }, [node])]);
   });
+
+  return children.length > 0 ? VStack({ gap: 0 }, children) : null;
 }
 
 function getAssistantErrorMessage(
@@ -212,17 +232,17 @@ function renderThinkingBlock(
 function renderAssistantContentBlock(
   block: AssistantMessage["content"][number],
   opts: ConversationRenderOpts,
-): Node[] {
+): Node | null {
   if (block.type === "text" && block.text) {
-    return renderMarkdownContent(block.text);
+    return renderMarkdownBlock(block.text);
   }
   if (block.type === "thinking" && block.thinking) {
-    return [renderThinkingBlock(block.thinking, opts)];
+    return renderThinkingBlock(block.thinking, opts);
   }
   if (block.type === "toolCall") {
     return renderToolCall(block, opts);
   }
-  return [];
+  return null;
 }
 
 /**
@@ -236,9 +256,11 @@ export function renderAssistantMessage(
   assistant: AssistantMessage | AssistantRenderState,
   opts: ConversationRenderOpts,
 ): Node | null {
-  const children = assistant.content.flatMap((block) => {
-    return renderAssistantContentBlock(block, opts);
-  });
+  const children = assistant.content
+    .map((block) => {
+      return renderAssistantContentBlock(block, opts);
+    })
+    .filter((child): child is Node => child !== null);
 
   const errorMessage = getAssistantErrorMessage(assistant);
   if (errorMessage) {
@@ -255,18 +277,35 @@ export function renderAssistantMessage(
     return null;
   }
 
-  return VStack({}, children);
+  return VStack({ gap: CONVERSATION_GAP }, children);
+}
+
+function getPreviewWidth(previewWidth?: number): number {
+  if (!Number.isFinite(previewWidth)) {
+    return DEFAULT_TOOL_PREVIEW_WIDTH;
+  }
+  return Math.max(1, Math.floor(previewWidth!));
+}
+
+function getToolBodyWidth(previewWidth?: number): number {
+  return Math.max(1, getPreviewWidth(previewWidth) - TOOL_BLOCK_CHROME_WIDTH);
 }
 
 /** Split multi-line tool text into logical render lines. */
 function splitToolTextLines(
   text: string,
-  kind: Exclude<ToolRenderLineKind, "path" | "toolName" | "summary">,
+  kind: Exclude<ToolRenderLineKind, "summary">,
 ): ToolRenderLine[] {
   if (text === "") {
     return [];
   }
-  return text.split("\n").map((line) => ({ kind, text: line }));
+
+  const lines = text.split("\n");
+  if (lines.at(-1) === "") {
+    lines.pop();
+  }
+
+  return lines.map((line) => ({ kind, text: line }));
 }
 
 /** Read a string argument from a tool-call argument map. */
@@ -275,263 +314,29 @@ function getToolArgString(args: Record<string, unknown>, key: string): string {
   return typeof value === "string" ? value : "";
 }
 
-/**
- * Apply the UI preview policy to tool body lines.
- *
- * When verbose mode is off, only the last `maxLines` body lines are shown,
- * followed by a summary line reporting how many earlier lines were hidden.
- *
- * @param lines - Full body lines for the tool output.
- * @param verbose - Whether verbose mode is enabled.
- * @param maxLines - Maximum visible body lines in preview mode.
- * @returns The lines to render in the conversation log.
- */
-export function previewToolRenderLines(
-  lines: readonly ToolRenderLine[],
-  verbose: boolean,
-  maxLines = UI_TOOL_PREVIEW_LINES,
-): ToolRenderLine[] {
-  if (verbose || lines.length <= maxLines) {
-    return [...lines];
-  }
-
-  return [
-    ...lines.slice(-maxLines),
-    {
-      kind: "summary",
-      text: `And ${lines.length - maxLines} lines more`,
-    },
-  ];
-}
-
-/** Strip shell execution labels that should not appear in the UI. */
+/** Strip shell execution labels and normalize the exit line for the UI. */
 function normalizeShellOutput(output: string): string {
   return output
-    .replace(/^Exit code: \d+\n?/, "")
-    .replace(/(^|\n)\[stderr\]\n/g, "$1");
+    .replace(/^Exit code: (\d+)(?:\n|$)/, (_, code: string) => `exit ${code}\n`)
+    .replace(/(^|\n)\[stderr\]\n/g, "$1")
+    .replace(/\n$/, "");
 }
 
-/** Build the logical render lines for a shell tool result. */
-function buildShellToolLines(
-  output: string,
-  verbose: boolean,
-): ToolRenderLine[] {
-  return previewToolRenderLines(
-    splitToolTextLines(normalizeShellOutput(output), "text"),
-    verbose,
-  );
+function getToolHeaderName(toolName: string): string {
+  return toolName === "readImage" ? "read image" : toolName;
 }
 
-function splitDiffSourceLines(text: string): string[] {
-  if (text === "") {
-    return [];
+function getToolHeaderColor(toolName: string, theme: Theme) {
+  switch (toolName) {
+    case "shell":
+      return theme.accentText;
+    case "edit":
+      return theme.secondaryAccentText;
+    case "readImage":
+      return theme.accentText;
+    default:
+      return theme.secondaryAccentText ?? theme.toolText;
   }
-
-  const lines = text.split("\n");
-  if (lines.at(-1) === "") {
-    lines.pop();
-  }
-  return lines;
-}
-
-function findSharedPrefixLineCount(
-  oldLines: readonly string[],
-  newLines: readonly string[],
-): number {
-  let prefixCount = 0;
-  while (
-    prefixCount < oldLines.length &&
-    prefixCount < newLines.length &&
-    oldLines[prefixCount] === newLines[prefixCount]
-  ) {
-    prefixCount += 1;
-  }
-  return prefixCount;
-}
-
-function findSharedSuffixBounds(
-  oldLines: readonly string[],
-  newLines: readonly string[],
-  prefixCount: number,
-): { oldSuffixIndex: number; newSuffixIndex: number } {
-  let oldSuffixIndex = oldLines.length - 1;
-  let newSuffixIndex = newLines.length - 1;
-
-  while (
-    oldSuffixIndex >= prefixCount &&
-    newSuffixIndex >= prefixCount &&
-    oldLines[oldSuffixIndex] === newLines[newSuffixIndex]
-  ) {
-    oldSuffixIndex -= 1;
-    newSuffixIndex -= 1;
-  }
-
-  return { oldSuffixIndex, newSuffixIndex };
-}
-
-function hasSharedMiddleLine(
-  removedLines: readonly string[],
-  addedLines: readonly string[],
-): boolean {
-  const largerMiddle =
-    removedLines.length >= addedLines.length ? removedLines : addedLines;
-  const smallerMiddle =
-    removedLines.length >= addedLines.length ? addedLines : removedLines;
-  const largerMiddleSet = new Set(largerMiddle);
-  return smallerMiddle.some((line) => largerMiddleSet.has(line));
-}
-
-function pushPrefixedDiffLines(
-  lines: ToolRenderLine[],
-  content: readonly string[],
-  kind: "text" | "diffAdded" | "diffRemoved",
-  prefix: string,
-): void {
-  for (const line of content) {
-    lines.push({ kind, text: `${prefix}${line}` });
-  }
-}
-
-function buildSimpleStructuredDiffLines(
-  oldText: string,
-  newText: string,
-): ToolRenderLine[] | null {
-  const context = 2;
-  const oldLines = splitDiffSourceLines(oldText);
-  const newLines = splitDiffSourceLines(newText);
-  const prefixCount = findSharedPrefixLineCount(oldLines, newLines);
-  const { oldSuffixIndex, newSuffixIndex } = findSharedSuffixBounds(
-    oldLines,
-    newLines,
-    prefixCount,
-  );
-  const removedLines = oldLines.slice(prefixCount, oldSuffixIndex + 1);
-  const addedLines = newLines.slice(prefixCount, newSuffixIndex + 1);
-
-  if (removedLines.length === 0 && addedLines.length === 0) {
-    return [];
-  }
-  if (hasSharedMiddleLine(removedLines, addedLines)) {
-    return null;
-  }
-
-  const contextStart = Math.max(0, prefixCount - context);
-  const unchangedPrefix = oldLines.slice(contextStart, prefixCount);
-  const unchangedSuffix = oldLines.slice(
-    oldSuffixIndex + 1,
-    Math.min(oldLines.length, oldSuffixIndex + 1 + context),
-  );
-  const oldStart =
-    contextStart === 0 ? (removedLines.length > 0 ? 1 : 0) : contextStart + 1;
-  const newStart =
-    contextStart === 0 ? (addedLines.length > 0 ? 1 : 0) : contextStart + 1;
-  const oldLineCount =
-    unchangedPrefix.length + removedLines.length + unchangedSuffix.length;
-  const newLineCount =
-    unchangedPrefix.length + addedLines.length + unchangedSuffix.length;
-  const diffLines: ToolRenderLine[] = [
-    {
-      kind: "text",
-      text: `@@ -${oldStart},${oldLineCount} +${newStart},${newLineCount} @@`,
-    },
-  ];
-
-  pushPrefixedDiffLines(diffLines, unchangedPrefix, "text", " ");
-  pushPrefixedDiffLines(diffLines, removedLines, "diffRemoved", "-");
-  pushPrefixedDiffLines(diffLines, addedLines, "diffAdded", "+");
-  pushPrefixedDiffLines(diffLines, unchangedSuffix, "text", " ");
-
-  return diffLines;
-}
-
-function buildStructuredDiffLines(
-  oldText: string,
-  newText: string,
-): ToolRenderLine[] {
-  const fastDiffLines = buildSimpleStructuredDiffLines(oldText, newText);
-  if (fastDiffLines !== null) {
-    return fastDiffLines;
-  }
-
-  const patch = structuredPatch("", "", oldText, newText, "", "", {
-    context: 2,
-  });
-  const diffLines: ToolRenderLine[] = [];
-
-  for (const hunk of patch.hunks) {
-    diffLines.push({
-      kind: "text",
-      text: `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`,
-    });
-
-    for (const line of hunk.lines) {
-      if (line.startsWith("+")) {
-        diffLines.push({ kind: "diffAdded", text: line });
-      } else if (line.startsWith("-")) {
-        diffLines.push({ kind: "diffRemoved", text: line });
-      } else {
-        diffLines.push({ kind: "text", text: line });
-      }
-    }
-  }
-
-  return diffLines;
-}
-
-function getCachedEditToolDiffLines(
-  args: Record<string, unknown>,
-): ToolRenderLine[] {
-  const cached = editToolDiffCache.get(args);
-  if (cached) {
-    return cached;
-  }
-
-  const diffLines = buildStructuredDiffLines(
-    getToolArgString(args, "oldText"),
-    getToolArgString(args, "newText"),
-  );
-  editToolDiffCache.set(args, diffLines);
-  return diffLines;
-}
-
-function splitPrefixedToolTextLines(
-  text: string,
-  kind: "diffAdded" | "diffRemoved",
-  prefix: string,
-): ToolRenderLine[] {
-  if (text === "") {
-    return [];
-  }
-
-  const lines = text.split("\n");
-  if (lines.at(-1) === "") {
-    lines.pop();
-  }
-
-  return lines.map((line) => ({
-    kind,
-    text: `${prefix}${line}`,
-  }));
-}
-
-/** Build the logical render lines for an edit tool result. */
-function buildEditToolLines(
-  args: Record<string, unknown>,
-  isError: boolean,
-  resultText: string,
-  verbose: boolean,
-): ToolRenderLine[] {
-  if (isError) {
-    return previewToolRenderLines(
-      splitToolTextLines(resultText, "error"),
-      verbose,
-    );
-  }
-
-  const diffLines = getCachedEditToolDiffLines(args);
-  return diffLines.length > 0
-    ? diffLines
-    : [{ kind: "summary", text: "(empty file)" }];
 }
 
 /** Render a single styled text node for a tool line. */
@@ -541,12 +346,6 @@ function renderToolLine(line: ToolRenderLine, theme: Theme): Node {
     case "path":
       return Text(line.text, {
         fgColor: theme.accentText,
-        bold: true,
-        wrap: "word",
-      });
-    case "toolName":
-      return Text(line.text, {
-        fgColor: theme.secondaryAccentText,
         bold: true,
         wrap: "word",
       });
@@ -575,11 +374,132 @@ function renderToolLines(
   return lines.map((line) => renderToolLine(line, theme));
 }
 
-/** Render a tool block with a left border. */
-function renderToolBlock(lines: readonly ToolRenderLine[], theme: Theme): Node {
+function measureToolLinesHeight(
+  lines: readonly ToolRenderLine[],
+  width: number,
+  theme: Theme,
+): number {
+  if (lines.length === 0) {
+    return 0;
+  }
+
+  return measureContentHeight(VStack({}, renderToolLines(lines, theme)), {
+    width,
+  });
+}
+
+function measureToolLineHeight(
+  line: ToolRenderLine,
+  width: number,
+  theme: Theme,
+): number {
+  return measureContentHeight(VStack({}, [renderToolLine(line, theme)]), {
+    width,
+  });
+}
+
+function countVisibleTailLines(
+  lines: readonly ToolRenderLine[],
+  width: number,
+  theme: Theme,
+  maxRows: number,
+): number {
+  let remainingRows = maxRows;
+  let visibleLineCount = 0;
+
+  for (let index = lines.length - 1; index >= 0; index--) {
+    const lineHeight = measureToolLineHeight(lines[index]!, width, theme);
+    if (lineHeight > remainingRows) {
+      return visibleLineCount > 0 ? visibleLineCount : 1;
+    }
+    remainingRows -= lineHeight;
+    visibleLineCount += 1;
+  }
+
+  return visibleLineCount;
+}
+
+function renderToolHeaderPill(
+  toolName: string,
+  direction: ToolRenderDirection,
+  theme: Theme,
+): Node {
+  return HStack({ bgColor: theme.toolBorder, padding: { x: 1 } }, [
+    Text(`[${getToolHeaderName(toolName)} ${direction}]`, {
+      fgColor: getToolHeaderColor(toolName, theme),
+      bold: true,
+    }),
+  ]);
+}
+
+function renderToolBody(
+  lines: readonly ToolRenderLine[],
+  previewBody: boolean,
+  opts: Pick<ConversationRenderOpts, "previewWidth" | "theme" | "verbose">,
+): { body: Node | null; summary?: ToolRenderLine } {
+  if (lines.length === 0) {
+    return { body: null };
+  }
+
+  const renderedLines = renderToolLines(lines, opts.theme);
+  if (opts.verbose || !previewBody) {
+    return { body: VStack({}, renderedLines) };
+  }
+
+  const bodyWidth = getToolBodyWidth(opts.previewWidth);
+  const totalHeight = measureToolLinesHeight(lines, bodyWidth, opts.theme);
+  if (totalHeight <= UI_TOOL_PREVIEW_ROWS) {
+    return { body: VStack({}, renderedLines) };
+  }
+
+  const visibleLineCount = countVisibleTailLines(
+    lines,
+    bodyWidth,
+    opts.theme,
+    UI_TOOL_PREVIEW_ROWS,
+  );
+  const previewLines = lines.slice(-visibleLineCount);
+  const hiddenLineCount = Math.max(0, lines.length - visibleLineCount);
+
+  return {
+    body: VStack(
+      {
+        height: UI_TOOL_PREVIEW_ROWS,
+      },
+      renderToolLines(previewLines, opts.theme),
+    ),
+    summary:
+      hiddenLineCount > 0
+        ? {
+            kind: "summary",
+            text: `And ${hiddenLineCount} lines more`,
+          }
+        : undefined,
+  };
+}
+
+/** Render a tool block with a left border and compact header pill. */
+function renderToolBlock(
+  spec: ToolBlockSpec,
+  opts: Pick<ConversationRenderOpts, "previewWidth" | "theme" | "verbose">,
+): Node {
+  const body = renderToolBody(spec.bodyLines, spec.previewBody, opts);
+  const children: Node[] = [
+    HStack({}, [
+      renderToolHeaderPill(spec.toolName, spec.direction, opts.theme),
+    ]),
+  ];
+
+  if (body.body) {
+    children.push(body.body);
+  }
+  if (body.summary) {
+    children.push(renderToolLine(body.summary, opts.theme));
+  }
+
   return HStack({ padding: { x: 1 } }, [
-    Text("│ ", { fgColor: theme.toolBorder }),
-    VStack({ flex: 1, fgColor: theme.toolText }, renderToolLines(lines, theme)),
+    Text("│ ", { fgColor: opts.theme.toolBorder }),
+    VStack({ flex: 1, fgColor: opts.theme.toolText }, children),
   ]);
 }
 
@@ -590,138 +510,158 @@ function getToolContentText(content: ToolResultMessage["content"]): string {
     .join("\n");
 }
 
-function buildToolHeaderLine(
-  toolName: string,
-  args: Record<string, unknown>,
-): ToolRenderLine | null {
-  if (toolName === "edit" || toolName === "readImage") {
-    const filePath = getToolArgString(args, "path");
-    return filePath ? { kind: "path", text: `~ ${filePath}` } : null;
-  }
-
-  return { kind: "toolName", text: toolName };
+function buildShellToolCallSpec(args: Record<string, unknown>): ToolBlockSpec {
+  return {
+    toolName: "shell",
+    direction: "->",
+    bodyLines: splitToolTextLines(getToolArgString(args, "command"), "command"),
+    previewBody: true,
+  };
 }
 
-function prefixFirstLine(
-  lines: readonly ToolRenderLine[],
-  prefix: string,
-): ToolRenderLine[] {
-  if (lines.length === 0) {
-    return [];
-  }
-
-  return lines.map((line, index) => {
-    if (index !== 0 || line.kind === "summary") {
-      return line;
-    }
-
-    return {
-      ...line,
-      text: `${prefix}${line.text}`,
-    };
-  });
-}
-
-function buildShellToolCallLines(
-  command: string,
-  verbose: boolean,
-): ToolRenderLine[] {
-  return prefixFirstLine(
-    previewToolRenderLines(splitToolTextLines(command, "command"), verbose),
-    "$ ",
-  );
-}
-
-function buildEditToolCallLines(
-  filePath: string,
-  oldText: string,
-  newText: string,
-  verbose: boolean,
-): ToolRenderLine[] {
+function buildEditToolCallSpec(args: Record<string, unknown>): ToolBlockSpec {
   const lines: ToolRenderLine[] = [];
+  const filePath = getToolArgString(args, "path");
   if (filePath) {
-    lines.push({ kind: "path", text: `~ ${filePath}` });
+    lines.push({ kind: "path", text: filePath });
   }
-
-  const bodyLines = previewToolRenderLines(
-    [
-      ...splitPrefixedToolTextLines(oldText, "diffRemoved", "-"),
-      ...splitPrefixedToolTextLines(newText, "diffAdded", "+"),
-    ],
-    verbose,
+  lines.push(
+    ...splitToolTextLines(getToolArgString(args, "oldText"), "diffRemoved"),
+  );
+  lines.push(
+    ...splitToolTextLines(getToolArgString(args, "newText"), "diffAdded"),
   );
 
-  return [...lines, ...bodyLines];
+  return {
+    toolName: "edit",
+    direction: "->",
+    bodyLines: lines,
+    previewBody: true,
+  };
 }
 
-function buildToolCallLines(
+function buildReadImageToolCallSpec(
+  args: Record<string, unknown>,
+): ToolBlockSpec {
+  const filePath = getToolArgString(args, "path");
+  return {
+    toolName: "readImage",
+    direction: "->",
+    bodyLines: filePath ? [{ kind: "path", text: filePath }] : [],
+    previewBody: false,
+  };
+}
+
+function buildGenericToolCallSpec(
   toolName: string,
   args: Record<string, unknown>,
-  verbose: boolean,
-): ToolRenderLine[] {
-  if (toolName === "shell") {
-    return buildShellToolCallLines(getToolArgString(args, "command"), verbose);
-  }
-
-  if (toolName === "readImage") {
-    const header = buildToolHeaderLine(toolName, args);
-    return header ? [header] : [];
-  }
-
-  if (toolName === "edit") {
-    return buildEditToolCallLines(
-      getToolArgString(args, "path"),
-      getToolArgString(args, "oldText"),
-      getToolArgString(args, "newText"),
-      verbose,
-    );
-  }
-
+): ToolBlockSpec {
   const text = JSON.stringify(args, null, 2);
-  if (!text || text === "{}") {
-    const header = buildToolHeaderLine(toolName, args);
-    return header ? [header] : [];
-  }
+  return {
+    toolName,
+    direction: "->",
+    bodyLines: text && text !== "{}" ? splitToolTextLines(text, "text") : [],
+    previewBody: false,
+  };
+}
 
-  return [
-    { kind: "toolName", text: toolName },
-    ...previewToolRenderLines(splitToolTextLines(text, "text"), verbose),
-  ];
+function buildToolCallSpec(
+  toolName: string,
+  args: Record<string, unknown>,
+): ToolBlockSpec {
+  if (toolName === "shell") {
+    return buildShellToolCallSpec(args);
+  }
+  if (toolName === "edit") {
+    return buildEditToolCallSpec(args);
+  }
+  if (toolName === "readImage") {
+    return buildReadImageToolCallSpec(args);
+  }
+  return buildGenericToolCallSpec(toolName, args);
 }
 
 function renderToolCall(
   toolCall: Extract<AssistantMessage["content"][number], { type: "toolCall" }>,
-  opts: Pick<ConversationRenderOpts, "verbose" | "theme">,
-): Node[] {
-  const lines = buildToolCallLines(
-    toolCall.name,
-    toolCall.arguments,
-    opts.verbose,
+  opts: Pick<ConversationRenderOpts, "previewWidth" | "verbose" | "theme">,
+): Node {
+  return renderToolBlock(
+    buildToolCallSpec(toolCall.name, toolCall.arguments),
+    opts,
   );
-  return lines.length > 0 ? [renderToolBlock(lines, opts.theme)] : [];
 }
 
-function buildReadImageToolLines(
+function buildShellToolResultSpec(
   content: ToolResultMessage["content"],
+): ToolBlockSpec {
+  return {
+    toolName: "shell",
+    direction: "<-",
+    bodyLines: splitToolTextLines(
+      normalizeShellOutput(getToolContentText(content)),
+      "text",
+    ),
+    previewBody: true,
+  };
+}
+
+function buildEditToolResultSpec(
+  args: Record<string, unknown>,
   isError: boolean,
-  _verbose: boolean,
-): ToolRenderLine[] {
+  resultText: string,
+): ToolBlockSpec {
   if (isError) {
-    return splitToolTextLines(getToolContentText(content), "error");
+    return {
+      toolName: "edit",
+      direction: "<-",
+      bodyLines: splitToolTextLines(resultText, "error"),
+      previewBody: true,
+    };
   }
 
-  return [{ kind: "text", text: "Read image." }];
+  const filePath = getToolArgString(args, "path");
+  return {
+    toolName: "edit",
+    direction: "<-",
+    bodyLines: filePath ? [{ kind: "path", text: `~ ${filePath}` }] : [],
+    previewBody: false,
+  };
 }
 
-function buildGenericToolLines(
+function buildReadImageToolResultSpec(
+  args: Record<string, unknown>,
+  content: ToolResultMessage["content"],
+  isError: boolean,
+): ToolBlockSpec {
+  if (isError) {
+    return {
+      toolName: "readImage",
+      direction: "<-",
+      bodyLines: splitToolTextLines(getToolContentText(content), "error"),
+      previewBody: false,
+    };
+  }
+
+  const filePath = getToolArgString(args, "path");
+  return {
+    toolName: "readImage",
+    direction: "<-",
+    bodyLines: filePath ? [{ kind: "path", text: filePath }] : [],
+    previewBody: false,
+  };
+}
+
+function buildGenericToolResultSpec(
   toolName: string,
   output: string,
   isError: boolean,
-): ToolRenderLine[] {
-  return [
-    { kind: "toolName", text: toolName },
-    ...splitToolTextLines(output, isError ? "error" : "text"),
-  ];
+): ToolBlockSpec {
+  return {
+    toolName,
+    direction: "<-",
+    bodyLines: splitToolTextLines(output, isError ? "error" : "text"),
+    previewBody: false,
+  };
 }
 
 function renderToolResultContent(
@@ -729,35 +669,27 @@ function renderToolResultContent(
   args: Record<string, unknown>,
   content: ToolResultMessage["content"],
   isError: boolean,
-  opts: Pick<ConversationRenderOpts, "verbose" | "theme">,
+  opts: Pick<ConversationRenderOpts, "previewWidth" | "verbose" | "theme">,
 ): Node {
   if (toolName === "shell") {
-    return renderToolBlock(
-      buildShellToolLines(getToolContentText(content), opts.verbose),
-      opts.theme,
-    );
+    return renderToolBlock(buildShellToolResultSpec(content), opts);
   }
   if (toolName === "edit") {
     return renderToolBlock(
-      buildEditToolLines(
-        args,
-        isError,
-        getToolContentText(content),
-        opts.verbose,
-      ),
-      opts.theme,
+      buildEditToolResultSpec(args, isError, getToolContentText(content)),
+      opts,
     );
   }
   if (toolName === "readImage") {
     return renderToolBlock(
-      buildReadImageToolLines(content, isError, opts.verbose),
-      opts.theme,
+      buildReadImageToolResultSpec(args, content, isError),
+      opts,
     );
   }
 
   return renderToolBlock(
-    buildGenericToolLines(toolName, getToolContentText(content), isError),
-    opts.theme,
+    buildGenericToolResultSpec(toolName, getToolContentText(content), isError),
+    opts,
   );
 }
 
@@ -765,7 +697,7 @@ function renderToolResultContent(
  * Render a tool result, dispatching by tool name.
  *
  * @param toolName - Tool name to render.
- * @param args - Tool call arguments used for headers and diffs.
+ * @param args - Tool call arguments used for compact result rendering.
  * @param resultText - Text content from the tool result message.
  * @param isError - Whether the tool execution failed.
  * @param opts - Shared conversation render options.
@@ -799,9 +731,6 @@ function renderUiMessage(msg: UiMessage, theme: Theme): Node {
 function pushConversationNode(nodes: Node[], node: Node | null): void {
   if (!node) {
     return;
-  }
-  if (nodes.length > 0) {
-    nodes.push(Text(""));
   }
   nodes.push(node);
 }
@@ -881,12 +810,14 @@ function cacheToolCallArgs(messages: readonly ConversationMessage[]): void {
 function canReuseCommittedConversationCache(
   state: Pick<AppState, "messages" | "showReasoning" | "verbose" | "theme">,
   startIndex: number,
+  previewWidth: number,
 ): boolean {
   return (
     conversationRenderCache.messages === state.messages &&
     conversationRenderCache.startIndex === startIndex &&
     conversationRenderCache.showReasoning === state.showReasoning &&
     conversationRenderCache.verbose === state.verbose &&
+    conversationRenderCache.previewWidth === previewWidth &&
     conversationRenderCache.theme === state.theme &&
     conversationRenderCache.count <= state.messages.length
   );
@@ -897,14 +828,16 @@ function cacheCommittedConversation(
   renderOpts: ConversationRenderOpts,
   startIndex: number,
 ): void {
+  const previewWidth = getPreviewWidth(renderOpts.previewWidth);
   cacheToolCallArgs(state.messages);
 
-  if (!canReuseCommittedConversationCache(state, startIndex)) {
+  if (!canReuseCommittedConversationCache(state, startIndex, previewWidth)) {
     conversationRenderCache.messages = state.messages;
     conversationRenderCache.startIndex = startIndex;
     conversationRenderCache.count = startIndex;
     conversationRenderCache.showReasoning = state.showReasoning;
     conversationRenderCache.verbose = state.verbose;
+    conversationRenderCache.previewWidth = previewWidth;
     conversationRenderCache.theme = state.theme;
     conversationRenderCache.nodes = [];
   }
@@ -942,17 +875,20 @@ function hasStreamingTail(streaming: StreamingConversationState): boolean {
  * @param state - Conversation rendering state.
  * @param streaming - Current in-progress assistant tail, if any.
  * @param startIndex - Index of the first committed message to render.
+ * @param previewWidth - Available terminal width for width-aware tool previews.
  * @returns The rendered conversation log nodes.
  */
 export function buildConversationLogNodes(
   state: Pick<AppState, "messages" | "showReasoning" | "verbose" | "theme">,
   streaming: StreamingConversationState,
   startIndex = 0,
+  previewWidth = DEFAULT_TOOL_PREVIEW_WIDTH,
 ): Node[] {
   const renderOpts: ConversationRenderOpts = {
     showReasoning: state.showReasoning,
     verbose: state.verbose,
     theme: state.theme,
+    previewWidth,
   };
 
   cacheCommittedConversation(state, renderOpts, startIndex);

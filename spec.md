@@ -54,7 +54,6 @@ This replaces: `yoctocolors`, `yoctomarkdown`, `yoctoselect`, and all our custom
 
 - **Runtime**: Bun — for runtime, bundling, testing, and `bun:sqlite`.
 - **Schema validation**: TypeBox (re-exported from pi-ai) for tool schemas.
-- **Diffing**: `diff` (jsdiff) — `structuredPatch` for line-level unified diffs in edit tool output.
 
 ## Tools
 
@@ -267,7 +266,7 @@ You are mini-coder, a coding agent running in the user's terminal.
 
 # Role
 
-You are an autonomous, senior-level coding assistant. When the user gives a direction, proactively gather context, plan, implement, and verify without waiting for additional prompts at each step. Bias toward action: make reasonable assumptions and deliver working code rather than asking clarifying questions, unless you are genuinely blocked.
+You are an autonomous, senior-level coding assistant. When the user gives a direction, proactively gather context, plan with the user, implement, and verify. Bias toward action: use planning first to clear any assumptions with the user, then implement the plan. Deliver working code, unless you are genuinely blocked.
 
 # Tools
 
@@ -373,7 +372,7 @@ Key decisions informed by the Codex prompting guide and Claude prompting best pr
 - **Autonomy and persistence**: both guides emphasize that coding agents should bias toward action, persist through errors, and complete work end-to-end. The prompt explicitly states this.
 - **Inspect → mutate → verify**: the Codex guide's recommended workflow. Makes the two-tool surface sufficient.
 - **Batch reads**: both guides stress parallel tool calling. The prompt instructs the model to think first and batch.
-- **No plan dumping**: the Codex guide notes that prompting for upfront plans can cause models to stop prematurely. We ask for action, not plans.
+- **Brief planning, not plan dumping**: the Codex guide notes that prompting for large upfront plans can cause models to stop prematurely. The prompt now asks the agent to plan with the user just enough to clear assumptions, then continue into implementation.
 - **Edit discipline**: derived from Codex's editing constraints (don't revert others' changes, no destructive git, ASCII default).
 - **Concise communication**: both guides recommend against verbose summaries. The prompt asks for brief explanations focused on what changed.
 - **Model-agnostic**: no provider-specific instructions. Works across Anthropic, OpenAI, Google, and others. Uses XML tags for structure (well-understood by all major models).
@@ -393,14 +392,18 @@ Three zones, top to bottom:
 │                                                      │
 │  I'll check the test suite first.                    │  agent: default bg
 │                                                      │
-│  │ $ bun test                                        │  tool: left border
+│  │ [shell ->] bun test                               │  tool call
+│  │ [shell <-]                                        │  tool result
 │  │ 3 passed, 1 failed                                │  dimmed text
 │  │ FAIL src/agent.test.ts > handles error            │
 │  │ exit 1                                            │
 │  │                                                   │
-│  │ ~ src/agent.ts                                    │  edit: path + diff
-│  │ -    expect(result).toBe("stop");                 │  red removed
-│  │ +    expect(result).toBe("error");                │  green added
+│  │ [edit ->]                                         │  edit preview
+│  │ src/agent.ts                                      │
+│  │   expect(result).toBe("error");                  │
+│  │                                                   │
+│  │ [edit <-]                                         │  compact result
+│  │ ~ src/agent.ts                                    │
 │  │                                                   │
 │  Fixed the assertion. Tests pass now.                │
 │                                                      │
@@ -455,9 +458,6 @@ interface Theme {
   /** Tool output left border and text. */
   toolBorder: Color | undefined;
   toolText: Color | undefined;
-  /** Diff colors in edit tool output. */
-  diffAdded: Color | undefined;
-  diffRemoved: Color | undefined;
   /** Divider line color (idle state). */
   divider: Color | undefined;
   /** Divider scanning pulse highlight color (active state). */
@@ -512,18 +512,30 @@ One line, two-sided, rendered as compact padded pills rather than a full-width f
 
 Token counts use human-friendly units (1.2k, 45k, 1.2M). Context usage is estimated from the current model-visible conversation, not just the last assistant message. Use the most recent valid assistant `usage` as an anchor (`totalTokens` when present, otherwise `input + output + cacheRead + cacheWrite`) and add heuristic estimates for any later messages. If no assistant `usage` exists yet, estimate the full current model-visible history heuristically. UI-only messages are excluded from this estimate.
 
+#### Status bar sketches
+
+```text
+[ anthropic/sonnet-4 · med ] [ ~/src/mini-coder ]            [ main +3 ~1 ▲ 2 ] [ in:1.2k out:0.8k · 42.0%/200k · $0.03 ]
+[ openai/gpt-5-mini · low ] [ ~/src/mini-coder ]                                          [ in:220 out:90 · 8.0%/200k · $0.00 ]
+[ openrouter/qwen3-coder · xhigh ] [ …/mini-coder ]           [ feat/ui ~4 ?2 ▲ 7 ] [ in:180k out:24k · 93.0%/200k · $2.10 ]
+```
+
+The outer-left pill tone changes with effort, the outer-right pill tone changes with context pressure, and the inner pills stay neutral.
+
 ### Conversation log
 
 Scrollable area that shows the full conversation history. Stick-to-bottom by default (new content auto-scrolls), user can scroll up to review, scrolling back to bottom re-enables auto-scroll. Conversation updates are streamed into this log as they happen; the UI should not wait for a completed turn before showing progress.
 
 Message types and their rendering:
 
+Tool blocks share a common frame: a left border (`│`) plus a compact header pill naming the tool and direction (`[tool ->]` for assistant tool calls, `[tool <-]` for tool results). The body renders tool-specific content rather than raw JSON.
+
 - **User messages**: displayed as plain text with a subtle background color to distinguish them from agent responses. No prefix or role indicator.
 - **Assistant messages**: streamed markdown rendered via cel-tui's `Markdown` component on the default background. Thinking/reasoning content is collapsible (shown or hidden according to the user's persisted `/reasoning` preference; defaults to shown when no setting exists).
-- **Tool calls — shell**: rendered with a left border (`│`) and dimmed foreground. The assistant tool call streams the arguments as they arrive. The command preview and shell tool result body use [verbose tool rendering](#verbose-tool-rendering). The shell tool result is rendered as the tool output (not the raw json, the content), with no extra header or placeholder lines.
-- **Tool calls — edit**: rendered with a left border (`│`) and dimmed foreground. Shows the arguments streamed in, preserving whitespace (the content of the arguments, not JSON). The in-progress tool-call preview uses [verbose tool rendering](#verbose-tool-rendering). Successful results then show a unified diff of the change (added lines in green, removed in red) in full. Uses the `diff` package (`structuredPatch`) for line-level unified diffs.
-- **Tool calls — readImage**: rendered with a left border (`│`) and dimmed foreground. The assistant tool call streams the arguments as they arrive (the path, not the JSON). Successful tool results display the text `Read image.` instead of rendering the image itself.
-- **Tool calls — plugin tools**: rendered with a left border, prefixed with plugin/tool name.
+- **Tool calls — shell**: rendered in the shared tool frame. The assistant tool call streams the command as it arrives. The command preview and shell tool result body use [verbose tool rendering](#verbose-tool-rendering). Shell tool results render the tool output content below a `[shell <-]` header.
+- **Tool calls — edit**: rendered in the shared tool frame. The in-progress tool-call preview shows the target path plus the streamed replacement content, preserving whitespace. The preview body uses [verbose tool rendering](#verbose-tool-rendering). Successful results render a compact confirmation block (`[edit <-]` plus the file path); errors render the returned error text.
+- **Tool calls — readImage**: rendered in the shared tool frame. The assistant tool call streams the path as it arrives. Successful results render a compact result block (`[read image <-]` plus the file path) rather than rendering the image itself.
+- **Tool calls — plugin tools**: rendered in the shared tool frame, prefixed with plugin/tool name when available.
 - **UI messages**: internal app messages such as `/help` output, OAuth progress, and other session-local notices. They are rendered in the conversation log, persisted with the session, excluded from model context, and do not participate in conversational turn numbering.
 - **Errors**: one-line summary, styled distinctly.
 
@@ -531,14 +543,140 @@ Message types and their rendering:
 
 `/verbose` controls a single persisted UI preference for how tool-call previews and selected tool-result bodies are displayed in the conversation log.
 
-- Scope: shell tool-call bodies, shell tool-result bodies, edit tool-call preview bodies, and edit error results only. Successful edit results render as a unified diff, and that diff is always shown in full.
+- Scope: shell tool-call bodies, shell tool-result bodies, edit tool-call preview bodies, and edit error results only. Successful edit results stay compact in both modes.
 - Default: off when no saved setting exists.
-- Off: show the last 8 lines followed by `And X lines more` when additional lines exist.
+- Off: show as many trailing logical lines as fit within a fixed rendered-height preview, followed by `And X lines more` when earlier lines are hidden. The preview height stays stable for a given block, so wrapped long lines do not make the log jump while content streams.
 - On: show the full stored tool result or preview body.
 - Persistence: the new on/off state is saved immediately and restored on launch.
 - This is a UI-only display choice over streamed tool-call previews and stored tool results; it does not affect tool execution or the shell tool's own safety truncation for pathological output.
 
+#### Conversation log sketches
+
+Representative entry shapes:
+
+**User**
+
+```text
+  ┌─────────────────────────────────────────────┐
+  │ fix the failing session tests               │
+  └─────────────────────────────────────────────┘
+```
+
+**Assistant (`/reasoning` on)**
+
+```text
+  I should run the focused session tests first and inspect turn assignment.
+  Then report any issues to the user.
+  That is good reasoning for my next steps.
+
+  I'll run the session tests first.
+```
+
+**Assistant (`/reasoning` off)**
+
+```text
+  Thinking... 3 lines.
+
+  I'll run the session tests first.
+```
+
+**Shell tool call**
+
+```text
+  │ [shell ->] bun test src/session.test.ts
+```
+
+**Shell tool result (`/verbose` off)**
+
+```text
+  │ [shell <-]
+  │ src/session.test.ts:
+  │   ✓ loads persisted turns
+  │   ✓ undoes the latest turn
+  │   ✗ keeps ui messages out of model context
+  │
+  │   1 failed, 2 passed
+  │   exit 1
+  │ And 14 lines more
+```
+
+**Shell tool result (`/verbose` on)**
+
+```text
+  │ [shell <-]
+  │ src/session.test.ts:
+  │   ✓ loads persisted turns
+  │   ✓ undoes the latest turn
+  │   ✗ keeps ui messages out of model context
+  │
+  │   AssertionError: expected 2 to be 1
+  │   at <anonymous> (src/session.test.ts:84:23)
+  │   exit 1
+```
+
+**Edit tool call preview (`/verbose` off)**
+
+```text
+  │ [edit ->]
+  │ src/session.ts
+  │   const turn = getCurrentTurn(sessionId);
+  │   saveMessage(sessionId, turn, message);
+  │ And 9 lines more
+```
+
+**Edit tool call preview (`/verbose` on)**
+
+```text
+  │ [edit ->]
+  │ src/session.ts
+  │   const turn = getNextTurn(sessionId);
+  │   saveMessage(sessionId, turn, message);
+  │   return turn;
+```
+
+**Edit tool result**
+
+```text
+  │ [edit <-]
+  │ ~ src/session.ts
+```
+
+**ReadImage tool**
+
+```text
+  │ [read image <-]
+  │ screenshots/failing-layout.png
+```
+
+**Plugin tool**
+
+```text
+  │ [mcp/search <-]
+  │ session persistence sqlite turn numbering
+```
+
+**UI message**
+
+```text
+  Loaded 3 skills from ~/.agents/skills
+```
+
+**Error**
+
+```text
+  Error: command exited with code 2
+```
+
 While the agent is working, the top divider (above the input area) animates with a scanning pulse — a bright and colored (be creative) segment sweeping across the dimmed divider line. The animation starts when a turn begins and stops when the turn ends (done, error, or aborted). No per-activity state tracking.
+
+#### Divider sketches
+
+```text
+idle:   ────────────────────────────────────────────────────────────
+frame1: ────══════──────────────────────────────────────────────────
+frame2: ─────────────══════─────────────────────────────────────────
+frame3: ────────────────────────══════──────────────────────────────
+```
 
 ### Input area
 
@@ -551,6 +689,23 @@ Supports:
 - `/command` prefix for slash commands.
 - `/skill:skill-name` prefix to inject a skill's body into the user message. The `/skill:name` prefix is stripped from the input and the skill's `SKILL.md` body is prepended to the user message content. The rest of the input becomes the user's instruction. Example: `/skill:code-review check the auth module` sends the code-review skill body + "check the auth module" as the user message.
 - Image embedding: if we autocomplete a file path ending in `.png`, `.jpg`, `.jpeg`, `.gif`, or `.webp`, and the file exists, it is embedded as `ImageContent` in the user message (base64-encoded). Only when the current model supports image input (`Model.input` includes `"image"`). If the model doesn't support images, or the file doesn't exist, or the input contains other text, the path is sent as plain text. This is intentionally simple — no inline detection within sentences.
+
+#### Input area sketches
+
+Empty input still reserves 2 lines of height; examples below only show visible text.
+
+```text
+fix the remaining lint warnings_
+
+fix the remaining lint warnings
+in the utils file too_
+
+summarize the issue
+compare the current flow
+explain the regression
+...
+add tests for undo_
+```
 
 ### Key bindings
 
@@ -576,7 +731,7 @@ Supports:
 | `/fork`      | Fork the current conversation into a new session. Copies the full message history, continues from here independently. The original session is preserved.                                                                                                                                                                                                                                                   |
 | `/undo`      | Remove the last conversational turn from history: the most recent user message and all assistant/tool messages that followed in that turn. Persisted UI messages are not part of turns and are not removed by `/undo`. Context-only — does not revert filesystem changes.                                                                                                                                  |
 | `/reasoning` | Toggle display of model thinking/reasoning content in the log. The new on/off state is persisted immediately and restored on launch. When no setting exists yet, reasoning defaults to shown.                                                                                                                                                                                                              |
-| `/verbose`   | Toggle [verbose tool rendering](#verbose-tool-rendering) for shell previews/results, edit previews, and edit errors. Successful edit diffs always render in full.                                                                                                                                                                                                                                          |
+| `/verbose`   | Toggle [verbose tool rendering](#verbose-tool-rendering) for shell previews/results, edit previews, and edit errors. Successful edit results stay compact regardless of this setting.                                                                                                                                                                                                                      |
 | `/login`     | Interactive OAuth login. Shows a selector with available OAuth providers and their login status (logged in / not logged in). Selecting a provider starts the browser-based OAuth flow. Uses pi-ai's OAuth registry. Credentials are persisted to the app data directory and used for provider discovery on subsequent launches.                                                                            |
 | `/logout`    | Interactive OAuth logout. Shows a selector with logged-in OAuth providers. Selecting one clears its saved credentials.                                                                                                                                                                                                                                                                                     |
 | `/effort`    | Interactive effort selector. Shows the four reasoning levels (`low`, `medium`, `high`, `xhigh`) with the current level highlighted. Updates the status bar immediately, and the selected effort is persisted immediately as the user's global default. The session record's `effort` field is not updated (it reflects the initial choice, like `/model`).                                                 |

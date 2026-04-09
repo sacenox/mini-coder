@@ -48,9 +48,9 @@ export interface Theme {
   toolBorder: ThemeColor;
   /** Tool output text. */
   toolText: ThemeColor;
-  /** Diff added line color (green). */
+  /** Added/replacement edit preview text. */
   diffAdded: ThemeColor;
-  /** Diff removed line color (red). */
+  /** Removed/original edit preview text. */
   diffRemoved: ThemeColor;
   /** Divider line color (idle state). */
   divider: ThemeColor;
