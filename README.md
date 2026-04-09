@@ -83,6 +83,8 @@ Plugins can add more tools, but the core stays intentionally small.
 | `Tab`         | File path autocomplete (or command filter on `/`) |
 | `Ctrl+R`      | Search global raw input history                   |
 | `Ctrl+C`      | Graceful exit                                     |
+| `Ctrl+D`      | Graceful exit (EOF, when input is empty)          |
+| `:q`          | Graceful exit                                     |
 
 ## Headless one-shot mode
 

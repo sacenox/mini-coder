@@ -718,6 +718,7 @@ add tests for undo_
 | `Ctrl+R`      | Input focused | Search global raw input history                   |
 | `Ctrl+C`      | Any           | Graceful exit                                     |
 | `Ctrl+D`      | Input empty   | Graceful exit (EOF)                               |
+| `:q`          | Input focused | Graceful exit                                     |
 | `Ctrl+Z`      | Any           | Suspend/background process                        |
 | Mouse wheel   | Log area      | Scroll conversation history                       |
 
