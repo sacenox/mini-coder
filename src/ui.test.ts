@@ -36,6 +36,8 @@ import {
   createInputController,
   handleInput,
   type InputController,
+  isQuitInput,
+  isQuitKey,
   renderActiveOverlay,
   renderBaseLayout,
   renderInputArea,
@@ -227,6 +229,37 @@ describe("ui rendering", () => {
   test("reasoning defaults on and verbose defaults off", () => {
     expect(DEFAULT_SHOW_REASONING).toBe(true);
     expect(DEFAULT_VERBOSE).toBe(false);
+  });
+
+  test("isQuitInput matches :q with surrounding whitespace", () => {
+    expect(isQuitInput(":q")).toBe(true);
+    expect(isQuitInput("  :q")).toBe(true);
+    expect(isQuitInput(":q   ")).toBe(true);
+    expect(isQuitInput("  :q  ")).toBe(true);
+  });
+
+  test("isQuitInput does not match other inputs", () => {
+    expect(isQuitInput("")).toBe(false);
+    expect(isQuitInput("q")).toBe(false);
+    expect(isQuitInput(":q!")).toBe(false);
+    expect(isQuitInput(":quit")).toBe(false);
+    expect(isQuitInput(":q and something")).toBe(false);
+  });
+
+  test("isQuitKey matches always-on quit keys", () => {
+    expect(isQuitKey("ctrl+c", "")).toBe(true);
+    expect(isQuitKey("ctrl+c", "draft text")).toBe(true);
+  });
+
+  test("isQuitKey matches empty-input quit keys only when input is empty", () => {
+    expect(isQuitKey("ctrl+d", "")).toBe(true);
+    expect(isQuitKey("ctrl+d", " ")).toBe(false);
+    expect(isQuitKey("ctrl+d", "draft text")).toBe(false);
+  });
+
+  test("isQuitKey ignores non-quit keys", () => {
+    expect(isQuitKey("enter", "")).toBe(false);
+    expect(isQuitKey("escape", "")).toBe(false);
   });
 
   test("committing a streamed response preserves hidden reasoning placeholder order", async () => {

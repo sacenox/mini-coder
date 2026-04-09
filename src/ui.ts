@@ -57,6 +57,20 @@ const PULSE_WIDTH = 5;
 /** Maximum number of committed messages rendered before older history is chunked. */
 const CONVERSATION_CHUNK_MESSAGES = 50;
 
+/** Centralized interactive quit rules for keypresses and submitted input. */
+const QUIT_RULES: Readonly<{
+  /** Submitted raw inputs that trigger graceful quit. */
+  inputs: ReadonlySet<string>;
+  /** Keypresses that always trigger graceful quit. */
+  keysAlways: ReadonlySet<string>;
+  /** Keypresses that trigger graceful quit only when input is empty. */
+  keysWhenEmptyInput: ReadonlySet<string>;
+}> = {
+  inputs: new Set([":q"]),
+  keysAlways: new Set(["ctrl+c"]),
+  keysWhenEmptyInput: new Set(["ctrl+d"]),
+};
+
 // ---------------------------------------------------------------------------
 // UI state (module-scoped, not in AppState)
 // ---------------------------------------------------------------------------
@@ -91,6 +105,23 @@ let stdinWasRaw = false;
 
 /** Active overlay for interactive commands (/model, /effort, etc.). */
 let activeOverlay: ActiveOverlay | null = null;
+
+/** Determine whether a raw input line should trigger a graceful quit. */
+export function isQuitInput(raw: string): boolean {
+  const trimmed = raw.trim();
+  return QUIT_RULES.inputs.has(trimmed);
+}
+
+/** Determine whether a keypress should trigger a graceful quit. */
+export function isQuitKey(key: string, input: string): boolean {
+  if (QUIT_RULES.keysAlways.has(key)) {
+    return true;
+  }
+  if (input === "" && QUIT_RULES.keysWhenEmptyInput.has(key)) {
+    return true;
+  }
+  return false;
+}
 
 /**
  * Reset all module-scoped UI state.
@@ -299,6 +330,14 @@ export function createInputController(state: AppState): InputController {
     onKeyPress: (key) => {
       if (key === "enter") {
         const raw = inputValue;
+
+        if (isQuitInput(raw)) {
+          inputValue = "";
+          cel.render();
+          requestGracefulExit(state);
+          return false;
+        }
+
         inputValue = "";
         cel.render();
         handleInput(raw, state);
@@ -416,6 +455,11 @@ async function gracefulExit(state: AppState): Promise<void> {
   cel.stop();
   await shutdown(state);
   process.exit(0);
+}
+
+/** Request a graceful exit and hard-fail if shutdown errors. */
+function requestGracefulExit(state: AppState): void {
+  gracefulExit(state).catch(() => process.exit(1));
 }
 
 /** Restore the terminal to the shell before suspending. */
@@ -539,12 +583,8 @@ export function renderBaseLayout(
           commandController.showInputHistoryOverlay(state);
           return;
         }
-        if (key === "ctrl+c") {
-          gracefulExit(state).catch(() => process.exit(1));
-          return;
-        }
-        if (key === "ctrl+d" && inputValue === "") {
-          gracefulExit(state).catch(() => process.exit(1));
+        if (isQuitKey(key, inputValue)) {
+          requestGracefulExit(state);
           return;
         }
         if (key === "ctrl+z") {
