@@ -53,6 +53,13 @@
   - `bun run format`
   - `bun run typecheck`
   - `bun pm pack --dry-run --ignore-scripts`
+- Pre-release docs sync:
+  - audit `README.md` against `spec.md` and the current command/CLI sources (`src/input.ts`, `src/ui/help.ts`, `src/cli.ts`, `src/headless.ts`, `package.json`)
+  - update `README.md` on `main` first
+  - update the `gh-pages` branch in a separate `git worktree`
+  - sync `README.md`, `spec.md`, and `AGENTS.md` into that `gh-pages` worktree so the branch does not keep stale repo docs
+  - update `gh-pages/index.html` so its install, features, commands, and headless-mode copy matches the repo docs and current behavior
+  - review the `gh-pages` diff before committing or pushing it
 - Release flow:
   - if the version needs to change, update only `package.json`
   - review the diff with the user before committing

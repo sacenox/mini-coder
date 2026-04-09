@@ -84,6 +84,20 @@ Plugins can add more tools, but the core stays intentionally small.
 | `Ctrl+R`      | Search global raw input history                   |
 | `Ctrl+C`      | Graceful exit                                     |
 
+## Headless one-shot mode
+
+mini-coder also supports a non-interactive one-shot mode for scripts and benchmark harnesses.
+
+```bash
+$ mc -p "summarize this repo"
+$ printf '%s\n' 'fix the failing tests' | mc
+```
+
+- Enabled when `-p/--prompt` is provided or when stdin/stdout is not a TTY.
+- Reuses the same input parsing rules as the interactive UI for plain text, `/skill:name`, and standalone image paths.
+- Streams newline-delimited JSON events to stdout.
+- Interactive slash commands such as `/model` and `/help` are not available in headless mode.
+
 ## Docs
 
 - **Docs site:** https://sacenox.github.io/mini-coder/
