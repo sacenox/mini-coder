@@ -1,0 +1,45 @@
+<!-- Mini Coder Icon v3: Gradient Modern
+     Purple-to-blue gradient background, white brackets, gradient bolt.
+     Inspired by: "fast and performant", speed gradient feeling -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6c3de8"/>
+      <stop offset="100%" stop-color="#1a73e8"/>
+    </linearGradient>
+    <linearGradient id="boltGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#fff176"/>
+      <stop offset="100%" stop-color="#ff8c00"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background pill/squircle -->
+  <rect x="2" y="2" width="96" height="96" rx="22" fill="url(#bgGrad)"/>
+
+  <!-- Left bracket { — white -->
+  <path
+    d="M37 13 C27 13 24 18 24 26 L24 41 C24 47 20 49 16 51 C20 53 24 55 24 61 L24 75 C24 83 27 88 37 88"
+    fill="none"
+    stroke="rgba(255,255,255,0.92)"
+    stroke-width="5"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <!-- Right bracket } — white -->
+  <path
+    d="M63 13 C73 13 76 18 76 26 L76 41 C76 47 80 49 84 51 C80 53 76 55 76 61 L76 75 C76 83 73 88 63 88"
+    fill="none"
+    stroke="rgba(255,255,255,0.92)"
+    stroke-width="5"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <!-- Lightning bolt — warm gradient -->
+  <path
+    d="M57 19 L42 52 L52 52 L44 81 L63 45 L52 45 Z"
+    fill="url(#boltGrad)"
+    stroke="rgba(255,255,255,0.3)"
+    stroke-width="1"
+    stroke-linejoin="round"
+  />
+</svg>
