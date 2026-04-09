@@ -7,16 +7,17 @@ The spec.md and code are the sources of truth, not this file, don't assume anyth
 
 ## In progress
 
-- None right now.
+- [ ] **Terminal bench with harbor** in `terminal-bench`.
 
 ## Open items
 
-- None right now.
+- [ ] **If git is not installed the app breaks** we should check before we use git, and ensure robustness.
+- [ ] **Emit a terminal `aborted` event for tool-phase interrupts** (`agent.ts`, `headless.ts`) — interrupting during tool execution currently returns `stopReason: "aborted"` without emitting the terminal `aborted` event required by the headless NDJSON spec.
 
 ## Low priority (deffered until further notice)
 
 - [ ] **Prevent `/session` from switching sessions mid-run** (`ui/commands.ts`, `ui/agent.ts`) — selecting a session while a turn is active can desync UI state from the session the loop is still writing to.
-- [ ] **XML-escape generated skill catalog fields** (`skills.ts`) — skill names, descriptions, and paths containing XML metacharacters can break the `<available_skills>` prompt block.
+- [ ] **Replace custom XML parsing and frontmatter parsing with dedicated dependencies** (`skills.ts`, `prompt.ts`)
 
 ## Plugin related (documented only, no plugin related work is planned right now)
 

@@ -991,6 +991,183 @@ describe("agent loop", () => {
     ]);
   });
 
+  test("uses an explicit stream end result when no terminal event was emitted", async () => {
+    const api = "agent-stream-end-result-test";
+    const sourceId = "agent-stream-end-result-test-source";
+    const model: Model<string> = {
+      id: "agent-stream-end-result-model",
+      name: "Agent Stream End Result Model",
+      api,
+      provider: "test",
+      baseUrl: "http://localhost:0",
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 128000,
+      maxTokens: 4096,
+    };
+
+    const finalMessage: AssistantMessage = {
+      role: "assistant",
+      content: [{ type: "text", text: "done without terminal event" }],
+      api,
+      provider: model.provider,
+      model: model.id,
+      usage: ZERO_USAGE,
+      stopReason: "stop",
+      timestamp: Date.now(),
+    };
+
+    registerApiProvider(
+      {
+        api,
+        stream: () => {
+          const stream = createAssistantMessageEventStream();
+          queueMicrotask(() => {
+            stream.end(finalMessage);
+          });
+          return stream;
+        },
+        streamSimple: () => {
+          const stream = createAssistantMessageEventStream();
+          queueMicrotask(() => {
+            stream.end(finalMessage);
+          });
+          return stream;
+        },
+      },
+      sourceId,
+    );
+
+    const session = createSession(db, { cwd: tmp });
+    const userMsg = makeUser("hello");
+    const turn = appendMessage(db, session.id, userMsg);
+
+    try {
+      const result = await runAgentLoop({
+        db,
+        sessionId: session.id,
+        turn,
+        model,
+        systemPrompt: "Test",
+        tools: [],
+        toolHandlers: new Map(),
+        messages: [userMsg],
+        cwd: tmp,
+      });
+
+      expect(result.stopReason).toBe("stop");
+      const lastMessage = result.messages.at(-1);
+      expect(lastMessage?.role).toBe("assistant");
+      if (!lastMessage || lastMessage.role !== "assistant") {
+        throw new Error("Expected assistant message");
+      }
+      expect(lastMessage.stopReason).toBe("stop");
+      expect(lastMessage.content).toEqual(finalMessage.content);
+    } finally {
+      unregisterApiProviders(sourceId);
+    }
+  });
+
+  test("treats a stream that ends without a terminal event as an error instead of hanging", async () => {
+    const api = "agent-incomplete-stream-test";
+    const sourceId = "agent-incomplete-stream-test-source";
+    const model: Model<string> = {
+      id: "agent-incomplete-stream-model",
+      name: "Agent Incomplete Stream Model",
+      api,
+      provider: "test",
+      baseUrl: "http://localhost:0",
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 128000,
+      maxTokens: 4096,
+    };
+
+    const buildPartialMessage = (): AssistantMessage => ({
+      role: "assistant",
+      content: [{ type: "text", text: "partial" }],
+      api,
+      provider: model.provider,
+      model: model.id,
+      usage: ZERO_USAGE,
+      stopReason: "stop",
+      timestamp: Date.now(),
+    });
+
+    registerApiProvider(
+      {
+        api,
+        stream: () => {
+          const stream = createAssistantMessageEventStream();
+          queueMicrotask(() => {
+            stream.push({
+              type: "start",
+              partial: buildPartialMessage(),
+            });
+            stream.end();
+          });
+          return stream;
+        },
+        streamSimple: () => {
+          const stream = createAssistantMessageEventStream();
+          queueMicrotask(() => {
+            stream.push({
+              type: "start",
+              partial: buildPartialMessage(),
+            });
+            stream.end();
+          });
+          return stream;
+        },
+      },
+      sourceId,
+    );
+
+    const session = createSession(db, { cwd: tmp });
+    const userMsg = makeUser("hello");
+    const turn = appendMessage(db, session.id, userMsg);
+    const timeout = Symbol("timeout");
+
+    try {
+      const raced = await Promise.race([
+        runAgentLoop({
+          db,
+          sessionId: session.id,
+          turn,
+          model,
+          systemPrompt: "Test",
+          tools: [],
+          toolHandlers: new Map(),
+          messages: [userMsg],
+          cwd: tmp,
+        }),
+        new Promise<typeof timeout>((resolve) => {
+          setTimeout(() => resolve(timeout), 100);
+        }),
+      ]);
+
+      expect(raced).not.toBe(timeout);
+      if (raced === timeout) {
+        throw new Error("Expected runAgentLoop to settle");
+      }
+
+      expect(raced.stopReason).toBe("error");
+      const lastMessage = raced.messages.at(-1);
+      expect(lastMessage?.role).toBe("assistant");
+      if (!lastMessage || lastMessage.role !== "assistant") {
+        throw new Error("Expected assistant error message");
+      }
+      expect(lastMessage.stopReason).toBe("error");
+      expect(lastMessage.errorMessage).toContain(
+        "Stream ended without a final assistant message",
+      );
+    } finally {
+      unregisterApiProviders(sourceId);
+    }
+  });
+
   test("preserves thinking content on assistant messages", async () => {
     faux.setResponses([
       fauxAssistantMessage([

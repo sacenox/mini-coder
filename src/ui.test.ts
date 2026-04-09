@@ -1484,6 +1484,49 @@ describe("ui rendering", () => {
     }
   });
 
+  test("blurring the input while idle unfocuses it", () => {
+    const state = createTestState();
+
+    try {
+      const controller = createInputController(state);
+
+      controller.onBlur();
+
+      const input = expectTextInput(renderInputArea(state.theme, controller));
+      expect(input.props.focused).toBe(false);
+    } finally {
+      state.db.close();
+    }
+  });
+
+  test("opening input history during a running turn blurs the input without aborting", () => {
+    const state = createTestState();
+    state.running = true;
+    state.abortController = new AbortController();
+
+    try {
+      appendPromptHistory(state.db, {
+        text: "saved prompt",
+        cwd: state.cwd,
+      });
+
+      const controller = createInputController(state);
+      const base = expectVStack(renderBaseLayout(state, 80, controller));
+
+      base.props.onKeyPress?.("ctrl+r");
+      expect(renderActiveOverlay(state)).not.toBeNull();
+
+      controller.onBlur();
+
+      expect(state.abortController.signal.aborted).toBe(false);
+      const input = expectTextInput(renderInputArea(state.theme, controller));
+      expect(input.props.focused).toBe(false);
+      expect(renderActiveOverlay(state)).not.toBeNull();
+    } finally {
+      state.db.close();
+    }
+  });
+
   test("Tab autocompletes the last file path in normal input mode", () => {
     const state = createTestState();
     const cwd = createTempDir();

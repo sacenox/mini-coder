@@ -376,6 +376,44 @@ function handleAssistantStreamEvent(
   }
 }
 
+function buildIncompleteAssistantMessage(
+  opts: Pick<RunAgentOpts, "model" | "signal">,
+  partialAssistantMessage?: AssistantMessage,
+): AssistantMessage {
+  const stopReason = opts.signal?.aborted ? "aborted" : "error";
+  const errorMessage =
+    stopReason === "aborted"
+      ? "Request was aborted"
+      : "Stream ended without a final assistant message";
+
+  return {
+    role: "assistant",
+    content: partialAssistantMessage
+      ? cloneAssistantContent(partialAssistantMessage.content)
+      : [],
+    api: partialAssistantMessage?.api ?? opts.model.api,
+    provider: partialAssistantMessage?.provider ?? opts.model.provider,
+    model: partialAssistantMessage?.model ?? opts.model.id,
+    usage: partialAssistantMessage?.usage ?? {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 0,
+      cost: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        total: 0,
+      },
+    },
+    stopReason,
+    errorMessage,
+    timestamp: Date.now(),
+  };
+}
+
 async function streamAssistantMessage(
   opts: Pick<
     RunAgentOpts,
@@ -394,6 +432,12 @@ async function streamAssistantMessage(
     buildAgentContext(opts.systemPrompt, opts.messages, opts.tools),
     buildStreamOptions(opts.apiKey, opts.effort, opts.signal),
   );
+  const streamResult = eventStream.result();
+  let settledStreamResult: AssistantMessage | undefined;
+  void streamResult.then((message) => {
+    settledStreamResult = message;
+  });
+
   let assistantMessage: AssistantMessage | undefined;
   let partialAssistantMessage: AssistantMessage | undefined;
 
@@ -406,8 +450,12 @@ async function streamAssistantMessage(
       handleAssistantStreamEvent(event, opts.onEvent) ?? assistantMessage;
   }
 
+  // `end(result)` resolves the final result without emitting a terminal event.
+  await Promise.resolve();
   const finalAssistantMessage =
-    assistantMessage ?? (await eventStream.result());
+    assistantMessage ??
+    settledStreamResult ??
+    buildIncompleteAssistantMessage(opts, partialAssistantMessage);
   if (!partialAssistantMessage) {
     return finalAssistantMessage;
   }
