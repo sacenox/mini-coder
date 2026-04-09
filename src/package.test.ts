@@ -61,4 +61,5 @@ test("pack dry-run includes the README, mc launcher, and runtime entrypoint", as
   expect(result.stdout).toContain("bin/mc.ts");
   expect(result.stdout).toContain("src/index.ts");
   expect(result.stdout).not.toContain("src/package.test.ts");
+  expect(result.stdout).not.toContain("terminal-bench/");
 });

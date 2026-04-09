@@ -8,3 +8,4 @@ lefthook.yml
 tsconfig.json
 .prettierignore
 .codex
+terminal-bench/
