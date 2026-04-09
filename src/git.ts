@@ -23,6 +23,8 @@ export interface GitState {
   root: string;
   /** Current branch name (empty string for detached HEAD). */
   branch: string;
+  /** Upstream tracking ref such as `origin/main`, or `null` when none exists. */
+  upstream: string | null;
   /** Number of staged (index) changes. */
   staged: number;
   /** Number of unstaged working-tree modifications. */
@@ -135,8 +137,12 @@ export async function getGitState(cwd: string): Promise<GitState | null> {
   if (root === null) return null;
 
   // Run remaining commands in parallel
-  const [branch, status, revList] = await Promise.all([
+  const [branch, upstream, status, revList] = await Promise.all([
     run(["branch", "--show-current"], cwd),
+    run(
+      ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
+      cwd,
+    ),
     run(["status", "--porcelain"], cwd, false),
     run(["rev-list", "--left-right", "--count", "HEAD...@{upstream}"], cwd),
   ]);
@@ -155,6 +161,7 @@ export async function getGitState(cwd: string): Promise<GitState | null> {
   return {
     root,
     branch: branch ?? "",
+    upstream,
     staged,
     modified,
     untracked,

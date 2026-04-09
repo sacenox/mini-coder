@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
+  chmodSync,
   mkdirSync,
   mkdtempSync,
   rmSync,
@@ -157,6 +158,18 @@ describe("discoverAgentsMd", () => {
     const files = discoverAgentsMd(project, home);
     expect(files.map((file) => file.content)).toEqual(["Project instructions"]);
   });
+
+  test("skips unreadable AGENTS.md files", () => {
+    const unreadablePath = join(tmp, "AGENTS.md");
+    writeFileSync(unreadablePath, "secret instructions");
+    chmodSync(unreadablePath, 0o000);
+
+    try {
+      expect(discoverAgentsMd(tmp, resolve(tmp))).toEqual([]);
+    } finally {
+      chmodSync(unreadablePath, 0o600);
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -199,6 +212,7 @@ describe("formatGitLine", () => {
     const state: GitState = {
       root: "/repo",
       branch: "main",
+      upstream: "origin/main",
       staged: 3,
       modified: 1,
       untracked: 2,
@@ -216,6 +230,7 @@ describe("formatGitLine", () => {
     const state: GitState = {
       root: "/repo",
       branch: "main",
+      upstream: null,
       staged: 0,
       modified: 0,
       untracked: 0,
@@ -231,6 +246,7 @@ describe("formatGitLine", () => {
     const state: GitState = {
       root: "/repo",
       branch: "feature",
+      upstream: null,
       staged: 0,
       modified: 2,
       untracked: 0,
@@ -246,6 +262,7 @@ describe("formatGitLine", () => {
     const state: GitState = {
       root: "/repo",
       branch: "dev",
+      upstream: "upstream/dev",
       staged: 1,
       modified: 0,
       untracked: 0,
@@ -261,6 +278,7 @@ describe("formatGitLine", () => {
     const state: GitState = {
       root: "/repo",
       branch: "main",
+      upstream: "origin/main",
       staged: 0,
       modified: 0,
       untracked: 0,
@@ -276,6 +294,7 @@ describe("formatGitLine", () => {
     const state: GitState = {
       root: "/repo",
       branch: "main",
+      upstream: "origin/main",
       staged: 0,
       modified: 0,
       untracked: 0,
@@ -285,6 +304,22 @@ describe("formatGitLine", () => {
 
     const line = formatGitLine(state);
     expect(line).toBe("Git: branch main | −4 vs origin/main");
+  });
+
+  test("uses the actual upstream ref instead of assuming origin", () => {
+    const state: GitState = {
+      root: "/repo",
+      branch: "feature",
+      upstream: "fork/main",
+      staged: 0,
+      modified: 0,
+      untracked: 0,
+      ahead: 2,
+      behind: 1,
+    };
+
+    const line = formatGitLine(state);
+    expect(line).toBe("Git: branch feature | +2 −1 vs fork/main");
   });
 });
 
@@ -325,6 +360,7 @@ describe("buildSystemPrompt", () => {
       git: {
         root: "/home/user/project",
         branch: "main",
+        upstream: "origin/main",
         staged: 3,
         modified: 1,
         untracked: 2,
@@ -430,6 +466,7 @@ describe("buildSystemPrompt", () => {
       git: {
         root: "/project",
         branch: "main",
+        upstream: null,
         staged: 0,
         modified: 0,
         untracked: 0,

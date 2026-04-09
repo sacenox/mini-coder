@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 import {
   type AppState,
   didOAuthCredentialsChange,
+  loadOAuthCredentials,
   loadPromptContext,
   reloadPromptContext,
 } from "./index.ts";
@@ -174,6 +175,16 @@ test("didOAuthCredentialsChange compares refreshed credentials structurally", ()
       access: "new-access-token",
     }),
   ).toBe(true);
+});
+
+test("loadOAuthCredentials throws a helpful error when the auth file contains invalid JSON", () => {
+  const dir = createTempDir();
+  const path = join(dir, "auth.json");
+  writeFileSync(path, "{not json", "utf-8");
+
+  expect(() => loadOAuthCredentials(path)).toThrow(
+    `Failed to read OAuth credentials ${path}:`,
+  );
 });
 
 test("loadPromptContext loads AGENTS.md, skills, plugins, and theme overrides", async () => {

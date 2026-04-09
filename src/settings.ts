@@ -51,10 +51,15 @@ const THINKING_LEVELS = new Set<ThinkingLevel>([
   "xhigh",
 ]);
 
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 /**
  * Load and validate user settings from disk.
  *
- * Invalid or missing files are treated as empty settings.
+ * Missing files are treated as empty settings. Invalid JSON or unreadable files
+ * fail with a descriptive error instead of silently discarding saved state.
  *
  * @param path - Absolute path to `settings.json`.
  * @returns The validated settings object.
@@ -67,8 +72,10 @@ export function loadSettings(path: string): UserSettings {
   try {
     const raw = JSON.parse(readFileSync(path, "utf-8")) as unknown;
     return sanitizeSettings(raw);
-  } catch {
-    return {};
+  } catch (error) {
+    throw new Error(
+      `Failed to read settings ${path}: ${getErrorMessage(error)}`,
+    );
   }
 }
 

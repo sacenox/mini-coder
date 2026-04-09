@@ -124,6 +124,7 @@ describe("getGitState", () => {
   test("returns zero ahead/behind when no upstream", async () => {
     await initRepo();
     const state = expectGitState(await getGitState(tmp));
+    expect(state.upstream).toBeNull();
     expect(state.ahead).toBe(0);
     expect(state.behind).toBe(0);
   });
@@ -147,6 +148,7 @@ describe("getGitState", () => {
     await git("commit -m second", work);
 
     const state = expectGitState(await getGitState(work));
+    expect(state.upstream).toBeOneOf(["origin/main", "origin/master"]);
     expect(state.ahead).toBe(1);
     expect(state.behind).toBe(0);
   });

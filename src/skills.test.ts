@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildSkillCatalog, discoverSkills, type Skill } from "./skills.ts";
@@ -204,6 +210,21 @@ describe("discoverSkills", () => {
     expect(skills).toHaveLength(1);
     expect(skills[0]!.name).toBe("quoted-name");
     expect(skills[0]!.description).toBe("A quoted description");
+  });
+
+  test("skips unreadable SKILL.md files", () => {
+    const skillPath = writeSkill(
+      tmp,
+      "secret-skill",
+      ["---", "name: secret-skill", "description: Hidden", "---"].join("\n"),
+    );
+    chmodSync(skillPath, 0o000);
+
+    try {
+      expect(discoverSkills([tmp])).toEqual([]);
+    } finally {
+      chmodSync(skillPath, 0o600);
+    }
   });
 });
 

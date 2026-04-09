@@ -137,6 +137,7 @@ describe("ui/status", () => {
     state.git = {
       root: state.cwd,
       branch: "main",
+      upstream: "origin/main",
       staged: 1,
       modified: 2,
       untracked: 3,

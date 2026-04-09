@@ -10,7 +10,7 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import type {
   KnownProvider,
@@ -98,24 +98,45 @@ export const MAX_SESSIONS_PER_CWD = 20;
 /** Maximum raw prompt-history entries to retain globally. */
 export const MAX_PROMPT_HISTORY = 1_000;
 
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 // ---------------------------------------------------------------------------
 // OAuth credential persistence
 // ---------------------------------------------------------------------------
 
 /** Load saved OAuth credentials from disk. */
-function loadOAuthCredentials(): Record<string, OAuthCredentials> {
-  if (!existsSync(AUTH_PATH)) return {};
+function loadOAuthCredentials(
+  path = AUTH_PATH,
+): Record<string, OAuthCredentials> {
+  if (!existsSync(path)) return {};
+
+  let parsed: unknown;
   try {
-    return JSON.parse(readFileSync(AUTH_PATH, "utf-8"));
-  } catch {
-    return {};
+    parsed = JSON.parse(readFileSync(path, "utf-8")) as unknown;
+  } catch (error) {
+    throw new Error(
+      `Failed to read OAuth credentials ${path}: ${getErrorMessage(error)}`,
+    );
   }
+
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new Error(
+      `Failed to read OAuth credentials ${path}: expected a JSON object`,
+    );
+  }
+
+  return parsed as Record<string, OAuthCredentials>;
 }
 
 /** Save OAuth credentials to disk. */
-function saveOAuthCredentials(creds: Record<string, OAuthCredentials>): void {
-  mkdirSync(DATA_DIR, { recursive: true });
-  writeFileSync(AUTH_PATH, JSON.stringify(creds, null, 2), "utf-8");
+function saveOAuthCredentials(
+  creds: Record<string, OAuthCredentials>,
+  path = AUTH_PATH,
+): void {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, JSON.stringify(creds, null, 2), "utf-8");
 }
 
 /** Return whether refreshed OAuth credentials differ from the persisted value. */

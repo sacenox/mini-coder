@@ -52,12 +52,26 @@ describe("settings", () => {
     expect(loadSettings(path)).toEqual(settings);
   });
 
-  test("loadSettings ignores invalid JSON", () => {
+  test("loadSettings throws a helpful error when the file contains invalid JSON", () => {
     const dir = createTempDir();
     const path = join(dir, "settings.json");
     writeFileSync(path, "{not json", "utf-8");
 
-    expect(loadSettings(path)).toEqual({});
+    expect(() => loadSettings(path)).toThrow(
+      `Failed to read settings ${path}:`,
+    );
+  });
+
+  test("updateSettings preserves an invalid settings file instead of overwriting it", () => {
+    const dir = createTempDir();
+    const path = join(dir, "settings.json");
+    const invalidJson = "{not json";
+    writeFileSync(path, invalidJson, "utf-8");
+
+    expect(() => updateSettings(path, { verbose: true })).toThrow(
+      `Failed to read settings ${path}:`,
+    );
+    expect(readFileSync(path, "utf-8")).toBe(invalidJson);
   });
 
   test("loadSettings keeps valid fields and drops invalid ones", () => {

@@ -8,7 +8,7 @@
  * @module
  */
 
-import { exec } from "node:child_process";
+import { spawn } from "node:child_process";
 import { platform } from "node:os";
 import {
   cel,
@@ -379,10 +379,49 @@ export function renderInputArea(
 // Runtime helpers and controllers
 // ---------------------------------------------------------------------------
 
-/** Open a URL in the user's default browser. */
-function openInBrowser(url: string): void {
-  const cmd = platform() === "darwin" ? "open" : "xdg-open";
-  exec(`${cmd} ${JSON.stringify(url)}`);
+/** Browser process handle used by the platform opener helper. */
+interface BrowserOpenProcess {
+  /** Detach the browser opener so the app does not wait on it. */
+  unref: () => void;
+  /** Optional error listener used by real child-process implementations. */
+  on?: (event: "error", listener: (error: Error) => void) => void;
+}
+
+/** Optional runtime overrides for browser launching. */
+interface OpenInBrowserRuntime {
+  /** Platform used to choose the opener binary. */
+  platform?: NodeJS.Platform;
+  /** Process launcher used for tests. */
+  spawn?: (
+    command: string,
+    args: string[],
+    options: { detached: boolean; stdio: "ignore" },
+  ) => BrowserOpenProcess;
+}
+
+/** Open a URL in the user's default browser without invoking a shell. */
+export function openInBrowser(
+  url: string,
+  runtime?: OpenInBrowserRuntime,
+): void {
+  const command =
+    (runtime?.platform ?? platform()) === "darwin" ? "open" : "xdg-open";
+  const launch =
+    runtime?.spawn ??
+    ((
+      cmd: string,
+      args: string[],
+      options: { detached: boolean; stdio: "ignore" },
+    ) => {
+      return spawn(cmd, args, options);
+    });
+  const child = launch(command, [url], {
+    detached: true,
+    stdio: "ignore",
+  });
+
+  child.on?.("error", () => {});
+  child.unref();
 }
 
 function scrollConversationToBottom(): void {

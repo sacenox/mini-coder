@@ -10,7 +10,12 @@
  */
 
 import { Database } from "bun:sqlite";
-import type { AssistantMessage, Message } from "@mariozechner/pi-ai";
+import type {
+  AssistantMessage,
+  Message,
+  ToolResultMessage,
+  UserMessage,
+} from "@mariozechner/pi-ai";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -139,6 +144,21 @@ type MaxTurnRow = { max_turn: number | null };
 
 /** Row shape for `SELECT data` queries. */
 type DataRow = { data: string };
+
+const EMPTY_ASSISTANT_USAGE: AssistantMessage["usage"] = {
+  input: 0,
+  output: 0,
+  cacheRead: 0,
+  cacheWrite: 0,
+  totalTokens: 0,
+  cost: {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    total: 0,
+  },
+};
 
 /** Row shape returned by `SELECT * FROM prompt_history`. */
 type PromptHistoryRow = {
@@ -319,14 +339,189 @@ function getMultipartUserPreview(
   return collapsePreviewText(text);
 }
 
+function isTextContentBlock(
+  value: unknown,
+): value is { type: "text"; text: string } {
+  const record = toRecord(value);
+  return record?.type === "text" && typeof record.text === "string";
+}
+
+function isImageContentBlock(
+  value: unknown,
+): value is { type: "image"; data: string; mimeType: string } {
+  const record = toRecord(value);
+  return (
+    record?.type === "image" &&
+    typeof record.data === "string" &&
+    typeof record.mimeType === "string"
+  );
+}
+
+function isThinkingContentBlock(
+  value: unknown,
+): value is Extract<AssistantMessage["content"][number], { type: "thinking" }> {
+  const record = toRecord(value);
+  return record?.type === "thinking" && typeof record.thinking === "string";
+}
+
+function isToolCallContentBlock(
+  value: unknown,
+): value is Extract<AssistantMessage["content"][number], { type: "toolCall" }> {
+  const record = toRecord(value);
+  return (
+    record?.type === "toolCall" &&
+    typeof record.id === "string" &&
+    typeof record.name === "string" &&
+    toRecord(record.arguments) !== null
+  );
+}
+
+function isAssistantUsage(value: unknown): value is AssistantMessage["usage"] {
+  const usageRecord = toRecord(value);
+  const costRecord = toRecord(usageRecord?.cost);
+  return (
+    usageRecord !== null &&
+    costRecord !== null &&
+    readFiniteNumber(usageRecord, "input") !== null &&
+    readFiniteNumber(usageRecord, "output") !== null &&
+    readFiniteNumber(usageRecord, "cacheRead") !== null &&
+    readFiniteNumber(usageRecord, "cacheWrite") !== null &&
+    readFiniteNumber(usageRecord, "totalTokens") !== null &&
+    readFiniteNumber(costRecord, "input") !== null &&
+    readFiniteNumber(costRecord, "output") !== null &&
+    readFiniteNumber(costRecord, "cacheRead") !== null &&
+    readFiniteNumber(costRecord, "cacheWrite") !== null &&
+    readFiniteNumber(costRecord, "total") !== null
+  );
+}
+
+function isStopReason(value: unknown): value is AssistantMessage["stopReason"] {
+  return (
+    value === "stop" ||
+    value === "length" ||
+    value === "toolUse" ||
+    value === "error" ||
+    value === "aborted"
+  );
+}
+
+function isUserMessageRecord(value: unknown): value is UserMessage {
+  const record = toRecord(value);
+  if (!record || record.role !== "user") {
+    return false;
+  }
+
+  return (
+    readFiniteNumber(record, "timestamp") !== null &&
+    (typeof record.content === "string" ||
+      (Array.isArray(record.content) &&
+        record.content.every(
+          (block) => isTextContentBlock(block) || isImageContentBlock(block),
+        )))
+  );
+}
+
+function parseAssistantMessageRecord(value: unknown): AssistantMessage | null {
+  const record = toRecord(value);
+  if (!record || record.role !== "assistant") {
+    return null;
+  }
+
+  const timestamp = readFiniteNumber(record, "timestamp");
+  if (
+    !Array.isArray(record.content) ||
+    !record.content.every(
+      (block) =>
+        isTextContentBlock(block) ||
+        isThinkingContentBlock(block) ||
+        isToolCallContentBlock(block),
+    ) ||
+    typeof record.api !== "string" ||
+    typeof record.provider !== "string" ||
+    typeof record.model !== "string" ||
+    !isStopReason(record.stopReason) ||
+    (record.errorMessage !== undefined &&
+      typeof record.errorMessage !== "string") ||
+    timestamp === null
+  ) {
+    return null;
+  }
+
+  return {
+    role: "assistant",
+    content: record.content,
+    api: record.api,
+    provider: record.provider,
+    model: record.model,
+    usage: isAssistantUsage(record.usage)
+      ? record.usage
+      : structuredClone(EMPTY_ASSISTANT_USAGE),
+    stopReason: record.stopReason,
+    ...(typeof record.errorMessage === "string"
+      ? { errorMessage: record.errorMessage }
+      : {}),
+    timestamp,
+  };
+}
+
+function isToolResultMessageRecord(value: unknown): value is ToolResultMessage {
+  const record = toRecord(value);
+  if (!record || record.role !== "toolResult") {
+    return false;
+  }
+
+  return (
+    typeof record.toolCallId === "string" &&
+    typeof record.toolName === "string" &&
+    typeof record.isError === "boolean" &&
+    Array.isArray(record.content) &&
+    record.content.every(
+      (block) => isTextContentBlock(block) || isImageContentBlock(block),
+    ) &&
+    readFiniteNumber(record, "timestamp") !== null
+  );
+}
+
+function isUiMessageRecord(value: unknown): value is UiMessage {
+  const record = toRecord(value);
+  if (!record || record.role !== "ui") {
+    return false;
+  }
+
+  return (
+    record.kind === "info" &&
+    typeof record.content === "string" &&
+    readFiniteNumber(record, "timestamp") !== null
+  );
+}
+
+function parsePersistedMessage(data: string): PersistedMessage | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(data) as unknown;
+  } catch {
+    return null;
+  }
+
+  if (
+    isUserMessageRecord(parsed) ||
+    isToolResultMessageRecord(parsed) ||
+    isUiMessageRecord(parsed)
+  ) {
+    return parsed;
+  }
+
+  return parseAssistantMessageRecord(parsed);
+}
+
 /** Read the first-user preview cached by the session-list query. */
 function readFirstUserPreview(messageData: string | null): string | null {
   if (!messageData) {
     return null;
   }
 
-  const message = JSON.parse(messageData) as PersistedMessage;
-  if (message.role !== "user") {
+  const message = parsePersistedMessage(messageData);
+  if (!message || message.role !== "user") {
     return null;
   }
 
@@ -434,7 +629,7 @@ export function filterModelMessages(
 }
 
 function toRecord(value: unknown): Record<string, unknown> | null {
-  return typeof value === "object" && value !== null
+  return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
 }
@@ -620,7 +815,8 @@ export function appendMessage(
  * Load all messages for a session in insertion order.
  *
  * Messages are deserialized from their JSON representation back into
- * persisted app messages. The ordering matches the original append order
+ * persisted app messages. Invalid rows are skipped so corrupted session data
+ * does not crash the app. The ordering matches the original append order
  * (by autoincrement `id`), preserving the conversation flow.
  *
  * @param db - Open database handle.
@@ -633,7 +829,16 @@ export function loadMessages(
   sessionId: string,
 ): PersistedMessage[] {
   const rows = db.query<DataRow, [string]>(SQL.loadMessages).all(sessionId);
-  return rows.map((row) => JSON.parse(row.data) as PersistedMessage);
+  const messages: PersistedMessage[] = [];
+
+  for (const row of rows) {
+    const message = parsePersistedMessage(row.data);
+    if (message) {
+      messages.push(message);
+    }
+  }
+
+  return messages;
 }
 
 // ---------------------------------------------------------------------------

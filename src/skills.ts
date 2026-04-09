@@ -183,13 +183,17 @@ function readSkill(basePath: string, entry: string): Skill | null {
     return null;
   }
 
-  const content = readFileSync(skillPath, "utf-8");
-  const frontmatter = parseFrontmatter(content);
-  return {
-    name: frontmatter.name ?? entry,
-    description: frontmatter.description ?? "",
-    path: skillPath,
-  };
+  try {
+    const content = readFileSync(skillPath, "utf-8");
+    const frontmatter = parseFrontmatter(content);
+    return {
+      name: frontmatter.name ?? entry,
+      description: frontmatter.description ?? "",
+      path: skillPath,
+    };
+  } catch {
+    return null;
+  }
 }
 
 /**

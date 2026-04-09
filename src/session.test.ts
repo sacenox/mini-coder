@@ -179,6 +179,21 @@ describe("session persistence", () => {
     db.close();
   });
 
+  test("listSessions_firstUserPreview_returnsNullWhenTheFirstMessageRowIsInvalid", () => {
+    const db = openDatabase(":memory:");
+    const session = createSession(db, { cwd: "/tmp/test" });
+
+    db.run(
+      "INSERT INTO messages (session_id, turn, data, created_at) VALUES (?, ?, ?, ?)",
+      [session.id, 1, "not json", Date.now()],
+    );
+
+    const [entry] = listSessions(db, "/tmp/test");
+
+    expect(entry?.firstUserPreview).toBeNull();
+    db.close();
+  });
+
   test("deleteSession removes session and cascades to messages", () => {
     const db = openDatabase(":memory:");
     const session = createSession(db, { cwd: "/tmp/test" });
@@ -250,6 +265,24 @@ describe("message persistence and turn numbering", () => {
 
     const msgs = loadMessages(db, session.id);
     expect(msgs).toEqual([uiMessage]);
+    db.close();
+  });
+
+  test("loadMessages skips invalid persisted rows and keeps valid messages", () => {
+    const db = openDatabase(":memory:");
+    const session = createSession(db, { cwd: "/tmp/test" });
+
+    const turn = appendMessage(db, session.id, makeUser("hello"));
+    db.run(
+      "INSERT INTO messages (session_id, turn, data, created_at) VALUES (?, ?, ?, ?)",
+      [session.id, turn, "not json", Date.now()],
+    );
+    appendMessage(db, session.id, makeAssistant("hi"), turn);
+
+    const msgs = loadMessages(db, session.id);
+    expect(msgs).toHaveLength(2);
+    expect(msgs[0]?.role).toBe("user");
+    expect(msgs[1]?.role).toBe("assistant");
     db.close();
   });
 

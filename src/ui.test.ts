@@ -38,6 +38,7 @@ import {
   type InputController,
   isQuitInput,
   isQuitKey,
+  openInBrowser,
   renderActiveOverlay,
   renderBaseLayout,
   renderInputArea,
@@ -260,6 +261,37 @@ describe("ui rendering", () => {
   test("isQuitKey ignores non-quit keys", () => {
     expect(isQuitKey("enter", "")).toBe(false);
     expect(isQuitKey("escape", "")).toBe(false);
+  });
+
+  test("openInBrowser launches the platform opener with argv instead of a shell command", () => {
+    const calls: {
+      command: string;
+      args: string[];
+      options: { detached: boolean; stdio: "ignore" };
+    }[] = [];
+    let unrefCalled = false;
+    const url = "https://example.com/$(printf injected)";
+
+    openInBrowser(url, {
+      platform: "linux",
+      spawn: (command, args, options) => {
+        calls.push({ command, args, options });
+        return {
+          unref: () => {
+            unrefCalled = true;
+          },
+        };
+      },
+    });
+
+    expect(calls).toEqual([
+      {
+        command: "xdg-open",
+        args: [url],
+        options: { detached: true, stdio: "ignore" },
+      },
+    ]);
+    expect(unrefCalled).toBe(true);
   });
 
   test("committing a streamed response preserves hidden reasoning placeholder order", async () => {

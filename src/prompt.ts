@@ -99,10 +99,15 @@ function readAgentsMdFile(dir: string): AgentsMdFile | null {
   if (!existsSync(filePath)) {
     return null;
   }
-  return {
-    path: filePath,
-    content: readFileSync(filePath, "utf-8"),
-  };
+
+  try {
+    return {
+      path: filePath,
+      content: readFileSync(filePath, "utf-8"),
+    };
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -152,6 +157,7 @@ export function discoverAgentsMd(
  *
  * Fields are omitted when their values are zero. The git line format:
  * `Git: branch main | 3 staged, 1 modified, 2 untracked | +5 −2 vs origin/main`
+ * where the trailing upstream label reflects the repository's actual tracking ref.
  *
  * @param state - The git state to format.
  * @returns Formatted git status line.
@@ -171,7 +177,8 @@ export function formatGitLine(state: GitState): string {
     const ab: string[] = [];
     if (state.ahead > 0) ab.push(`+${state.ahead}`);
     if (state.behind > 0) ab.push(`\u2212${state.behind}`);
-    parts.push(`${ab.join(" ")} vs origin/${state.branch}`);
+    const upstream = state.upstream ? ` vs ${state.upstream}` : "";
+    parts.push(`${ab.join(" ")}${upstream}`);
   }
 
   return parts.join(" | ");
