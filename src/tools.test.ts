@@ -294,7 +294,7 @@ describe("shell", () => {
     const result = await executeShell(
       {
         command:
-          "python - <<'PY'\nfrom pathlib import Path\nprint(Path('huge-lines.txt').read_text(), end='')\nPY",
+          "bun -e \"process.stdout.write(require('node:fs').readFileSync('huge-lines.txt', 'utf8'))\"",
       },
       tmp,
       {
