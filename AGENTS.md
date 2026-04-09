@@ -9,6 +9,7 @@
 
 - Read `spec.md`, then `TODO.md`, then inspect `git status --short` / `git diff`.
 - Treat `TODO.md` as the current verified work queue. For spec-alignment work, confirm the mismatch in code before editing.
+- For audits, treat open `TODO.md` items as already-known issues and focus findings on new gaps unless the user asks to re-check known debt.
 - Keep `TODO.md` minimal and current; remove completed items instead of accumulating history.
 
 ## Code map

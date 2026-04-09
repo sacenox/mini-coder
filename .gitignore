@@ -12,3 +12,5 @@ package-lock.json
 logs/
 .codex
 .claude
+terminal-bench/jobs/
+terminal-bench/__pycache__/
