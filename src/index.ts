@@ -23,6 +23,11 @@ import type {
 import { getEnvApiKey, getModels, getProviders } from "@mariozechner/pi-ai";
 import { getOAuthApiKey, getOAuthProviders } from "@mariozechner/pi-ai/oauth";
 import type { ToolHandler } from "./agent.ts";
+import {
+  parseCliArgs,
+  resolveHeadlessPrompt,
+  shouldUseHeadlessMode,
+} from "./cli.ts";
 import { type GitState, getGitState } from "./git.ts";
 import { canonicalizePath } from "./paths.ts";
 import {
@@ -40,12 +45,15 @@ import {
   resolveAgentsScanRoot,
 } from "./prompt.ts";
 import {
+  appendMessage,
   computeStats,
+  createSession,
   filterModelMessages,
   type loadMessages,
   openDatabase,
   type Session,
   type SessionStats,
+  truncateSessions,
 } from "./session.ts";
 import {
   loadSettings,
@@ -524,6 +532,40 @@ export function buildToolList(state: AppState): {
 }
 
 /**
+ * Ensure the app has an active persisted session.
+ *
+ * Creates the session lazily on the first submitted prompt and backfills any
+ * already-present messages into the new session.
+ *
+ * @param state - Application state.
+ * @returns The active persisted session.
+ */
+export function ensureSession(
+  state: AppState,
+): NonNullable<AppState["session"]> {
+  if (state.session) {
+    return state.session;
+  }
+
+  const modelLabel = state.model
+    ? `${state.model.provider}/${state.model.id}`
+    : undefined;
+  const session = createSession(state.db, {
+    cwd: state.canonicalCwd,
+    model: modelLabel,
+    effort: state.effort,
+  });
+  truncateSessions(state.db, state.canonicalCwd, MAX_SESSIONS_PER_CWD);
+  state.session = session;
+
+  for (const message of state.messages) {
+    appendMessage(state.db, session.id, message);
+  }
+
+  return session;
+}
+
+/**
  * Get all models from authenticated providers.
  *
  * Returns a flat list of models from providers the user has credentials
@@ -560,19 +602,44 @@ export {
 /**
  * Start the mini-coder CLI.
  *
- * Initializes application state and launches the TUI.
+ * Initializes application state and launches either the interactive TUI or
+ * the headless one-shot runner based on CLI flags and TTY availability.
  *
  * @returns A promise that resolves once startup is complete.
  */
 export async function main(): Promise<void> {
+  const cli = parseCliArgs(process.argv.slice(2));
+  const tty = {
+    stdinIsTTY: process.stdin.isTTY ?? false,
+    stdoutIsTTY: process.stdout.isTTY ?? false,
+  };
   const state = await init();
+
+  if (shouldUseHeadlessMode(cli, tty)) {
+    try {
+      const rawPrompt = await resolveHeadlessPrompt(cli, tty, async () => {
+        return Bun.stdin.text();
+      });
+      const { runHeadlessPrompt } = await import("./headless.ts");
+      const stopReason = await runHeadlessPrompt(state, rawPrompt);
+      if (stopReason === "aborted") {
+        process.exitCode = 130;
+      } else if (stopReason === "error") {
+        process.exitCode = 1;
+      }
+      return;
+    } finally {
+      await shutdown(state);
+    }
+  }
+
   const { startUI } = await import("./ui.ts");
   startUI(state);
 }
 
 if (import.meta.main) {
   main().catch((err) => {
-    console.error(err);
+    console.error(err instanceof Error ? err.message : String(err));
     process.exit(1);
   });
 }

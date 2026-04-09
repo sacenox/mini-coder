@@ -25,6 +25,5 @@ The spec.md and code are the sources of truth, not this file, don't assume anyth
 
 ## Future ideas
 
-- [ ] Headless one-shot CLI mode for non-interactive runs and benchmark harnesses like Harbor/Terminal-Bench (https://www.tbench.ai/)
 - [ ] Divider theme plugin — customizable divider animations (scanning pulse, breathing, flowing dots, wave)
 - [ ] Backward-compatibility and migration policy for 1.0 (session/app data versioning, explicit migration strategy)

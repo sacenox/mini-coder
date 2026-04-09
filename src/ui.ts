@@ -20,17 +20,8 @@ import {
 } from "@cel-tui/core";
 import type { Node } from "@cel-tui/types";
 import type { AppState } from "./index.ts";
-import {
-  MAX_SESSIONS_PER_CWD,
-  reloadPromptContext,
-  shutdown,
-} from "./index.ts";
-import {
-  appendMessage,
-  createSession,
-  createUiMessage,
-  truncateSessions,
-} from "./session.ts";
+import { reloadPromptContext, shutdown } from "./index.ts";
+import { appendMessage, createUiMessage } from "./session.ts";
 import type { Theme } from "./theme.ts";
 import {
   createUiAgentController,
@@ -347,38 +338,6 @@ function openInBrowser(url: string): void {
   exec(`${cmd} ${JSON.stringify(url)}`);
 }
 
-/**
- * Ensure the app has an active persisted session.
- *
- * Creates the session lazily on the first user message and backfills any
- * pre-session UI messages currently shown in the log.
- *
- * @param state - Application state.
- * @returns The active persisted session.
- */
-function ensureSession(state: AppState): NonNullable<AppState["session"]> {
-  if (state.session) {
-    return state.session;
-  }
-
-  const modelLabel = state.model
-    ? `${state.model.provider}/${state.model.id}`
-    : undefined;
-  const session = createSession(state.db, {
-    cwd: state.canonicalCwd,
-    model: modelLabel,
-    effort: state.effort,
-  });
-  truncateSessions(state.db, state.canonicalCwd, MAX_SESSIONS_PER_CWD);
-  state.session = session;
-
-  for (const message of state.messages) {
-    appendMessage(state.db, session.id, message);
-  }
-
-  return session;
-}
-
 function scrollConversationToBottom(): void {
   stickToBottom = true;
 }
@@ -424,7 +383,6 @@ const commandController = createCommandController({
 
 /** Agent controller bound to the module-scoped UI runtime hooks. */
 const agentController = createUiAgentController({
-  ensureSession,
   appendInfoMessage,
   handleCommand: (command, state) =>
     commandController.handleCommand(command, state),

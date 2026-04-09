@@ -75,31 +75,27 @@ afterEach(() => {
   }
 });
 
-async function importIndexInChild(): Promise<{
+async function runChild(
+  command: string[],
+  env: Record<string, string | undefined> = process.env,
+): Promise<{
   exitCode: number;
   stdout: string;
   stderr: string;
 }> {
-  const proc = Bun.spawn(
-    [
-      process.execPath,
-      "--eval",
-      `await import(${JSON.stringify(INDEX_MODULE_URL)}); process.stdout.write("imported\\n");`,
-    ],
-    {
-      cwd: REPO_ROOT,
-      stdin: "ignore",
-      stdout: "pipe",
-      stderr: "pipe",
-      env: process.env,
-    },
-  );
+  const proc = Bun.spawn(command, {
+    cwd: REPO_ROOT,
+    stdin: "ignore",
+    stdout: "pipe",
+    stderr: "pipe",
+    env,
+  });
 
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
   const timeout = new Promise<never>((_, reject) => {
     timeoutId = setTimeout(() => {
       proc.kill();
-      reject(new Error("Timed out waiting for index import to exit"));
+      reject(new Error("Timed out waiting for child process to exit"));
     }, 1_000);
   });
 
@@ -118,12 +114,43 @@ async function importIndexInChild(): Promise<{
   return { exitCode, stdout, stderr };
 }
 
+async function importIndexInChild(): Promise<{
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+}> {
+  return runChild([
+    process.execPath,
+    "--eval",
+    `await import(${JSON.stringify(INDEX_MODULE_URL)}); process.stdout.write("imported\\n");`,
+  ]);
+}
+
 test("importing index.ts does not start the CLI", async () => {
   const result = await importIndexInChild();
 
   expect(result.exitCode).toBe(0);
   expect(result.stdout).toBe("imported\n");
   expect(result.stderr).toBe("");
+});
+
+test("bin/mc.ts reports headless command errors without a stack trace", async () => {
+  const home = createTempDir();
+  const result = await runChild(
+    [process.execPath, "run", "bin/mc.ts", "--", "-p", "/help"],
+    {
+      HOME: home,
+      PATH: process.env.PATH,
+      SHELL: process.env.SHELL,
+      TERM: process.env.TERM,
+    },
+  );
+
+  expect(result.exitCode).toBe(1);
+  expect(result.stdout).toBe("");
+  expect(result.stderr).toBe(
+    "Headless mode does not support slash commands: /help\n",
+  );
 });
 
 test("didOAuthCredentialsChange compares refreshed credentials structurally", () => {

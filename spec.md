@@ -584,6 +584,59 @@ Supports:
 
 Commands are discoverable when the input starts with `/`: pressing `Tab` in that state switches from file-path autocomplete to interactive command select/filter.
 
+### Headless one-shot mode
+
+mini-coder also supports a non-interactive one-shot mode for scripting and benchmark harnesses.
+
+`-p, --prompt <text>` submits exactly one user prompt, runs the full agent loop for that turn, and exits after the loop ends. No TUI is started.
+
+Headless mode is selected when either:
+
+- `-p` / `--prompt` is provided, or
+- `stdin` is not a TTY, or
+- `stdout` is not a TTY.
+
+Prompt source in headless mode:
+
+- If `-p` / `--prompt` is provided, that value is the raw submitted prompt.
+- Otherwise, mini-coder reads the raw submitted prompt from `stdin` until EOF.
+- If headless mode was selected because `stdout` is not a TTY but `stdin` is still interactive, startup fails with a clear error unless `-p` was provided. Headless mode does not fall back to an interactive prompt.
+- Empty or whitespace-only headless input is an error.
+
+Input parsing in headless mode reuses the same rules as the interactive input area for plain text, `/skill:name`, and standalone image-file paths. Interactive slash commands such as `/model`, `/session`, `/new`, `/fork`, `/undo`, `/login`, `/logout`, `/effort`, and `/help` are not available in headless mode and should fail clearly rather than attempting to open interactive UI.
+
+### Headless JSON output
+
+In headless mode, stdout is a newline-delimited JSON stream (NDJSON). Each line is one JSON object with a `type` field.
+
+This stream is intentionally raw and close to the internal agent event protocol rather than a flattened summary format. It carries the streaming event payloads needed to observe the full run, including text deltas, thinking deltas, tool-call progress, tool execution progress, persisted assistant/tool-result messages, and terminal events.
+
+At minimum, the streamed event types are:
+
+- `text_delta`
+- `thinking_delta`
+- `toolcall_start`
+- `toolcall_delta`
+- `toolcall_end`
+- `assistant_message`
+- `tool_start`
+- `tool_delta`
+- `tool_end`
+- `tool_result`
+- `done`
+- `error`
+- `aborted`
+
+Event payload fields use the same JSON-serializable shapes as the in-process agent stream and persisted pi-ai message content where applicable. No terminal-only formatting, status bar text, markdown rendering, or other TUI presentation output is written to stdout in headless mode.
+
+A successful one-shot run continues through any assistant/tool loops and ends only when the agent loop emits `done` (with `stopReason: "stop"` or `"length"`). Errors and user interrupts terminate the stream with `error` or `aborted` respectively.
+
+### Headless persistence semantics
+
+Headless runs persist exactly like interactive runs. A normal session is created lazily when the prompt is submitted, messages are stored with the usual conversational turn numbering, and the raw submitted prompt is recorded in `prompt_history` before any `/skill:name` expansion or image conversion.
+
+This means headless one-shot runs appear in normal `/session` history for that working directory and are included in the same session/message retention rules as interactive use.
+
 ### Startup
 
 On launch, mini-coder:
@@ -596,10 +649,13 @@ On launch, mini-coder:
    - `showReasoning`: if present, use it; otherwise fall back to `true`.
    - `verbose`: if present, use it; otherwise fall back to `false`.
 4. Loads AGENTS.md files, skills, plugins.
-5. Renders the UI with an empty conversation log and the status bar populated.
-6. Starts a new session when the user sends a message (no 0-message sessions in the DB).
+5. Selects the launch mode:
+   - Interactive TUI when `stdin` and `stdout` are both TTYs and `-p` was not provided.
+   - Headless one-shot mode otherwise.
+6. In interactive mode, renders the UI with an empty conversation log and the status bar populated.
+7. Starts a new session only when a prompt is actually submitted (no 0-message sessions in the DB).
 
-No banner or splash screen. The status bar already shows all the context the user needs.
+No banner or splash screen. In headless mode, stdout is reserved for NDJSON event output; in interactive mode, the status bar already shows all the context the user needs.
 
 ## User settings persistence
 
@@ -679,7 +735,7 @@ CREATE INDEX idx_prompt_history_created_at ON prompt_history(created_at, id);
 
 **Session truncation**: sessions are truncated per cwd to keep only the 20 most recently updated sessions (`updated_at DESC`), deleting older sessions and their messages via cascade.
 
-**Raw input history is global and append-only**: submitted prompt text is also recorded separately in `prompt_history` as the exact raw input the user entered before any `/skill:name` expansion or image conversion. This history is global across sessions and working directories, ordered newest first for `Ctrl+R` search, and is independent from conversational turn state — `/undo` does not remove entries from it. To bound storage, only the 1000 most recent prompt-history rows are kept.
+**Raw input history is global and append-only**: submitted prompt text is also recorded separately in `prompt_history` as the exact raw input the user entered (interactive mode) or supplied (headless mode) before any `/skill:name` expansion or image conversion. This history is global across sessions and working directories, ordered newest first for `Ctrl+R` search, and is independent from conversational turn state — `/undo` does not remove entries from it. To bound storage, only the 1000 most recent prompt-history rows are kept.
 
 ### Operations
 
