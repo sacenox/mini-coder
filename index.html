@@ -212,7 +212,7 @@
         <div class="space-y-2 p-4 text-sm">
           <div class="flex gap-2">
             <span class="select-none text-term-accent">$</span>
-            <span class="text-term-bright">bun i -g mini-coder</span>
+            <span class="text-term-bright">bun add -g mini-coder</span>
           </div>
           <div class="flex gap-2">
             <span class="select-none text-term-accent">$</span>
@@ -240,6 +240,11 @@
           class="rounded-md border border-term-border bg-term-panel px-3 py-1.5 text-term-fg transition-all hover:border-term-accent/50 hover:text-term-accent"
           href="#commands"
           >Commands &rarr;</a
+        >
+        <a
+          class="rounded-md border border-term-border bg-term-panel px-3 py-1.5 text-term-fg transition-all hover:border-term-accent/50 hover:text-term-accent"
+          href="#headless"
+          >Headless &rarr;</a
         >
         <a
           class="rounded-md border border-term-border bg-term-panel px-3 py-1.5 text-term-fg transition-all hover:border-term-accent/50 hover:text-term-accent"
@@ -486,7 +491,7 @@
 
             <dt class="font-semibold text-term-bright">/effort</dt>
             <dd class="text-term-fg">
-              Set the reasoning effort level: low, med, high, or xhigh.
+              Set the reasoning effort level: low, medium, high, or xhigh.
             </dd>
 
             <dt class="font-semibold text-term-bright">/help</dt>
@@ -496,6 +501,41 @@
             </dd>
           </dl>
         </div>
+      </section>
+
+      <section id="headless">
+        <h2>Headless one-shot mode</h2>
+        <p>
+          mini-coder also supports a non-interactive one-shot mode for scripts
+          and benchmark harnesses.
+        </p>
+        <div class="rounded-lg border border-term-border bg-term-surface p-4">
+          <pre
+            class="overflow-x-auto text-sm text-term-bright"
+          ><code>$ mc -p "summarize this repo"
+$ printf '%s\n' 'fix the failing tests' | mc</code></pre>
+        </div>
+        <ul>
+          <li>
+            <strong>Automatic mode selection.</strong> Headless mode activates
+            when <code>-p/--prompt</code> is provided or when stdin/stdout is
+            not a TTY.
+          </li>
+          <li>
+            <strong>Shared input parsing.</strong> Plain text,
+            <code>/skill:name</code>, and standalone image paths use the same
+            parsing rules as the interactive UI.
+          </li>
+          <li>
+            <strong>NDJSON output.</strong> Events stream to stdout as
+            newline-delimited JSON instead of terminal UI rendering.
+          </li>
+          <li>
+            <strong>No interactive slash commands.</strong> Commands such as
+            <code>/model</code> and <code>/help</code> are rejected in headless
+            mode.
+          </li>
+        </ul>
       </section>
 
       <section id="sessions">

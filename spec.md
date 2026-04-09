@@ -54,7 +54,6 @@ This replaces: `yoctocolors`, `yoctomarkdown`, `yoctoselect`, and all our custom
 
 - **Runtime**: Bun — for runtime, bundling, testing, and `bun:sqlite`.
 - **Schema validation**: TypeBox (re-exported from pi-ai) for tool schemas.
-- **Diffing**: `diff` (jsdiff) — `structuredPatch` for line-level unified diffs in edit tool output.
 
 ## Tools
 
@@ -267,7 +266,7 @@ You are mini-coder, a coding agent running in the user's terminal.
 
 # Role
 
-You are an autonomous, senior-level coding assistant. When the user gives a direction, proactively gather context, plan, implement, and verify without waiting for additional prompts at each step. Bias toward action: make reasonable assumptions and deliver working code rather than asking clarifying questions, unless you are genuinely blocked.
+You are an autonomous, senior-level coding assistant. When the user gives a direction, proactively gather context, plan with the user, implement, and verify. Bias toward action: use planning first to clear any assumptions with the user, then implement the plan. Deliver working code, unless you are genuinely blocked.
 
 # Tools
 
@@ -373,7 +372,7 @@ Key decisions informed by the Codex prompting guide and Claude prompting best pr
 - **Autonomy and persistence**: both guides emphasize that coding agents should bias toward action, persist through errors, and complete work end-to-end. The prompt explicitly states this.
 - **Inspect → mutate → verify**: the Codex guide's recommended workflow. Makes the two-tool surface sufficient.
 - **Batch reads**: both guides stress parallel tool calling. The prompt instructs the model to think first and batch.
-- **No plan dumping**: the Codex guide notes that prompting for upfront plans can cause models to stop prematurely. We ask for action, not plans.
+- **Brief planning, not plan dumping**: the Codex guide notes that prompting for large upfront plans can cause models to stop prematurely. The prompt now asks the agent to plan with the user just enough to clear assumptions, then continue into implementation.
 - **Edit discipline**: derived from Codex's editing constraints (don't revert others' changes, no destructive git, ASCII default).
 - **Concise communication**: both guides recommend against verbose summaries. The prompt asks for brief explanations focused on what changed.
 - **Model-agnostic**: no provider-specific instructions. Works across Anthropic, OpenAI, Google, and others. Uses XML tags for structure (well-understood by all major models).
@@ -393,14 +392,18 @@ Three zones, top to bottom:
 │                                                      │
 │  I'll check the test suite first.                    │  agent: default bg
 │                                                      │
-│  │ $ bun test                                        │  tool: left border
+│  │ [shell ->] bun test                               │  tool call
+│  │ [shell <-]                                        │  tool result
 │  │ 3 passed, 1 failed                                │  dimmed text
 │  │ FAIL src/agent.test.ts > handles error            │
 │  │ exit 1                                            │
 │  │                                                   │
-│  │ ~ src/agent.ts                                    │  edit: path + diff
-│  │ -    expect(result).toBe("stop");                 │  red removed
-│  │ +    expect(result).toBe("error");                │  green added
+│  │ [edit ->]                                         │  edit preview
+│  │ src/agent.ts                                      │
+│  │   expect(result).toBe("error");                  │
+│  │                                                   │
+│  │ [edit <-]                                         │  compact result
+│  │ ~ src/agent.ts                                    │
 │  │                                                   │
 │  Fixed the assertion. Tests pass now.                │
 │                                                      │
@@ -422,11 +425,11 @@ VStack({ height: "100%" }, [
   TextInput({ minHeight: 2, maxHeight: 10, padding: { x: 1 } }),
   // Status pills — fixed 1 line, backgrounds only behind the text
   HStack({ height: 1, padding: { x: 1 } }, [
-    statusPill(modelInfo, theme.statusPrimaryBg),
-    statusPill(cwd, theme.statusSecondaryBg),
+    statusPill(modelInfo, effortTone(theme, effort)),
+    statusPill(cwd, theme.statusSecondary),
     Spacer(),
-    gitStatus && statusPill(gitStatus, theme.statusSecondaryBg),
-    statusPill(usage, theme.statusPrimaryBg),
+    gitStatus && statusPill(gitStatus, theme.statusSecondary),
+    statusPill(usage, contextTone(theme, contextPct)),
   ]),
 ]);
 ```
@@ -436,6 +439,13 @@ VStack({ height: "100%" }, [
 All UI colors are defined in a single `Theme` object. The UI never hardcodes colors — it reads from the active theme. Plugins can return a `Partial<Theme>` in their `PluginResult` to override any color. Multiple plugin overrides are merged left-to-right (last wins).
 
 ```ts
+interface StatusTone {
+  /** Pill foreground. */
+  fg: Color | undefined;
+  /** Pill background. */
+  bg: Color | undefined;
+}
+
 interface Theme {
   /** User message background. */
   userMsgBg: Color | undefined;
@@ -448,19 +458,22 @@ interface Theme {
   /** Tool output left border and text. */
   toolBorder: Color | undefined;
   toolText: Color | undefined;
-  /** Diff colors in edit tool output. */
-  diffAdded: Color | undefined;
-  diffRemoved: Color | undefined;
   /** Divider line color (idle state). */
   divider: Color | undefined;
   /** Divider scanning pulse highlight color (active state). */
   dividerPulse: Color | undefined;
-  /** Status pill foreground. */
-  statusText: Color | undefined;
-  /** Primary status pill background (outer pills: model/effort + usage/context/cost). */
-  statusPrimaryBg: Color | undefined;
-  /** Secondary status pill background (inner pills: CWD + git). */
-  statusSecondaryBg: Color | undefined;
+  /** Neutral status pill tone for the inner CWD/git pills. */
+  statusSecondary: StatusTone;
+  /** Model/effort pill tones from low/cold to xhigh/warm. */
+  statusEffortScale: [StatusTone, StatusTone, StatusTone, StatusTone];
+  /** Usage/context pill tones from empty/cold to near-full/hot. */
+  statusContextScale: [
+    StatusTone,
+    StatusTone,
+    StatusTone,
+    StatusTone,
+    StatusTone,
+  ];
   /** Error text. */
   error: Color | undefined;
   /** Overlay modal background. */
@@ -468,7 +481,7 @@ interface Theme {
 }
 ```
 
-The default theme uses the full ANSI 16-color terminal palette where semantic accents or pill styling benefit from it, including bright variants (`color08`-`color15`) rather than restricting itself to the base 8 colors. Semantic colors should still map sensibly (for example, greens for additions/success and reds for removals/errors), but status pill styling may draw from the wider ANSI 16 range to create restrained outer/inner separation. Status pill backgrounds are applied only behind the text and padding, never across the full width of the status area. Default status colors must remain legible on both light and dark terminals. Theme values are cel-tui colors; `undefined` means "use the terminal default".
+The default theme uses the full ANSI 16-color terminal palette where semantic accents or pill styling benefit from it, including bright variants (`color08`-`color15`) rather than restricting itself to the base 8 colors. Semantic colors should still map sensibly (for example, greens for additions/success and reds for removals/errors), but the status bar now uses independent stepped tone scales rather than one shared outer-pill background. The inner CWD/git pills stay neutral, while the model pill and usage pill each move from cold/dark to warm/bright on their own scale. The default outer-pill palette families are green → cyan → purple → red, with the hottest context band using a brighter red than the regular red band. Each status tone includes both foreground and background colors so contrast remains acceptable on both light and dark terminals. Status pill backgrounds are applied only behind the text and padding, never across the full width of the status area. Theme values are cel-tui colors; `undefined` means "use the terminal default".
 
 ### Status bar
 
@@ -479,22 +492,35 @@ One line, two-sided, rendered as compact padded pills rather than a full-width f
 ```
 
 - Background is applied only behind each pill's text + padding; there is no bottom divider below the input and no full-width colored block.
-- The outer pills (`model/effort` on the left, `usage/context/cost` on the right) use `statusPrimaryBg`.
-- The inner pills (`cwd` on the left, `git` on the right) use `statusSecondaryBg`.
-- All status pill text uses `statusText`, chosen to remain legible against both pill backgrounds on light and dark terminals.
+- The inner pills (`cwd` on the left, `git` on the right) use the neutral `statusSecondary` tone.
+- The outer-left `model/effort` pill chooses its tone from `statusEffortScale`, mapped to reasoning effort from low/cold to xhigh/warm.
+- The outer-right `usage/context/cost` pill chooses its tone from `statusContextScale`, mapped to estimated context pressure from empty/cold to near-full/hot.
+- The two outer pills are independent; high effort does not force a hot context pill, and high context usage does not force a hot effort pill.
 - The git pill is omitted outside a repo, preserving the current omission behavior.
 
 **Left side:**
 
 - Outer-left: `provider/model · effort`. Effort shown as `low`, `med`, `high`, `xhigh`.
+- Effort tone mapping: `low` → scale 0, `medium` → scale 1, `high` → scale 2, `xhigh` → scale 3.
 - Inner-left: CWD, abbreviated with `~` for home. Truncated from the left (`…/mini-coder`) on narrow terminals.
 
 **Right side:**
 
 - Inner-right: git branch, working tree counts (+ staged, ~ modified, ? untracked), ahead of remote (▲ N). Omitted outside a repo.
 - Outer-right: `in:input out:output · context%/window · $cost`. `in`, `out`, and `$cost` are **cumulative for the session**. `context%/window` shows the **estimated current context usage for the next model request** as a percentage of the active model's context window.
+- Context tone mapping: `<25%` → scale 0, `25-49.9%` → scale 1, `50-74.9%` → scale 2, `75-89.9%` → scale 3, `>=90%` → scale 4.
 
 Token counts use human-friendly units (1.2k, 45k, 1.2M). Context usage is estimated from the current model-visible conversation, not just the last assistant message. Use the most recent valid assistant `usage` as an anchor (`totalTokens` when present, otherwise `input + output + cacheRead + cacheWrite`) and add heuristic estimates for any later messages. If no assistant `usage` exists yet, estimate the full current model-visible history heuristically. UI-only messages are excluded from this estimate.
+
+#### Status bar sketches
+
+```text
+[ anthropic/sonnet-4 · med ] [ ~/src/mini-coder ]            [ main +3 ~1 ▲ 2 ] [ in:1.2k out:0.8k · 42.0%/200k · $0.03 ]
+[ openai/gpt-5-mini · low ] [ ~/src/mini-coder ]                                          [ in:220 out:90 · 8.0%/200k · $0.00 ]
+[ openrouter/qwen3-coder · xhigh ] [ …/mini-coder ]           [ feat/ui ~4 ?2 ▲ 7 ] [ in:180k out:24k · 93.0%/200k · $2.10 ]
+```
+
+The outer-left pill tone changes with effort, the outer-right pill tone changes with context pressure, and the inner pills stay neutral.
 
 ### Conversation log
 
@@ -502,15 +528,155 @@ Scrollable area that shows the full conversation history. Stick-to-bottom by def
 
 Message types and their rendering:
 
+Tool blocks share a common frame: a left border (`│`) plus a compact header pill naming the tool and direction (`[tool ->]` for assistant tool calls, `[tool <-]` for tool results). The body renders tool-specific content rather than raw JSON.
+
 - **User messages**: displayed as plain text with a subtle background color to distinguish them from agent responses. No prefix or role indicator.
 - **Assistant messages**: streamed markdown rendered via cel-tui's `Markdown` component on the default background. Thinking/reasoning content is collapsible (shown or hidden according to the user's persisted `/reasoning` preference; defaults to shown when no setting exists).
-- **Tool calls — shell**: rendered with a left border (`│`) and dimmed foreground. Shows the command (`$ command`) and the tool output. When `/verbose` is off, shell output is previewed as the first 20 lines followed by `And X lines more` when additional lines exist. When `/verbose` is on, the shell block expands to the full stored tool result. This is a UI-only display choice over the stored result; it is separate from the shell tool's own safety truncation for pathological output. Exit code display is intended but not implemented yet.
-- **Tool calls — edit**: rendered with a left border (`│`) and dimmed foreground. Shows the file path and a unified diff of the change (added lines in green, removed in red). When `/verbose` is off, the diff preview shows the first 20 diff lines followed by `And X lines more` when additional lines exist. When `/verbose` is on, the diff expands to the full stored tool result. This is a UI-only display choice. Uses the `diff` package (`structuredPatch`) for line-level diffing.
-- **Tool calls — plugin tools**: rendered with a left border, prefixed with plugin/tool name.
+- **Tool calls — shell**: rendered in the shared tool frame. The assistant tool call streams the command as it arrives. The command preview and shell tool result body use [verbose tool rendering](#verbose-tool-rendering). Shell tool results render the tool output content below a `[shell <-]` header.
+- **Tool calls — edit**: rendered in the shared tool frame. The in-progress tool-call preview shows the target path plus the streamed replacement content, preserving whitespace. The preview body uses [verbose tool rendering](#verbose-tool-rendering). Successful results render a compact confirmation block (`[edit <-]` plus the file path); errors render the returned error text.
+- **Tool calls — readImage**: rendered in the shared tool frame. The assistant tool call streams the path as it arrives. Successful results render a compact result block (`[read image <-]` plus the file path) rather than rendering the image itself.
+- **Tool calls — plugin tools**: rendered in the shared tool frame, prefixed with plugin/tool name when available.
 - **UI messages**: internal app messages such as `/help` output, OAuth progress, and other session-local notices. They are rendered in the conversation log, persisted with the session, excluded from model context, and do not participate in conversational turn numbering.
 - **Errors**: one-line summary, styled distinctly.
 
+#### Verbose tool rendering
+
+`/verbose` controls a single persisted UI preference for how tool-call previews and selected tool-result bodies are displayed in the conversation log.
+
+- Scope: shell tool-call bodies, shell tool-result bodies, edit tool-call preview bodies, and edit error results only. Successful edit results stay compact in both modes.
+- Default: off when no saved setting exists.
+- Off: show as many trailing logical lines as fit within a fixed rendered-height preview, followed by `And X lines more` when earlier lines are hidden. The preview height stays stable for a given block, so wrapped long lines do not make the log jump while content streams.
+- On: show the full stored tool result or preview body.
+- Persistence: the new on/off state is saved immediately and restored on launch.
+- This is a UI-only display choice over streamed tool-call previews and stored tool results; it does not affect tool execution or the shell tool's own safety truncation for pathological output.
+
+#### Conversation log sketches
+
+Representative entry shapes:
+
+**User**
+
+```text
+  ┌─────────────────────────────────────────────┐
+  │ fix the failing session tests               │
+  └─────────────────────────────────────────────┘
+```
+
+**Assistant (`/reasoning` on)**
+
+```text
+  I should run the focused session tests first and inspect turn assignment.
+  Then report any issues to the user.
+  That is good reasoning for my next steps.
+
+  I'll run the session tests first.
+```
+
+**Assistant (`/reasoning` off)**
+
+```text
+  Thinking... 3 lines.
+
+  I'll run the session tests first.
+```
+
+**Shell tool call**
+
+```text
+  │ [shell ->] bun test src/session.test.ts
+```
+
+**Shell tool result (`/verbose` off)**
+
+```text
+  │ [shell <-]
+  │ src/session.test.ts:
+  │   ✓ loads persisted turns
+  │   ✓ undoes the latest turn
+  │   ✗ keeps ui messages out of model context
+  │
+  │   1 failed, 2 passed
+  │   exit 1
+  │ And 14 lines more
+```
+
+**Shell tool result (`/verbose` on)**
+
+```text
+  │ [shell <-]
+  │ src/session.test.ts:
+  │   ✓ loads persisted turns
+  │   ✓ undoes the latest turn
+  │   ✗ keeps ui messages out of model context
+  │
+  │   AssertionError: expected 2 to be 1
+  │   at <anonymous> (src/session.test.ts:84:23)
+  │   exit 1
+```
+
+**Edit tool call preview (`/verbose` off)**
+
+```text
+  │ [edit ->]
+  │ src/session.ts
+  │   const turn = getCurrentTurn(sessionId);
+  │   saveMessage(sessionId, turn, message);
+  │ And 9 lines more
+```
+
+**Edit tool call preview (`/verbose` on)**
+
+```text
+  │ [edit ->]
+  │ src/session.ts
+  │   const turn = getNextTurn(sessionId);
+  │   saveMessage(sessionId, turn, message);
+  │   return turn;
+```
+
+**Edit tool result**
+
+```text
+  │ [edit <-]
+  │ ~ src/session.ts
+```
+
+**ReadImage tool**
+
+```text
+  │ [read image <-]
+  │ screenshots/failing-layout.png
+```
+
+**Plugin tool**
+
+```text
+  │ [mcp/search <-]
+  │ session persistence sqlite turn numbering
+```
+
+**UI message**
+
+```text
+  Loaded 3 skills from ~/.agents/skills
+```
+
+**Error**
+
+```text
+  Error: command exited with code 2
+```
+
 While the agent is working, the top divider (above the input area) animates with a scanning pulse — a bright and colored (be creative) segment sweeping across the dimmed divider line. The animation starts when a turn begins and stops when the turn ends (done, error, or aborted). No per-activity state tracking.
+
+#### Divider sketches
+
+```text
+idle:   ────────────────────────────────────────────────────────────
+frame1: ────══════──────────────────────────────────────────────────
+frame2: ─────────────══════─────────────────────────────────────────
+frame3: ────────────────────────══════──────────────────────────────
+```
 
 ### Input area
 
@@ -523,6 +689,23 @@ Supports:
 - `/command` prefix for slash commands.
 - `/skill:skill-name` prefix to inject a skill's body into the user message. The `/skill:name` prefix is stripped from the input and the skill's `SKILL.md` body is prepended to the user message content. The rest of the input becomes the user's instruction. Example: `/skill:code-review check the auth module` sends the code-review skill body + "check the auth module" as the user message.
 - Image embedding: if we autocomplete a file path ending in `.png`, `.jpg`, `.jpeg`, `.gif`, or `.webp`, and the file exists, it is embedded as `ImageContent` in the user message (base64-encoded). Only when the current model supports image input (`Model.input` includes `"image"`). If the model doesn't support images, or the file doesn't exist, or the input contains other text, the path is sent as plain text. This is intentionally simple — no inline detection within sentences.
+
+#### Input area sketches
+
+Empty input still reserves 2 lines of height; examples below only show visible text.
+
+```text
+fix the remaining lint warnings_
+
+fix the remaining lint warnings
+in the utils file too_
+
+summarize the issue
+compare the current flow
+explain the regression
+...
+add tests for undo_
+```
 
 ### Key bindings
 
@@ -540,21 +723,74 @@ Supports:
 
 ### Commands
 
-| Command      | Description                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/model`     | Interactive model selector. Switching models mid-session is allowed — pi-ai's context is model-agnostic. The `readImage` tool is re-evaluated (added/removed based on the new model's capabilities). The status bar updates immediately, and the selected model is persisted immediately as the user's global default. The session record's `model` field is not updated (it reflects the initial choice).                                            |
-| `/session`   | Interactive session manager (list, resume). Sessions scoped to CWD.                                                                                                                                                                                                                                                                                                                                                                                   |
-| `/new`       | Start a new session. Clears conversation, resets cost/token counters.                                                                                                                                                                                                                                                                                                                                                                                 |
-| `/fork`      | Fork the current conversation into a new session. Copies the full message history, continues from here independently. The original session is preserved.                                                                                                                                                                                                                                                                                              |
-| `/undo`      | Remove the last conversational turn from history: the most recent user message and all assistant/tool messages that followed in that turn. Persisted UI messages are not part of turns and are not removed by `/undo`. Context-only — does not revert filesystem changes.                                                                                                                                                                             |
-| `/reasoning` | Toggle display of model thinking/reasoning content in the log. The new on/off state is persisted immediately and restored on launch. When no setting exists yet, reasoning defaults to shown.                                                                                                                                                                                                                                                         |
-| `/verbose`   | Toggle full shell-output and edit-diff display in the UI. When off, those tool blocks show a concise preview (first 20 lines plus `And X lines more` when applicable). When on, they expand to the full stored tool result. This setting only affects UI rendering; it does not control tool-level safety truncation. The new on/off state is persisted immediately and restored on launch. When no setting exists yet, verbose mode defaults to off. |
-| `/login`     | Interactive OAuth login. Shows a selector with available OAuth providers and their login status (logged in / not logged in). Selecting a provider starts the browser-based OAuth flow. Uses pi-ai's OAuth registry. Credentials are persisted to the app data directory and used for provider discovery on subsequent launches.                                                                                                                       |
-| `/logout`    | Interactive OAuth logout. Shows a selector with logged-in OAuth providers. Selecting one clears its saved credentials.                                                                                                                                                                                                                                                                                                                                |
-| `/effort`    | Interactive effort selector. Shows the four reasoning levels (`low`, `med`, `high`, `xhigh`) with the current level highlighted. Updates the status bar immediately, and the selected effort is persisted immediately as the user's global default. The session record's `effort` field is not updated (it reflects the initial choice, like `/model`).                                                                                               |
-| `/help`      | List available commands, including the current on/off state of `/reasoning` and `/verbose`, plus loaded AGENTS.md files, discovered skills, and active plugins.                                                                                                                                                                                                                                                                                       |
+| Command      | Description                                                                                                                                                                                                                                                                                                                                                                                                |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/model`     | Interactive model selector. Switching models mid-session is allowed — pi-ai's context is model-agnostic. The `readImage` tool is re-evaluated (added/removed based on the new model's capabilities). The status bar updates immediately, and the selected model is persisted immediately as the user's global default. The session record's `model` field is not updated (it reflects the initial choice). |
+| `/session`   | Interactive session manager (list, resume). Sessions scoped to CWD.                                                                                                                                                                                                                                                                                                                                        |
+| `/new`       | Start a new session. Clears conversation, resets cost/token counters.                                                                                                                                                                                                                                                                                                                                      |
+| `/fork`      | Fork the current conversation into a new session. Copies the full message history, continues from here independently. The original session is preserved.                                                                                                                                                                                                                                                   |
+| `/undo`      | Remove the last conversational turn from history: the most recent user message and all assistant/tool messages that followed in that turn. Persisted UI messages are not part of turns and are not removed by `/undo`. Context-only — does not revert filesystem changes.                                                                                                                                  |
+| `/reasoning` | Toggle display of model thinking/reasoning content in the log. The new on/off state is persisted immediately and restored on launch. When no setting exists yet, reasoning defaults to shown.                                                                                                                                                                                                              |
+| `/verbose`   | Toggle [verbose tool rendering](#verbose-tool-rendering) for shell previews/results, edit previews, and edit errors. Successful edit results stay compact regardless of this setting.                                                                                                                                                                                                                      |
+| `/login`     | Interactive OAuth login. Shows a selector with available OAuth providers and their login status (logged in / not logged in). Selecting a provider starts the browser-based OAuth flow. Uses pi-ai's OAuth registry. Credentials are persisted to the app data directory and used for provider discovery on subsequent launches.                                                                            |
+| `/logout`    | Interactive OAuth logout. Shows a selector with logged-in OAuth providers. Selecting one clears its saved credentials.                                                                                                                                                                                                                                                                                     |
+| `/effort`    | Interactive effort selector. Shows the four reasoning levels (`low`, `medium`, `high`, `xhigh`) with the current level highlighted. Updates the status bar immediately, and the selected effort is persisted immediately as the user's global default. The session record's `effort` field is not updated (it reflects the initial choice, like `/model`).                                                 |
+| `/help`      | List available commands, including the current on/off state of `/reasoning` and `/verbose`, plus loaded AGENTS.md files, discovered skills, and active plugins.                                                                                                                                                                                                                                            |
 
 Commands are discoverable when the input starts with `/`: pressing `Tab` in that state switches from file-path autocomplete to interactive command select/filter.
+
+### Headless one-shot mode
+
+mini-coder also supports a non-interactive one-shot mode for scripting and benchmark harnesses.
+
+`-p, --prompt <text>` submits exactly one user prompt, runs the full agent loop for that turn, and exits after the loop ends. No TUI is started.
+
+Headless mode is selected when either:
+
+- `-p` / `--prompt` is provided, or
+- `stdin` is not a TTY, or
+- `stdout` is not a TTY.
+
+Prompt source in headless mode:
+
+- If `-p` / `--prompt` is provided, that value is the raw submitted prompt.
+- Otherwise, mini-coder reads the raw submitted prompt from `stdin` until EOF.
+- If headless mode was selected because `stdout` is not a TTY but `stdin` is still interactive, startup fails with a clear error unless `-p` was provided. Headless mode does not fall back to an interactive prompt.
+- Empty or whitespace-only headless input is an error.
+
+Input parsing in headless mode reuses the same rules as the interactive input area for plain text, `/skill:name`, and standalone image-file paths. Interactive slash commands such as `/model`, `/session`, `/new`, `/fork`, `/undo`, `/login`, `/logout`, `/effort`, and `/help` are not available in headless mode and should fail clearly rather than attempting to open interactive UI.
+
+### Headless JSON output
+
+In headless mode, stdout is a newline-delimited JSON stream (NDJSON). Each line is one JSON object with a `type` field.
+
+This stream is intentionally raw and close to the internal agent event protocol rather than a flattened summary format. It carries the streaming event payloads needed to observe the full run, including text deltas, thinking deltas, tool-call progress, tool execution progress, persisted assistant/tool-result messages, and terminal events.
+
+At minimum, the streamed event types are:
+
+- `text_delta`
+- `thinking_delta`
+- `toolcall_start`
+- `toolcall_delta`
+- `toolcall_end`
+- `assistant_message`
+- `tool_start`
+- `tool_delta`
+- `tool_end`
+- `tool_result`
+- `done`
+- `error`
+- `aborted`
+
+Event payload fields use the same JSON-serializable shapes as the in-process agent stream and persisted pi-ai message content where applicable. No terminal-only formatting, status bar text, markdown rendering, or other TUI presentation output is written to stdout in headless mode.
+
+A successful one-shot run continues through any assistant/tool loops and ends only when the agent loop emits `done` (with `stopReason: "stop"` or `"length"`). Errors and user interrupts terminate the stream with `error` or `aborted` respectively.
+
+### Headless persistence semantics
+
+Headless runs persist exactly like interactive runs. A normal session is created lazily when the prompt is submitted, messages are stored with the usual conversational turn numbering, and the raw submitted prompt is recorded in `prompt_history` before any `/skill:name` expansion or image conversion.
+
+This means headless one-shot runs appear in normal `/session` history for that working directory and are included in the same session/message retention rules as interactive use.
 
 ### Startup
 
@@ -568,10 +804,13 @@ On launch, mini-coder:
    - `showReasoning`: if present, use it; otherwise fall back to `true`.
    - `verbose`: if present, use it; otherwise fall back to `false`.
 4. Loads AGENTS.md files, skills, plugins.
-5. Renders the UI with an empty conversation log and the status bar populated.
-6. Starts a new session when the user sends a message (no 0-message sessions in the DB).
+5. Selects the launch mode:
+   - Interactive TUI when `stdin` and `stdout` are both TTYs and `-p` was not provided.
+   - Headless one-shot mode otherwise.
+6. In interactive mode, renders the UI with an empty conversation log and the status bar populated.
+7. Starts a new session only when a prompt is actually submitted (no 0-message sessions in the DB).
 
-No banner or splash screen. The status bar already shows all the context the user needs.
+No banner or splash screen. In headless mode, stdout is reserved for NDJSON event output; in interactive mode, the status bar already shows all the context the user needs.
 
 ## User settings persistence
 
@@ -651,7 +890,7 @@ CREATE INDEX idx_prompt_history_created_at ON prompt_history(created_at, id);
 
 **Session truncation**: sessions are truncated per cwd to keep only the 20 most recently updated sessions (`updated_at DESC`), deleting older sessions and their messages via cascade.
 
-**Raw input history is global and append-only**: submitted prompt text is also recorded separately in `prompt_history` as the exact raw input the user entered before any `/skill:name` expansion or image conversion. This history is global across sessions and working directories, ordered newest first for `Ctrl+R` search, and is independent from conversational turn state — `/undo` does not remove entries from it. To bound storage, only the 1000 most recent prompt-history rows are kept.
+**Raw input history is global and append-only**: submitted prompt text is also recorded separately in `prompt_history` as the exact raw input the user entered (interactive mode) or supplied (headless mode) before any `/skill:name` expansion or image conversion. This history is global across sessions and working directories, ordered newest first for `Ctrl+R` search, and is independent from conversational turn state — `/undo` does not remove entries from it. To bound storage, only the 1000 most recent prompt-history rows are kept.
 
 ### Operations
 

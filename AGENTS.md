@@ -1,112 +1,104 @@
 # Mini Coder — Agent Instructions
 
-- **Spec-driven development**: `spec.md` is the single source of truth for design and behavior. Read it before making changes. Do not deviate from the spec without discussion.
-- **TDD**: write tests first, then implement. Tests validate the spec's defined behaviors.
+- **Spec-driven development**: `spec.md` is the source of truth for behavior and design. Read it before changing code. Do not deviate without discussion.
+- **TDD**: write tests first, then implement.
 - Use Conventional Commits formatting for commit messages.
 - Before committing code changes, review the diff with the user and get approval for the commit.
 
+## Session bootstrap
+
+- Read `spec.md`, then `TODO.md`, then inspect `git status --short` / `git diff`.
+- Treat `TODO.md` as the current verified work queue. For spec-alignment work, confirm the mismatch in code before editing.
+- Keep `TODO.md` minimal and current; remove completed items instead of accumulating history.
+
+## Code map
+
+- `src/index.ts` — startup, providers, settings, AGENTS.md/skills/plugins loading, theme assembly, shared app state.
+- `src/agent.ts` — streaming model loop, tool dispatch, agent events.
+- `src/tools.ts` — built-in tools and truncation logic.
+- `src/session.ts` — SQLite persistence, turn numbering, undo/fork, prompt history, cumulative stats.
+- `src/prompt.ts`, `src/skills.ts`, `src/plugins.ts` — prompt assembly and external context discovery/loading.
+- `src/ui.ts` — cel-tui lifecycle and top-level orchestration.
+- `src/ui/agent.ts` — input submission, streaming state, agent-loop wiring.
+- `src/ui/commands.ts` — slash commands and Select overlays.
+- `src/ui/conversation.ts`, `src/ui/status.ts`, `src/ui/input.ts`, `src/ui/help.ts`, `src/ui/overlay.ts` — focused rendering/helpers.
+
 ## Repo
 
-- Runtime: Bun. Use `bun run` for scripts, `bun test` for tests, `bun install` for deps, `bunx` instead of `npx`.
-- Toolchain split: **prettier** owns all formatting, **biome** owns linting + import sorting (formatter disabled to avoid conflicts). Both fail CI on violations.
-  - `bun run check` — biome: lint rules + organize imports.
-  - `bun run format` — prettier: check formatting.
-  - `bun run typecheck` — tsc --noEmit.
-  - `bun test` — bun test runner.
-  - `bun run check:fix` / `bun run format:fix` — auto-fix.
-- Lefthook pre-commit runs all four steps sequentially (`--silent`, `parallel: false`).
-- App data directory: `~/.config/mini-coder/`.
-- Local manual CLI testing on this machine uses `bun add -g /home/xonecas/src/mini-coder`, which links the working tree into `~/.bun/bin/mc` without publishing. Re-run that after changing bin wiring if the global command needs to be refreshed.
-- The rewrite's published CLI entrypoint is `mc` via the checked-in Bun launcher at `bin/mc.ts` (importing `src/index.ts`). Do not point `package.json#bin` at a `dist/` file unless the publish flow actually generates that artifact.
-- All exports should have JSDoc comments (descriptions, `@param`, `@returns`). Interface fields get single-line JSDoc. See `session.ts` for the established pattern.
-- Key dependency source code for reference:
-  - pi-ai: `~/src/pi-mono/packages/ai/` — LLM provider SDK. See `src/types.ts` for core types, `src/stream.ts` for streaming API, `src/utils/oauth/` for OAuth, `src/providers/faux.ts` for test provider.
-  - cel-tui: `~/src/cel-tui/` — TUI framework. See `spec.md` for full API, `examples/chat.ts` for the chat UI pattern, `packages/components/src/markdown.ts` for Markdown component.
+- Runtime: Bun. Use `bun run`, `bun test`, `bun install`, `bunx`.
+- Toolchain split: **prettier** formats, **biome** lints + sorts imports. CI runs `bun test`, `bun run check`, `bun run format`, and `bun run typecheck`. Lefthook runs the same steps sequentially.
+- App data dir: `~/.config/mini-coder/`.
+- Published CLI entrypoint is `mc` via `bin/mc.ts` → `src/index.ts`. Do not point `package.json#bin` at `dist/` unless publish actually produces it.
+- All exports need JSDoc; interface fields get single-line JSDoc. See `session.ts` for the pattern.
+- Dependency references:
+  - pi-ai: `~/src/pi-mono/packages/ai/` (`src/types.ts`, `src/stream.ts`, `src/utils/oauth/`, `src/providers/faux.ts`)
+  - cel-tui: `~/src/cel-tui/` (`~/src/cel-tui/spec.md`, `examples/chat.ts`, `packages/components/src/markdown.ts`)
 
-## Code style
+## Release process
 
-- Do not inline `import` calls. Don't duplicate code. Don't leave dead code behind.
-- Don't re-implement helpers that already exist, always consolidate.
-- Keep it minimal — don't add abstractions for hypothetical futures.
+- Release instructions live here now; do not rely on `.agents/skills/release`.
+- This repo does not have a build step. Do not run `bun run build` for releases.
+- The published package ships the checked-in Bun launcher (`bin/mc.ts`) and runtime source (`src/index.ts`). The release-time publishability check is `bun pm pack --dry-run --ignore-scripts`.
+- Before mutating anything for a release:
+  - ensure the current branch is `main`
+  - ensure `git status --porcelain` is empty
+  - run `git fetch origin --tags` and ensure `HEAD` matches `origin/main`
+  - read `package.json` to capture the package `name` and release `version`
+  - if `package.json` is already ahead of npm, treat that version as the intended release version and do not bump again unless the user explicitly asks
+  - ensure `git tag v<version>` does not already exist locally or on origin
+  - ensure `npm view <name>@<version> version` does not already exist
+- Release verification suite:
+  - `bun test`
+  - `bun run check`
+  - `bun run format`
+  - `bun run typecheck`
+  - `bun pm pack --dry-run --ignore-scripts`
+- Pre-release docs sync:
+  - audit `README.md` against `spec.md` and the current command/CLI sources (`src/input.ts`, `src/ui/help.ts`, `src/cli.ts`, `src/headless.ts`, `package.json`)
+  - update `README.md` on `main` first
+  - update the `gh-pages` branch in a separate `git worktree`
+  - sync `README.md`, `spec.md`, and `AGENTS.md` into that `gh-pages` worktree so the branch does not keep stale repo docs
+  - update `gh-pages/index.html` so its install, features, commands, and headless-mode copy matches the repo docs and current behavior
+  - review the `gh-pages` diff before committing or pushing it
+- Release flow:
+  - if the version needs to change, update only `package.json`
+  - review the diff with the user before committing
+  - commit with `chore: release v<version>`
+  - create an annotated tag `v<version>`
+  - push `main` and the exact tag explicitly
+  - run `npm publish`
+  - verify the publish with `npm view <name>@<version> version`
+- If any check fails, stop and report the failure instead of improvising around it.
+
+## Project rules
+
+- No inline `import` calls, duplicated helpers, dead code, or speculative abstractions.
 - Performance matters. Prefer fast paths.
+- Study dependency examples, types, and tsconfig before integrating them. Match their patterns instead of fighting them.
+- Use dependency-defined types, not weaker substitutes. Do not hide type/config mismatches with casts or ignores.
+- For UI work, verify both light/dark terminal legibility and let the layout engine size things.
 
-## Working with dependencies
+## Durable lessons
 
-- **Study before using.** Before writing code against a dependency, read its examples, types, and tsconfig. Match the dependency's conventions — don't fight them.
-- **Match tsconfig constraints.** If a dependency ships `.ts` source (e.g., cel-tui), our tsconfig must be compatible with theirs. Relax our config to match, not the other way around. Never add lint-ignore comments or type casts to work around mismatched strictness settings.
-- **Follow established patterns.** Dependencies with examples (e.g., `cel-tui/examples/chat.ts`) define the canonical usage patterns. Copy those patterns exactly before customizing. Don't invent alternative approaches.
-- **Verify visual correctness.** For UI code, think through rendering on both light and dark terminals. Test color choices against both backgrounds. The spec says "adapts to the user's terminal color scheme" — that means colors must be legible in both contexts.
-- **Understand layout before rendering.** For TUI frameworks, understand how the layout engine determines dimensions (intrinsic vs fixed vs flex vs fill). Never hardcode dimensions that the framework should compute.
-
-## Lessons learned
-
-- **Never rush an implementation.** A broken implementation that compiles is worse than no implementation — it wastes review time, erodes trust, and the rework costs more than doing it right the first time.
-- **Don't suppress lint warnings for future code.** If code doesn't exist yet, don't add `biome-ignore` or `// @ts-ignore` comments for it. Add them when the code actually exists.
-- **Dead guards are lies.** Type guards for impossible types (e.g., `typeof c !== "string"` when the type is `TextContent | ThinkingContent | ToolCall`) suggest the type can contain those values. They mislead readers and should not exist.
-- **Event APIs must carry their data.** When an event handler needs data from the event source (e.g., tool call arguments), the event must carry that data. Walking external state to reconstruct it is fragile and breaks with duplicate entries.
-- **Async callbacks must handle errors.** When a sync callback invokes an async function, the returned promise must be caught. Dropping it silently turns errors into unhandled rejections.
-- **Respect the phased plan.** Each TODO.md phase has explicit scope. Do not implement features from later phases — even if they feel "easy" or "related." Scope creep wastes review time, introduces bugs from untested code paths, and erodes trust. If something isn't listed in the current phase, it doesn't exist yet.
-- **Understand callback return semantics.** In cel-tui's `onKeyPress`, returning `false` means "prevent the default action" — returning it unconditionally blocks all typing. Only return `false` for keys you explicitly intercept. Let all other keys fall through with no return.
-- **Use the dependency's types, not weaker ones.** If a dependency defines a specific type (e.g., cel-tui's `Color`), use it in your own interfaces. Don't weaken to `string` and then cast with `as any` everywhere — that defeats type safety and creates lint noise.
-- **Read the framework's key dispatch code.** cel-tui intercepts Escape at the framework level (unfocuses before `onKeyPress` fires). Use `onBlur` for dismiss-on-Escape instead of `onKeyPress`. Don't assume events reach component handlers without checking the framework's dispatch order.
-- **Pass all required options through the call chain.** pi-ai's `streamSimple` needs `apiKey` in options for OAuth providers (env vars aren't set). When adding a new field to a dependency's options, trace the full call path from UI → agent loop → provider to ensure it arrives.
-- **Display-only state must not leak into model context.** Info messages (login progress, fork confirmation) belong in a separate display array, not `state.messages`. Anything in `state.messages` gets sent to the LLM as conversation history.
-- **Compatibility policy is a product decision.** Before 1.0, prefer correct, simple semantics over speculative backward-compatibility shims. If a change may affect existing data or behavior, raise it explicitly, but do not implement migrations or compatibility layers unless the spec or user asks for them.
-- **Breaking changes still need to be called out.** Pre-1.0 is not a license to surprise the user. If a change intentionally trades compatibility for correctness or simplicity, say so explicitly in discussion and keep TODO/release notes aligned.
-- **TUI changes need real terminal validation.** For rendering, streaming, scrolling, resize, focus, or input changes, passing tests is not enough. Validate the behavior manually in `tmux` before calling the change done.
-- **Work must stay within the agreed scope.** If you discussed and agreed with a user on the work to be done, don't deviate from it. Don't add scope, or deviate from the agreement.
+- Don't add future-facing `biome-ignore`, `@ts-ignore`, or impossible type guards.
+- Event APIs must carry the data handlers need; do not reconstruct it from unrelated state.
+- Async callbacks must catch returned promises.
+- In cel-tui `onKeyPress`, return `false` only for keys you explicitly intercept. Escape often needs `onBlur`, not `onKeyPress`.
+- When adding provider/tool options, trace them through the full call chain (for example `apiKey` into `streamSimple`).
+- UI/info messages may live in the persisted log and in `state.messages`, but they must stay marked as UI-only (`role: "ui"`, `turn = NULL`) and always be filtered out of model context.
+- Prompt context has explicit reload boundaries: AGENTS.md content, discovered skills, and plugin prompt suffixes are stable within a session and should refresh only at boundaries like `/new` or CWD change.
+- Tool safety truncation and UI `/verbose` preview are separate layers. Do not conflate them.
+- The plugin API is still in spec-alignment cleanup. Current repo reality is `tools` plus `toolHandlers`; treat that as temporary, not settled design.
+- Before 1.0, prefer correct/simple semantics over speculative compatibility shims, but call out intentional breaking changes.
+- TUI changes need real terminal validation in `tmux`; passing tests is not enough.
+- Stay within the agreed TODO scope. Do not pull in adjacent items without discussion.
 
 ## Testing strategy
 
-We test our logic at the boundaries. Never test dependencies (pi-ai, cel-tui, bun:sqlite). Never use mocks or stubs.
-
-**Tools** (`tools.ts` — `shell`, `edit`, `readImage`):
-
-- `edit`: exact-text match/replace, multi-match failure, missing text failure, new file creation, parent dir creation, existing-file guard, line ending preservation (LF/CRLF), UTF-8 handling, relative/absolute path resolution.
-- `shell`: stdout/stderr capture, exit code passthrough, output truncation (head + tail with marker), abort signal, cwd propagation.
-- `truncateOutput`: pure function — within limit, head+tail+marker, no overlap, empty/single-line/exact-limit edge cases.
-- `readImage`: base64 encoding, mime type detection, unsupported format rejection, missing file handling, relative/absolute path resolution.
-
-**Git** (`git.ts`):
-
-- Real temp git repos (no mocks). Tests: outside-repo null, repo root, branch name, untracked/modified/staged counts, mixed states, ahead/behind with local bare remote, subdirectory support.
-
-**Session persistence** (`session.ts`):
-
-- CRUD operations against a real bun:sqlite in-memory database. No mocks.
-- Turn numbering: user message gets MAX+1, subsequent messages share the turn.
-- Undo: deletes correct turn, leaves others intact.
-- Fork: copies all messages, new session id, preserves turn order.
-- Truncation: keeps most recent N sessions per CWD, cascades to messages.
-- Cumulative stats computation from message history.
-
-**System prompt construction** (`prompt.ts`):
-
-- Assembly order: base + AGENTS.md + skills + plugins + footer.
-- Git line formatting: branch, dirty counts, ahead/behind, omission rules.
-- Skills catalog XML generation.
-- Conditional readImage exclusion from prompt text.
-
-**Community standards discovery** (`skills.ts`, AGENTS.md loading):
-
-- Skill discovery: scan paths, SKILL.md parsing, frontmatter extraction, name collision resolution.
-- AGENTS.md discovery: walk to scan root, ordering, `~/.agents/` inclusion.
-- Use temp directories with controlled file trees.
-
-**Agent loop** (`agent.ts`):
-
-- Use pi-ai's `faux` provider for end-to-end loop tests.
-- The loop takes `tools: Tool[]` (definitions for the model) and `toolHandlers: Map<string, ToolHandler>` (dispatch map). Tests build both via helper functions.
-- Verify: tool calls are executed, messages are appended in correct order, turns are numbered, interrupt preserves partial response, error handling, unknown tool self-correction, length stop reason.
-
-**Input parsing** (`input.ts`):
-
-- `/command` detection and routing (all 11 commands, case-sensitive, unknown commands fall through).
-- `/skill:name rest of message` → skill name + user text extraction.
-- Image path detection (entire input is an existing image path with valid extension, requires `supportsImages` opt-in).
-- Priority ordering: commands > skills > images > plain text.
-
-**Theme** (`theme.ts`):
-
-- Default theme has all required keys, including `statusPrimaryBg`, `statusSecondaryBg`, and `overlayBg`.
-- `mergeThemes` applies partial overrides left-to-right without mutating the base.
+- Test boundaries, not dependencies. Use real Bun/git/sqlite/pi-ai faux behavior. No mocks or stubs.
+- `tools.ts`: edit exact-match/create/path/newline preservation; shell exit/abort/truncation/cwd; readImage mime/errors/path handling.
+- `session.ts`: CRUD, turn numbering, undo/fork, truncation, prompt history, cumulative stats.
+- `prompt.ts` / `skills.ts`: prompt assembly order, AGENTS.md ordering/scan-root behavior, skill discovery/catalog, conditional `readImage` omission.
+- `agent.ts`: faux-provider end-to-end loop tests for tool execution, ordering, interrupts, and errors.
+- UI tests live in `src/ui*.test.ts` plus focused `src/ui/*.ts` module tests; TUI rendering/input changes still need manual terminal validation.
+- `input.ts` and `theme.ts`: command/skill/image priority, theme completeness, merge semantics.
