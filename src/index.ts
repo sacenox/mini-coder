@@ -28,6 +28,7 @@ import {
   resolveHeadlessPrompt,
   shouldUseHeadlessMode,
 } from "./cli.ts";
+import { getErrorMessage } from "./errors.ts";
 import { type GitState, getGitState } from "./git.ts";
 import { canonicalizePath } from "./paths.ts";
 import {
@@ -97,10 +98,6 @@ export const MAX_SESSIONS_PER_CWD = 20;
 
 /** Maximum raw prompt-history entries to retain globally. */
 export const MAX_PROMPT_HISTORY = 1_000;
-
-function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 // ---------------------------------------------------------------------------
 // OAuth credential persistence

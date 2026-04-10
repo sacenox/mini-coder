@@ -8,6 +8,7 @@ import { readFileSync } from "node:fs";
 import type { UserMessage } from "@mariozechner/pi-ai";
 import type { AgentEvent } from "./agent.ts";
 import { runAgentLoop } from "./agent.ts";
+import { getErrorMessage } from "./errors.ts";
 import { getGitState } from "./git.ts";
 import {
   type AppState,
@@ -101,10 +102,6 @@ export function isEmptyUserContent(content: UserMessage["content"]): boolean {
   return content.every(
     (block) => block.type === "text" && block.text.trim().length === 0,
   );
-}
-
-function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function buildSkillMessageContent(

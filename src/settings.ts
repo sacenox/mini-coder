@@ -10,6 +10,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { ThinkingLevel } from "@mariozechner/pi-ai";
+import { getErrorMessage } from "./errors.ts";
 
 /** Default reasoning effort when no saved setting exists. */
 const DEFAULT_EFFORT: ThinkingLevel = "medium";
@@ -50,10 +51,6 @@ const THINKING_LEVELS = new Set<ThinkingLevel>([
   "high",
   "xhigh",
 ]);
-
-function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 /**
  * Load and validate user settings from disk.

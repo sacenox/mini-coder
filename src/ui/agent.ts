@@ -11,6 +11,7 @@
 
 import type { AssistantMessage } from "@mariozechner/pi-ai";
 import type { AgentEvent } from "../agent.ts";
+import { getErrorMessage } from "../errors.ts";
 import type { AppState } from "../index.ts";
 import { resolveRawInput, submitResolvedInput } from "../submit.ts";
 import type {
@@ -73,10 +74,6 @@ export function getStreamingConversationState(): StreamingConversationState {
     content: streamingContent,
     pendingToolResults,
   };
-}
-
-function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 /**

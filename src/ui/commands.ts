@@ -14,6 +14,7 @@ import { Select } from "@cel-tui/components";
 import type { Model, ThinkingLevel } from "@mariozechner/pi-ai";
 import type { OAuthProviderInterface } from "@mariozechner/pi-ai/oauth";
 import { getOAuthProviders } from "@mariozechner/pi-ai/oauth";
+import { getErrorMessage } from "../errors.ts";
 import type { AppState } from "../index.ts";
 import { getAvailableModels, saveOAuthCredentials } from "../index.ts";
 import { COMMANDS } from "../input.ts";
@@ -38,10 +39,6 @@ const EFFORT_LEVELS: { label: string; value: ThinkingLevel }[] = [
   { label: "high", value: "high" },
   { label: "xhigh", value: "xhigh" },
 ];
-
-function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 /** Runtime hooks injected from the stateful UI module. */
 interface UiCommandRuntime {
