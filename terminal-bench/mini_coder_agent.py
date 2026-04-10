@@ -12,7 +12,7 @@ from harbor.models.trial.paths import EnvironmentPaths
 class MiniCoderAgent(BaseInstalledAgent):
     """Harbor installed-agent wrapper for the published mini-coder CLI."""
 
-    def __init__(self, *args, version: str = "0.5.0", **kwargs):
+    def __init__(self, *args, version: str = "latest", **kwargs):
         super().__init__(*args, version=version, **kwargs)
         self._host_config_dir = Path.home() / ".config" / "mini-coder"
         self._host_settings_path = self._host_config_dir / "settings.json"
@@ -27,9 +27,9 @@ class MiniCoderAgent(BaseInstalledAgent):
             environment,
             command=(
                 "if command -v apt-get >/dev/null 2>&1; then "
-                "apt-get update && apt-get install -y curl unzip ca-certificates bash git; "
+                "apt-get update && apt-get install -y curl unzip ca-certificates bash git python3 ripgrep; "
                 "elif command -v apk >/dev/null 2>&1; then "
-                "apk add --no-cache curl unzip ca-certificates bash git; "
+                "apk add --no-cache curl unzip ca-certificates bash git python3 ripgrep; "
                 "else "
                 'echo "Unsupported package manager for mini-coder install" >&2; exit 1; '
                 "fi"

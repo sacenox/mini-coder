@@ -1,47 +1,31 @@
 # terminal-bench benchmark workspace
 
-This folder is the scratch space for benchmarking mini-coder against Terminal-Bench 2.0 with Harbor.
+This directory contains the Harbor wrapper and job output for benchmarking published `mini-coder` on Terminal-Bench 2.0.
 
-Everything here is intentionally kept under `terminal-bench/` so it does it's separate from production code.
+Everything here stays under `terminal-bench/` so benchmark work stays separate from production mini-coder code.
 
 ## Goal
 
-Benchmark published `mini-coder@latest` on Terminal-Bench 2.0 using Harbor, with the current local mini-coder config:
+Run Terminal-Bench tasks against published `mini-coder@latest` with Harbor, using the current local mini-coder config:
 
 - model: `openai-codex/gpt-5.4`
-- effort: `xhigh`
 - auth source: `~/.config/mini-coder/auth.json`
 - settings source: `~/.config/mini-coder/settings.json`
+- effort source: `~/.config/mini-coder/settings.json`
 
-## Key decisions
-
-1. **Use Harbor's custom installed-agent path**
-   - Harbor does not require multiple models.
-   - We use a custom installed agent instead of changing mini-coder core behavior.
-
-2. **Benchmark published mini-coder, not the local checkout**
-   - The wrapper installs `mini-coder@latest` inside the task container.
-   - This was the chosen path instead of packaging the current repo state.
-
-3. **Use the current mini-coder OAuth config**
-   - `openai-codex` in mini-coder is OAuth-backed.
-   - The wrapper copies the local `auth.json` and `settings.json` into the container.
-   - It uploads copies only; it does **not** mount or mutate the host files.
-
-4. **Keep the integration outside the product code**
-   - The Harbor agent lives here in `mini_coder_agent.py`.
-   - No tracked repo files were changed for the benchmark setup.
+At the time of writing, `npm view mini-coder version dist-tags --json` reports `latest = 0.5.1`.
 
 ## Files
 
 - `mini_coder_agent.py` — Harbor installed-agent wrapper for mini-coder
-- `jobs/` — Harbor job outputs from smoke runs
+- `jobs/` — Harbor job outputs
+- `readme.md` — this runbook
 
-## Current wrapper behavior
+## What the wrapper does
 
 `mini_coder_agent.py` does this per trial:
 
-1. installs system deps: `curl`, `unzip`, `ca-certificates`, `bash`, `git`
+1. installs system deps: `curl`, `unzip`, `ca-certificates`, `bash`, `git`, `python3`, `ripgrep`
 2. installs Bun
 3. installs published `mini-coder@latest`
 4. finds the container user's home directory
@@ -54,68 +38,23 @@ Benchmark published `mini-coder@latest` on Terminal-Bench 2.0 using Harbor, with
    - `/logs/agent/mini-coder.ndjson`
    - `/logs/agent/mini-coder.stderr.txt`
 
-## Progress so far
+## Requirements
 
-### Smoke run 1
+Before running Harbor:
 
-Command:
+- `harbor` must be installed and on `PATH`
+- local mini-coder auth must be valid
+- local mini-coder settings must exist
+
+Quick checks:
 
 ```bash
-PYTHONPATH=$PWD/terminal-bench harbor run -y \
-  -d terminal-bench@2.0 \
-  --agent-import-path mini_coder_agent:MiniCoderAgent \
-  -m openai-codex/gpt-5.4 \
-  -l 1 -k 1 -n 1 \
-  -o terminal-bench/jobs
+command -v harbor
+ls -l ~/.config/mini-coder/settings.json ~/.config/mini-coder/auth.json
+npm view mini-coder version dist-tags --json
 ```
 
-Job dir:
-
-- `jobs/2026-04-09__22-14-57`
-
-Result:
-
-- failed immediately before the agent really started
-- root cause: `git` was missing in the task container
-- mini-coder stderr contained:
-
-```text
-Executable not found in $PATH: "git"
-```
-
-Fix applied afterward:
-
-- updated the wrapper install step to include `git`
-
-### Smoke run 2
-
-Same command after the `git` fix.
-
-Job dir:
-
-- `jobs/2026-04-09__22-17-21`
-
-Result:
-
-- the run got past startup
-- mini-coder emitted headless NDJSON thinking output
-- Harbor job was interrupted/cancelled before completion
-- Harbor recorded a `CancelledError`
-
-Evidence:
-
-- `jobs/2026-04-09__22-17-21/*/agent/mini-coder.ndjson` contains streamed model output
-- `jobs/2026-04-09__22-17-21/*/exception.txt` shows cancellation
-
-## Current status
-
-The wrapper is past the first blocker (`git` missing) and is capable of launching mini-coder inside the Harbor task container.
-
-The next real checkpoint is to rerun the same 1-task smoke test and let it finish.
-
-## Resume commands
-
-### Verify the wrapper still imports
+## Verify the wrapper imports
 
 ```bash
 PYTHONPATH=$PWD/terminal-bench \
@@ -123,43 +62,93 @@ PYTHONPATH=$PWD/terminal-bench \
   terminal-bench/mini_coder_agent.py
 ```
 
-### Run the 1-task smoke test again
+## Recommended runs
+
+Run these two easy tasks first. They are the recommended smoke tests before trying slower tasks.
+
+### 1. `fix-git`
+
+Recommended first run.
 
 ```bash
 PYTHONPATH=$PWD/terminal-bench harbor run -y \
   -d terminal-bench@2.0 \
   --agent-import-path mini_coder_agent:MiniCoderAgent \
   -m openai-codex/gpt-5.4 \
-  -l 1 -k 1 -n 1 \
+  -i fix-git -l 1 \
+  -k 1 -n 1 \
   -o terminal-bench/jobs
 ```
 
-### Inspect the latest Harbor job
+### 2. `prove-plus-comm`
+
+Recommended alternate easy run.
+
+```bash
+PYTHONPATH=$PWD/terminal-bench harbor run -y \
+  -d terminal-bench@2.0 \
+  --agent-import-path mini_coder_agent:MiniCoderAgent \
+  -m openai-codex/gpt-5.4 \
+  -i prove-plus-comm -l 1 \
+  -k 1 -n 1 \
+  -o terminal-bench/jobs
+```
+
+### Generic one-task command
+
+```bash
+PYTHONPATH=$PWD/terminal-bench harbor run -y \
+  -d terminal-bench@2.0 \
+  --agent-import-path mini_coder_agent:MiniCoderAgent \
+  -m openai-codex/gpt-5.4 \
+  -i <task-id> -l 1 \
+  -k 1 -n 1 \
+  -o terminal-bench/jobs
+```
+
+## Inspecting results
+
+### Show the latest Harbor job tree
 
 ```bash
 JOB=$(ls -dt terminal-bench/jobs/* | head -n1)
-find "$JOB" -maxdepth 3 -type f | sort
+find "$JOB" -maxdepth 4 -type f | sort
 ```
 
-### Inspect mini-coder logs from the latest trial
+### Show the latest top-level result summary
 
 ```bash
 JOB=$(ls -dt terminal-bench/jobs/* | head -n1)
-sed -n '1,120p' "$JOB"/*/agent/mini-coder.stderr.txt
-sed -n '1,120p' "$JOB"/*/agent/mini-coder.ndjson
+sed -n '1,220p' "$JOB"/result.json
 ```
 
-## Known constraints / notes
+### Show verifier output from the latest trial
 
-- This setup depends on the host mini-coder OAuth/login state being current.
-- If `openai-codex` auth expires, refresh it locally with mini-coder before rerunning.
-- Because the wrapper copies the host config into the container, the host auth/settings files are not modified by Harbor.
-- The first two smoke jobs are kept intentionally for debugging history.
+```bash
+JOB=$(ls -dt terminal-bench/jobs/* | head -n1)
+sed -n '1,220p' "$JOB"/*/verifier/test-stdout.txt
+sed -n '1,40p' "$JOB"/*/verifier/reward.txt
+```
 
-## Next step
+### Show mini-coder logs from the latest trial
 
-Rerun the same 1-task smoke test and let it complete. If that passes the launch phase cleanly, decide whether to:
+```bash
+JOB=$(ls -dt terminal-bench/jobs/* | head -n1)
+sed -n '1,160p' "$JOB"/*/agent/mini-coder.stderr.txt
+sed -n '1,160p' "$JOB"/*/agent/mini-coder.ndjson
+```
 
-1. keep iterating with `-l 1 -k 1`
-2. run a small subset
-3. run a larger TB2 batch later
+### Show the latest trial exception, if any
+
+```bash
+JOB=$(ls -dt terminal-bench/jobs/* | head -n1)
+sed -n '1,220p' "$JOB"/*/exception.txt
+```
+
+## Notes
+
+- The wrapper benchmarks the published package, not the local checkout.
+- The wrapper copies host mini-coder auth/settings into the container; it does not mount or mutate the host files.
+- The task image supplies task-specific toolchains. The wrapper only adds generic helpers like `git`, `python3`, and `ripgrep`.
+- For leaderboard-comparable runs, do **not** change timeouts or resources.
+- If `openai-codex` auth expires, ask the user to refresh it locally with mini-coder before rerunning.
