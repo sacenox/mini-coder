@@ -57,6 +57,7 @@ import {
   truncateSessions,
 } from "./session.ts";
 import {
+  type CustomProvider,
   loadSettings,
   resolveStartupSettings,
   type UserSettings,
@@ -206,6 +207,101 @@ async function discoverProviders(): Promise<DiscoveryResult> {
   }
 
   return { providers, oauthCredentials };
+}
+
+// ---------------------------------------------------------------------------
+// Custom provider discovery
+// ---------------------------------------------------------------------------
+
+/** Timeout for custom provider model discovery requests. */
+const CUSTOM_PROVIDER_TIMEOUT_MS = 3_000;
+
+/** Default API key for custom providers that don't require authentication. */
+const CUSTOM_PROVIDER_DEFAULT_KEY = "no-key";
+
+/** Result of custom provider discovery. */
+interface CustomDiscoveryResult {
+  /** Discovered models from all reachable custom providers. */
+  models: Model<"openai-completions">[];
+  /** Provider name → API key for discovered providers. */
+  providers: Map<string, string>;
+  /** Warning messages for unreachable or invalid providers. */
+  warnings: string[];
+}
+
+/**
+ * Discover models from user-configured OpenAI-compatible endpoints.
+ *
+ * Queries each provider's `/models` endpoint and constructs pi-ai Model
+ * objects from the response. Unreachable endpoints produce a warning
+ * instead of failing startup.
+ *
+ * @param customProviders - Configured custom provider entries.
+ * @param builtInProviderNames - Names of built-in providers (to detect collisions).
+ * @returns Discovered models, provider credentials, and warnings.
+ */
+export async function discoverCustomProviders(
+  customProviders: readonly CustomProvider[],
+  builtInProviderNames: ReadonlySet<string>,
+): Promise<CustomDiscoveryResult> {
+  const models: Model<"openai-completions">[] = [];
+  const providers = new Map<string, string>();
+  const warnings: string[] = [];
+
+  for (const entry of customProviders) {
+    if (builtInProviderNames.has(entry.name)) {
+      warnings.push(
+        `Custom provider "${entry.name}" skipped: name conflicts with a built-in provider.`,
+      );
+      continue;
+    }
+
+    const apiKey = entry.apiKey ?? CUSTOM_PROVIDER_DEFAULT_KEY;
+    const modelsUrl = `${entry.baseUrl}/models`;
+
+    try {
+      const response = await fetch(modelsUrl, {
+        signal: AbortSignal.timeout(CUSTOM_PROVIDER_TIMEOUT_MS),
+      });
+
+      if (!response.ok) {
+        warnings.push(
+          `Custom provider "${entry.name}": ${response.status} ${response.statusText} (${modelsUrl})`,
+        );
+        continue;
+      }
+
+      const body = (await response.json()) as {
+        data?: { id: string }[];
+      };
+      const modelList = body.data ?? [];
+
+      for (const item of modelList) {
+        if (typeof item.id !== "string" || !item.id) continue;
+
+        models.push({
+          id: item.id,
+          name: item.id,
+          api: "openai-completions",
+          provider: entry.name,
+          baseUrl: entry.baseUrl,
+          reasoning: false,
+          input: ["text"],
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+          contextWindow: 131072,
+          maxTokens: 8192,
+        });
+      }
+
+      providers.set(entry.name, apiKey);
+    } catch (error) {
+      warnings.push(
+        `Custom provider "${entry.name}": ${getErrorMessage(error)} (${modelsUrl})`,
+      );
+    }
+  }
+
+  return { models, providers, warnings };
 }
 
 // ---------------------------------------------------------------------------
