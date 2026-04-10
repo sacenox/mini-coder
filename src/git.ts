@@ -83,7 +83,7 @@ function hasTrackedChange(status: string): boolean {
  * @param output - Raw `git status --porcelain` output.
  * @returns Counts of staged, modified, and untracked files.
  */
-function parseStatus(output: string): {
+export function parseGitStatus(output: string): {
   staged: number;
   modified: number;
   untracked: number;
@@ -117,6 +117,26 @@ function parseStatus(output: string): {
   return { staged, modified, untracked };
 }
 
+/**
+ * Parse `git rev-list --left-right --count HEAD...@{upstream}` output.
+ *
+ * The command returns two whitespace-separated integers: ahead then behind.
+ * Invalid or missing values are treated as `0`.
+ *
+ * @param output - Raw `git rev-list --left-right --count` output.
+ * @returns Parsed ahead and behind counts.
+ */
+export function parseGitAheadBehind(output: string): {
+  ahead: number;
+  behind: number;
+} {
+  const parts = output.trim().split(/\s+/);
+  return {
+    ahead: parseInt(parts[0] ?? "0", 10) || 0,
+    behind: parseInt(parts[1] ?? "0", 10) || 0,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -129,34 +149,40 @@ function parseStatus(output: string): {
  * is not inside a git repository.
  *
  * @param cwd - The directory to query (can be a subdirectory of the repo).
+ * @param opts - Optional runtime overrides used by tests.
  * @returns A {@link GitState} snapshot, or `null` if not in a git repo.
  */
-export async function getGitState(cwd: string): Promise<GitState | null> {
+export async function getGitState(
+  cwd: string,
+  opts?: {
+    run?: (
+      args: string[],
+      cwd: string,
+      trim?: boolean,
+    ) => Promise<string | null>;
+  },
+): Promise<GitState | null> {
+  const exec = opts?.run ?? run;
+
   // Check if we're in a repo and get the root
-  const root = await run(["rev-parse", "--show-toplevel"], cwd);
+  const root = await exec(["rev-parse", "--show-toplevel"], cwd);
   if (root === null) return null;
 
   // Run remaining commands in parallel
   const [branch, upstream, status, revList] = await Promise.all([
-    run(["branch", "--show-current"], cwd),
-    run(
+    exec(["branch", "--show-current"], cwd),
+    exec(
       ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
       cwd,
     ),
-    run(["status", "--porcelain"], cwd, false),
-    run(["rev-list", "--left-right", "--count", "HEAD...@{upstream}"], cwd),
+    exec(["status", "--porcelain"], cwd, false),
+    exec(["rev-list", "--left-right", "--count", "HEAD...@{upstream}"], cwd),
   ]);
 
-  const { staged, modified, untracked } = parseStatus(status ?? "");
-
-  // Parse ahead/behind from rev-list output (format: "ahead\tbehind")
-  let ahead = 0;
-  let behind = 0;
-  if (revList) {
-    const parts = revList.split(/\s+/);
-    ahead = parseInt(parts[0] ?? "0", 10) || 0;
-    behind = parseInt(parts[1] ?? "0", 10) || 0;
-  }
+  const { staged, modified, untracked } = parseGitStatus(status ?? "");
+  const { ahead, behind } = revList
+    ? parseGitAheadBehind(revList)
+    : { ahead: 0, behind: 0 };
 
   return {
     root,

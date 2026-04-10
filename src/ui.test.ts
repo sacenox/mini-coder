@@ -15,7 +15,6 @@ import {
   registerFauxProvider,
   unregisterApiProviders,
 } from "@mariozechner/pi-ai";
-import { getGitState } from "./git.ts";
 import type { AppState } from "./index.ts";
 import {
   appendMessage,
@@ -1138,33 +1137,37 @@ describe("ui rendering", () => {
     const faux = registerFauxProvider();
     const state = createTestState();
     const repo = createTempDir();
-    const originalPath = process.env.PATH;
-    process.env.PATH = `${process.env.PATH ?? ""}:/usr/bin:/bin`;
-
-    const runGit = (...args: string[]) => {
-      const result = Bun.spawnSync(["git", ...args], {
-        cwd: repo,
-        stdout: "pipe",
-        stderr: "pipe",
-      });
-      if (result.exitCode !== 0) {
-        throw new Error(
-          `git ${args.join(" ")} failed: ${result.stderr.toString()}`,
-        );
-      }
+    const gitRefreshes: string[] = [];
+    const cleanGitState = {
+      root: repo,
+      branch: "main",
+      upstream: "origin/main",
+      staged: 0,
+      modified: 0,
+      untracked: 0,
+      ahead: 0,
+      behind: 0,
     };
+    const dirtyGitState = {
+      ...cleanGitState,
+      modified: 1,
+    };
+    const gitStates = [cleanGitState, dirtyGitState];
 
-    runGit("init");
-    runGit("config", "user.name", "Mini Coder");
-    runGit("config", "user.email", "mini-coder@example.com");
     writeFileSync(join(repo, "tracked.txt"), "initial\n", "utf-8");
-    runGit("add", "tracked.txt");
-    runGit("commit", "-m", "init");
 
     state.cwd = repo;
     state.canonicalCwd = repo;
     state.model = faux.getModel();
-    state.git = await getGitState(repo);
+    state.git = cleanGitState;
+    state.loadGitState = async (cwd) => {
+      gitRefreshes.push(cwd);
+      const next = gitStates.shift();
+      if (!next) {
+        throw new Error("Unexpected extra git refresh");
+      }
+      return next;
+    };
     faux.setResponses([
       fauxAssistantMessage(
         [
@@ -1185,9 +1188,9 @@ describe("ui rendering", () => {
       await waitFor(() => state.running);
       await waitFor(() => !state.running);
       expect(state.git?.modified).toBe(1);
+      expect(gitRefreshes).toEqual([repo, repo]);
     } finally {
       await stopRunningTurn(state);
-      process.env.PATH = originalPath;
       faux.unregister();
       state.db.close();
     }

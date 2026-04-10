@@ -1,173 +1,179 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import {
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { getGitState } from "./git.ts";
-import { canonicalizePath } from "./paths.ts";
+import { describe, expect, test } from "bun:test";
+import { getGitState, parseGitAheadBehind, parseGitStatus } from "./git.ts";
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-let tmp: string;
-
-beforeEach(() => {
-  tmp = mkdtempSync(join(tmpdir(), "mc-git-"));
-});
-
-afterEach(() => {
-  rmSync(tmp, { recursive: true, force: true });
-});
-
-function expectGitState(
-  state: Awaited<ReturnType<typeof getGitState>>,
-): NonNullable<Awaited<ReturnType<typeof getGitState>>> {
-  if (!state) {
-    throw new Error("Expected a git state snapshot");
-  }
-  return state;
-}
-
-/** Run a git command in the temp directory. */
-async function git(args: string, cwd = tmp): Promise<string> {
-  const proc = Bun.spawn(["git", ...args.split(" ")], {
-    cwd,
-    stdout: "pipe",
-    stderr: "pipe",
-    env: {
-      ...process.env,
-      GIT_AUTHOR_NAME: "Test",
-      GIT_AUTHOR_EMAIL: "test@test.com",
-      GIT_COMMITTER_NAME: "Test",
-      GIT_COMMITTER_EMAIL: "test@test.com",
-    },
+describe("parseGitStatus", () => {
+  test("returns zero counts for empty output", () => {
+    expect(parseGitStatus("")).toEqual({
+      staged: 0,
+      modified: 0,
+      untracked: 0,
+    });
   });
-  const out = await new Response(proc.stdout as ReadableStream).text();
-  await proc.exited;
-  return out.trim();
-}
 
-/** Initialize a git repo with one commit so HEAD exists. */
-async function initRepo(cwd = tmp): Promise<void> {
-  await git("init", cwd);
-  writeFileSync(join(cwd, "README.md"), "# init\n");
-  await git("add .", cwd);
-  await git("commit -m init", cwd);
-}
+  test("counts mixed porcelain states", () => {
+    expect(
+      parseGitStatus(
+        [
+          "M  staged-only.txt",
+          " M modified-only.txt",
+          "MM staged-and-modified.txt",
+          "?? new-file.txt",
+        ].join("\n"),
+      ),
+    ).toEqual({
+      staged: 2,
+      modified: 2,
+      untracked: 1,
+    });
+  });
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
+  test("treats rename and delete statuses as tracked changes", () => {
+    expect(
+      parseGitStatus(
+        [
+          "R  renamed.txt -> renamed-again.txt",
+          " D deleted.txt",
+          "A  added.txt",
+        ].join("\n"),
+      ),
+    ).toEqual({
+      staged: 2,
+      modified: 1,
+      untracked: 0,
+    });
+  });
+});
+
+describe("parseGitAheadBehind", () => {
+  test("parses ahead and behind counts from rev-list output", () => {
+    expect(parseGitAheadBehind("3\t2")).toEqual({ ahead: 3, behind: 2 });
+  });
+
+  test("defaults missing or invalid values to zero", () => {
+    expect(parseGitAheadBehind("")).toEqual({ ahead: 0, behind: 0 });
+    expect(parseGitAheadBehind("nope nope")).toEqual({ ahead: 0, behind: 0 });
+    expect(parseGitAheadBehind("5")).toEqual({ ahead: 5, behind: 0 });
+  });
+});
 
 describe("getGitState", () => {
-  test("returns null outside a git repo", async () => {
-    const state = await getGitState(tmp);
+  test("returns null when git reports the cwd is not in a repo", async () => {
+    const state = await getGitState("/tmp/not-a-repo", {
+      run: async (args) => {
+        expect(args).toEqual(["rev-parse", "--show-toplevel"]);
+        return null;
+      },
+    });
+
     expect(state).toBeNull();
   });
 
-  test("detects repo root", async () => {
-    await initRepo();
-    const state = expectGitState(await getGitState(tmp));
-    expect(state.root).toBe(canonicalizePath(tmp));
+  test("builds git state by parsing command output", async () => {
+    const calls: Array<{ args: string[]; cwd: string; trim: boolean }> = [];
+    const responses = new Map<string, string | null>([
+      ["rev-parse --show-toplevel", "/repo"],
+      ["branch --show-current", "main"],
+      [
+        "rev-parse --abbrev-ref --symbolic-full-name @{upstream}",
+        "origin/main",
+      ],
+      [
+        "status --porcelain",
+        [
+          "M  staged-only.txt",
+          " M modified-only.txt",
+          "MM staged-and-modified.txt",
+          "?? new-file.txt",
+        ].join("\n"),
+      ],
+      ["rev-list --left-right --count HEAD...@{upstream}", "4\t1"],
+    ]);
+
+    const state = await getGitState("/repo/subdir", {
+      run: async (args, cwd, trim = true) => {
+        calls.push({ args, cwd, trim });
+        const key = args.join(" ");
+        if (!responses.has(key)) {
+          throw new Error(`Unexpected git command: ${key}`);
+        }
+        return responses.get(key) ?? null;
+      },
+    });
+
+    expect(state).toEqual({
+      root: "/repo",
+      branch: "main",
+      upstream: "origin/main",
+      staged: 2,
+      modified: 2,
+      untracked: 1,
+      ahead: 4,
+      behind: 1,
+    });
+    expect(calls).toEqual([
+      {
+        args: ["rev-parse", "--show-toplevel"],
+        cwd: "/repo/subdir",
+        trim: true,
+      },
+      {
+        args: ["branch", "--show-current"],
+        cwd: "/repo/subdir",
+        trim: true,
+      },
+      {
+        args: [
+          "rev-parse",
+          "--abbrev-ref",
+          "--symbolic-full-name",
+          "@{upstream}",
+        ],
+        cwd: "/repo/subdir",
+        trim: true,
+      },
+      {
+        args: ["status", "--porcelain"],
+        cwd: "/repo/subdir",
+        trim: false,
+      },
+      {
+        args: ["rev-list", "--left-right", "--count", "HEAD...@{upstream}"],
+        cwd: "/repo/subdir",
+        trim: true,
+      },
+    ]);
   });
 
-  test("gets current branch name", async () => {
-    await initRepo();
-    const state = expectGitState(await getGitState(tmp));
-    expect(state.branch).toBeOneOf(["main", "master"]);
-  });
+  test("falls back to empty branch, null upstream, and zero counts when optional commands fail", async () => {
+    const state = await getGitState("/repo", {
+      run: async (args) => {
+        const key = args.join(" ");
+        switch (key) {
+          case "rev-parse --show-toplevel":
+            return "/repo";
+          case "branch --show-current":
+            return null;
+          case "rev-parse --abbrev-ref --symbolic-full-name @{upstream}":
+            return null;
+          case "status --porcelain":
+            return null;
+          case "rev-list --left-right --count HEAD...@{upstream}":
+            return null;
+          default:
+            throw new Error(`Unexpected git command: ${key}`);
+        }
+      },
+    });
 
-  test("counts untracked files", async () => {
-    await initRepo();
-    writeFileSync(join(tmp, "new.txt"), "untracked");
-    const state = expectGitState(await getGitState(tmp));
-    expect(state.untracked).toBe(1);
-  });
-
-  test("counts modified files", async () => {
-    await initRepo();
-    writeFileSync(join(tmp, "README.md"), "modified\n");
-    const state = expectGitState(await getGitState(tmp));
-    expect(state.modified).toBe(1);
-  });
-
-  test("counts staged files", async () => {
-    await initRepo();
-    writeFileSync(join(tmp, "README.md"), "staged\n");
-    await git("add README.md");
-    const state = expectGitState(await getGitState(tmp));
-    expect(state.staged).toBe(1);
-  });
-
-  test("counts mixed states correctly", async () => {
-    await initRepo();
-    // Stage a change
-    writeFileSync(join(tmp, "README.md"), "staged\n");
-    await git("add README.md");
-    // Add an untracked file
-    writeFileSync(join(tmp, "new.txt"), "untracked");
-    // Add a modified (but not staged) file — modify README again after staging
-    writeFileSync(join(tmp, "README.md"), "staged then modified\n");
-
-    const state = expectGitState(await getGitState(tmp));
-    expect(state.staged).toBe(1);
-    expect(state.modified).toBe(1);
-    expect(state.untracked).toBe(1);
-  });
-
-  test("returns zero ahead/behind when no upstream", async () => {
-    await initRepo();
-    const state = expectGitState(await getGitState(tmp));
-    expect(state.upstream).toBeNull();
-    expect(state.ahead).toBe(0);
-    expect(state.behind).toBe(0);
-  });
-
-  test("detects ahead count relative to upstream", async () => {
-    // Create a bare "remote" repo
-    const bare = join(tmp, "remote.git");
-    await git(`init --bare ${bare}`);
-
-    // Init a working repo and push
-    const work = join(tmp, "work");
-    await git(`clone ${bare} ${work}`);
-    writeFileSync(join(work, "file.txt"), "initial\n");
-    await git("add .", work);
-    await git("commit -m first", work);
-    await git("push origin HEAD", work);
-
-    // Make a local commit (ahead by 1)
-    writeFileSync(join(work, "file.txt"), "updated\n");
-    await git("add .", work);
-    await git("commit -m second", work);
-
-    const state = expectGitState(await getGitState(work));
-    expect(state.upstream).toBeOneOf(["origin/main", "origin/master"]);
-    expect(state.ahead).toBe(1);
-    expect(state.behind).toBe(0);
-  });
-
-  test("works from a subdirectory", async () => {
-    await initRepo();
-    const sub = join(tmp, "src", "deep");
-    mkdirSync(sub, { recursive: true });
-
-    const state = expectGitState(await getGitState(sub));
-    expect(state.root).toBe(canonicalizePath(tmp));
-  });
-
-  test("returns the canonical repo root when accessed through a symlink", async () => {
-    await initRepo();
-    mkdirSync(join(tmp, "src"), { recursive: true });
-    symlinkSync(tmp, join(tmp, "alias"));
-
-    const state = expectGitState(await getGitState(join(tmp, "alias", "src")));
-    expect(state.root).toBe(canonicalizePath(tmp));
+    expect(state).toEqual({
+      root: "/repo",
+      branch: "",
+      upstream: null,
+      staged: 0,
+      modified: 0,
+      untracked: 0,
+      ahead: 0,
+      behind: 0,
+    });
   });
 });

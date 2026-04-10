@@ -1,5 +1,6 @@
 # Mini Coder — Agent Instructions
 
+- This repo expects agents to use the `programming-practices` skill at all times.
 - **Spec-driven development**: `spec.md` is the source of truth for behavior and design. Read it before changing code. Do not deviate without discussion.
 - **TDD**: write tests first, then implement.
 - Use Conventional Commits formatting for commit messages.

@@ -273,12 +273,13 @@ export async function submitResolvedInput(
     content,
     timestamp: Date.now(),
   } satisfies UserMessage;
+  const loadGitState = state.loadGitState ?? getGitState;
 
   const turn = appendMessage(state.db, session.id, userMessage);
   state.messages.push(userMessage);
   hooks?.onUserMessage?.(state);
 
-  state.git = await getGitState(state.cwd);
+  state.git = await loadGitState(state.cwd);
 
   const systemPrompt = buildPrompt(state);
   const { tools, toolHandlers } = buildToolList(state);
@@ -310,7 +311,7 @@ export async function submitResolvedInput(
       },
     });
     stopReason = result.stopReason;
-    state.git = await getGitState(state.cwd);
+    state.git = await loadGitState(state.cwd);
     return result.stopReason;
   } finally {
     state.running = false;

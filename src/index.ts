@@ -439,6 +439,8 @@ export interface AppState {
   theme: Theme;
   /** Current git state (null if not in a repo). */
   git: GitState | null;
+  /** Optional git state loader override used by tests. */
+  loadGitState?: (cwd: string) => Promise<GitState | null>;
   /** Available provider credentials (provider → API key). */
   providers: Map<string, string>;
   /** OAuth credentials on disk. */
