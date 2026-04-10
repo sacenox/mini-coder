@@ -559,6 +559,10 @@ export interface AppState {
   showReasoning: boolean;
   /** Whether to show full (un-truncated) tool output. */
   verbose: boolean;
+  /** Models discovered from custom OpenAI-compatible providers. */
+  customModels: Model<string>[];
+  /** Warnings from startup (e.g. unreachable custom providers). */
+  startupWarnings: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -577,7 +581,21 @@ export async function init(): Promise<AppState> {
 
   // Load user settings and resolve startup defaults
   const settings = loadSettings(SETTINGS_PATH);
-  const availableModels = listAvailableModels(providers);
+
+  // Discover custom providers from settings
+  const builtInProviderNames = new Set(providers.keys());
+  const customResult = await discoverCustomProviders(
+    settings.customProviders ?? [],
+    builtInProviderNames,
+  );
+
+  // Merge custom provider credentials
+  for (const [name, key] of customResult.providers) {
+    providers.set(name, key);
+  }
+
+  const builtInModels = listAvailableModels(providers);
+  const availableModels = [...builtInModels, ...customResult.models];
   const startup = resolveStartupSettings(
     settings,
     availableModels.map((model) => `${model.provider}/${model.id}`),
@@ -616,6 +634,8 @@ export async function init(): Promise<AppState> {
     activeTurnPromise: null,
     showReasoning: startup.showReasoning,
     verbose: startup.verbose,
+    customModels: customResult.models,
+    startupWarnings: customResult.warnings,
   };
 }
 
@@ -688,7 +708,7 @@ export function ensureSession(
  * for, suitable for the `/model` selector.
  */
 export function getAvailableModels(state: AppState): Model<string>[] {
-  return listAvailableModels(state.providers);
+  return [...listAvailableModels(state.providers), ...state.customModels];
 }
 
 /** Clean up resources on shutdown. */

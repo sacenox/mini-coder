@@ -3,10 +3,12 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import type { Model } from "@mariozechner/pi-ai";
 import {
   type AppState,
   didOAuthCredentialsChange,
   discoverCustomProviders,
+  getAvailableModels,
   loadOAuthCredentials,
   loadPromptContext,
   reloadPromptContext,
@@ -50,6 +52,8 @@ function createTestState(plugins: LoadedPlugin[] = []): AppState {
     activeTurnPromise: null,
     showReasoning: true,
     verbose: false,
+    customModels: [],
+    startupWarnings: [],
   };
 }
 
@@ -410,5 +414,33 @@ test("discoverCustomProviders handles empty model list from endpoint", async () 
     expect(result.warnings).toEqual([]);
   } finally {
     server.stop(true);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// getAvailableModels with custom models
+// ---------------------------------------------------------------------------
+
+test("getAvailableModels includes custom models alongside built-in models", () => {
+  const state = createTestState();
+  try {
+    const customModel: Model<"openai-completions"> = {
+      id: "gemma4:31b",
+      name: "gemma4:31b",
+      api: "openai-completions",
+      provider: "ollama",
+      baseUrl: "http://localhost:11434/v1",
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 131072,
+      maxTokens: 8192,
+    };
+    state.customModels = [customModel];
+
+    const models = getAvailableModels(state);
+    expect(models).toContainEqual(customModel);
+  } finally {
+    state.db.close();
   }
 });
