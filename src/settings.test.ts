@@ -202,4 +202,91 @@ describe("settings", () => {
       verbose: false,
     });
   });
+
+  test("loadSettings parses valid customProviders entries", () => {
+    const dir = createTempDir();
+    const path = join(dir, "settings.json");
+    writeFileSync(
+      path,
+      JSON.stringify({
+        customProviders: [
+          { name: "ollama", baseUrl: "http://localhost:11434/v1" },
+          {
+            name: "lm-studio",
+            baseUrl: "http://localhost:1234/v1",
+            apiKey: "lm-studio",
+          },
+        ],
+      }),
+      "utf-8",
+    );
+
+    const settings = loadSettings(path);
+    expect(settings.customProviders).toEqual([
+      { name: "ollama", baseUrl: "http://localhost:11434/v1" },
+      {
+        name: "lm-studio",
+        baseUrl: "http://localhost:1234/v1",
+        apiKey: "lm-studio",
+      },
+    ]);
+  });
+
+  test("loadSettings drops customProviders entries with missing or invalid fields", () => {
+    const dir = createTempDir();
+    const path = join(dir, "settings.json");
+    writeFileSync(
+      path,
+      JSON.stringify({
+        customProviders: [
+          { name: "good", baseUrl: "http://localhost:11434/v1" },
+          { name: "", baseUrl: "http://localhost:1234/v1" },
+          { name: "no-url" },
+          { baseUrl: "http://localhost:5678/v1" },
+          "not-an-object",
+          42,
+          null,
+        ],
+      }),
+      "utf-8",
+    );
+
+    const settings = loadSettings(path);
+    expect(settings.customProviders).toEqual([
+      { name: "good", baseUrl: "http://localhost:11434/v1" },
+    ]);
+  });
+
+  test("loadSettings drops duplicate customProviders names keeping the first", () => {
+    const dir = createTempDir();
+    const path = join(dir, "settings.json");
+    writeFileSync(
+      path,
+      JSON.stringify({
+        customProviders: [
+          { name: "ollama", baseUrl: "http://localhost:11434/v1" },
+          { name: "ollama", baseUrl: "http://localhost:9999/v1" },
+        ],
+      }),
+      "utf-8",
+    );
+
+    const settings = loadSettings(path);
+    expect(settings.customProviders).toEqual([
+      { name: "ollama", baseUrl: "http://localhost:11434/v1" },
+    ]);
+  });
+
+  test("loadSettings omits customProviders when the field is not an array", () => {
+    const dir = createTempDir();
+    const path = join(dir, "settings.json");
+    writeFileSync(
+      path,
+      JSON.stringify({ customProviders: "not-an-array" }),
+      "utf-8",
+    );
+
+    const settings = loadSettings(path);
+    expect(settings.customProviders).toBeUndefined();
+  });
 });

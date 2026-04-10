@@ -12,6 +12,16 @@ import { dirname } from "node:path";
 import type { ThinkingLevel } from "@mariozechner/pi-ai";
 import { getErrorMessage } from "./errors.ts";
 
+/** A user-configured OpenAI-compatible provider endpoint. */
+export interface CustomProvider {
+  /** Provider identifier, e.g. "ollama". Shown as the provider prefix in model names. */
+  name: string;
+  /** OpenAI-compatible API base URL, e.g. "http://localhost:11434/v1". */
+  baseUrl: string;
+  /** Optional API key. Defaults to "no-key" at discovery time. */
+  apiKey?: string;
+}
+
 /** Default reasoning effort when no saved setting exists. */
 const DEFAULT_EFFORT: ThinkingLevel = "medium";
 
@@ -31,6 +41,8 @@ export interface UserSettings {
   showReasoning?: boolean;
   /** Whether full tool output is shown in the UI. */
   verbose?: boolean;
+  /** Custom OpenAI-compatible provider endpoints. */
+  customProviders?: CustomProvider[];
 }
 
 /** Resolved startup settings after applying defaults and availability checks. */
@@ -172,7 +184,57 @@ function sanitizeSettings(value: unknown): UserSettings {
     settings.verbose = candidate.verbose;
   }
 
+  const customProviders = sanitizeCustomProviders(candidate.customProviders);
+  if (customProviders) {
+    settings.customProviders = customProviders;
+  }
+
   return settings;
+}
+
+/**
+ * Validate and normalize custom provider entries.
+ *
+ * Drops entries with missing/empty name or baseUrl, and deduplicates by name
+ * (first entry wins).
+ */
+function sanitizeCustomProviders(value: unknown): CustomProvider[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const result: CustomProvider[] = [];
+  const seen = new Set<string>();
+
+  for (const item of value) {
+    if (item == null || typeof item !== "object" || Array.isArray(item)) {
+      continue;
+    }
+
+    const candidate = item as Record<string, unknown>;
+    const name =
+      typeof candidate.name === "string" ? candidate.name.trim() : "";
+    const baseUrl =
+      typeof candidate.baseUrl === "string" ? candidate.baseUrl.trim() : "";
+
+    if (!name || !baseUrl) {
+      continue;
+    }
+
+    if (seen.has(name)) {
+      continue;
+    }
+    seen.add(name);
+
+    const entry: CustomProvider = { name, baseUrl };
+    if (typeof candidate.apiKey === "string") {
+      entry.apiKey = candidate.apiKey;
+    }
+
+    result.push(entry);
+  }
+
+  return result.length > 0 ? result : undefined;
 }
 
 /**
