@@ -691,4 +691,9 @@ export function startUI(state: AppState): void {
   if (state.running) {
     startDividerAnimation();
   }
+
+  // Show warnings from custom provider discovery
+  for (const warning of state.startupWarnings) {
+    appendInfoMessage(warning, state);
+  }
 }
