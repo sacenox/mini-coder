@@ -1655,6 +1655,53 @@ describe("ui rendering", () => {
     }
   });
 
+  test("Escape aborts a running shell tool once the input is blurred", async () => {
+    const state = createTestState();
+    const faux = registerFauxProvider();
+    const cwd = createTempDir();
+    state.model = faux.getModel();
+    state.cwd = cwd;
+    state.canonicalCwd = cwd;
+    faux.setResponses([
+      fauxAssistantMessage([fauxToolCall("shell", { command: "sleep 5" })], {
+        stopReason: "toolUse",
+      }),
+    ]);
+
+    try {
+      const controller = createInputController(state);
+      handleInput("interrupt the tool", state);
+
+      await waitFor(
+        () =>
+          state.running &&
+          state.activeTurnPromise !== null &&
+          state.messages.some((message) => message.role === "assistant"),
+      );
+
+      controller.onBlur();
+      const base = expectVStack(renderBaseLayout(state, 80, controller));
+      base.props.onKeyPress?.("escape");
+
+      const activeTurnPromise = state.activeTurnPromise;
+      if (!activeTurnPromise) {
+        throw new Error("Expected an active turn promise");
+      }
+      await activeTurnPromise;
+
+      expect(state.running).toBe(false);
+      expect(state.messages.map((message) => message.role)).toEqual([
+        "user",
+        "assistant",
+        "toolResult",
+      ]);
+    } finally {
+      await stopRunningTurn(state);
+      faux.unregister();
+      state.db.close();
+    }
+  });
+
   test("Tab autocompletes the last file path in normal input mode", () => {
     const state = createTestState();
     const cwd = createTempDir();

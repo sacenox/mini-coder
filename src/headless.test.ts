@@ -155,6 +155,40 @@ describe("headless", () => {
     ).toEqual(["user", "assistant", "toolResult", "assistant"]);
   });
 
+  test("runHeadlessPrompt emits a terminal aborted event when interrupted during tool execution", async () => {
+    faux.setResponses([
+      fauxAssistantMessage([fauxToolCall("shell", { command: "sleep 5" })], {
+        stopReason: "toolUse",
+      }),
+    ]);
+    const state = createTestState();
+    const lines: string[] = [];
+
+    const stopReason = await runHeadlessPrompt(state, "interrupt the shell", {
+      writeLine: (line) => {
+        lines.push(line);
+        const event = JSON.parse(line) as { type?: string };
+        if (event.type === "tool_start") {
+          state.abortController?.abort();
+        }
+      },
+    });
+
+    const events = parseEventLines(lines);
+    expect(stopReason).toBe("aborted");
+    expect(events.some((event) => event.type === "tool_result")).toBe(true);
+    expect(events.at(-1)?.type).toBe("aborted");
+
+    const abortedEvent = events.at(-1);
+    const message = abortedEvent?.message;
+    if (typeof message !== "object" || !message || !("stopReason" in message)) {
+      throw new Error(
+        "Expected the terminal aborted event to include a message",
+      );
+    }
+    expect(message.stopReason).toBe("aborted");
+  });
+
   test("runHeadlessPrompt treats broken stdout pipes as a quiet shutdown", async () => {
     faux.setResponses([fauxAssistantMessage("Done.")]);
     const state = createTestState();

@@ -525,19 +525,26 @@ async function executeToolCall(
 
   let result: ToolExecResult;
   try {
-    result = await handler(
-      toolCall.arguments,
-      opts.cwd,
-      opts.signal,
-      (partial) => {
-        opts.onEvent?.({
-          type: "tool_delta",
-          toolCallId: toolCall.id,
-          name: toolCall.name,
-          result: partial,
-        });
-      },
-    );
+    if (opts.signal?.aborted) {
+      result = toolErrorResult(
+        toolCall.name,
+        new Error("This operation was aborted"),
+      );
+    } else {
+      result = await handler(
+        toolCall.arguments,
+        opts.cwd,
+        opts.signal,
+        (partial) => {
+          opts.onEvent?.({
+            type: "tool_delta",
+            toolCallId: toolCall.id,
+            name: toolCall.name,
+            result: partial,
+          });
+        },
+      );
+    }
   } catch (error) {
     result = toolErrorResult(toolCall.name, error);
   }
@@ -592,8 +599,17 @@ function appendToolResultMessage(
 export async function runAgentLoop(
   opts: RunAgentOpts,
 ): Promise<AgentLoopResult> {
-  const { db, sessionId, turn, messages, signal, onEvent, toolHandlers, cwd } =
-    opts;
+  const {
+    db,
+    sessionId,
+    turn,
+    model,
+    messages,
+    signal,
+    onEvent,
+    toolHandlers,
+    cwd,
+  } = opts;
 
   while (true) {
     const assistantMessage = await streamAssistantMessage(opts);
@@ -633,6 +649,13 @@ export async function runAgentLoop(
       );
 
       if (signal?.aborted) {
+        onEvent?.({
+          type: "aborted",
+          message: buildIncompleteAssistantMessage(
+            { model, signal },
+            assistantMessage,
+          ),
+        });
         return { messages, stopReason: "aborted" };
       }
     }

@@ -68,6 +68,42 @@ describe("getGitState", () => {
     expect(state).toBeNull();
   });
 
+  test("returns null when git is not installed", async () => {
+    const missingGit = Object.assign(
+      new Error('Executable not found in $PATH: "git"'),
+      {
+        code: "ENOENT",
+        path: "git",
+      },
+    );
+
+    const state = await getGitState("/tmp/no-git", {
+      run: async () => {
+        throw missingGit;
+      },
+    });
+
+    expect(state).toBeNull();
+  });
+
+  test("rethrows ENOENT errors that are not missing-git failures", async () => {
+    const invalidCwd = Object.assign(
+      new Error("ENOENT: no such file or directory, posix_spawn 'git'"),
+      {
+        code: "ENOENT",
+        path: "git",
+      },
+    );
+
+    await expect(
+      getGitState("/tmp/missing-cwd", {
+        run: async () => {
+          throw invalidCwd;
+        },
+      }),
+    ).rejects.toThrow(invalidCwd.message);
+  });
+
   test("builds git state by parsing command output", async () => {
     const calls: Array<{ args: string[]; cwd: string; trim: boolean }> = [];
     const responses = new Map<string, string | null>([

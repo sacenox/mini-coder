@@ -61,6 +61,51 @@ async function run(
   return trim ? out.trim() : out;
 }
 
+function getErrorStringProperty(
+  error: unknown,
+  key: string,
+): string | undefined {
+  if (typeof error !== "object" || error === null) {
+    return undefined;
+  }
+
+  const value = Reflect.get(error, key);
+  return typeof value === "string" ? value : undefined;
+}
+
+function isMissingGitError(error: unknown): boolean {
+  const code = getErrorStringProperty(error, "code");
+  if (code !== "ENOENT") {
+    return false;
+  }
+
+  const message = getErrorStringProperty(error, "message");
+  return (
+    typeof message === "string" &&
+    message.includes('Executable not found in $PATH: "git"')
+  );
+}
+
+async function safeRun(
+  runGit: (
+    args: string[],
+    cwd: string,
+    trim?: boolean,
+  ) => Promise<string | null>,
+  args: string[],
+  cwd: string,
+  trim = true,
+): Promise<string | null> {
+  try {
+    return await runGit(args, cwd, trim);
+  } catch (error) {
+    if (isMissingGitError(error)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
 function isUntrackedStatus(
   indexStatus: string,
   workingTreeStatus: string,
@@ -145,8 +190,8 @@ export function parseGitAheadBehind(output: string): {
  * Gather the current git state for a directory.
  *
  * Runs several fast git commands in parallel to collect branch, working
- * tree status, and ahead/behind counts. Returns `null` if the directory
- * is not inside a git repository.
+ * tree status, and ahead/behind counts. Returns `null` if git is not
+ * installed or the directory is not inside a git repository.
  *
  * @param cwd - The directory to query (can be a subdirectory of the repo).
  * @param opts - Optional runtime overrides used by tests.
@@ -165,18 +210,23 @@ export async function getGitState(
   const exec = opts?.run ?? run;
 
   // Check if we're in a repo and get the root
-  const root = await exec(["rev-parse", "--show-toplevel"], cwd);
+  const root = await safeRun(exec, ["rev-parse", "--show-toplevel"], cwd);
   if (root === null) return null;
 
   // Run remaining commands in parallel
   const [branch, upstream, status, revList] = await Promise.all([
-    exec(["branch", "--show-current"], cwd),
-    exec(
+    safeRun(exec, ["branch", "--show-current"], cwd),
+    safeRun(
+      exec,
       ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
       cwd,
     ),
-    exec(["status", "--porcelain"], cwd, false),
-    exec(["rev-list", "--left-right", "--count", "HEAD...@{upstream}"], cwd),
+    safeRun(exec, ["status", "--porcelain"], cwd, false),
+    safeRun(
+      exec,
+      ["rev-list", "--left-right", "--count", "HEAD...@{upstream}"],
+      cwd,
+    ),
   ]);
 
   const { staged, modified, untracked } = parseGitStatus(status ?? "");

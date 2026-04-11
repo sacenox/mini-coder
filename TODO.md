@@ -7,9 +7,7 @@ The spec.md and code are the sources of truth, not this file, don't assume anyth
 
 ## Open items
 
-- [ ] **ESC doesn't interrupt during tool call** This is a spec violation, ESC should interrupt at any time during a turn.
-- [ ] **If git is not installed the app breaks** we should check before we use git, and ensure robustness.
-- [ ] **Emit a terminal `aborted` event for tool-phase interrupts** (`agent.ts`, `headless.ts`) — interrupting during tool execution currently returns `stopReason: "aborted"` without emitting the terminal `aborted` event required by the headless NDJSON spec.
+- None right now.
 
 ## Low priority (deffered until further notice)
 

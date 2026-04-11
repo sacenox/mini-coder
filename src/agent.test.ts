@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
@@ -975,7 +975,8 @@ describe("agent loop", () => {
       { type: "text", text: "Shell error: This operation was aborted" },
     ]);
 
-    expect(events.some((event) => event.type === "aborted")).toBe(false);
+    const abortedEvent = expectLastEvent(events, "aborted");
+    expect(abortedEvent.message.stopReason).toBe("aborted");
     expect(
       events.filter((event) => event.type === "assistant_message"),
     ).toHaveLength(1);
@@ -989,6 +990,73 @@ describe("agent loop", () => {
       "assistant",
       "toolResult",
     ]);
+  });
+
+  test("interrupt before a non-signal-aware tool runs leaves the file unchanged", async () => {
+    faux.setResponses([
+      fauxAssistantMessage(
+        [
+          fauxToolCall("edit", {
+            path: "note.txt",
+            oldText: "before",
+            newText: "after",
+          }),
+        ],
+        { stopReason: "toolUse" },
+      ),
+    ]);
+    writeFileSync(join(tmp, "note.txt"), "before", "utf-8");
+
+    const controller = new AbortController();
+    const events: AgentEvent[] = [];
+    const toolPath = join(tmp, "note.txt");
+
+    const session = createSession(db, { cwd: tmp });
+    const userMsg = makeUser("abort before edit");
+    const turn = appendMessage(db, session.id, userMsg);
+
+    const result = await runAgentLoop({
+      db,
+      sessionId: session.id,
+      turn,
+      model: faux.getModel(),
+      systemPrompt: "Test",
+      tools: builtinToolDefs(),
+      toolHandlers: builtinToolHandlers(),
+      messages: [userMsg],
+      cwd: tmp,
+      signal: controller.signal,
+      onEvent: (event) => {
+        events.push(event);
+        if (event.type === "tool_start") {
+          controller.abort();
+        }
+      },
+    });
+
+    expect(result.stopReason).toBe("aborted");
+    expect(readFileSync(toolPath, "utf-8")).toBe("before");
+
+    const toolResult = result.messages[2];
+    expect(toolResult?.role).toBe("toolResult");
+    if (!toolResult || toolResult.role !== "toolResult") {
+      throw new Error("Expected tool result message");
+    }
+    expect(toolResult.isError).toBe(true);
+    expect(toolResult.content).toEqual([
+      { type: "text", text: "Tool edit failed: This operation was aborted" },
+    ]);
+
+    const startIndex = events.findIndex((event) => event.type === "tool_start");
+    const endIndex = events.findIndex((event) => event.type === "tool_end");
+    const resultIndex = events.findIndex(
+      (event) => event.type === "tool_result",
+    );
+    const abortedIndex = events.findIndex((event) => event.type === "aborted");
+    expect(startIndex).toBeGreaterThan(-1);
+    expect(startIndex).toBeLessThan(endIndex);
+    expect(endIndex).toBeLessThan(resultIndex);
+    expect(resultIndex).toBeLessThan(abortedIndex);
   });
 
   test("uses an explicit stream end result when no terminal event was emitted", async () => {
