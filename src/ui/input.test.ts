@@ -53,7 +53,11 @@ describe("ui/input", () => {
     if (!placeholder || placeholder.type !== "text") {
       throw new Error("Expected a text placeholder");
     }
-    expect(placeholder.content).toBe("message…");
+    expect(placeholder.content).toBe(
+      "`Ctrl+R` for input history, `/` + `Tab` for interactive menu, or type a message…",
+    );
+    expect(placeholder.props.fgColor).toBe(DEFAULT_THEME.mutedText);
+    expect(placeholder.props.italic).toBe(true);
   });
 
   test("autocompleteInputPath completes the last file path token", () => {

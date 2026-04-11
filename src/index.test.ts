@@ -52,6 +52,7 @@ function createTestState(plugins: LoadedPlugin[] = []): AppState {
     activeTurnPromise: null,
     showReasoning: true,
     verbose: false,
+    versionLabel: "dev",
     customModels: [],
     startupWarnings: [],
   };

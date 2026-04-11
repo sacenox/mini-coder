@@ -56,6 +56,7 @@ function createTestState(): AppState {
     activeTurnPromise: null,
     showReasoning: true,
     verbose: false,
+    versionLabel: "dev",
     customModels: [],
     startupWarnings: [],
   };

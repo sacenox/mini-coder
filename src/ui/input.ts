@@ -10,6 +10,9 @@ import { Text, TextInput } from "@cel-tui/core";
 import type { Node } from "@cel-tui/types";
 import type { Theme } from "../theme.ts";
 
+const INPUT_PLACEHOLDER =
+  "`Ctrl+R` for input history, `/` + `Tab` for interactive menu, or type a message…";
+
 /** Stable callbacks for the controlled TextInput. */
 export interface InputController {
   /** Update the controlled input value and re-render. */
@@ -129,7 +132,10 @@ export function renderInputArea(
     padding: { x: 1 },
     value,
     onChange: controller.onChange,
-    placeholder: Text("message…", { fgColor: theme.mutedText }),
+    placeholder: Text(INPUT_PLACEHOLDER, {
+      fgColor: theme.mutedText,
+      italic: true,
+    }),
     focused,
     onFocus: controller.onFocus,
     onBlur: controller.onBlur,

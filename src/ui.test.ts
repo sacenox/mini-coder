@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { measureContentHeight, VStack } from "@cel-tui/core";
+import { cel, MockTerminal, measureContentHeight, VStack } from "@cel-tui/core";
 import type { ContainerNode, Node } from "@cel-tui/types";
 import type { AssistantMessage, Model } from "@mariozechner/pi-ai";
 import {
@@ -150,6 +150,38 @@ function createDeferred<T = void>() {
   return { promise, resolve, reject };
 }
 
+async function waitForCelRender(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 10));
+}
+
+async function renderLayoutRows(
+  node: Node,
+  cols = 40,
+  rows = 16,
+): Promise<string[]> {
+  const terminal = new MockTerminal(cols, rows);
+  cel.init(terminal);
+  cel.viewport(() => VStack({ width: cols, height: rows }, [node]));
+  await waitForCelRender();
+
+  const buffer = cel._getBuffer();
+  if (!buffer) {
+    throw new Error("Expected cel-tui to produce a render buffer");
+  }
+
+  const snapshot: string[] = [];
+  for (let y = 0; y < rows; y++) {
+    let text = "";
+    for (let x = 0; x < cols; x++) {
+      text += buffer.get(x, y).char;
+    }
+    snapshot.push(text);
+  }
+
+  cel.stop();
+  return snapshot;
+}
+
 const tempDirs: string[] = [];
 
 function createTempDir(): string {
@@ -192,6 +224,7 @@ function createTestState(): AppState {
     activeTurnPromise: null,
     showReasoning: DEFAULT_SHOW_REASONING,
     verbose: DEFAULT_VERBOSE,
+    versionLabel: "dev",
     customModels: [],
     startupWarnings: [],
   };
@@ -476,19 +509,49 @@ describe("ui rendering", () => {
     }
   });
 
-  test("empty conversation log renders no splash banner", () => {
+  test("empty conversation log renders a minimal app banner", () => {
     const faux = registerFauxProvider();
     const withoutModel = createTestState();
     const withModel = createTestState();
     withModel.model = faux.getModel();
 
     try {
-      expect(buildConversationLog(withoutModel)).toEqual([]);
-      expect(buildConversationLog(withModel)).toEqual([]);
+      const withoutModelText = collectText({
+        type: "vstack",
+        props: {},
+        children: buildConversationLog(withoutModel),
+      });
+      const withModelText = collectText({
+        type: "vstack",
+        props: {},
+        children: buildConversationLog(withModel),
+      });
+
+      expect(withoutModelText).toEqual(["mini-coder", "dev"]);
+      expect(withModelText).toEqual(["mini-coder", "dev"]);
     } finally {
       faux.unregister();
       withoutModel.db.close();
       withModel.db.close();
+    }
+  });
+
+  test("empty conversation log centers the banner vertically above the input area", async () => {
+    const state = createTestState();
+
+    try {
+      const rows = await renderLayoutRows(
+        renderBaseLayout(state, 40, createInputController(state)),
+        40,
+        16,
+      );
+      const bannerRow = rows.findIndex((row) => row.includes("mini-coder"));
+      const dividerRow = rows.findIndex((row) => row.includes("────"));
+
+      expect(bannerRow).toBe(5);
+      expect(dividerRow).toBe(12);
+    } finally {
+      state.db.close();
     }
   });
 

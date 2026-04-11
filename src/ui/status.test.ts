@@ -103,6 +103,7 @@ function createTestState(): AppState {
     activeTurnPromise: null,
     showReasoning: DEFAULT_SHOW_REASONING,
     verbose: DEFAULT_VERBOSE,
+    versionLabel: "dev",
     customModels: [],
     startupWarnings: [],
   };

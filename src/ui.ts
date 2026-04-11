@@ -573,6 +573,7 @@ function renderConversationLog(state: AppState, width: number): Node {
       gap: CONVERSATION_GAP,
       overflow: "scroll",
       scrollbar: true,
+      justifyContent: state.messages.length === 0 ? "center" : undefined,
       scrollOffset: stickToBottom ? Infinity : scrollOffset,
       onScroll: (offset, maxOffset) => {
         const wasStickToBottom = stickToBottom;

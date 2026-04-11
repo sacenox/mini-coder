@@ -24,6 +24,7 @@ import type {
 import type { AppState } from "../index.ts";
 import type { UiMessage } from "../session.ts";
 import type { Theme } from "../theme.ts";
+import { APP_NAME, DEV_VERSION_LABEL } from "../version.ts";
 
 /** Single blank-line gap used between conversation-level blocks. */
 export const CONVERSATION_GAP = 1;
@@ -100,6 +101,13 @@ interface AssistantRenderState {
 }
 
 type ConversationMessage = AppState["messages"][number];
+
+type ConversationLogState = Pick<
+  AppState,
+  "messages" | "showReasoning" | "verbose" | "theme"
+> & {
+  versionLabel?: AppState["versionLabel"];
+};
 
 type ToolCallRenderInfo = {
   name: string;
@@ -926,6 +934,23 @@ function renderUiMessage(msg: UiMessage, theme: Theme): Node {
   ]);
 }
 
+function renderEmptyConversationBanner(
+  theme: Theme,
+  versionLabel: string,
+): Node {
+  return HStack({ justifyContent: "center" }, [
+    VStack({ padding: { x: 1 } }, [
+      Text(APP_NAME, {
+        bold: true,
+        fgColor: theme.accentText,
+      }),
+      Text(versionLabel, {
+        fgColor: theme.mutedText,
+      }),
+    ]),
+  ]);
+}
+
 function pushConversationNode(nodes: Node[], node: Node | null): void {
   if (!node) {
     return;
@@ -1006,7 +1031,7 @@ function cacheToolCallArgs(messages: readonly ConversationMessage[]): void {
 }
 
 function canReuseCommittedConversationCache(
-  state: Pick<AppState, "messages" | "showReasoning" | "verbose" | "theme">,
+  state: ConversationLogState,
   startIndex: number,
   previewWidth: number,
 ): boolean {
@@ -1022,7 +1047,7 @@ function canReuseCommittedConversationCache(
 }
 
 function cacheCommittedConversation(
-  state: Pick<AppState, "messages" | "showReasoning" | "verbose" | "theme">,
+  state: ConversationLogState,
   renderOpts: ConversationRenderOpts,
   startIndex: number,
 ): void {
@@ -1077,7 +1102,7 @@ function hasStreamingTail(streaming: StreamingConversationState): boolean {
  * @returns The rendered conversation log nodes.
  */
 export function buildConversationLogNodes(
-  state: Pick<AppState, "messages" | "showReasoning" | "verbose" | "theme">,
+  state: ConversationLogState,
   streaming: StreamingConversationState,
   startIndex = 0,
   previewWidth = DEFAULT_TOOL_PREVIEW_WIDTH,
@@ -1088,6 +1113,15 @@ export function buildConversationLogNodes(
     theme: state.theme,
     previewWidth,
   };
+
+  if (state.messages.length === 0 && !hasStreamingTail(streaming)) {
+    return [
+      renderEmptyConversationBanner(
+        state.theme,
+        state.versionLabel ?? DEV_VERSION_LABEL,
+      ),
+    ];
+  }
 
   cacheCommittedConversation(state, renderOpts, startIndex);
 

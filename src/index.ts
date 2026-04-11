@@ -72,6 +72,7 @@ import {
   readImageTool,
   shellTool,
 } from "./tools.ts";
+import { resolveAppVersionLabel } from "./version.ts";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -533,6 +534,8 @@ export interface AppState {
   plugins: LoadedPlugin[];
   /** Active theme (default + plugin overrides). */
   theme: Theme;
+  /** Version label shown in the empty conversation banner. */
+  versionLabel: string;
   /** Current git state (null if not in a repo). */
   git: GitState | null;
   /** Optional git state loader override used by tests. */
@@ -622,6 +625,7 @@ export async function init(): Promise<AppState> {
     skills: promptContext.skills,
     plugins: promptContext.plugins,
     theme: promptContext.theme,
+    versionLabel: resolveAppVersionLabel(),
     git: promptContext.git,
     providers,
     oauthCredentials,

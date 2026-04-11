@@ -816,10 +816,10 @@ On launch, mini-coder:
 6. Selects the launch mode:
    - Interactive TUI when `stdin` and `stdout` are both TTYs and `-p` was not provided.
    - Headless one-shot mode otherwise.
-7. In interactive mode, renders the UI with an empty conversation log and the status bar populated.
+7. In interactive mode, renders the UI with an empty conversation log, a minimal `mini-coder` empty-state banner (showing the packaged version when available, otherwise a simple dev label), and the status bar populated.
 8. Starts a new session only when a prompt is actually submitted (no 0-message sessions in the DB).
 
-No banner or splash screen. In headless mode, stdout is reserved for NDJSON event output; in interactive mode, the status bar already shows all the context the user needs.
+The empty-state banner is only shown while the conversation log has no messages. In headless mode, stdout is reserved for NDJSON event output.
 
 ## User settings persistence
 
