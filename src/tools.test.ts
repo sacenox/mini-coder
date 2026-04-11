@@ -49,6 +49,23 @@ function readFile(name: string): string {
   return readFileSync(join(tmp, name), "utf-8");
 }
 
+async function withShellEnv<T>(
+  shellPath: string,
+  run: () => Promise<T>,
+): Promise<T> {
+  const previousShell = process.env.SHELL;
+  process.env.SHELL = shellPath;
+  try {
+    return await run();
+  } finally {
+    if (previousShell === undefined) {
+      delete process.env.SHELL;
+    } else {
+      process.env.SHELL = previousShell;
+    }
+  }
+}
+
 function hasUnpairedSurrogate(input: string): boolean {
   for (let index = 0; index < input.length; index++) {
     const codeUnit = input.charCodeAt(index);
@@ -89,28 +106,54 @@ describe("edit", () => {
     expect(readFile("a.txt")).toBe("goodbye world");
   });
 
-  test("fails when old text is not found", () => {
-    writeFile("a.txt", "hello world");
+  test("fails when old text is not found and reports the closest match", () => {
+    writeFile("a.txt", 'export function foo() {\n  return "hello";\n}\n');
     const result = executeEdit(
-      { path: "a.txt", oldText: "missing", newText: "x" },
+      {
+        path: "a.txt",
+        oldText: "export function foo() {\n  return 'hello';\n}",
+        newText: "export function foo() {\n  return 'goodbye';\n}",
+      },
       tmp,
     );
+
     expect(result.isError).toBe(true);
-    expect(resultText(result)).toContain("not found");
+    expect(resultText(result)).toContain("Old text not found in a.txt");
+    expect(resultText(result)).toContain("Closest matches:");
+    expect(resultText(result)).toContain("lines 1-3");
+    expect(resultText(result)).toContain('return "hello";');
     // File unchanged
-    expect(readFile("a.txt")).toBe("hello world");
+    expect(readFile("a.txt")).toBe(
+      'export function foo() {\n  return "hello";\n}\n',
+    );
   });
 
-  test("fails when old text matches multiple locations", () => {
-    writeFile("a.txt", "aaa bbb aaa");
+  test("fails when old text matches multiple locations and reports where", () => {
+    writeFile(
+      "a.txt",
+      "const value = 1;\nconst other = 2;\nconst value = 1;\n",
+    );
     const result = executeEdit(
-      { path: "a.txt", oldText: "aaa", newText: "ccc" },
+      {
+        path: "a.txt",
+        oldText: "const value = 1;",
+        newText: "const value = 3;",
+      },
       tmp,
     );
+
     expect(result.isError).toBe(true);
-    expect(resultText(result)).toContain("multiple");
+    expect(resultText(result)).toContain(
+      "Old text matches multiple locations (2) in a.txt",
+    );
+    expect(resultText(result)).toContain("Matches:");
+    expect(resultText(result)).toContain("line 1");
+    expect(resultText(result)).toContain("line 3");
+    expect(resultText(result)).toContain("const value = 1;");
     // File unchanged
-    expect(readFile("a.txt")).toBe("aaa bbb aaa");
+    expect(readFile("a.txt")).toBe(
+      "const value = 1;\nconst other = 2;\nconst value = 1;\n",
+    );
   });
 
   test("creates new file when oldText is empty", () => {
@@ -214,6 +257,21 @@ describe("edit", () => {
     expect(readFile("multi.txt")).toBe("function foo() {\n  return 2;\n}\n");
   });
 
+  test("inserts replacement text literally when it contains replacement markers", () => {
+    writeFile("literal.txt", "before TARGET after");
+    const result = executeEdit(
+      {
+        path: "literal.txt",
+        oldText: "TARGET",
+        newText: "$$ $& $` $'",
+      },
+      tmp,
+    );
+
+    expect(result.isError).toBe(false);
+    expect(readFile("literal.txt")).toBe("before $$ $& $` $' after");
+  });
+
   test("resolves relative paths against cwd", () => {
     mkdirSync(join(tmp, "sub"), { recursive: true });
     writeFileSync(join(tmp, "sub", "rel.txt"), "original");
@@ -273,6 +331,49 @@ describe("shell", () => {
     const result = await executeShell({ command: "pwd" }, tmp);
     expect(result.isError).toBe(false);
     expect(resultText(result)).toContain(tmp);
+  });
+
+  test("normalizes leading-dash printf format strings", async () => {
+    const result = await withShellEnv("/bin/sh", () =>
+      executeShell({ command: "printf '--- spec.md ---\\n'" }, tmp),
+    );
+
+    expect(result.isError).toBe(false);
+    expect(resultText(result)).toContain("Exit code: 0");
+    expect(resultText(result)).toContain("--- spec.md ---");
+  });
+
+  test("normalizes heredoc pipe trailers back onto the heredoc start line", async () => {
+    const result = await withShellEnv("/bin/sh", () =>
+      executeShell(
+        {
+          command: "python3 - <<'PY'\nprint('first')\nPY | sed -n '1p'\n",
+        },
+        tmp,
+      ),
+    );
+
+    expect(result.isError).toBe(false);
+    expect(resultText(result)).toContain("Exit code: 0");
+    expect(resultText(result)).toContain("first");
+    expect(resultText(result)).not.toContain("SyntaxError");
+  });
+
+  test("normalizes heredoc redirect trailers back onto the heredoc start line", async () => {
+    const result = await withShellEnv("/bin/sh", () =>
+      executeShell(
+        {
+          command:
+            "cat <<'EOF'\nhello\nEOF > out.txt\n[ -f out.txt ] && cat out.txt\n",
+        },
+        tmp,
+      ),
+    );
+
+    expect(result.isError).toBe(false);
+    expect(resultText(result)).toContain("Exit code: 0");
+    expect(resultText(result)).toContain("hello");
+    expect(readFile("out.txt")).toBe("hello\n");
   });
 
   test("truncates large output", async () => {

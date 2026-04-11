@@ -68,6 +68,8 @@ Implementation details:
 - Large outputs are truncated as a safety guard against context explosion from bad or overly broad commands (for example, accidentally reading a huge file, binary, or unbounded command output). This guard applies to both very tall output (many lines) and very wide output (a few extremely long lines), and is not related to the user-configured verbose setting.
 - The truncation threshold is configurable, tuned to keep useful output while staying well within context limits. This tool-level truncation is intentionally narrow in scope: it protects the model context from pathological output, not as a general-purpose presentation layer for every output-shaping concern.
 - Commands run via `$SHELL -c "<command>"` (falling back to `/bin/sh` if `$SHELL` is unset) with the CWD set to the session's working directory.
+- Before execution, the harness may apply a small set of silent, lossless compatibility normalizations for common model-authored shell mistakes when the intended command is unambiguous (for example, moving a heredoc trailer's `|`, `&&`, or `>` continuation back onto the heredoc start line, or rewriting `printf '--- ...'` to `printf -- '--- ...'` when the format string begins with `-`).
+- Compatibility normalization is best-effort and intentionally narrow. If a rewrite is ambiguous or the normalization step itself fails, the raw command is executed unchanged.
 - Timeout: no default timeout. The user can interrupt via `Escape`.
 
 ### `edit`
@@ -77,7 +79,8 @@ Exact-text replacement in a single file. Use it to write the exact file content 
 Implementation details:
 
 - Takes a file path (absolute, or relative to the session CWD), the old text to find, and the new text to replace it with.
-- Fails deterministically if the old text is not found or matches multiple locations. Returns the error message so the model can self-correct.
+- The replacement text is inserted literally. Replacement markers such as `$$`, `$&`, `$'`, and the JS prefix marker ($ followed by a backtick) are not expanded.
+- Fails deterministically if the old text is not found or matches multiple locations. Returns a descriptive error with nearby similar snippets or match locations so the model can self-correct.
 - Create new files by passing empty old text and the full file content as new text. Parent directories are created automatically.
 - Returns a confirmation or error message — no diff output (the agent already knows what it wrote).
 - Encoding: reads and writes UTF-8. Preserves the file's existing line endings.

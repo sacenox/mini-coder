@@ -57,6 +57,320 @@ function normalizeLineEndings(
   return content.replace(/\r\n/g, "\n");
 }
 
+const MAX_EDIT_ERROR_MATCHES = 3;
+const MAX_EDIT_ERROR_SNIPPET_LINES = 8;
+const MAX_EDIT_ERROR_SNIPPET_LINE_CHARS = 160;
+const MIN_EDIT_SIMILARITY_SCORE = 0.45;
+
+interface EditSnippet {
+  startLine: number;
+  endLine: number;
+  lines: string[];
+}
+
+function splitDisplayLines(content: string): string[] {
+  const lines = content.replace(/\r\n/g, "\n").split("\n");
+  if (lines.at(-1) === "") {
+    lines.pop();
+  }
+  return lines;
+}
+
+function countDisplayLines(content: string): number {
+  return Math.max(splitDisplayLines(content).length, 1);
+}
+
+function formatLineRange(startLine: number, endLine: number): string {
+  return startLine === endLine
+    ? `line ${startLine}`
+    : `lines ${startLine}-${endLine}`;
+}
+
+function truncateSnippetLine(line: string): string {
+  if (line.length <= MAX_EDIT_ERROR_SNIPPET_LINE_CHARS) {
+    return line;
+  }
+  return `${line.slice(0, MAX_EDIT_ERROR_SNIPPET_LINE_CHARS - 1)}…`;
+}
+
+function formatSnippetLines(lines: readonly string[]): string {
+  const visibleLines = lines.slice(0, MAX_EDIT_ERROR_SNIPPET_LINES);
+  const formatted = visibleLines
+    .map((line) => `  ${truncateSnippetLine(line)}`)
+    .join("\n");
+  const hiddenLineCount = lines.length - visibleLines.length;
+  if (hiddenLineCount <= 0) {
+    return formatted;
+  }
+  return `${formatted}\n  … ${hiddenLineCount} more lines`;
+}
+
+function commonPrefixLength(a: string, b: string): number {
+  let index = 0;
+  const maxLength = Math.min(a.length, b.length);
+  while (index < maxLength && a[index] === b[index]) {
+    index++;
+  }
+  return index;
+}
+
+function commonSuffixLength(
+  a: string,
+  b: string,
+  prefixLength: number,
+): number {
+  let index = 0;
+  const maxLength = Math.min(a.length, b.length) - prefixLength;
+  while (
+    index < maxLength &&
+    a[a.length - 1 - index] === b[b.length - 1 - index]
+  ) {
+    index++;
+  }
+  return index;
+}
+
+function scoreSimilarLine(oldLine: string, candidateLine: string): number {
+  if (oldLine === candidateLine) {
+    return 1;
+  }
+
+  const normalizedOldLine = oldLine.trim();
+  const normalizedCandidateLine = candidateLine.trim();
+  if (normalizedOldLine === normalizedCandidateLine) {
+    return normalizedOldLine === "" ? 1 : 0.98;
+  }
+  if (normalizedOldLine === "" || normalizedCandidateLine === "") {
+    return 0;
+  }
+
+  const prefixLength = commonPrefixLength(
+    normalizedOldLine,
+    normalizedCandidateLine,
+  );
+  const suffixLength = commonSuffixLength(
+    normalizedOldLine,
+    normalizedCandidateLine,
+    prefixLength,
+  );
+  const overlapLength = Math.min(
+    normalizedOldLine.length,
+    prefixLength + suffixLength,
+  );
+  const maxLength = Math.max(
+    normalizedOldLine.length,
+    normalizedCandidateLine.length,
+  );
+  const structuralScore = overlapLength / maxLength;
+
+  if (
+    normalizedOldLine.includes(normalizedCandidateLine) ||
+    normalizedCandidateLine.includes(normalizedOldLine)
+  ) {
+    const sharedLength = Math.min(
+      normalizedOldLine.length,
+      normalizedCandidateLine.length,
+    );
+    return Math.max(structuralScore, sharedLength / maxLength);
+  }
+
+  return structuralScore;
+}
+
+function scoreLineWindow(
+  oldLines: readonly string[],
+  candidateLines: readonly string[],
+): number {
+  const maxLineCount = Math.max(oldLines.length, candidateLines.length);
+  let weightedScore = 0;
+  let totalWeight = 0;
+
+  for (let index = 0; index < maxLineCount; index++) {
+    const oldLine = oldLines[index] ?? "";
+    const candidateLine = candidateLines[index] ?? "";
+    const weight = Math.max(
+      oldLine.trim().length,
+      candidateLine.trim().length,
+      1,
+    );
+    weightedScore += scoreSimilarLine(oldLine, candidateLine) * weight;
+    totalWeight += weight;
+  }
+
+  return totalWeight === 0 ? 0 : weightedScore / totalWeight;
+}
+
+function findClosestEditSnippets(
+  oldText: string,
+  content: string,
+): EditSnippet[] {
+  const oldLines = splitDisplayLines(oldText);
+  const fileLines = splitDisplayLines(content);
+  if (fileLines.length === 0) {
+    return [];
+  }
+
+  const windowSizes = Array.from(
+    new Set([
+      Math.max(1, oldLines.length - 1),
+      Math.max(1, oldLines.length),
+      Math.min(fileLines.length, oldLines.length + 1),
+    ]),
+  );
+  const candidates: (EditSnippet & { score: number })[] = [];
+
+  for (const windowSize of windowSizes) {
+    if (windowSize > fileLines.length) {
+      continue;
+    }
+
+    for (
+      let startLineIndex = 0;
+      startLineIndex <= fileLines.length - windowSize;
+      startLineIndex++
+    ) {
+      const lines = fileLines.slice(
+        startLineIndex,
+        startLineIndex + windowSize,
+      );
+      candidates.push({
+        startLine: startLineIndex + 1,
+        endLine: startLineIndex + windowSize,
+        lines,
+        score: scoreLineWindow(oldLines, lines),
+      });
+    }
+  }
+
+  candidates.sort((a, b) => {
+    const scoreDelta = b.score - a.score;
+    if (scoreDelta !== 0) {
+      return scoreDelta;
+    }
+
+    const lineSpanDelta =
+      Math.abs(a.lines.length - oldLines.length) -
+      Math.abs(b.lines.length - oldLines.length);
+    if (lineSpanDelta !== 0) {
+      return lineSpanDelta;
+    }
+
+    return a.startLine - b.startLine;
+  });
+
+  const snippets: EditSnippet[] = [];
+  const seen = new Set<string>();
+  for (const candidate of candidates) {
+    if (candidate.score < MIN_EDIT_SIMILARITY_SCORE) {
+      break;
+    }
+
+    const key = `${candidate.startLine}:${candidate.endLine}`;
+    if (seen.has(key)) {
+      continue;
+    }
+
+    snippets.push({
+      startLine: candidate.startLine,
+      endLine: candidate.endLine,
+      lines: candidate.lines,
+    });
+    seen.add(key);
+
+    if (snippets.length === MAX_EDIT_ERROR_MATCHES) {
+      break;
+    }
+  }
+
+  return snippets;
+}
+
+function buildLineStarts(content: string): number[] {
+  const lineStarts = [0];
+  for (let index = 0; index < content.length; index++) {
+    if (content[index] === "\n") {
+      lineStarts.push(index + 1);
+    }
+  }
+  return lineStarts;
+}
+
+function findLineNumber(lineStarts: readonly number[], index: number): number {
+  let low = 0;
+  let high = lineStarts.length - 1;
+
+  while (low <= high) {
+    const mid = Math.floor((low + high) / 2);
+    const lineStart = lineStarts[mid];
+    if (lineStart === undefined) {
+      break;
+    }
+    if (lineStart <= index) {
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+
+  return high + 1;
+}
+
+function formatEditNotFoundError(
+  path: string,
+  oldText: string,
+  content: string,
+): string {
+  const snippets = findClosestEditSnippets(oldText, content);
+  if (snippets.length === 0) {
+    return `Old text not found in ${path}`;
+  }
+
+  return [
+    `Old text not found in ${path}`,
+    "Closest matches:",
+    ...snippets.map(
+      (snippet) =>
+        `- ${formatLineRange(snippet.startLine, snippet.endLine)}\n${formatSnippetLines(snippet.lines)}`,
+    ),
+  ].join("\n");
+}
+
+function formatEditMultipleMatchesError(
+  path: string,
+  oldText: string,
+  content: string,
+  matchIndices: readonly number[],
+  totalMatches: number,
+): string {
+  const lineStarts = buildLineStarts(content);
+  const fileLines = splitDisplayLines(content);
+  const matchLineCount = countDisplayLines(oldText);
+  const snippets = matchIndices.map((matchIndex) => {
+    const startLine = findLineNumber(lineStarts, matchIndex);
+    const endLine = startLine + matchLineCount - 1;
+    return {
+      startLine,
+      endLine,
+      lines: fileLines.slice(startLine - 1, endLine),
+    };
+  });
+
+  const lines = [
+    `Old text matches multiple locations (${totalMatches}) in ${path}`,
+    "Matches:",
+    ...snippets.map(
+      (snippet) =>
+        `- ${formatLineRange(snippet.startLine, snippet.endLine)}\n${formatSnippetLines(snippet.lines)}`,
+    ),
+  ];
+  const hiddenMatchCount = totalMatches - matchIndices.length;
+  if (hiddenMatchCount > 0) {
+    lines.push(`- … ${hiddenMatchCount} more matches`);
+  }
+
+  return lines.join("\n");
+}
+
 // ---------------------------------------------------------------------------
 // edit
 // ---------------------------------------------------------------------------
@@ -106,20 +420,33 @@ export function executeEdit(args: EditArgs, cwd: string): ToolExecResult {
 
   // Count occurrences
   let count = 0;
+  const matchIndices: number[] = [];
   let idx = 0;
   while (true) {
     idx = content.indexOf(args.oldText, idx);
     if (idx === -1) break;
     count++;
+    if (matchIndices.length < MAX_EDIT_ERROR_MATCHES) {
+      matchIndices.push(idx);
+    }
     idx += args.oldText.length;
   }
 
   if (count === 0) {
-    return textResult(`Old text not found in ${args.path}`, true);
+    return textResult(
+      formatEditNotFoundError(args.path, args.oldText, content),
+      true,
+    );
   }
   if (count > 1) {
     return textResult(
-      `Old text matches multiple locations (${count}) in ${args.path}`,
+      formatEditMultipleMatchesError(
+        args.path,
+        args.oldText,
+        content,
+        matchIndices,
+        count,
+      ),
       true,
     );
   }
@@ -129,7 +456,14 @@ export function executeEdit(args: EditArgs, cwd: string): ToolExecResult {
   const newText = lineEnding
     ? normalizeLineEndings(args.newText, lineEnding)
     : args.newText;
-  const updated = content.replace(args.oldText, newText);
+  const matchIndex = matchIndices[0];
+  if (matchIndex === undefined) {
+    return textResult(`Old text not found in ${args.path}`, true);
+  }
+  const updated =
+    content.slice(0, matchIndex) +
+    newText +
+    content.slice(matchIndex + args.oldText.length);
   writeFileSync(filePath, updated, "utf-8");
   return textResult(`Edited ${args.path}`, false);
 }
@@ -172,6 +506,335 @@ function formatShellOutput(stdout: string, stderr: string): string {
     return `[stderr]\n${stderr}`;
   }
   return "";
+}
+
+interface ShellCommandLines {
+  lines: string[];
+  lineEnding: "\n" | "\r\n";
+  hasTrailingLineEnding: boolean;
+}
+
+interface PendingHeredoc {
+  startLineIndex: number;
+  delimiter: string;
+  stripLeadingTabs: boolean;
+}
+
+interface ShellQuoteState {
+  quote: "'" | '"' | null;
+  escaped: boolean;
+}
+
+function splitShellCommandLines(command: string): ShellCommandLines {
+  const lineEnding = detectLineEnding(command) ?? "\n";
+  const normalized = normalizeLineEndings(command, "\n");
+  const hasTrailingLineEnding = normalized.endsWith("\n");
+  const lines = normalized.split("\n");
+  if (hasTrailingLineEnding) {
+    lines.pop();
+  }
+  return { lines, lineEnding, hasTrailingLineEnding };
+}
+
+function joinShellCommandLines(parts: ShellCommandLines): string {
+  const joined = parts.lines.join(parts.lineEnding);
+  if (parts.hasTrailingLineEnding) {
+    return joined + parts.lineEnding;
+  }
+  return joined;
+}
+
+function advanceShellQuoteState(char: string, state: ShellQuoteState): boolean {
+  if (state.quote === "'") {
+    if (char === "'") {
+      state.quote = null;
+    }
+    return true;
+  }
+
+  if (state.quote === '"') {
+    if (state.escaped) {
+      state.escaped = false;
+      return true;
+    }
+    if (char === "\\") {
+      state.escaped = true;
+      return true;
+    }
+    if (char === '"') {
+      state.quote = null;
+    }
+    return true;
+  }
+
+  if (char === "'") {
+    state.quote = "'";
+    return true;
+  }
+  if (char === '"') {
+    state.quote = '"';
+    return true;
+  }
+
+  return false;
+}
+
+function isHeredocPrefixCharacter(char: string): boolean {
+  return (
+    char === "" ||
+    char === " " ||
+    char === "\t" ||
+    char === ";" ||
+    char === "(" ||
+    char === "&" ||
+    char === "|"
+  );
+}
+
+function getHeredocStartAt(
+  line: string,
+  index: number,
+): { index: number; stripLeadingTabs: boolean } | null {
+  if (line[index] !== "<" || line[index + 1] !== "<") {
+    return null;
+  }
+
+  const previousChar = index === 0 ? "" : (line[index - 1] ?? "");
+  if (!isHeredocPrefixCharacter(previousChar)) {
+    return null;
+  }
+
+  return {
+    index,
+    stripLeadingTabs: line[index + 2] === "-",
+  };
+}
+
+function findUnquotedHeredocStart(
+  line: string,
+): { index: number; stripLeadingTabs: boolean } | null {
+  const quoteState: ShellQuoteState = { quote: null, escaped: false };
+  let heredocStart: { index: number; stripLeadingTabs: boolean } | null = null;
+
+  for (let index = 0; index < line.length - 1; index++) {
+    const char = line[index];
+    if (char === undefined || advanceShellQuoteState(char, quoteState)) {
+      continue;
+    }
+
+    const nextHeredocStart = getHeredocStartAt(line, index);
+    if (!nextHeredocStart) {
+      continue;
+    }
+    if (heredocStart) {
+      return null;
+    }
+
+    heredocStart = nextHeredocStart;
+    index += heredocStart.stripLeadingTabs ? 2 : 1;
+  }
+
+  return heredocStart;
+}
+
+function skipHeredocDelimiterWhitespace(line: string, cursor: number): number {
+  let nextCursor = cursor;
+  while (line[nextCursor] === " " || line[nextCursor] === "\t") {
+    nextCursor++;
+  }
+  return nextCursor;
+}
+
+function readQuotedHeredocDelimiter(
+  line: string,
+  cursor: number,
+): string | null {
+  const quote = line[cursor];
+  if (quote !== "'" && quote !== '"') {
+    return null;
+  }
+
+  const endQuoteIndex = line.indexOf(quote, cursor + 1);
+  if (endQuoteIndex === -1) {
+    return null;
+  }
+  return line.slice(cursor + 1, endQuoteIndex);
+}
+
+function isHeredocDelimiterStopCharacter(char: string): boolean {
+  return (
+    char === " " ||
+    char === "\t" ||
+    char === "<" ||
+    char === ">" ||
+    char === "&" ||
+    char === "|" ||
+    char === ";" ||
+    char === "(" ||
+    char === ")"
+  );
+}
+
+function readBareHeredocDelimiter(line: string, cursor: number): string | null {
+  const startChar = line[cursor];
+  if (startChar === undefined || !/[A-Za-z_]/.test(startChar)) {
+    return null;
+  }
+
+  let endIndex = cursor;
+  while (endIndex < line.length) {
+    const currentChar = line[endIndex];
+    if (
+      currentChar === undefined ||
+      isHeredocDelimiterStopCharacter(currentChar)
+    ) {
+      break;
+    }
+    endIndex++;
+  }
+  return line.slice(cursor, endIndex);
+}
+
+function findUnquotedHeredoc(
+  line: string,
+  startLineIndex: number,
+): PendingHeredoc | null {
+  const heredocStart = findUnquotedHeredocStart(line);
+  if (!heredocStart) {
+    return null;
+  }
+
+  const cursor = skipHeredocDelimiterWhitespace(
+    line,
+    heredocStart.index + 2 + (heredocStart.stripLeadingTabs ? 1 : 0),
+  );
+  const delimiter =
+    readQuotedHeredocDelimiter(line, cursor) ??
+    readBareHeredocDelimiter(line, cursor);
+  if (!delimiter) {
+    return null;
+  }
+
+  return {
+    startLineIndex,
+    delimiter,
+    stripLeadingTabs: heredocStart.stripLeadingTabs,
+  };
+}
+
+function getHeredocLineBody(line: string, stripLeadingTabs: boolean): string {
+  if (!stripLeadingTabs) {
+    return line;
+  }
+  return line.replace(/^\t+/, "");
+}
+
+function getSupportedHeredocTrailer(rest: string): string | null {
+  const trimmedRest = rest.trimStart();
+  if (!trimmedRest) {
+    return null;
+  }
+  if (trimmedRest.startsWith("&&")) {
+    return trimmedRest.slice(2).trim() ? rest : null;
+  }
+  if (trimmedRest.startsWith("||")) {
+    return null;
+  }
+  if (trimmedRest.startsWith("|")) {
+    return trimmedRest.slice(1).trim() ? rest : null;
+  }
+  if (trimmedRest.startsWith(">")) {
+    return trimmedRest.slice(1).trim() ? rest : null;
+  }
+  return null;
+}
+
+function rewritePendingHeredocTrailer(
+  parts: ShellCommandLines,
+  line: string,
+  lineIndex: number,
+  pendingHeredoc: PendingHeredoc,
+): PendingHeredoc | null {
+  const body = getHeredocLineBody(line, pendingHeredoc.stripLeadingTabs);
+  if (body === pendingHeredoc.delimiter) {
+    return null;
+  }
+  if (!body.startsWith(pendingHeredoc.delimiter)) {
+    return pendingHeredoc;
+  }
+
+  const trailer = getSupportedHeredocTrailer(
+    body.slice(pendingHeredoc.delimiter.length),
+  );
+  if (!trailer) {
+    return pendingHeredoc;
+  }
+
+  const startLine = parts.lines[pendingHeredoc.startLineIndex];
+  if (startLine === undefined) {
+    return pendingHeredoc;
+  }
+
+  parts.lines[pendingHeredoc.startLineIndex] = startLine + trailer;
+  const leadingTabs = pendingHeredoc.stripLeadingTabs
+    ? (line.match(/^\t*/) ?? [""])[0]
+    : "";
+  parts.lines[lineIndex] = `${leadingTabs}${pendingHeredoc.delimiter}`;
+  return null;
+}
+
+function normalizeHeredocTrailingContinuations(command: string): string {
+  const parts = splitShellCommandLines(command);
+  let pendingHeredoc: PendingHeredoc | null = null;
+
+  for (const [index, line] of parts.lines.entries()) {
+    if (pendingHeredoc) {
+      pendingHeredoc = rewritePendingHeredocTrailer(
+        parts,
+        line,
+        index,
+        pendingHeredoc,
+      );
+      continue;
+    }
+
+    pendingHeredoc = findUnquotedHeredoc(line, index);
+  }
+
+  return joinShellCommandLines(parts);
+}
+
+function normalizeLeadingDashPrintf(command: string): string {
+  const parts = splitShellCommandLines(command);
+  let pendingHeredoc: PendingHeredoc | null = null;
+
+  for (const [index, line] of parts.lines.entries()) {
+    if (pendingHeredoc) {
+      const body = getHeredocLineBody(line, pendingHeredoc.stripLeadingTabs);
+      if (body === pendingHeredoc.delimiter) {
+        pendingHeredoc = null;
+      }
+      continue;
+    }
+
+    parts.lines[index] = line.replace(
+      /^(\s*)printf(\s+)(['"])-/,
+      "$1printf$2-- $3-",
+    );
+    pendingHeredoc = findUnquotedHeredoc(parts.lines[index] || "", index);
+  }
+
+  return joinShellCommandLines(parts);
+}
+
+function normalizeShellCommand(command: string): string {
+  try {
+    return normalizeLeadingDashPrintf(
+      normalizeHeredocTrailingContinuations(command),
+    );
+  } catch {
+    return command;
+  }
 }
 
 /** Read a spawned shell stream into a string, reporting progressive updates. */
@@ -225,7 +888,8 @@ export async function executeShell(
       stderr: "pipe",
     };
     if (opts?.signal) spawnOpts.signal = opts.signal;
-    const proc = Bun.spawn([shell, "-c", args.command], spawnOpts);
+    const command = normalizeShellCommand(args.command);
+    const proc = Bun.spawn([shell, "-c", command], spawnOpts);
 
     let stdoutBuf = "";
     let stderrBuf = "";

@@ -7,8 +7,6 @@ The spec.md and code are the sources of truth, not this file, don't assume anyth
 
 ## Open items
 
-- None right now.
-
 ## Low priority (deffered until further notice)
 
 - [ ] **Prevent `/session` from switching sessions mid-run** (`ui/commands.ts`, `ui/agent.ts`) — selecting a session while a turn is active can desync UI state from the session the loop is still writing to.

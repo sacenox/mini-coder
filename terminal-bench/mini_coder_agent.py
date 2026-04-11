@@ -22,7 +22,7 @@ class MiniCoderAgent(BaseInstalledAgent):
     def name() -> str:
         return "mini-coder"
 
-    async def install(self, environment: BaseEnvironment) -> None:
+    async def _install_system_dependencies(self, environment: BaseEnvironment) -> None:
         await self.exec_as_root(
             environment,
             command=(
@@ -36,16 +36,43 @@ class MiniCoderAgent(BaseInstalledAgent):
             ),
             env={"DEBIAN_FRONTEND": "noninteractive"},
         )
+
+    async def _install_bun(self, environment: BaseEnvironment) -> None:
         await self.exec_as_agent(
             environment,
             command=(
                 "set -euo pipefail; "
                 "curl -fsSL https://bun.sh/install | bash; "
                 'export PATH="$HOME/.bun/bin:$PATH"; '
-                f"bun add -g mini-coder@{self._version}; "
+                "test -x ~/.bun/bin/bun"
+            ),
+        )
+
+    async def _install_global_package(
+        self,
+        environment: BaseEnvironment,
+        package_spec: str,
+        *,
+        ignore_scripts: bool,
+    ) -> None:
+        ignore_scripts_flag = "--ignore-scripts " if ignore_scripts else ""
+        await self.exec_as_agent(
+            environment,
+            command=(
+                'export PATH="$HOME/.bun/bin:$PATH"; '
+                f"bun add -g {ignore_scripts_flag}{shlex.quote(package_spec)}; "
                 "test -x ~/.bun/bin/bun; "
                 "test -x ~/.bun/bin/mc"
             ),
+        )
+
+    async def install(self, environment: BaseEnvironment) -> None:
+        await self._install_system_dependencies(environment)
+        await self._install_bun(environment)
+        await self._install_global_package(
+            environment,
+            f"mini-coder@{self._version}",
+            ignore_scripts=False,
         )
 
     def populate_context_post_run(self, context: AgentContext) -> None:
