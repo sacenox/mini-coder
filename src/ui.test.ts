@@ -55,6 +55,12 @@ function collectText(node: Node | null): string[] {
   if (node.type === "textinput") {
     return [];
   }
+  if (
+    node.type === "hstack" &&
+    node.children.every((child) => child.type === "text")
+  ) {
+    return [node.children.map((child) => child.content).join("")];
+  }
   return node.children.flatMap((child) => collectText(child));
 }
 

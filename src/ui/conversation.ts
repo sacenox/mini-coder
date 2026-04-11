@@ -8,9 +8,13 @@
  * @module
  */
 
-import { Markdown } from "@cel-tui/components";
+import {
+  Markdown,
+  SyntaxHighlight,
+  type SyntaxHighlightTheme,
+} from "@cel-tui/components";
 import { HStack, measureContentHeight, Text, VStack } from "@cel-tui/core";
-import type { Node } from "@cel-tui/types";
+import type { Color, Node } from "@cel-tui/types";
 import type {
   AssistantMessage,
   TextContent,
@@ -32,6 +36,26 @@ const DEFAULT_TOOL_PREVIEW_WIDTH = 80;
 
 /** Horizontal columns consumed by tool-block padding and the left border. */
 const TOOL_BLOCK_CHROME_WIDTH = 4;
+
+/** ANSI16 fallback hex values for syntax-highlighter theme overrides. */
+const ANSI_COLOR_HEX: Readonly<Record<Color, string>> = {
+  color00: "#000000",
+  color01: "#cd3131",
+  color02: "#0dbc79",
+  color03: "#e5e510",
+  color04: "#2472c8",
+  color05: "#bc3fbc",
+  color06: "#11a8cd",
+  color07: "#e5e5e5",
+  color08: "#666666",
+  color09: "#f14c4c",
+  color10: "#23d18b",
+  color11: "#f5f543",
+  color12: "#3b8eea",
+  color13: "#d670d6",
+  color14: "#29b8db",
+  color15: "#ffffff",
+};
 
 /** A pending tool result shown in the streaming tail. */
 export interface PendingToolResult {
@@ -110,6 +134,13 @@ type ToolRenderLineKind =
   | "summary"
   | "error";
 
+interface HighlightedToolBodySpec {
+  /** Full raw source content to syntax-highlight. */
+  text: string;
+  /** Registered lextide language id. */
+  language: string;
+}
+
 interface ToolBlockSpec {
   /** Tool name shown in the header pill. */
   toolName: string;
@@ -117,6 +148,8 @@ interface ToolBlockSpec {
   direction: ToolRenderDirection;
   /** Logical body lines for the tool block. */
   bodyLines: readonly ToolRenderLine[];
+  /** Optional syntax-highlighted body rendered from the full unsplit source. */
+  highlightedBody?: HighlightedToolBodySpec;
   /** Whether `/verbose` preview rules apply to the body. */
   previewBody: boolean;
 }
@@ -339,6 +372,159 @@ function getToolHeaderColor(toolName: string, theme: Theme) {
   }
 }
 
+type SyntaxThemeRegistration = Exclude<SyntaxHighlightTheme, string>;
+type SyntaxThemeTokenColor = NonNullable<
+  SyntaxThemeRegistration["tokenColors"]
+>[number];
+
+const graphemeSegmenter = new Intl.Segmenter(undefined, {
+  granularity: "grapheme",
+});
+const shellSyntaxThemeCache = new WeakMap<Theme, SyntaxThemeRegistration>();
+
+function colorToHex(color: Color | undefined): string | undefined {
+  return color ? ANSI_COLOR_HEX[color] : undefined;
+}
+
+function pushSyntaxTokenColor(
+  tokenColors: SyntaxThemeTokenColor[],
+  scope: string | readonly string[],
+  foreground: Color | undefined,
+  fontStyle?: string,
+): void {
+  const foregroundHex = colorToHex(foreground);
+  if (!foregroundHex && !fontStyle) {
+    return;
+  }
+
+  tokenColors.push({
+    scope,
+    settings: {
+      ...(foregroundHex ? { foreground: foregroundHex } : {}),
+      ...(fontStyle ? { fontStyle } : {}),
+    },
+  });
+}
+
+function getShellSyntaxTheme(theme: Theme): SyntaxThemeRegistration {
+  const cached = shellSyntaxThemeCache.get(theme);
+  if (cached) {
+    return cached;
+  }
+
+  const tokenColors: SyntaxThemeTokenColor[] = [];
+  pushSyntaxTokenColor(tokenColors, ["comment", "quote"], theme.mutedText);
+  pushSyntaxTokenColor(
+    tokenColors,
+    ["keyword", "storage"],
+    theme.secondaryAccentText,
+  );
+  pushSyntaxTokenColor(
+    tokenColors,
+    [
+      "entity.name.function",
+      "function",
+      "meta.function-call",
+      "support.function",
+      "title",
+    ],
+    theme.accentText,
+  );
+  pushSyntaxTokenColor(
+    tokenColors,
+    [
+      "built_in",
+      "class",
+      "entity.name.type",
+      "entity.other.inherited-class",
+      "support.class",
+      "support.type",
+      "type",
+    ],
+    theme.accentText,
+  );
+  pushSyntaxTokenColor(
+    tokenColors,
+    ["constant.language", "constant.numeric", "literal", "symbol"],
+    theme.secondaryAccentText ?? theme.accentText,
+  );
+  pushSyntaxTokenColor(
+    tokenColors,
+    ["markup.inline", "string"],
+    theme.diffAdded,
+  );
+  pushSyntaxTokenColor(tokenColors, "regexp", theme.diffRemoved);
+  pushSyntaxTokenColor(
+    tokenColors,
+    ["attr", "attribute", "entity.other.attribute-name", "property"],
+    theme.accentText,
+  );
+  pushSyntaxTokenColor(
+    tokenColors,
+    ["entity.name.tag", "name", "tag"],
+    theme.accentText,
+  );
+
+  const syntaxTheme: SyntaxThemeRegistration = {
+    ...(colorToHex(theme.toolText) ? { fg: colorToHex(theme.toolText) } : {}),
+    tokenColors,
+  };
+  shellSyntaxThemeCache.set(theme, syntaxTheme);
+  return syntaxTheme;
+}
+
+function splitHighlightedTextNode(
+  node: Extract<Node, { type: "text" }>,
+): Node[] {
+  if (node.content === "") {
+    return [Text("", node.props)];
+  }
+
+  const parts = node.content.match(/\s+|\S+/gu);
+  if (!parts) {
+    return [Text(node.content, node.props)];
+  }
+
+  const children: Node[] = [];
+  for (const part of parts) {
+    if (/^\s+$/u.test(part)) {
+      children.push(Text(part, node.props));
+      continue;
+    }
+
+    for (const { segment } of graphemeSegmenter.segment(part)) {
+      children.push(Text(segment, node.props));
+    }
+  }
+
+  return children;
+}
+
+function normalizeHighlightedToolLine(line: Node): Node {
+  if (line.type !== "hstack") {
+    return line;
+  }
+
+  const children = line.children.flatMap((child) => {
+    return child.type === "text" ? splitHighlightedTextNode(child) : [child];
+  });
+  return HStack(line.props, children);
+}
+
+function getHighlightedToolBodyLines(
+  spec: HighlightedToolBodySpec,
+  theme: Theme,
+): Node[] {
+  if (spec.text === "") {
+    return [];
+  }
+
+  const highlighted = SyntaxHighlight(spec.text, spec.language, {
+    theme: getShellSyntaxTheme(theme),
+  });
+  return highlighted.children.map((line) => normalizeHighlightedToolLine(line));
+}
+
 /** Render a single styled text node for a tool line. */
 function renderToolLine(line: ToolRenderLine, theme: Theme): Node {
   switch (line.kind) {
@@ -374,41 +560,28 @@ function renderToolLines(
   return lines.map((line) => renderToolLine(line, theme));
 }
 
-function measureToolLinesHeight(
-  lines: readonly ToolRenderLine[],
-  width: number,
-  theme: Theme,
-): number {
+function measureToolNodesHeight(lines: readonly Node[], width: number): number {
   if (lines.length === 0) {
     return 0;
   }
 
-  return measureContentHeight(VStack({}, renderToolLines(lines, theme)), {
-    width,
-  });
+  return measureContentHeight(VStack({}, [...lines]), { width });
 }
 
-function measureToolLineHeight(
-  line: ToolRenderLine,
-  width: number,
-  theme: Theme,
-): number {
-  return measureContentHeight(VStack({}, [renderToolLine(line, theme)]), {
-    width,
-  });
+function measureToolNodeHeight(line: Node, width: number): number {
+  return measureContentHeight(VStack({}, [line]), { width });
 }
 
-function countVisibleTailLines(
-  lines: readonly ToolRenderLine[],
+function countVisibleTailNodes(
+  lines: readonly Node[],
   width: number,
-  theme: Theme,
   maxRows: number,
 ): number {
   let remainingRows = maxRows;
   let visibleLineCount = 0;
 
   for (let index = lines.length - 1; index >= 0; index--) {
-    const lineHeight = measureToolLineHeight(lines[index]!, width, theme);
+    const lineHeight = measureToolNodeHeight(lines[index]!, width);
     if (lineHeight > remainingRows) {
       return visibleLineCount > 0 ? visibleLineCount : 1;
     }
@@ -432,8 +605,8 @@ function renderToolHeaderPill(
   ]);
 }
 
-function renderToolBody(
-  lines: readonly ToolRenderLine[],
+function renderToolBodyFromNodes(
+  lines: readonly Node[],
   previewBody: boolean,
   opts: Pick<ConversationRenderOpts, "previewWidth" | "theme" | "verbose">,
 ): { body: Node | null; summary?: ToolRenderLine } {
@@ -441,21 +614,19 @@ function renderToolBody(
     return { body: null };
   }
 
-  const renderedLines = renderToolLines(lines, opts.theme);
   if (opts.verbose || !previewBody) {
-    return { body: VStack({}, renderedLines) };
+    return { body: VStack({}, [...lines]) };
   }
 
   const bodyWidth = getToolBodyWidth(opts.previewWidth);
-  const totalHeight = measureToolLinesHeight(lines, bodyWidth, opts.theme);
+  const totalHeight = measureToolNodesHeight(lines, bodyWidth);
   if (totalHeight <= UI_TOOL_PREVIEW_ROWS) {
-    return { body: VStack({}, renderedLines) };
+    return { body: VStack({}, [...lines]) };
   }
 
-  const visibleLineCount = countVisibleTailLines(
+  const visibleLineCount = countVisibleTailNodes(
     lines,
     bodyWidth,
-    opts.theme,
     UI_TOOL_PREVIEW_ROWS,
   );
   const previewLines = lines.slice(-visibleLineCount);
@@ -466,7 +637,7 @@ function renderToolBody(
       {
         height: UI_TOOL_PREVIEW_ROWS,
       },
-      renderToolLines(previewLines, opts.theme),
+      [...previewLines],
     ),
     summary:
       hiddenLineCount > 0
@@ -478,12 +649,31 @@ function renderToolBody(
   };
 }
 
+function renderToolBody(
+  spec: ToolBlockSpec,
+  opts: Pick<ConversationRenderOpts, "previewWidth" | "theme" | "verbose">,
+): { body: Node | null; summary?: ToolRenderLine } {
+  if (spec.highlightedBody) {
+    return renderToolBodyFromNodes(
+      getHighlightedToolBodyLines(spec.highlightedBody, opts.theme),
+      spec.previewBody,
+      opts,
+    );
+  }
+
+  return renderToolBodyFromNodes(
+    renderToolLines(spec.bodyLines, opts.theme),
+    spec.previewBody,
+    opts,
+  );
+}
+
 /** Render a tool block with a left border and compact header pill. */
 function renderToolBlock(
   spec: ToolBlockSpec,
   opts: Pick<ConversationRenderOpts, "previewWidth" | "theme" | "verbose">,
 ): Node {
-  const body = renderToolBody(spec.bodyLines, spec.previewBody, opts);
+  const body = renderToolBody(spec, opts);
   const children: Node[] = [
     HStack({}, [
       renderToolHeaderPill(spec.toolName, spec.direction, opts.theme),
@@ -511,10 +701,18 @@ function getToolContentText(content: ToolResultMessage["content"]): string {
 }
 
 function buildShellToolCallSpec(args: Record<string, unknown>): ToolBlockSpec {
+  const command = getToolArgString(args, "command");
   return {
     toolName: "shell",
     direction: "->",
-    bodyLines: splitToolTextLines(getToolArgString(args, "command"), "command"),
+    bodyLines: splitToolTextLines(command, "command"),
+    highlightedBody:
+      command === ""
+        ? undefined
+        : {
+            text: command,
+            language: "bash",
+          },
     previewBody: true,
   };
 }

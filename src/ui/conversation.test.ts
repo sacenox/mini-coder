@@ -40,6 +40,12 @@ function collectText(node: Node | null): string[] {
   if (node.type === "textinput") {
     return [];
   }
+  if (
+    node.type === "hstack" &&
+    node.children.every((child) => child.type === "text")
+  ) {
+    return [node.children.map((child) => child.content).join("")];
+  }
   return node.children.flatMap((child) => collectText(child));
 }
 
@@ -524,6 +530,164 @@ describe("ui/conversation", () => {
     expect(text).not.toContain('"command": "echo hi"');
   });
 
+  test("renderAssistantMessage for a shell tool call syntax-highlights bash tokens", async () => {
+    // Arrange
+    const assistant = {
+      content: [
+        fauxToolCall(
+          "shell",
+          { command: 'if true; then echo "$HOME"; fi' },
+          { id: "tool-1" },
+        ),
+      ],
+    };
+
+    // Act
+    const rows = await renderBufferRows(
+      renderAssistantMessage(assistant, RENDER_OPTS),
+      48,
+      12,
+    );
+    const commandRow = rows.find((row) =>
+      row.text.includes('if true; then echo "$HOME"; fi'),
+    );
+
+    // Assert
+    expect(commandRow).toBeDefined();
+    expect(commandRow?.fgColors[commandRow.text.indexOf("if")]).toBe(
+      DEFAULT_THEME.secondaryAccentText ?? null,
+    );
+    expect(commandRow?.fgColors[commandRow.text.indexOf("echo")]).toBe(
+      DEFAULT_THEME.accentText ?? null,
+    );
+    expect(commandRow?.fgColors[commandRow.text.indexOf('"$HOME"')]).toBe(
+      DEFAULT_THEME.diffAdded ?? null,
+    );
+  });
+
+  test("renderAssistantMessage for a multiline shell tool call preserves syntax state across lines", async () => {
+    // Arrange
+    const assistant = {
+      content: [
+        fauxToolCall(
+          "shell",
+          { command: "printf 'foo\nbar'" },
+          { id: "tool-1" },
+        ),
+      ],
+    };
+
+    // Act
+    const rows = await renderBufferRows(
+      renderAssistantMessage(assistant, {
+        ...RENDER_OPTS,
+        verbose: true,
+      }),
+      32,
+      12,
+    );
+    const firstRow = rows.find((row) => row.text.includes("printf 'foo"));
+    const secondRow = rows.find((row) => row.text.includes("bar'"));
+
+    // Assert
+    expect(firstRow).toBeDefined();
+    expect(secondRow).toBeDefined();
+    expect(firstRow?.fgColors[firstRow.text.indexOf("foo")]).toBe(
+      DEFAULT_THEME.diffAdded ?? null,
+    );
+    expect(secondRow?.fgColors[secondRow.text.indexOf("bar")]).toBe(
+      DEFAULT_THEME.diffAdded ?? null,
+    );
+  });
+
+  test("renderAssistantMessage for a shell tool call uses theme-derived syntax colors", async () => {
+    // Arrange
+    const theme = {
+      ...DEFAULT_THEME,
+      accentText: "color14",
+      secondaryAccentText: "color09",
+      diffAdded: "color10",
+      mutedText: "color13",
+      toolText: "color15",
+    } satisfies typeof DEFAULT_THEME;
+    const assistant = {
+      content: [
+        fauxToolCall(
+          "shell",
+          { command: 'if true; then echo "$HOME"; fi' },
+          { id: "tool-1" },
+        ),
+      ],
+    };
+
+    // Act
+    const rows = await renderBufferRows(
+      renderAssistantMessage(assistant, {
+        ...RENDER_OPTS,
+        theme,
+      }),
+      48,
+      12,
+    );
+    const commandRow = rows.find((row) =>
+      row.text.includes('if true; then echo "$HOME"; fi'),
+    );
+
+    // Assert
+    expect(commandRow).toBeDefined();
+    expect(commandRow?.fgColors[commandRow.text.indexOf("if")]).toBe(
+      theme.secondaryAccentText ?? null,
+    );
+    expect(commandRow?.fgColors[commandRow.text.indexOf("echo")]).toBe(
+      theme.accentText ?? null,
+    );
+    expect(commandRow?.fgColors[commandRow.text.indexOf('"$HOME"')]).toBe(
+      theme.diffAdded ?? null,
+    );
+  });
+
+  test("renderAssistantMessage for a long single-token shell argument wraps through the tail in verbose mode", async () => {
+    // Arrange
+    const command = `printf ${"x".repeat(60)}TAIL`;
+    const assistant = {
+      content: [fauxToolCall("shell", { command }, { id: "tool-1" })],
+    };
+
+    // Act
+    const text = await renderVisibleText(
+      renderAssistantMessage(assistant, {
+        ...RENDER_OPTS,
+        verbose: true,
+        previewWidth: 24,
+      }),
+      24,
+      20,
+    );
+
+    // Assert
+    expect(text.some((line) => line.includes("TAIL"))).toBe(true);
+  });
+
+  test("renderAssistantMessage for a long single-token shell command uses wrapped preview height when verbose is off", () => {
+    // Arrange
+    const command = `printf ${"x".repeat(220)}TAIL`;
+    const assistant = {
+      content: [fauxToolCall("shell", { command }, { id: "tool-1" })],
+    };
+
+    // Act
+    const height = measureRenderedHeight(
+      renderAssistantMessage(assistant, {
+        ...RENDER_OPTS,
+        previewWidth: 24,
+      }),
+      24,
+    );
+
+    // Assert
+    expect(height).toBe(9);
+  });
+
   test("renderAssistantMessage for a wrapped shell command keeps a fixed preview height when verbose is off", () => {
     // Arrange
     const command = Array.from(
@@ -564,7 +728,7 @@ describe("ui/conversation", () => {
     );
 
     // Assert
-    expect(text).toContain("IMPORTANT_PREFIX");
+    expect(text.some((line) => line.includes("IMPORTANT_PREFIX"))).toBe(true);
   });
 
   test("renderToolResult for a shell preview allows the outer conversation scroll to handle mouse wheel events", async () => {
