@@ -606,7 +606,7 @@ function renderToolHeaderPill(
   theme: Theme,
 ): Node {
   return HStack({ bgColor: theme.toolBorder, padding: { x: 1 } }, [
-    Text(`[${getToolHeaderName(toolName)} ${direction}]`, {
+    Text(`${getToolHeaderName(toolName)} ${direction}`, {
       fgColor: getToolHeaderColor(toolName, theme),
       bold: true,
     }),

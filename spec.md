@@ -395,17 +395,17 @@ Three zones, top to bottom:
 │                                                      │
 │  I'll check the test suite first.                    │  agent: default bg
 │                                                      │
-│  │ [shell ->] bun test                               │  tool call
-│  │ [shell <-]                                        │  tool result
+│  │ shell -> bun test                                 │  tool call
+│  │ shell <-                                          │  tool result
 │  │ 3 passed, 1 failed                                │  dimmed text
 │  │ FAIL src/agent.test.ts > handles error            │
 │  │ exit 1                                            │
 │  │                                                   │
-│  │ [edit ->]                                         │  edit preview
+│  │ edit ->                                           │  edit preview
 │  │ src/agent.ts                                      │
 │  │   expect(result).toBe("error");                  │
 │  │                                                   │
-│  │ [edit <-]                                         │  compact result
+│  │ edit <-                                           │  compact result
 │  │ ~ src/agent.ts                                    │
 │  │                                                   │
 │  Fixed the assertion. Tests pass now.                │
@@ -531,13 +531,13 @@ Scrollable area that shows the full conversation history. Stick-to-bottom by def
 
 Message types and their rendering:
 
-Tool blocks share a common frame: a left border (`│`) plus a compact header pill naming the tool and direction (`[tool ->]` for assistant tool calls, `[tool <-]` for tool results). The body renders tool-specific content rather than raw JSON.
+Tool blocks share a common frame: a left border (`│`) plus a compact header pill naming the tool and direction (`tool ->` for assistant tool calls, `tool <-` for tool results). The body renders tool-specific content rather than raw JSON.
 
 - **User messages**: displayed as plain text with a subtle background color to distinguish them from agent responses. No prefix or role indicator.
 - **Assistant messages**: streamed markdown rendered via cel-tui's `Markdown` component on the default background. Thinking/reasoning content is collapsible (shown or hidden according to the user's persisted `/reasoning` preference; defaults to shown when no setting exists).
-- **Tool calls — shell**: rendered in the shared tool frame. The assistant tool call streams the command as it arrives. The command preview and shell tool result body use [verbose tool rendering](#verbose-tool-rendering). Shell tool results render the tool output content below a `[shell <-]` header.
-- **Tool calls — edit**: rendered in the shared tool frame. The in-progress tool-call preview shows the target path plus the streamed replacement content, preserving whitespace. The preview body uses [verbose tool rendering](#verbose-tool-rendering). Successful results render a compact confirmation block (`[edit <-]` plus the file path); errors render the returned error text.
-- **Tool calls — readImage**: rendered in the shared tool frame. The assistant tool call streams the path as it arrives. Successful results render a compact result block (`[read image <-]` plus the file path) rather than rendering the image itself.
+- **Tool calls — shell**: rendered in the shared tool frame. The assistant tool call streams the command as it arrives. The command preview and shell tool result body use [verbose tool rendering](#verbose-tool-rendering). Shell tool results render the tool output content below a `shell <-` header.
+- **Tool calls — edit**: rendered in the shared tool frame. The in-progress tool-call preview shows the target path plus the streamed replacement content, preserving whitespace. The preview body uses [verbose tool rendering](#verbose-tool-rendering). Successful results render a compact confirmation block (`edit <-` plus the file path); errors render the returned error text.
+- **Tool calls — readImage**: rendered in the shared tool frame. The assistant tool call streams the path as it arrives. Successful results render a compact result block (`read image <-` plus the file path) rather than rendering the image itself.
 - **Tool calls — plugin tools**: rendered in the shared tool frame, prefixed with plugin/tool name when available.
 - **UI messages**: internal app messages such as `/help` output, OAuth progress, and other session-local notices. They are rendered in the conversation log, persisted with the session, excluded from model context, and do not participate in conversational turn numbering.
 - **Errors**: one-line summary, styled distinctly.
@@ -586,13 +586,13 @@ Representative entry shapes:
 **Shell tool call**
 
 ```text
-  │ [shell ->] bun test src/session.test.ts
+  │ shell -> bun test src/session.test.ts
 ```
 
 **Shell tool result (`/verbose` off)**
 
 ```text
-  │ [shell <-]
+  │ shell <-
   │ src/session.test.ts:
   │   ✓ loads persisted turns
   │   ✓ undoes the latest turn
@@ -606,7 +606,7 @@ Representative entry shapes:
 **Shell tool result (`/verbose` on)**
 
 ```text
-  │ [shell <-]
+  │ shell <-
   │ src/session.test.ts:
   │   ✓ loads persisted turns
   │   ✓ undoes the latest turn
@@ -620,7 +620,7 @@ Representative entry shapes:
 **Edit tool call preview (`/verbose` off)**
 
 ```text
-  │ [edit ->]
+  │ edit ->
   │ src/session.ts
   │   const turn = getCurrentTurn(sessionId);
   │   saveMessage(sessionId, turn, message);
@@ -630,7 +630,7 @@ Representative entry shapes:
 **Edit tool call preview (`/verbose` on)**
 
 ```text
-  │ [edit ->]
+  │ edit ->
   │ src/session.ts
   │   const turn = getNextTurn(sessionId);
   │   saveMessage(sessionId, turn, message);
@@ -640,21 +640,21 @@ Representative entry shapes:
 **Edit tool result**
 
 ```text
-  │ [edit <-]
+  │ edit <-
   │ ~ src/session.ts
 ```
 
 **ReadImage tool**
 
 ```text
-  │ [read image <-]
+  │ read image <-
   │ screenshots/failing-layout.png
 ```
 
 **Plugin tool**
 
 ```text
-  │ [mcp/search <-]
+  │ mcp/search <-
   │ session persistence sqlite turn numbering
 ```
 

@@ -250,9 +250,9 @@ describe("ui/conversation", () => {
 
     // Assert
     expect(text).toContain("Working...");
-    expect(text.filter((line) => line === "[shell ->]")).toHaveLength(1);
+    expect(text.filter((line) => line === "shell ->")).toHaveLength(1);
     expect(text).toContain("echo hi");
-    expect(text).toContain("[shell <-]");
+    expect(text).toContain("shell <-");
     expect(text).toContain("partial output");
     expect(text).not.toContain("Exit code: 0");
   });
@@ -301,7 +301,7 @@ describe("ui/conversation", () => {
     });
 
     // Assert
-    expect(text).toContain("[edit <-]");
+    expect(text).toContain("edit <-");
     expect(text).toContain("~ src/app.ts");
     expect(text).not.toContain("before");
     expect(text).not.toContain("after");
@@ -513,7 +513,7 @@ describe("ui/conversation", () => {
     expect(text).toContain("Thinking... 1 line.");
   });
 
-  test("renderAssistantMessage for a shell tool call shows the command under the new header pill", () => {
+  test("renderAssistantMessage for a shell tool call renders an unbracketed header inside the pill", () => {
     // Arrange
     const assistant = {
       content: [
@@ -522,12 +522,47 @@ describe("ui/conversation", () => {
     };
 
     // Act
-    const text = collectText(renderAssistantMessage(assistant, RENDER_OPTS));
+    const node = renderAssistantMessage(assistant, RENDER_OPTS);
+    const text = collectText(node);
 
     // Assert
-    expect(text).toContain("[shell ->]");
+    expect(text).toContain("shell ->");
+    expect(text).not.toContain("[shell ->]");
     expect(text).toContain("echo hi");
     expect(text).not.toContain('"command": "echo hi"');
+
+    expect(node?.type).toBe("vstack");
+    if (!node || node.type !== "vstack") {
+      throw new Error("Expected the assistant node to be a vstack");
+    }
+
+    const toolBlock = node.children[0];
+    expect(toolBlock?.type).toBe("hstack");
+    if (!toolBlock || toolBlock.type !== "hstack") {
+      throw new Error("Expected the tool block to be an hstack");
+    }
+
+    const contentColumn = toolBlock.children[1];
+    expect(contentColumn?.type).toBe("vstack");
+    if (!contentColumn || contentColumn.type !== "vstack") {
+      throw new Error("Expected the tool content column to be a vstack");
+    }
+
+    const headerRow = contentColumn.children[0];
+    expect(headerRow?.type).toBe("hstack");
+    if (!headerRow || headerRow.type !== "hstack") {
+      throw new Error("Expected the tool header row to be an hstack");
+    }
+
+    const headerPill = headerRow.children[0];
+    expect(headerPill?.type).toBe("hstack");
+    if (!headerPill || headerPill.type !== "hstack") {
+      throw new Error("Expected the tool header pill to be an hstack");
+    }
+
+    expect(headerPill.props.bgColor).toBe(DEFAULT_THEME.toolBorder);
+    expect(headerPill.props.padding).toEqual({ x: 1 });
+    expect(collectText(headerPill)).toEqual(["shell ->"]);
   });
 
   test("renderAssistantMessage for a shell tool call syntax-highlights bash tokens", async () => {
@@ -795,7 +830,7 @@ describe("ui/conversation", () => {
     const text = collectText(renderAssistantMessage(assistant, RENDER_OPTS));
 
     // Assert
-    expect(text).toContain("[read image ->]");
+    expect(text).toContain("read image ->");
     expect(text).toContain("assets/preview.png");
     expect(text).not.toContain("{");
   });
@@ -820,7 +855,7 @@ describe("ui/conversation", () => {
     const text = collectText(renderAssistantMessage(assistant, RENDER_OPTS));
 
     // Assert
-    expect(text).toContain("[edit ->]");
+    expect(text).toContain("edit ->");
     expect(text).toContain("src/file.ts");
     expect(text).toContain("old line");
     expect(text).toContain("new line");
@@ -883,7 +918,7 @@ describe("ui/conversation", () => {
     );
 
     // Assert
-    expect(text).toContain("[shell <-]");
+    expect(text).toContain("shell <-");
     expect(text).toContain("line 18");
     expect(text).toContain("line 25");
     expect(text).toContain("And 17 lines more");
@@ -927,7 +962,7 @@ describe("ui/conversation", () => {
     );
 
     // Assert
-    expect(text).toContain("[shell <-]");
+    expect(text).toContain("shell <-");
     expect(text).toContain("exit 42");
     expect(text).toContain("boom");
     expect(text).not.toContain("Exit code: 42");
@@ -944,7 +979,7 @@ describe("ui/conversation", () => {
     );
 
     // Assert
-    expect(text).toContain("[read image <-]");
+    expect(text).toContain("read image <-");
     expect(text).toContain("diagram.png");
     expect(text).not.toContain("Read image.");
   });
@@ -993,7 +1028,7 @@ describe("ui/conversation", () => {
     );
 
     // Assert
-    expect(previewText).toContain("[edit <-]");
+    expect(previewText).toContain("edit <-");
     expect(previewText).toContain("~ src/file.ts");
     expect(previewText).not.toContain("before");
     expect(previewText).not.toContain("after");
@@ -1026,7 +1061,7 @@ describe("ui/conversation", () => {
     );
 
     // Assert
-    expect(text).toContain("[edit <-]");
+    expect(text).toContain("edit <-");
     expect(text).toContain("error 18");
     expect(text).toContain("error 25");
     expect(text).toContain("And 17 lines more");
@@ -1049,7 +1084,7 @@ describe("ui/conversation", () => {
     );
 
     // Assert
-    expect(text).toContain("[mcp/search <-]");
+    expect(text).toContain("mcp/search <-");
     expect(text).toContain("session persistence sqlite turn numbering");
     expect(text).not.toContain('"query"');
   });

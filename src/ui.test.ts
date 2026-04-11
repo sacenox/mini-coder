@@ -1176,7 +1176,7 @@ describe("ui rendering", () => {
         });
         return (
           state.running &&
-          logText.includes("[shell ->]") &&
+          logText.includes("shell ->") &&
           logText.includes("echo tool-output; sleep 0.2") &&
           logText.includes("tool-output")
         );
@@ -1189,7 +1189,7 @@ describe("ui rendering", () => {
       });
 
       expect(logText).toContain("I'll inspect the command output first.");
-      expect(logText.filter((line) => line === "[shell ->]")).toHaveLength(1);
+      expect(logText.filter((line) => line === "shell ->")).toHaveLength(1);
       expect(
         logText.filter((line) => line === "echo tool-output; sleep 0.2"),
       ).toHaveLength(1);
@@ -1402,7 +1402,7 @@ describe("ui rendering", () => {
         });
         return (
           state.running &&
-          logText.includes("[shell ->]") &&
+          logText.includes("shell ->") &&
           logText.includes("echo staged-command")
         );
       });
@@ -1413,7 +1413,7 @@ describe("ui rendering", () => {
         children: buildConversationLog(state),
       });
 
-      expect(logText.filter((line) => line === "[shell ->]")).toHaveLength(1);
+      expect(logText.filter((line) => line === "shell ->")).toHaveLength(1);
       expect(
         logText.filter((line) => line === "echo staged-command"),
       ).toHaveLength(1);
@@ -1570,7 +1570,7 @@ describe("ui rendering", () => {
         children: buildConversationLog(state),
       });
 
-      expect(logText.filter((line) => line === "[shell ->]")).toHaveLength(1);
+      expect(logText.filter((line) => line === "shell ->")).toHaveLength(1);
       expect(
         logText.filter((line) => line === "echo tool-output"),
       ).toHaveLength(1);
