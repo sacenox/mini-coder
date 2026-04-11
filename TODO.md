@@ -5,10 +5,6 @@ Don't keep completed items bloating the file, remove them before committing.
 Keep the file structured and minimal.
 The spec.md and code are the sources of truth, not this file, don't assume anything because it's documented here.
 
-## In progress
-
-- [ ] **Terminal bench with harbor** in `terminal-bench`.
-
 ## Open items
 
 - [ ] **If git is not installed the app breaks** we should check before we use git, and ensure robustness.

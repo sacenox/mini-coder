@@ -1,0 +1,103 @@
+{
+    "id": "369766c8-4f2b-4309-8523-6514c2872d8b",
+    "task_name": "financial-document-processor",
+    "trial_name": "financial-document-processor__NFEqGrd",
+    "trial_uri": "file:///home/xonecas/src/mini-coder/terminal-bench/jobs/leaderboard-2026-04-10__16-06-57/financial-document-processor__NFEqGrd",
+    "task_id": {
+        "git_url": "https://github.com/laude-institute/terminal-bench-2.git",
+        "git_commit_id": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "financial-document-processor"
+    },
+    "source": "terminal-bench",
+    "task_checksum": "e8ee9e8948d949d0abe46d431736d1cf04e8aab76d98fc9c819fb26960ab1352",
+    "config": {
+        "task": {
+            "path": "financial-document-processor",
+            "git_url": "https://github.com/laude-institute/terminal-bench-2.git",
+            "git_commit_id": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+            "name": null,
+            "ref": null,
+            "overwrite": false,
+            "download_dir": null,
+            "source": "terminal-bench"
+        },
+        "trial_name": "financial-document-processor__NFEqGrd",
+        "trials_dir": "terminal-bench/jobs/leaderboard-2026-04-10__16-06-57",
+        "timeout_multiplier": 1.0,
+        "agent_timeout_multiplier": null,
+        "verifier_timeout_multiplier": null,
+        "agent_setup_timeout_multiplier": null,
+        "environment_build_timeout_multiplier": null,
+        "agent": {
+            "name": null,
+            "import_path": "mini_coder_agent:MiniCoderAgent",
+            "model_name": "openai-codex/gpt-5.4",
+            "override_timeout_sec": null,
+            "override_setup_timeout_sec": null,
+            "max_timeout_sec": null,
+            "kwargs": {},
+            "env": {}
+        },
+        "environment": {
+            "type": "docker",
+            "import_path": null,
+            "force_build": false,
+            "delete": true,
+            "override_cpus": null,
+            "override_memory_mb": null,
+            "override_storage_mb": null,
+            "override_gpus": null,
+            "suppress_override_warnings": false,
+            "mounts_json": null,
+            "env": {},
+            "kwargs": {}
+        },
+        "verifier": {
+            "override_timeout_sec": null,
+            "max_timeout_sec": null,
+            "disable": false
+        },
+        "artifacts": [],
+        "job_id": "5da89ebc-ff25-4691-8f46-573c706cdf8b"
+    },
+    "agent_info": {
+        "name": "mini-coder",
+        "version": "latest",
+        "model_info": {
+            "name": "gpt-5.4",
+            "provider": "openai-codex"
+        }
+    },
+    "agent_result": {
+        "n_input_tokens": null,
+        "n_cache_tokens": null,
+        "n_output_tokens": null,
+        "cost_usd": null,
+        "rollout_details": null,
+        "metadata": null
+    },
+    "verifier_result": {
+        "rewards": {
+            "reward": 1.0
+        }
+    },
+    "exception_info": null,
+    "started_at": "2026-04-11T06:48:15.649850Z",
+    "finished_at": "2026-04-11T06:53:15.182067Z",
+    "environment_setup": {
+        "started_at": "2026-04-11T06:48:15.659500Z",
+        "finished_at": "2026-04-11T06:48:19.855590Z"
+    },
+    "agent_setup": {
+        "started_at": "2026-04-11T06:48:19.855598Z",
+        "finished_at": "2026-04-11T06:48:52.276938Z"
+    },
+    "agent_execution": {
+        "started_at": "2026-04-11T06:48:52.276973Z",
+        "finished_at": "2026-04-11T06:52:51.815621Z"
+    },
+    "verifier": {
+        "started_at": "2026-04-11T06:52:51.815677Z",
+        "finished_at": "2026-04-11T06:53:04.414035Z"
+    }
+}

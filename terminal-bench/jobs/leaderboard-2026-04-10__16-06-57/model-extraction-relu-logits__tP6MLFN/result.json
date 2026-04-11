@@ -1,0 +1,103 @@
+{
+    "id": "160e8cd1-8682-48c3-8f89-c89da39d55fa",
+    "task_name": "model-extraction-relu-logits",
+    "trial_name": "model-extraction-relu-logits__tP6MLFN",
+    "trial_uri": "file:///home/xonecas/src/mini-coder/terminal-bench/jobs/leaderboard-2026-04-10__16-06-57/model-extraction-relu-logits__tP6MLFN",
+    "task_id": {
+        "git_url": "https://github.com/laude-institute/terminal-bench-2.git",
+        "git_commit_id": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "model-extraction-relu-logits"
+    },
+    "source": "terminal-bench",
+    "task_checksum": "d0dd8f420350bee97f2d47a2b0c74996be0146aa7bd6f8a1871d9629200dc359",
+    "config": {
+        "task": {
+            "path": "model-extraction-relu-logits",
+            "git_url": "https://github.com/laude-institute/terminal-bench-2.git",
+            "git_commit_id": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+            "name": null,
+            "ref": null,
+            "overwrite": false,
+            "download_dir": null,
+            "source": "terminal-bench"
+        },
+        "trial_name": "model-extraction-relu-logits__tP6MLFN",
+        "trials_dir": "terminal-bench/jobs/leaderboard-2026-04-10__16-06-57",
+        "timeout_multiplier": 1.0,
+        "agent_timeout_multiplier": null,
+        "verifier_timeout_multiplier": null,
+        "agent_setup_timeout_multiplier": null,
+        "environment_build_timeout_multiplier": null,
+        "agent": {
+            "name": null,
+            "import_path": "mini_coder_agent:MiniCoderAgent",
+            "model_name": "openai-codex/gpt-5.4",
+            "override_timeout_sec": null,
+            "override_setup_timeout_sec": null,
+            "max_timeout_sec": null,
+            "kwargs": {},
+            "env": {}
+        },
+        "environment": {
+            "type": "docker",
+            "import_path": null,
+            "force_build": false,
+            "delete": true,
+            "override_cpus": null,
+            "override_memory_mb": null,
+            "override_storage_mb": null,
+            "override_gpus": null,
+            "suppress_override_warnings": false,
+            "mounts_json": null,
+            "env": {},
+            "kwargs": {}
+        },
+        "verifier": {
+            "override_timeout_sec": null,
+            "max_timeout_sec": null,
+            "disable": false
+        },
+        "artifacts": [],
+        "job_id": "5da89ebc-ff25-4691-8f46-573c706cdf8b"
+    },
+    "agent_info": {
+        "name": "mini-coder",
+        "version": "latest",
+        "model_info": {
+            "name": "gpt-5.4",
+            "provider": "openai-codex"
+        }
+    },
+    "agent_result": {
+        "n_input_tokens": null,
+        "n_cache_tokens": null,
+        "n_output_tokens": null,
+        "cost_usd": null,
+        "rollout_details": null,
+        "metadata": null
+    },
+    "verifier_result": {
+        "rewards": {
+            "reward": 1.0
+        }
+    },
+    "exception_info": null,
+    "started_at": "2026-04-11T10:13:22.030551Z",
+    "finished_at": "2026-04-11T10:24:09.378033Z",
+    "environment_setup": {
+        "started_at": "2026-04-11T10:13:22.030828Z",
+        "finished_at": "2026-04-11T10:13:27.705648Z"
+    },
+    "agent_setup": {
+        "started_at": "2026-04-11T10:13:27.705661Z",
+        "finished_at": "2026-04-11T10:14:20.997268Z"
+    },
+    "agent_execution": {
+        "started_at": "2026-04-11T10:14:20.997324Z",
+        "finished_at": "2026-04-11T10:23:52.299375Z"
+    },
+    "verifier": {
+        "started_at": "2026-04-11T10:23:52.299462Z",
+        "finished_at": "2026-04-11T10:23:58.712588Z"
+    }
+}

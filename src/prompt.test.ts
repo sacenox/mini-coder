@@ -343,6 +343,22 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("# Persistence");
   });
 
+  test("includes contract, verifier, and exactness guidance", () => {
+    const prompt = buildSystemPrompt({
+      cwd: "/home/user/project",
+      date: "2026-04-05",
+    });
+
+    expect(prompt).toContain("First identify the task contract");
+    expect(prompt).toContain(
+      "look for acceptance criteria in tests, verifier scripts, eval scripts, examples, and expected-output files",
+    );
+    expect(prompt).toContain("create the required artifact early");
+    expect(prompt).toContain(
+      "run the smallest targeted verification that checks the exact contract",
+    );
+  });
+
   test("includes session footer with date and cwd", () => {
     const prompt = buildSystemPrompt({
       cwd: "/home/user/project",

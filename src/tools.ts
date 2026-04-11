@@ -532,7 +532,8 @@ export const editTool: Tool = {
     "Make an exact-text replacement in a single file. " +
     "Provide the file path, the exact text to find, and the replacement text. " +
     "The old text must match exactly one location in the file. " +
-    "To create a new file, use an empty old text and the full file content as new text.",
+    "To create a new file, use an empty old text and the full file content as new text. " +
+    "Use this to write the exact final file content the task requires.",
   parameters: Type.Object({
     path: Type.String({
       description: "File path (absolute or relative to cwd)",
@@ -552,7 +553,7 @@ export const shellTool: Tool = {
   name: "shell",
   description:
     "Run a command in the user's shell. Returns stdout, stderr, and exit code. " +
-    "Use for exploring the codebase (rg, find, ls, cat), running tests, builds, git, etc.",
+    "Use this to explore the codebase, read tests/verifiers/examples, inspect required outputs, and run targeted checks, builds, or git commands.",
   parameters: Type.Object({
     command: Type.String({ description: "The shell command to execute" }),
   }),

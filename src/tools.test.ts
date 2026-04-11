@@ -9,9 +9,11 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  editTool,
   executeEdit,
   executeReadImage,
   executeShell,
+  shellTool,
   type ToolExecResult,
   truncateOutput,
 } from "./tools.ts";
@@ -464,6 +466,24 @@ describe("truncateOutput", () => {
     const input = lines.join("\n");
     expect(truncateOutput(input, 10, Buffer.byteLength(input, "utf8"))).toBe(
       input,
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// tool definitions
+// ---------------------------------------------------------------------------
+
+describe("tool definitions", () => {
+  test("shell description steers toward verifier-aware, focused inspection", () => {
+    expect(shellTool.description).toContain("read tests/verifiers/examples");
+    expect(shellTool.description).toContain("inspect required outputs");
+    expect(shellTool.description).toContain("targeted checks");
+  });
+
+  test("edit description emphasizes exact required file content", () => {
+    expect(editTool.description).toContain(
+      "write the exact final file content the task requires",
     );
   });
 });

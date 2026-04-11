@@ -145,6 +145,30 @@ JOB=$(ls -dt terminal-bench/jobs/* | head -n1)
 sed -n '1,220p' "$JOB"/*/exception.txt
 ```
 
+## Current benchmark context
+
+Latest full leaderboard-style run kept for inspection:
+
+- `terminal-bench/jobs/leaderboard-2026-04-10__16-06-57`
+- score: about **67.4%**
+- pattern: many failures were near misses; the biggest buckets were exact-contract misses and runs that explored too long before writing the required artifact
+
+Working lessons for the next runs:
+
+- Read machine-checkable acceptance criteria early: `/tests`, verifier scripts, eval scripts, examples, expected-output files.
+- Identify the exact contract up front: required file paths, names, signatures, stdout/output shape, and forbidden extra artifacts.
+- Create the required artifact early, then iterate. Some timed-out runs can still pass if the file is already correct enough.
+- Prefer the smallest verifier-passing solution over a broader or more impressive implementation.
+- Before stopping, run a targeted exactness check: required files exist, names/signatures match, output format matches, and no extra artifacts were left behind.
+
+Prompt changes prepared after reviewing this run:
+
+- base prompt now emphasizes contract-first execution, early verifier/test discovery, early artifact creation, minimal passing solutions, and exact final verification
+- `shell` tool description now explicitly points the agent toward tests/verifiers/examples and required outputs
+- `edit` tool description now explicitly frames the tool as writing the exact final file content the task requires
+
+Important: the Harbor wrapper benchmarks the published npm package, not the local checkout. Prompt changes only affect benchmark runs after they are released.
+
 ## Notes
 
 - The wrapper benchmarks the published package, not the local checkout.

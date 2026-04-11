@@ -1,0 +1,103 @@
+{
+    "id": "c8b0c99f-9c56-4ac6-bc3b-49e3a9f863ea",
+    "task_name": "dna-insert",
+    "trial_name": "dna-insert__SUcvanr",
+    "trial_uri": "file:///home/xonecas/src/mini-coder/terminal-bench/jobs/leaderboard-2026-04-10__16-06-57/dna-insert__SUcvanr",
+    "task_id": {
+        "git_url": "https://github.com/laude-institute/terminal-bench-2.git",
+        "git_commit_id": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "dna-insert"
+    },
+    "source": "terminal-bench",
+    "task_checksum": "162cd54836ca70b3a4c62f7fab0e369007f76488213865efdf563b20dceebb15",
+    "config": {
+        "task": {
+            "path": "dna-insert",
+            "git_url": "https://github.com/laude-institute/terminal-bench-2.git",
+            "git_commit_id": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+            "name": null,
+            "ref": null,
+            "overwrite": false,
+            "download_dir": null,
+            "source": "terminal-bench"
+        },
+        "trial_name": "dna-insert__SUcvanr",
+        "trials_dir": "terminal-bench/jobs/leaderboard-2026-04-10__16-06-57",
+        "timeout_multiplier": 1.0,
+        "agent_timeout_multiplier": null,
+        "verifier_timeout_multiplier": null,
+        "agent_setup_timeout_multiplier": null,
+        "environment_build_timeout_multiplier": null,
+        "agent": {
+            "name": null,
+            "import_path": "mini_coder_agent:MiniCoderAgent",
+            "model_name": "openai-codex/gpt-5.4",
+            "override_timeout_sec": null,
+            "override_setup_timeout_sec": null,
+            "max_timeout_sec": null,
+            "kwargs": {},
+            "env": {}
+        },
+        "environment": {
+            "type": "docker",
+            "import_path": null,
+            "force_build": false,
+            "delete": true,
+            "override_cpus": null,
+            "override_memory_mb": null,
+            "override_storage_mb": null,
+            "override_gpus": null,
+            "suppress_override_warnings": false,
+            "mounts_json": null,
+            "env": {},
+            "kwargs": {}
+        },
+        "verifier": {
+            "override_timeout_sec": null,
+            "max_timeout_sec": null,
+            "disable": false
+        },
+        "artifacts": [],
+        "job_id": "5da89ebc-ff25-4691-8f46-573c706cdf8b"
+    },
+    "agent_info": {
+        "name": "mini-coder",
+        "version": "latest",
+        "model_info": {
+            "name": "gpt-5.4",
+            "provider": "openai-codex"
+        }
+    },
+    "agent_result": {
+        "n_input_tokens": null,
+        "n_cache_tokens": null,
+        "n_output_tokens": null,
+        "cost_usd": null,
+        "rollout_details": null,
+        "metadata": null
+    },
+    "verifier_result": {
+        "rewards": {
+            "reward": 0.0
+        }
+    },
+    "exception_info": null,
+    "started_at": "2026-04-11T11:09:39.433860Z",
+    "finished_at": "2026-04-11T11:17:02.718749Z",
+    "environment_setup": {
+        "started_at": "2026-04-11T11:09:39.434138Z",
+        "finished_at": "2026-04-11T11:09:43.507164Z"
+    },
+    "agent_setup": {
+        "started_at": "2026-04-11T11:09:43.507176Z",
+        "finished_at": "2026-04-11T11:10:14.200420Z"
+    },
+    "agent_execution": {
+        "started_at": "2026-04-11T11:10:14.200459Z",
+        "finished_at": "2026-04-11T11:16:43.748272Z"
+    },
+    "verifier": {
+        "started_at": "2026-04-11T11:16:43.748328Z",
+        "finished_at": "2026-04-11T11:16:52.006988Z"
+    }
+}

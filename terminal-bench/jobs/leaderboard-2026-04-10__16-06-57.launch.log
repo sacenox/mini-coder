@@ -1,0 +1,21 @@
+  89/89 Mean: 0.674 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 20:25:28 0:00:00Results written to terminal-bench/jobs/leaderboard-2026-04-10__16-06-57/result.json
+     mini-coder (gpt-5.4) on terminal-bench      
+┏━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Metric                 ┃ Value                ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━┩
+│ Agent                  │ mini-coder (gpt-5.4) │
+│ Dataset                │ terminal-bench       │
+│ Trials                 │ 87                   │
+│ Errors                 │ 15                   │
+│                        │                      │
+│ Mean                   │ 0.674                │
+│                        │                      │
+│ Reward Distribution    │                      │
+│   reward = 0.0         │ 27                   │
+│   reward = 1.0         │ 60                   │
+│                        │                      │
+│ Exception Distribution │                      │
+│   AgentTimeoutError    │ 14                   │
+│   VerifierTimeoutError │ 1                    │
+└────────────────────────┴──────────────────────┘
+
