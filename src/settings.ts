@@ -192,6 +192,28 @@ function sanitizeSettings(value: unknown): UserSettings {
   return settings;
 }
 
+/** Try to parse a single custom provider entry, returning null on failure. */
+function parseCustomProvider(item: unknown): CustomProvider | null {
+  if (item == null || typeof item !== "object" || Array.isArray(item)) {
+    return null;
+  }
+
+  const candidate = item as Record<string, unknown>;
+  const name = typeof candidate.name === "string" ? candidate.name.trim() : "";
+  const baseUrl =
+    typeof candidate.baseUrl === "string" ? candidate.baseUrl.trim() : "";
+
+  if (!name || !baseUrl) {
+    return null;
+  }
+
+  const entry: CustomProvider = { name, baseUrl };
+  if (typeof candidate.apiKey === "string") {
+    entry.apiKey = candidate.apiKey;
+  }
+  return entry;
+}
+
 /**
  * Validate and normalize custom provider entries.
  *
@@ -207,30 +229,11 @@ function sanitizeCustomProviders(value: unknown): CustomProvider[] | undefined {
   const seen = new Set<string>();
 
   for (const item of value) {
-    if (item == null || typeof item !== "object" || Array.isArray(item)) {
+    const entry = parseCustomProvider(item);
+    if (!entry || seen.has(entry.name)) {
       continue;
     }
-
-    const candidate = item as Record<string, unknown>;
-    const name =
-      typeof candidate.name === "string" ? candidate.name.trim() : "";
-    const baseUrl =
-      typeof candidate.baseUrl === "string" ? candidate.baseUrl.trim() : "";
-
-    if (!name || !baseUrl) {
-      continue;
-    }
-
-    if (seen.has(name)) {
-      continue;
-    }
-    seen.add(name);
-
-    const entry: CustomProvider = { name, baseUrl };
-    if (typeof candidate.apiKey === "string") {
-      entry.apiKey = candidate.apiKey;
-    }
-
+    seen.add(entry.name);
     result.push(entry);
   }
 
