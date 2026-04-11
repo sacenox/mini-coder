@@ -3,9 +3,12 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import type { Model } from "@mariozechner/pi-ai";
 import {
   type AppState,
   didOAuthCredentialsChange,
+  discoverCustomProviders,
+  getAvailableModels,
   loadOAuthCredentials,
   loadPromptContext,
   reloadPromptContext,
@@ -49,6 +52,8 @@ function createTestState(plugins: LoadedPlugin[] = []): AppState {
     activeTurnPromise: null,
     showReasoning: true,
     verbose: false,
+    customModels: [],
+    startupWarnings: [],
   };
 }
 
@@ -291,6 +296,150 @@ test("reloadPromptContext swaps in the new context before destroying the old plu
     expect(state.agentsMd).toEqual([
       { path: "/tmp/AGENTS.md", content: "next agents" },
     ]);
+  } finally {
+    state.db.close();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// discoverCustomProviders
+// ---------------------------------------------------------------------------
+
+test("discoverCustomProviders returns models from a mock endpoint", async () => {
+  const server = Bun.serve({
+    port: 0,
+    fetch() {
+      return Response.json({
+        data: [
+          { id: "gemma4:31b", object: "model" },
+          { id: "qwen3:8b", object: "model" },
+        ],
+      });
+    },
+  });
+
+  try {
+    const result = await discoverCustomProviders(
+      [{ name: "test-local", baseUrl: `http://localhost:${server.port}` }],
+      new Set(),
+    );
+
+    expect(result.warnings).toEqual([]);
+    expect(result.models).toHaveLength(2);
+    expect(result.models[0]).toMatchObject({
+      id: "gemma4:31b",
+      name: "gemma4:31b",
+      api: "openai-completions",
+      provider: "test-local",
+      baseUrl: `http://localhost:${server.port}`,
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 131072,
+      maxTokens: 8192,
+    });
+    expect(result.providers.get("test-local")).toBe("no-key");
+  } finally {
+    server.stop(true);
+  }
+});
+
+test("discoverCustomProviders uses configured apiKey", async () => {
+  const server = Bun.serve({
+    port: 0,
+    fetch() {
+      return Response.json({ data: [{ id: "model-1", object: "model" }] });
+    },
+  });
+
+  try {
+    const result = await discoverCustomProviders(
+      [
+        {
+          name: "keyed",
+          baseUrl: `http://localhost:${server.port}`,
+          apiKey: "my-secret-key",
+        },
+      ],
+      new Set(),
+    );
+
+    expect(result.providers.get("keyed")).toBe("my-secret-key");
+  } finally {
+    server.stop(true);
+  }
+});
+
+test("discoverCustomProviders returns a warning when the endpoint is unreachable", async () => {
+  const result = await discoverCustomProviders(
+    [{ name: "dead", baseUrl: "http://localhost:1" }],
+    new Set(),
+  );
+
+  expect(result.models).toEqual([]);
+  expect(result.providers.size).toBe(0);
+  expect(result.warnings).toHaveLength(1);
+  expect(result.warnings[0]).toContain('Custom provider "dead"');
+  expect(result.warnings[0]).toContain("http://localhost:1/models");
+});
+
+test("discoverCustomProviders skips providers that collide with built-in names", async () => {
+  const result = await discoverCustomProviders(
+    [{ name: "openai", baseUrl: "http://localhost:11434/v1" }],
+    new Set(["openai"]),
+  );
+
+  expect(result.models).toEqual([]);
+  expect(result.warnings).toHaveLength(1);
+  expect(result.warnings[0]).toContain('"openai"');
+  expect(result.warnings[0]).toContain("built-in");
+});
+
+test("discoverCustomProviders handles empty model list from endpoint", async () => {
+  const server = Bun.serve({
+    port: 0,
+    fetch() {
+      return Response.json({ data: [] });
+    },
+  });
+
+  try {
+    const result = await discoverCustomProviders(
+      [{ name: "empty", baseUrl: `http://localhost:${server.port}` }],
+      new Set(),
+    );
+
+    expect(result.models).toEqual([]);
+    expect(result.providers.get("empty")).toBe("no-key");
+    expect(result.warnings).toEqual([]);
+  } finally {
+    server.stop(true);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// getAvailableModels with custom models
+// ---------------------------------------------------------------------------
+
+test("getAvailableModels includes custom models alongside built-in models", () => {
+  const state = createTestState();
+  try {
+    const customModel: Model<"openai-completions"> = {
+      id: "gemma4:31b",
+      name: "gemma4:31b",
+      api: "openai-completions",
+      provider: "ollama",
+      baseUrl: "http://localhost:11434/v1",
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 131072,
+      maxTokens: 8192,
+    };
+    state.customModels = [customModel];
+
+    const models = getAvailableModels(state);
+    expect(models).toContainEqual(customModel);
   } finally {
     state.db.close();
   }
