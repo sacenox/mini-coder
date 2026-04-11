@@ -61,23 +61,26 @@ Two built-in tools, plus a read-only image tool. Plugins may add more (see [Plug
 
 ### `shell`
 
-Runs a command in the user's shell. Returns stdout, stderr, and exit code.
+Runs a command in the user's shell. Returns stdout, stderr, and exit code. Use it to explore the codebase, read tests/verifiers/examples, inspect required outputs, and run targeted checks, builds, or git commands.
 
 Implementation details:
 
 - Large outputs are truncated as a safety guard against context explosion from bad or overly broad commands (for example, accidentally reading a huge file, binary, or unbounded command output). This guard applies to both very tall output (many lines) and very wide output (a few extremely long lines), and is not related to the user-configured verbose setting.
 - The truncation threshold is configurable, tuned to keep useful output while staying well within context limits. This tool-level truncation is intentionally narrow in scope: it protects the model context from pathological output, not as a general-purpose presentation layer for every output-shaping concern.
 - Commands run via `$SHELL -c "<command>"` (falling back to `/bin/sh` if `$SHELL` is unset) with the CWD set to the session's working directory.
+- Before execution, the harness may apply a small set of silent, lossless compatibility normalizations for common model-authored shell mistakes when the intended command is unambiguous (for example, moving a heredoc trailer's `|`, `&&`, or `>` continuation back onto the heredoc start line, or rewriting `printf '--- ...'` to `printf -- '--- ...'` when the format string begins with `-`).
+- Compatibility normalization is best-effort and intentionally narrow. If a rewrite is ambiguous or the normalization step itself fails, the raw command is executed unchanged.
 - Timeout: no default timeout. The user can interrupt via `Escape`.
 
 ### `edit`
 
-Exact-text replacement in a single file.
+Exact-text replacement in a single file. Use it to write the exact file content the task requires.
 
 Implementation details:
 
 - Takes a file path (absolute, or relative to the session CWD), the old text to find, and the new text to replace it with.
-- Fails deterministically if the old text is not found or matches multiple locations. Returns the error message so the model can self-correct.
+- The replacement text is inserted literally. Replacement markers such as `$$`, `$&`, `$'`, and the JS prefix marker ($ followed by a backtick) are not expanded.
+- Fails deterministically if the old text is not found or matches multiple locations. Returns a descriptive error with nearby similar snippets or match locations so the model can self-correct.
 - Create new files by passing empty old text and the full file content as new text. Parent directories are created automatically.
 - Returns a confirmation or error message — no diff output (the agent already knows what it wrote).
 - Encoding: reads and writes UTF-8. Preserves the file's existing line endings.
@@ -266,14 +269,14 @@ You are mini-coder, a coding agent running in the user's terminal.
 
 # Role
 
-You are an autonomous, senior-level coding assistant. When the user gives a direction, proactively gather context, plan with the user, implement, and verify. Bias toward action: use planning first to clear any assumptions with the user, then implement the plan. Deliver working code, unless you are genuinely blocked.
+You are an autonomous, senior-level coding assistant. When the user gives a direction, proactively gather context, plan with the user, implement, and verify. Bias toward action: plan briefly when needed to clear important assumptions, then continue into implementation. First identify the task contract: required files, names, interfaces, output format, and checks for success. Treat those details as part of correctness, not as polish. Deliver working code, unless you are genuinely blocked.
 
 # Tools
 
 You have these core tools:
 
-- `shell` — run commands in the user's shell. Use this to explore the codebase (rg, find, ls, cat), run tests, build, git, and any other command. Prefer `rg` over `grep` for speed.
-- `edit` — make exact-text replacements in files. Provide the file path, the exact text to find, and the replacement text. The old text must match exactly one location in the file. To create a new file, use an empty old text and the full file content as new text.
+- `shell` — run commands in the user's shell. Use this to explore the codebase, read tests/verifiers/examples, inspect required outputs, and run targeted checks, builds, or git commands. Prefer `rg` over `grep` for speed.
+- `edit` — make exact-text replacements in files. Provide the file path, the exact text to find, and the replacement text. The old text must match exactly one location in the file. To create a new file, use an empty old text and the full file content as new text. Use this to write the exact final file content the task requires.
 
 You may also have additional tools provided by plugins. Use them when they match the task.
 
@@ -282,7 +285,7 @@ Workflow: **inspect with shell → mutate with edit → verify with shell**.
 # Code quality
 
 - Conform to the codebase's existing conventions: patterns, naming, formatting, language idioms.
-- Write correct, clear, minimal code. Don't over-engineer, don't add abstractions for hypothetical futures.
+- Write correct, clear, minimal code. Prefer the simplest solution that satisfies the task's checks exactly. Don't over-engineer, don't add abstractions for hypothetical futures.
 - Reuse before creating. Search for existing helpers before writing new ones.
 - Tight error handling: no broad try/catch, no silent failures, no swallowed errors.
 - Keep type safety. Avoid `any` casts. Use proper types and guards.
@@ -298,6 +301,7 @@ Workflow: **inspect with shell → mutate with edit → verify with shell**.
 # Exploring the codebase
 
 - Think first: before any tool call, decide all files and information you need.
+- Early in the task, look for acceptance criteria in tests, verifier scripts, eval scripts, examples, and expected-output files. Do not rely on the task text alone when machine-checkable criteria are available.
 - Batch reads: if you need multiple files, read them together in parallel rather than one at a time.
 - Only make sequential calls when a later call genuinely depends on an earlier result.
 
@@ -312,7 +316,9 @@ Workflow: **inspect with shell → mutate with edit → verify with shell**.
 # Persistence
 
 - Carry work through to completion within the current turn. Don't stop at analysis or partial fixes.
+- Once the contract is clear, create the required artifact early, then iterate and improve it. Do not spend most of the turn exploring.
 - If you encounter an error, diagnose and fix it rather than reporting it and stopping.
+- Before concluding, run the smallest targeted verification that checks the exact contract: required files exist, names and signatures match, outputs are in the required format, and no forbidden extra artifacts were left behind.
 - Avoid excessive looping: if you're re-reading or re-editing the same files without progress, stop and ask the user.
 ```
 
@@ -392,17 +398,17 @@ Three zones, top to bottom:
 │                                                      │
 │  I'll check the test suite first.                    │  agent: default bg
 │                                                      │
-│  │ [shell ->] bun test                               │  tool call
-│  │ [shell <-]                                        │  tool result
+│  │ shell -> bun test                                 │  tool call
+│  │ shell <-                                          │  tool result
 │  │ 3 passed, 1 failed                                │  dimmed text
 │  │ FAIL src/agent.test.ts > handles error            │
 │  │ exit 1                                            │
 │  │                                                   │
-│  │ [edit ->]                                         │  edit preview
+│  │ edit ->                                           │  edit preview
 │  │ src/agent.ts                                      │
 │  │   expect(result).toBe("error");                  │
 │  │                                                   │
-│  │ [edit <-]                                         │  compact result
+│  │ edit <-                                           │  compact result
 │  │ ~ src/agent.ts                                    │
 │  │                                                   │
 │  Fixed the assertion. Tests pass now.                │
@@ -528,13 +534,13 @@ Scrollable area that shows the full conversation history. Stick-to-bottom by def
 
 Message types and their rendering:
 
-Tool blocks share a common frame: a left border (`│`) plus a compact header pill naming the tool and direction (`[tool ->]` for assistant tool calls, `[tool <-]` for tool results). The body renders tool-specific content rather than raw JSON.
+Tool blocks share a common frame: a left border (`│`) plus a compact header pill naming the tool and direction (`tool ->` for assistant tool calls, `tool <-` for tool results). The body renders tool-specific content rather than raw JSON.
 
 - **User messages**: displayed as plain text with a subtle background color to distinguish them from agent responses. No prefix or role indicator.
 - **Assistant messages**: streamed markdown rendered via cel-tui's `Markdown` component on the default background. Thinking/reasoning content is collapsible (shown or hidden according to the user's persisted `/reasoning` preference; defaults to shown when no setting exists).
-- **Tool calls — shell**: rendered in the shared tool frame. The assistant tool call streams the command as it arrives. The command preview and shell tool result body use [verbose tool rendering](#verbose-tool-rendering). Shell tool results render the tool output content below a `[shell <-]` header.
-- **Tool calls — edit**: rendered in the shared tool frame. The in-progress tool-call preview shows the target path plus the streamed replacement content, preserving whitespace. The preview body uses [verbose tool rendering](#verbose-tool-rendering). Successful results render a compact confirmation block (`[edit <-]` plus the file path); errors render the returned error text.
-- **Tool calls — readImage**: rendered in the shared tool frame. The assistant tool call streams the path as it arrives. Successful results render a compact result block (`[read image <-]` plus the file path) rather than rendering the image itself.
+- **Tool calls — shell**: rendered in the shared tool frame. The assistant tool call streams the command as it arrives. The command preview and shell tool result body use [verbose tool rendering](#verbose-tool-rendering). Shell tool results render the tool output content below a `shell <-` header.
+- **Tool calls — edit**: rendered in the shared tool frame. The in-progress tool-call preview shows the target path plus the streamed replacement content, preserving whitespace. The preview body uses [verbose tool rendering](#verbose-tool-rendering). Successful results render a compact confirmation block (`edit <-` plus the file path); errors render the returned error text.
+- **Tool calls — readImage**: rendered in the shared tool frame. The assistant tool call streams the path as it arrives. Successful results render a compact result block (`read image <-` plus the file path) rather than rendering the image itself.
 - **Tool calls — plugin tools**: rendered in the shared tool frame, prefixed with plugin/tool name when available.
 - **UI messages**: internal app messages such as `/help` output, OAuth progress, and other session-local notices. They are rendered in the conversation log, persisted with the session, excluded from model context, and do not participate in conversational turn numbering.
 - **Errors**: one-line summary, styled distinctly.
@@ -583,13 +589,13 @@ Representative entry shapes:
 **Shell tool call**
 
 ```text
-  │ [shell ->] bun test src/session.test.ts
+  │ shell -> bun test src/session.test.ts
 ```
 
 **Shell tool result (`/verbose` off)**
 
 ```text
-  │ [shell <-]
+  │ shell <-
   │ src/session.test.ts:
   │   ✓ loads persisted turns
   │   ✓ undoes the latest turn
@@ -603,7 +609,7 @@ Representative entry shapes:
 **Shell tool result (`/verbose` on)**
 
 ```text
-  │ [shell <-]
+  │ shell <-
   │ src/session.test.ts:
   │   ✓ loads persisted turns
   │   ✓ undoes the latest turn
@@ -617,7 +623,7 @@ Representative entry shapes:
 **Edit tool call preview (`/verbose` off)**
 
 ```text
-  │ [edit ->]
+  │ edit ->
   │ src/session.ts
   │   const turn = getCurrentTurn(sessionId);
   │   saveMessage(sessionId, turn, message);
@@ -627,7 +633,7 @@ Representative entry shapes:
 **Edit tool call preview (`/verbose` on)**
 
 ```text
-  │ [edit ->]
+  │ edit ->
   │ src/session.ts
   │   const turn = getNextTurn(sessionId);
   │   saveMessage(sessionId, turn, message);
@@ -637,21 +643,21 @@ Representative entry shapes:
 **Edit tool result**
 
 ```text
-  │ [edit <-]
+  │ edit <-
   │ ~ src/session.ts
 ```
 
 **ReadImage tool**
 
 ```text
-  │ [read image <-]
+  │ read image <-
   │ screenshots/failing-layout.png
 ```
 
 **Plugin tool**
 
 ```text
-  │ [mcp/search <-]
+  │ mcp/search <-
   │ session persistence sqlite turn numbering
 ```
 
@@ -724,19 +730,19 @@ add tests for undo_
 
 ### Commands
 
-| Command      | Description                                                                                                                                                                                                                                                                                                                                                                                                |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/model`     | Interactive model selector. Switching models mid-session is allowed — pi-ai's context is model-agnostic. The `readImage` tool is re-evaluated (added/removed based on the new model's capabilities). The status bar updates immediately, and the selected model is persisted immediately as the user's global default. The session record's `model` field is not updated (it reflects the initial choice). |
-| `/session`   | Interactive session manager (list, resume). Sessions scoped to CWD.                                                                                                                                                                                                                                                                                                                                        |
-| `/new`       | Start a new session. Clears conversation, resets cost/token counters.                                                                                                                                                                                                                                                                                                                                      |
-| `/fork`      | Fork the current conversation into a new session. Copies the full message history, continues from here independently. The original session is preserved.                                                                                                                                                                                                                                                   |
-| `/undo`      | Remove the last conversational turn from history: the most recent user message and all assistant/tool messages that followed in that turn. Persisted UI messages are not part of turns and are not removed by `/undo`. Context-only — does not revert filesystem changes.                                                                                                                                  |
-| `/reasoning` | Toggle display of model thinking/reasoning content in the log. The new on/off state is persisted immediately and restored on launch. When no setting exists yet, reasoning defaults to shown.                                                                                                                                                                                                              |
-| `/verbose`   | Toggle [verbose tool rendering](#verbose-tool-rendering) for shell previews/results, edit previews, and edit errors. Successful edit results stay compact regardless of this setting.                                                                                                                                                                                                                      |
-| `/login`     | Interactive OAuth login. Shows a selector with available OAuth providers and their login status (logged in / not logged in). Selecting a provider starts the browser-based OAuth flow. Uses pi-ai's OAuth registry. Credentials are persisted to the app data directory and used for provider discovery on subsequent launches.                                                                            |
-| `/logout`    | Interactive OAuth logout. Shows a selector with logged-in OAuth providers. Selecting one clears its saved credentials.                                                                                                                                                                                                                                                                                     |
-| `/effort`    | Interactive effort selector. Shows the four reasoning levels (`low`, `medium`, `high`, `xhigh`) with the current level highlighted. Updates the status bar immediately, and the selected effort is persisted immediately as the user's global default. The session record's `effort` field is not updated (it reflects the initial choice, like `/model`).                                                 |
-| `/help`      | List available commands, including the current on/off state of `/reasoning` and `/verbose`, plus loaded AGENTS.md files, discovered skills, and active plugins.                                                                                                                                                                                                                                            |
+| Command      | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/model`     | Interactive model selector. The list includes built-in models plus any custom OpenAI-compatible models discovered from `settings.json`. Switching models mid-session is allowed — pi-ai's context is model-agnostic. The `readImage` tool is re-evaluated (added/removed based on the new model's capabilities). The status bar updates immediately, and the selected model is persisted immediately as the user's global default. The session record's `model` field is not updated (it reflects the initial choice). |
+| `/session`   | Interactive session manager (list, resume). Sessions scoped to CWD.                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `/new`       | Start a new session. Clears conversation, resets cost/token counters.                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `/fork`      | Fork the current conversation into a new session. Copies the full message history, continues from here independently. The original session is preserved.                                                                                                                                                                                                                                                                                                                                                               |
+| `/undo`      | Remove the last conversational turn from history: the most recent user message and all assistant/tool messages that followed in that turn. Persisted UI messages are not part of turns and are not removed by `/undo`. Context-only — does not revert filesystem changes.                                                                                                                                                                                                                                              |
+| `/reasoning` | Toggle display of model thinking/reasoning content in the log. The new on/off state is persisted immediately and restored on launch. When no setting exists yet, reasoning defaults to shown.                                                                                                                                                                                                                                                                                                                          |
+| `/verbose`   | Toggle [verbose tool rendering](#verbose-tool-rendering) for shell previews/results, edit previews, and edit errors. Successful edit results stay compact regardless of this setting.                                                                                                                                                                                                                                                                                                                                  |
+| `/login`     | Interactive OAuth login. Shows a selector with available OAuth providers and their login status (logged in / not logged in). Selecting a provider starts the browser-based OAuth flow. Uses pi-ai's OAuth registry. Credentials are persisted to the app data directory and used for provider discovery on subsequent launches.                                                                                                                                                                                        |
+| `/logout`    | Interactive OAuth logout. Shows a selector with logged-in OAuth providers. Selecting one clears its saved credentials.                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `/effort`    | Interactive effort selector. Shows the four reasoning levels (`low`, `medium`, `high`, `xhigh`) with the current level highlighted. Updates the status bar immediately, and the selected effort is persisted immediately as the user's global default. The session record's `effort` field is not updated (it reflects the initial choice, like `/model`).                                                                                                                                                             |
+| `/help`      | List available commands, including the current on/off state of `/reasoning` and `/verbose`, plus loaded AGENTS.md files, discovered skills, and active plugins.                                                                                                                                                                                                                                                                                                                                                        |
 
 Commands are discoverable when the input starts with `/`: pressing `Tab` in that state switches from file-path autocomplete to interactive command select/filter.
 
@@ -797,21 +803,26 @@ This means headless one-shot runs appear in normal `/session` history for that w
 
 On launch, mini-coder:
 
-1. Discovers providers (env vars, OAuth tokens).
+1. Discovers built-in providers (env vars, OAuth tokens).
 2. Loads user settings from `~/.config/mini-coder/settings.json`.
-3. Selects the startup model, effort, reasoning visibility, and verbose mode from those settings when available.
+3. Discovers user-configured custom OpenAI-compatible providers from `settings.json`.
+   - Each entry is queried at `${baseUrl}/models`.
+   - Each returned model is added to the launch's available model list as `provider/model`, where `provider` is the configured custom provider name.
+   - Invalid entries are dropped while loading settings. Duplicate custom provider names keep the first entry.
+   - If an endpoint is unreachable, returns a non-2xx response, or the custom provider name conflicts with an already-available built-in provider, startup continues and a warning is added to the UI log.
+4. Selects the startup model, effort, reasoning visibility, and verbose mode from those settings when available.
    - `defaultModel`: if the saved provider/model is currently available, use it; otherwise fall back to the first available model for this launch.
    - `defaultEffort`: if valid, use it; otherwise fall back to `medium`.
    - `showReasoning`: if present, use it; otherwise fall back to `true`.
    - `verbose`: if present, use it; otherwise fall back to `false`.
-4. Loads AGENTS.md files, skills, plugins.
-5. Selects the launch mode:
+5. Loads AGENTS.md files, skills, plugins.
+6. Selects the launch mode:
    - Interactive TUI when `stdin` and `stdout` are both TTYs and `-p` was not provided.
    - Headless one-shot mode otherwise.
-6. In interactive mode, renders the UI with an empty conversation log and the status bar populated.
-7. Starts a new session only when a prompt is actually submitted (no 0-message sessions in the DB).
+7. In interactive mode, renders the UI with an empty conversation log, a minimal `mini-coder` empty-state banner (showing the packaged version when available, otherwise a simple dev label), and the status bar populated.
+8. Starts a new session only when a prompt is actually submitted (no 0-message sessions in the DB).
 
-No banner or splash screen. In headless mode, stdout is reserved for NDJSON event output; in interactive mode, the status bar already shows all the context the user needs.
+The empty-state banner is only shown while the conversation log has no messages. In headless mode, stdout is reserved for NDJSON event output.
 
 ## User settings persistence
 
@@ -824,7 +835,13 @@ mini-coder persists global user defaults in `~/.config/mini-coder/settings.json`
   "defaultModel": "anthropic/claude-sonnet-4",
   "defaultEffort": "medium",
   "showReasoning": true,
-  "verbose": false
+  "verbose": false,
+  "customProviders": [
+    {
+      "name": "lm-studio",
+      "baseUrl": "http://127.0.0.1:1234/v1"
+    }
+  ]
 }
 ```
 
@@ -836,6 +853,10 @@ mini-coder persists global user defaults in `~/.config/mini-coder/settings.json`
 - Invalid or missing settings file content is treated as "no saved settings" rather than a fatal startup error.
 - `/new`, `/fork`, and `/session` do not modify global settings.
 - Session records remain historical: their `model` and `effort` fields reflect the values active when that session was created, not the current global defaults.
+- `customProviders` is an optional array of user-configured OpenAI-compatible endpoints, typically local model servers.
+- Each `customProviders` entry has a `name`, `baseUrl`, and optional `apiKey`. The `name` becomes the provider prefix shown in model ids such as `lm-studio/qwen3-coder`.
+- Unreachable or invalid custom providers do not block startup; mini-coder skips them and shows a warning in the interactive log.
+- Custom providers are discovered only at startup. There is currently no interactive slash command to add or remove them.
 
 ## Session persistence
 

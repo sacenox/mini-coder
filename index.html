@@ -238,6 +238,11 @@
         >
         <a
           class="rounded-md border border-term-border bg-term-panel px-3 py-1.5 text-term-fg transition-all hover:border-term-accent/50 hover:text-term-accent"
+          href="#features"
+          >Features &rarr;</a
+        >
+        <a
+          class="rounded-md border border-term-border bg-term-panel px-3 py-1.5 text-term-fg transition-all hover:border-term-accent/50 hover:text-term-accent"
           href="#commands"
           >Commands &rarr;</a
         >
@@ -378,6 +383,63 @@
         </p>
       </section>
 
+      <section id="features">
+        <h2>Features</h2>
+        <div class="grid gap-4 md:grid-cols-2">
+          <article
+            class="rounded-lg border border-term-border bg-term-surface p-4"
+          >
+            <h3 class="mt-0 mb-2 font-semibold text-term-bright">
+              Core workflow
+            </h3>
+            <ul class="mb-0 text-sm">
+              <li>
+                <strong>Multi-provider model support</strong> — Anthropic,
+                OpenAI, Google, Bedrock, Mistral, Groq, xAI, OpenRouter,
+                Ollama, Copilot, and more via pi-ai.
+              </li>
+              <li>
+                <strong>Streaming TUI</strong> — markdown conversation log,
+                tool blocks with diffs, animated divider, multi-line input, and
+                a one-line pill status bar with independent ANSI16
+                effort/context tones.
+              </li>
+              <li>
+                <strong>Session persistence</strong> — SQLite-backed sessions
+                with undo, fork, resume, and cumulative usage stats.
+              </li>
+              <li>
+                <strong>Reasoning and verbosity controls</strong> — toggle
+                thinking visibility and verbose tool rendering on demand.
+              </li>
+            </ul>
+          </article>
+          <article
+            class="rounded-lg border border-term-border bg-term-surface p-4"
+          >
+            <h3 class="mt-0 mb-2 font-semibold text-term-bright">
+              Context and extensibility
+            </h3>
+            <ul class="mb-0 text-sm">
+              <li>
+                <strong>AGENTS.md support</strong> — project-specific
+                instructions discovered root-to-leaf, with
+                <code>~/.agents/</code> for global instructions.
+              </li>
+              <li>
+                <strong>Agent Skills</strong> — skill catalogs exposed in the
+                prompt, and <code>/skill:name</code> injects a skill body into
+                the next user message.
+              </li>
+              <li>
+                <strong>Plugins</strong> — optional tools, integrations, theme
+                overrides, and prompt suffixes without bloating the core.
+              </li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
       <section id="interface">
         <h2>Interface</h2>
         <p>
@@ -444,8 +506,7 @@
           <dl class="grid gap-x-4 gap-y-3 text-sm md:grid-cols-[auto_1fr]">
             <dt class="font-semibold text-term-bright">/model</dt>
             <dd class="text-term-fg">
-              Choose the active model. The selection updates the status bar
-              immediately and persists as the global default.
+              Switch models. Persists as the global default.
             </dd>
 
             <dt class="font-semibold text-term-bright">/session</dt>
@@ -460,31 +521,30 @@
 
             <dt class="font-semibold text-term-bright">/fork</dt>
             <dd class="text-term-fg">
-              Copy the current conversation into a new session and continue from
-              there independently.
+              Copy the conversation into a new session and continue
+              independently.
             </dd>
 
             <dt class="font-semibold text-term-bright">/undo</dt>
             <dd class="text-term-fg">
-              Remove the last conversational turn without reverting filesystem
-              changes.
+              Remove the last conversational turn (does not revert file
+              changes).
             </dd>
 
             <dt class="font-semibold text-term-bright">/reasoning</dt>
             <dd class="text-term-fg">
-              Toggle visible reasoning content. The preference is restored on
-              launch.
+              Toggle thinking visibility. Persisted and restored on launch.
             </dd>
 
             <dt class="font-semibold text-term-bright">/verbose</dt>
             <dd class="text-term-fg">
-              Toggle full shell-output and edit-diff display in the conversation
+              Toggle verbose shell rendering plus edit previews/errors in the
               log.
             </dd>
 
             <dt class="font-semibold text-term-bright">/login</dt>
             <dd class="text-term-fg">
-              Start interactive OAuth login for supported providers.
+              Interactive OAuth login for supported providers.
             </dd>
 
             <dt class="font-semibold text-term-bright">/logout</dt>
@@ -494,13 +554,13 @@
 
             <dt class="font-semibold text-term-bright">/effort</dt>
             <dd class="text-term-fg">
-              Set the reasoning effort level: low, medium, high, or xhigh.
+              Set reasoning effort: low, medium, high, or xhigh.
             </dd>
 
             <dt class="font-semibold text-term-bright">/help</dt>
             <dd class="text-term-fg">
-              Show the command list plus loaded AGENTS.md files, discovered
-              skills, and active plugins.
+              List commands, loaded AGENTS.md files, discovered skills, and
+              plugins.
             </dd>
           </dl>
         </div>
@@ -520,23 +580,17 @@ $ printf '%s\n' 'fix the failing tests' | mc</code></pre>
         </div>
         <ul>
           <li>
-            <strong>Automatic mode selection.</strong> Headless mode activates
-            when <code>-p/--prompt</code> is provided or when stdin/stdout is
-            not a TTY.
+            Enabled when <code>-p/--prompt</code> is provided or when
+            stdin/stdout is not a TTY.
           </li>
           <li>
-            <strong>Shared input parsing.</strong> Plain text,
-            <code>/skill:name</code>, and standalone image paths use the same
-            parsing rules as the interactive UI.
+            Reuses the same input parsing rules as the interactive UI for plain
+            text, <code>/skill:name</code>, and standalone image paths.
           </li>
+          <li>Streams newline-delimited JSON events to stdout.</li>
           <li>
-            <strong>NDJSON output.</strong> Events stream to stdout as
-            newline-delimited JSON instead of terminal UI rendering.
-          </li>
-          <li>
-            <strong>No interactive slash commands.</strong> Commands such as
-            <code>/model</code> and <code>/help</code> are rejected in headless
-            mode.
+            Interactive slash commands such as <code>/model</code> and
+            <code>/help</code> are not available in headless mode.
           </li>
         </ul>
       </section>
