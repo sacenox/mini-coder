@@ -7,16 +7,15 @@ The spec.md and code are the sources of truth, not this file, don't assume anyth
 
 ## Open items
 
-- [ ] `shell` results are flattened into one text blob (`src/tools.ts`, `src/ui/conversation.ts`)
 - [ ] Invalid `settings.json` is fatal instead of falling back to no saved settings (`src/settings.ts`)
-- [ ] Escape-over-overlay behavior is not encoded in app code (`src/ui/commands.ts`, `src/ui.ts`)
-- [ ] Custom provider discovery ignores configured `apiKey` (`src/index.ts`)
 
 ## Low priority (deferred until further notice)
 
+- [ ] Escape-over-overlay behavior is not encoded in app code (`src/ui/commands.ts`, `src/ui.ts`)
+- [ ] Custom provider discovery ignores configured `apiKey` (`src/index.ts`)
 - [ ] Slash-command autocomplete does not preserve the draft (`src/ui/commands.ts`)
-- [ ] Many `mc` instances on the same host can cause SQL Busy errors
 - [ ] `/session` can switch sessions mid-run (`ui/commands.ts`, `ui/agent.ts`)
+- [ ] `shell` results are flattened into one text blob (`src/tools.ts`, `src/ui/conversation.ts`)
 - [ ] Custom XML parsing and frontmatter parsing are still in use (`skills.ts`, `prompt.ts`)
 
 ## Plugin related (documented only, no plugin-related work is planned right now)

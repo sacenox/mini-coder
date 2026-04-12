@@ -160,6 +160,8 @@ const EMPTY_ASSISTANT_USAGE: AssistantMessage["usage"] = {
   },
 };
 
+const SQLITE_BUSY_TIMEOUT_MS = 1_000;
+
 /** Row shape returned by `SELECT * FROM prompt_history`. */
 type PromptHistoryRow = {
   id: number;
@@ -253,6 +255,7 @@ CREATE INDEX IF NOT EXISTS idx_prompt_history_created_at ON prompt_history(creat
 export function openDatabase(path: string): Database {
   const db = new Database(path);
   db.run("PRAGMA journal_mode = WAL");
+  db.run(`PRAGMA busy_timeout = ${SQLITE_BUSY_TIMEOUT_MS}`);
   db.run("PRAGMA foreign_keys = ON");
   db.exec(SCHEMA);
   return db;
@@ -709,6 +712,31 @@ export function getAssistantUsage(
   };
 }
 
+function runInImmediateTransaction<T>(db: Database, callback: () => T): T {
+  if (db.inTransaction) {
+    return callback();
+  }
+
+  db.run("BEGIN IMMEDIATE");
+  try {
+    const result = callback();
+    db.run("COMMIT");
+    return result;
+  } catch (error) {
+    if (db.inTransaction) {
+      try {
+        db.run("ROLLBACK");
+      } catch (rollbackError) {
+        throw new AggregateError(
+          [error, rollbackError],
+          "Failed to roll back SQLite transaction",
+        );
+      }
+    }
+    throw error;
+  }
+}
+
 /**
  * Append a UI-only message to a session's history.
  *
@@ -790,25 +818,27 @@ export function appendMessage(
   message: PersistedMessage,
   turn?: number,
 ): number | null {
-  const now = Date.now();
+  return runInImmediateTransaction(db, () => {
+    const now = Date.now();
 
-  let effectiveTurn: number | null;
-  if (isUiMessage(message)) {
-    effectiveTurn = null;
-  } else if (turn !== undefined) {
-    effectiveTurn = turn;
-  } else {
-    const row = db.query<MaxTurnRow, [string]>(SQL.maxTurn).get(sessionId);
-    effectiveTurn = (row?.max_turn ?? 0) + 1;
-  }
+    let effectiveTurn: number | null;
+    if (isUiMessage(message)) {
+      effectiveTurn = null;
+    } else if (turn !== undefined) {
+      effectiveTurn = turn;
+    } else {
+      const row = db.query<MaxTurnRow, [string]>(SQL.maxTurn).get(sessionId);
+      effectiveTurn = (row?.max_turn ?? 0) + 1;
+    }
 
-  db.run(
-    "INSERT INTO messages (session_id, turn, data, created_at) VALUES (?, ?, ?, ?)",
-    [sessionId, effectiveTurn, JSON.stringify(message), now],
-  );
-  db.run("UPDATE sessions SET updated_at = ? WHERE id = ?", [now, sessionId]);
+    db.run(
+      "INSERT INTO messages (session_id, turn, data, created_at) VALUES (?, ?, ?, ?)",
+      [sessionId, effectiveTurn, JSON.stringify(message), now],
+    );
+    db.run("UPDATE sessions SET updated_at = ? WHERE id = ?", [now, sessionId]);
 
-  return effectiveTurn;
+    return effectiveTurn;
+  });
 }
 
 /**

@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type {
   AssistantMessage,
   Message,
@@ -84,6 +87,31 @@ function loadSessionOrThrow(db: ReturnType<typeof openDatabase>, id: string) {
     throw new Error(`Expected session ${id} to exist`);
   }
   return session;
+}
+
+async function waitForChildStdout(
+  stdout: ReadableStream<Uint8Array> | number | null,
+  needle: string,
+): Promise<void> {
+  if (!(stdout instanceof ReadableStream)) {
+    throw new Error("Expected child stdout to be piped");
+  }
+
+  const reader = stdout.getReader();
+  const decoder = new TextDecoder();
+  let output = "";
+
+  while (!output.includes(needle)) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    output += decoder.decode(value, { stream: true });
+  }
+
+  if (!output.includes(needle)) {
+    throw new Error(`Child exited before emitting ${JSON.stringify(needle)}`);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -201,6 +229,17 @@ describe("session persistence", () => {
     deleteSession(db, session.id);
     expect(getSession(db, session.id)).toBeNull();
     expect(loadMessages(db, session.id)).toEqual([]);
+    db.close();
+  });
+});
+
+describe("database initialization", () => {
+  test("openDatabase enables a busy timeout for transient writer contention", () => {
+    const db = openDatabase(":memory:");
+
+    const row = db.query<{ timeout: number }, []>("PRAGMA busy_timeout").get();
+
+    expect(row?.timeout).toBeGreaterThan(0);
     db.close();
   });
 });
@@ -327,6 +366,73 @@ describe("message persistence and turn numbering", () => {
     const updated = loadSessionOrThrow(db, session.id);
     expect(updated.updatedAt).toBeGreaterThanOrEqual(before);
     db.close();
+  });
+
+  test("appendMessage when another writer commits first waits and assigns the next turn", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "mini-coder-session-test-"));
+    const dbPath = join(tempDir, "session.db");
+    const lockScriptPath = join(tempDir, "hold-lock.ts");
+    const db = openDatabase(dbPath);
+    const session = createSession(db, { cwd: "/tmp/test" });
+
+    writeFileSync(
+      lockScriptPath,
+      [
+        'import { Database } from "bun:sqlite";',
+        "const dbPath = process.argv[2];",
+        "const sessionId = process.argv[3];",
+        'if (!dbPath || !sessionId) throw new Error("missing args");',
+        "const db = new Database(dbPath);",
+        'db.run("PRAGMA journal_mode = WAL");',
+        'db.run("BEGIN IMMEDIATE");',
+        "const now = Date.now();",
+        'db.run("INSERT INTO messages (session_id, turn, data, created_at) VALUES (?, ?, ?, ?)", [',
+        "  sessionId,",
+        "  1,",
+        '  JSON.stringify({ role: "user", content: "locked", timestamp: now }),',
+        "  now,",
+        "]);",
+        'db.run("UPDATE sessions SET updated_at = ? WHERE id = ?", [now, sessionId]);',
+        'console.log("locked");',
+        "await Bun.sleep(250);",
+        'db.run("COMMIT");',
+        "db.close();",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const child = Bun.spawn(
+      [process.execPath, lockScriptPath, dbPath, session.id],
+      {
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    );
+
+    try {
+      await waitForChildStdout(child.stdout, "locked");
+
+      const turn = appendMessage(db, session.id, makeUser("after lock"));
+      expect(turn).toBe(2);
+
+      const exitCode = await child.exited;
+      const stderr = child.stderr
+        ? await new Response(child.stderr).text()
+        : "";
+      expect({ exitCode, stderr }).toEqual({ exitCode: 0, stderr: "" });
+
+      const turns = db
+        .query<{ turn: number | null }, [string]>(
+          "SELECT turn FROM messages WHERE session_id = ? ORDER BY id",
+        )
+        .all(session.id)
+        .map((row) => row.turn);
+      expect(turns).toEqual([1, 2]);
+    } finally {
+      db.close();
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 });
 
