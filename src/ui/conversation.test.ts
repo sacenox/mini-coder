@@ -302,6 +302,49 @@ describe("ui/conversation", () => {
     ).toBe(true);
   });
 
+  test("renderAssistantMessage with adjacent text blocks preserves markdown structure across the block boundary", async () => {
+    // Arrange
+    const singleBlock = {
+      content: [fauxText("```js\nconst x = 1;\n```")],
+    };
+    const splitBlocks = {
+      content: [fauxText("```js\n"), fauxText("const x = 1;\n```")],
+    };
+
+    // Act
+    const singleRows = await renderBufferRows(
+      renderAssistantMessage(singleBlock, RENDER_OPTS),
+      40,
+      12,
+    );
+    const splitRows = await renderBufferRows(
+      renderAssistantMessage(splitBlocks, RENDER_OPTS),
+      40,
+      12,
+    );
+    const singleHeight = measureRenderedHeight(
+      renderAssistantMessage(singleBlock, RENDER_OPTS),
+      40,
+    );
+    const splitHeight = measureRenderedHeight(
+      renderAssistantMessage(splitBlocks, RENDER_OPTS),
+      40,
+    );
+    const singleRow = singleRows.find((row) =>
+      row.text.includes("const x = 1;"),
+    );
+    const splitRow = splitRows.find((row) => row.text.includes("const x = 1;"));
+
+    // Assert
+    expect(singleRow).toBeDefined();
+    expect(splitRow).toBeDefined();
+    expect(singleHeight).toBe(splitHeight);
+    expect(singleRow?.fgColors[singleRow.text.indexOf("const")]).not.toBe(null);
+    expect(splitRow?.fgColors[splitRow.text.indexOf("const")]).toBe(
+      singleRow?.fgColors[singleRow.text.indexOf("const")],
+    );
+  });
+
   test("buildConversationLogNodes with a pending shell result keeps the streamed call and result append-only", () => {
     // Arrange
     const pendingToolResults: PendingToolResult[] = [
@@ -1016,6 +1059,37 @@ describe("ui/conversation", () => {
     expect(text).toContain("And 17 lines more");
     expect(text).not.toContain("line 17");
     expect(text).not.toContain("seq 1 25");
+  });
+
+  test("renderToolResult for a wrapped shell preview keeps the summary directly below the visible tail", async () => {
+    // Arrange
+    const output = [
+      "line 1",
+      "line 2",
+      "line 3",
+      "line 4",
+      "this is a very long wrapped line that will take more than six rendered rows in the preview width so it gets dropped entirely",
+      "tail A",
+      "tail B",
+    ].join("\n");
+
+    // Act
+    const rows = await renderBufferRows(
+      renderToolResult("shell", { command: "demo" }, output, false, {
+        ...RENDER_OPTS,
+        previewWidth: 24,
+      }),
+      24,
+      20,
+    );
+    const tailRowIndex = rows.findIndex((row) => row.text.includes("tail B"));
+    const summaryRowIndex = rows.findIndex(
+      (row) => row.text.includes("And ") && row.text.includes(" lines more"),
+    );
+
+    // Assert
+    expect(tailRowIndex).toBeGreaterThan(-1);
+    expect(summaryRowIndex).toBe(tailRowIndex + 1);
   });
 
   test("renderToolResult for shell output in verbose mode shows the full stored output", () => {

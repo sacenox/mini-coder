@@ -282,6 +282,32 @@ function renderThinkingBlock(
   ]);
 }
 
+function coalesceAdjacentTextBlocks(
+  content: AssistantMessage["content"],
+): AssistantMessage["content"] {
+  const coalesced: AssistantMessage["content"] = [];
+
+  for (const block of content) {
+    if (block.type !== "text") {
+      coalesced.push(block);
+      continue;
+    }
+
+    const previous = coalesced.at(-1);
+    if (previous?.type === "text") {
+      coalesced[coalesced.length - 1] = {
+        ...previous,
+        text: previous.text + block.text,
+      };
+      continue;
+    }
+
+    coalesced.push({ ...block });
+  }
+
+  return coalesced;
+}
+
 function renderAssistantContentBlock(
   block: AssistantMessage["content"][number],
   opts: ConversationRenderOpts,
@@ -309,7 +335,7 @@ export function renderAssistantMessage(
   assistant: AssistantMessage | AssistantRenderState,
   opts: ConversationRenderOpts,
 ): Node | null {
-  const children = assistant.content
+  const children = coalesceAdjacentTextBlocks(assistant.content)
     .map((block) => {
       return renderAssistantContentBlock(block, opts);
     })
@@ -694,6 +720,7 @@ function renderToolBodyFromNodes(
     body: VStack(
       {
         height: UI_TOOL_PREVIEW_ROWS,
+        justifyContent: "end",
       },
       [...previewLines],
     ),
