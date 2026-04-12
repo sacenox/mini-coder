@@ -182,6 +182,19 @@ async function renderLayoutRows(
   return snapshot;
 }
 
+function startUiViewport(
+  state: AppState,
+  terminal: MockTerminal,
+  controller: InputController,
+): void {
+  cel.init(terminal);
+  cel.viewport(() => {
+    const base = renderBaseLayout(state, terminal.columns, controller);
+    const overlay = renderActiveOverlay(state);
+    return overlay ? [base, overlay] : base;
+  });
+}
+
 const tempDirs: string[] = [];
 
 function createTempDir(): string {
@@ -1633,7 +1646,7 @@ describe("ui rendering", () => {
     }
   });
 
-  test("Escape while running blurs the input first and a second Escape aborts", () => {
+  test("Escape while running aborts immediately and refocuses the input", () => {
     const state = createTestState();
     state.running = true;
     state.abortController = new AbortController();
@@ -1643,19 +1656,116 @@ describe("ui rendering", () => {
       const base = expectVStack(renderBaseLayout(state, 80, controller));
 
       controller.onBlur();
-
-      const input = expectTextInput(renderInputArea(state.theme, controller));
-      expect(input.props.focused).toBe(false);
+      expect(
+        expectTextInput(renderInputArea(state.theme, controller)).props.focused,
+      ).toBe(false);
       expect(state.abortController.signal.aborted).toBe(false);
 
       base.props.onKeyPress?.("escape");
       expect(state.abortController.signal.aborted).toBe(true);
+      expect(
+        expectTextInput(renderInputArea(state.theme, controller)).props.focused,
+      ).toBe(true);
     } finally {
       state.db.close();
     }
   });
 
-  test("Escape aborts a running shell tool once the input is blurred", async () => {
+  test("running Escape aborts immediately while the input is focused", async () => {
+    const state = createTestState();
+    state.running = true;
+    state.abortController = new AbortController();
+    const terminal = new MockTerminal(80, 20);
+
+    try {
+      const controller = createInputController(state);
+      startUiViewport(state, terminal, controller);
+      await waitForCelRender();
+
+      expect(
+        expectTextInput(renderInputArea(state.theme, controller)).props.focused,
+      ).toBe(true);
+
+      terminal.sendInput("\x1b");
+      await waitForCelRender();
+
+      expect(state.abortController.signal.aborted).toBe(true);
+      expect(
+        expectTextInput(renderInputArea(state.theme, controller)).props.focused,
+      ).toBe(true);
+    } finally {
+      cel.stop();
+      state.db.close();
+    }
+  });
+
+  test("running Escape dismisses a focused overlay and returns focus to the input", async () => {
+    const state = createTestState();
+    state.running = true;
+    state.abortController = new AbortController();
+    const terminal = new MockTerminal(80, 20);
+
+    try {
+      appendPromptHistory(state.db, {
+        text: "saved prompt",
+        cwd: state.cwd,
+      });
+
+      const controller = createInputController(state);
+      startUiViewport(state, terminal, controller);
+      await waitForCelRender();
+
+      terminal.sendInput("\x12");
+      await waitForCelRender();
+
+      expect(renderActiveOverlay(state)).not.toBeNull();
+      expect(state.abortController.signal.aborted).toBe(false);
+      expect(
+        expectTextInput(renderInputArea(state.theme, controller)).props.focused,
+      ).toBe(false);
+
+      terminal.sendInput("\x1b");
+      await waitForCelRender();
+
+      expect(renderActiveOverlay(state)).toBeNull();
+      expect(state.abortController.signal.aborted).toBe(false);
+      expect(
+        expectTextInput(renderInputArea(state.theme, controller)).props.focused,
+      ).toBe(true);
+    } finally {
+      cel.stop();
+      state.db.close();
+    }
+  });
+
+  test("Escape while idle does nothing", async () => {
+    const state = createTestState();
+    const terminal = new MockTerminal(80, 20);
+
+    try {
+      const controller = createInputController(state);
+      startUiViewport(state, terminal, controller);
+      await waitForCelRender();
+
+      expect(
+        expectTextInput(renderInputArea(state.theme, controller)).props.focused,
+      ).toBe(true);
+
+      terminal.sendInput("\x1b");
+      await waitForCelRender();
+
+      expect(state.abortController).toBeNull();
+      expect(renderActiveOverlay(state)).toBeNull();
+      expect(
+        expectTextInput(renderInputArea(state.theme, controller)).props.focused,
+      ).toBe(true);
+    } finally {
+      cel.stop();
+      state.db.close();
+    }
+  });
+
+  test("Escape aborts a running shell tool immediately", async () => {
     const state = createTestState();
     const faux = registerFauxProvider();
     const cwd = createTempDir();
@@ -1679,7 +1789,6 @@ describe("ui rendering", () => {
           state.messages.some((message) => message.role === "assistant"),
       );
 
-      controller.onBlur();
       const base = expectVStack(renderBaseLayout(state, 80, controller));
       base.props.onKeyPress?.("escape");
 

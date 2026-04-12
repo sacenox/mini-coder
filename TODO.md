@@ -9,6 +9,7 @@ The spec.md and code are the sources of truth, not this file, don't assume anyth
 
 ## Low priority (deffered until further notice)
 
+- [ ] **Many `mc` instances on the same host can cause SQL Busy errors** - Doesn't happen often but I've seen it happen with many mc instances open, which makes sense. We should investigate what we can do to add robustness at the SQL layer.
 - [ ] **Prevent `/session` from switching sessions mid-run** (`ui/commands.ts`, `ui/agent.ts`) — selecting a session while a turn is active can desync UI state from the session the loop is still writing to.
 - [ ] **Replace custom XML parsing and frontmatter parsing with dedicated dependencies** (`skills.ts`, `prompt.ts`)
 
@@ -21,5 +22,6 @@ The spec.md and code are the sources of truth, not this file, don't assume anyth
 
 ## Future ideas
 
+- [ ] cel-tui now supports setting the terminal title text. We should use this to show activity and session information to the user: "Preview of last assistant/user message... - <animation if turn is in flight in sync with divider animation>". Use a simple animation, like a repeating elipsis. we just need to make sure that if the divider is on, the window title is too, they can't be out of sync, that would be confusing.
 - [ ] Divider theme plugin — customizable divider animations (scanning pulse, breathing, flowing dots, wave)
 - [ ] Backward-compatibility and migration policy for 1.0 (session/app data versioning, explicit migration strategy)

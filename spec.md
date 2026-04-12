@@ -217,10 +217,12 @@ The core runtime. Streaming is the default behavior throughout the turn: user-vi
    - Each result becomes a `ToolResultMessage` appended to history and DB (same turn number).
    - After all tool results are appended, loop back to step 2 (re-stream with the updated context).
 
-5. **Interrupt** — if the user presses `Escape` during streaming:
+5. **Interrupt** — if the user presses `Escape` during streaming with no overlay open:
    - Abort the stream via `AbortSignal`.
    - The partial `AssistantMessage` (with `stopReason: "aborted"`) is appended to history and DB as-is. This preserves context so the LLM knows what it was doing when interrupted.
-   - Return to the input prompt. The user can continue the conversation or `/undo` the interrupted turn.
+   - Return to the input prompt with focus on the input. The user can continue the conversation or `/undo` the interrupted turn.
+
+   If an overlay is open instead, that first `Escape` dismisses the overlay, leaves the current draft unchanged, and returns focus to the input without interrupting the turn.
 
 **No step limit** — the loop runs until the model stops (`stopReason: "stop"`) or the user interrupts. There is no maximum number of tool calls per turn.
 
@@ -694,7 +696,7 @@ Multi-line text input with no prompt prefix — the blinking cursor is the affor
 Supports:
 
 - `Tab` for file path autocomplete.
-- `Ctrl+R` for global input history search. Opens the same centered Select overlay pattern used by interactive commands, populated with previously submitted raw prompt text from all sessions and working directories, newest first. The list is searchable, selecting an entry restores the exact raw prompt into the input for editing (it does not auto-submit), and dismissing the overlay leaves the current draft unchanged.
+- `Ctrl+R` for global input history search. Opens the same centered Select overlay pattern used by interactive commands, populated with previously submitted raw prompt text from all sessions and working directories, newest first. The list is searchable, selecting an entry restores the exact raw prompt into the input for editing (it does not auto-submit), and dismissing the overlay leaves the current draft unchanged and returns focus to the input.
 - `/command` prefix for slash commands.
 - `/skill:skill-name` prefix to inject a skill's body into the user message. The `/skill:name` prefix is stripped from the input and the skill's `SKILL.md` body is prepended to the user message content. The rest of the input becomes the user's instruction. Example: `/skill:code-review check the auth module` sends the code-review skill body + "check the auth module" as the user message.
 - Image embedding: if we autocomplete a file path ending in `.png`, `.jpg`, `.jpeg`, `.gif`, or `.webp`, and the file exists, it is embedded as `ImageContent` in the user message (base64-encoded). Only when the current model supports image input (`Model.input` includes `"image"`). If the model doesn't support images, or the file doesn't exist, or the input contains other text, the path is sent as plain text. This is intentionally simple — no inline detection within sentences.
@@ -718,18 +720,20 @@ add tests for undo_
 
 ### Key bindings
 
-| Key           | Context       | Action                                            |
-| ------------- | ------------- | ------------------------------------------------- |
-| `Enter`       | Input focused | Submit message                                    |
-| `Shift+Enter` | Input focused | Insert newline                                    |
-| `Escape`      | Agent working | Interrupt current turn, preserve partial response |
-| `Tab`         | Input focused | File path autocomplete                            |
-| `Ctrl+R`      | Input focused | Search global raw input history                   |
-| `Ctrl+C`      | Any           | Graceful exit                                     |
-| `Ctrl+D`      | Input empty   | Graceful exit (EOF)                               |
-| `:q`          | Input focused | Graceful exit                                     |
-| `Ctrl+Z`      | Any           | Suspend/background process                        |
-| Mouse wheel   | Log area      | Scroll conversation history                       |
+| Key           | Context                   | Action                                                                           |
+| ------------- | ------------------------- | -------------------------------------------------------------------------------- |
+| `Enter`       | Input focused             | Submit message                                                                   |
+| `Shift+Enter` | Input focused             | Insert newline                                                                   |
+| `Escape`      | Overlay open              | Dismiss overlay, leave the draft unchanged, and return focus to the input        |
+| `Escape`      | Agent working, no overlay | Interrupt current turn, preserve partial response, and return focus to the input |
+| `Escape`      | Idle, no overlay          | No action                                                                        |
+| `Tab`         | Input focused             | File path autocomplete                                                           |
+| `Ctrl+R`      | Input focused             | Search global raw input history                                                  |
+| `Ctrl+C`      | Any                       | Graceful exit                                                                    |
+| `Ctrl+D`      | Input empty               | Graceful exit (EOF)                                                              |
+| `:q`          | Input focused             | Graceful exit                                                                    |
+| `Ctrl+Z`      | Any                       | Suspend/background process                                                       |
+| Mouse wheel   | Log area                  | Scroll conversation history                                                      |
 
 ### Commands
 

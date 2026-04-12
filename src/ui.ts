@@ -631,8 +631,13 @@ export function renderBaseLayout(
           onSuspend?.();
           return;
         }
-        if (key === "escape" && state.running) {
-          if (state.abortController) state.abortController.abort();
+        if (key === "escape") {
+          if (state.running) {
+            inputFocused = true;
+            if (state.abortController) {
+              state.abortController.abort();
+            }
+          }
           return;
         }
         return false;

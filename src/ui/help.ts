@@ -79,9 +79,11 @@ export function buildHelpText(state: HelpRenderState): string {
   const providerNames = Array.from(state.providers.keys());
   lines.push("");
   lines.push("Note:");
-  lines.push("  While a turn is running, Escape blurs the input first.");
-  lines.push("  Tab re-focuses the input.");
-  lines.push("  Escape again interrupts the current turn.");
+  lines.push(
+    "  Escape closes the current overlay and returns focus to the input.",
+  );
+  lines.push("  With no overlay open, Escape interrupts the current turn.");
+  lines.push("  Otherwise Escape does nothing.");
 
   lines.push("");
   lines.push(

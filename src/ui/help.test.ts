@@ -24,7 +24,7 @@ describe("ui/help", () => {
     );
   });
 
-  test("buildHelpText includes the current Escape input-focus note", () => {
+  test("buildHelpText describes the current Escape behavior", () => {
     const helpState: HelpRenderState = {
       providers: new Map(),
       model: null,
@@ -37,8 +37,13 @@ describe("ui/help", () => {
 
     const text = buildHelpText(helpState);
 
-    expect(text).toContain("Escape blurs the input first");
-    expect(text).toContain("Tab re-focuses the input");
-    expect(text).toContain("Escape again interrupts the current turn");
+    expect(text).toContain(
+      "Escape closes the current overlay and returns focus to the input",
+    );
+    expect(text).toContain(
+      "With no overlay open, Escape interrupts the current turn",
+    );
+    expect(text).toContain("Otherwise Escape does nothing");
+    expect(text).not.toContain("Escape blurs the input first");
   });
 });

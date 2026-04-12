@@ -75,16 +75,16 @@ Plugins can add more tools, but the core stays intentionally small.
 
 ## Key bindings
 
-| Key           | Action                                            |
-| ------------- | ------------------------------------------------- |
-| `Enter`       | Submit message                                    |
-| `Shift+Enter` | Insert newline                                    |
-| `Escape`      | Interrupt current turn, preserve partial response |
-| `Tab`         | File path autocomplete (or command filter on `/`) |
-| `Ctrl+R`      | Search global raw input history                   |
-| `Ctrl+C`      | Graceful exit                                     |
-| `Ctrl+D`      | Graceful exit (EOF, when input is empty)          |
-| `:q`          | Graceful exit                                     |
+| Key           | Action                                                                                            |
+| ------------- | ------------------------------------------------------------------------------------------------- |
+| `Enter`       | Submit message                                                                                    |
+| `Shift+Enter` | Insert newline                                                                                    |
+| `Escape`      | Close the current overlay and refocus input; otherwise interrupt the active turn; otherwise no-op |
+| `Tab`         | File path autocomplete (or command filter on `/`)                                                 |
+| `Ctrl+R`      | Search global raw input history                                                                   |
+| `Ctrl+C`      | Graceful exit                                                                                     |
+| `Ctrl+D`      | Graceful exit (EOF, when input is empty)                                                          |
+| `:q`          | Graceful exit                                                                                     |
 
 ## Headless one-shot mode
 

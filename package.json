@@ -18,9 +18,9 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@cel-tui/components": "^0.6.2",
-    "@cel-tui/core": "^0.6.2",
-    "@cel-tui/types": "^0.6.2",
+    "@cel-tui/components": "^0.7.1",
+    "@cel-tui/core": "^0.7.1",
+    "@cel-tui/types": "^0.7.1",
     "@mariozechner/pi-ai": "^0.66.1"
   },
   "devDependencies": {
