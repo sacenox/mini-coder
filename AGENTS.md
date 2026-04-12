@@ -31,6 +31,7 @@
 - Toolchain split: **prettier** formats, **biome** lints + sorts imports. CI runs `bun test`, `bun run check`, `bun run format`, and `bun run typecheck`. Lefthook runs the same steps sequentially.
 - App data dir: `~/.config/mini-coder/`.
 - Published CLI entrypoint is `mc` via `bin/mc.ts` → `src/index.ts`. Do not point `package.json#bin` at `dist/` unless publish actually produces it.
+- For self-review or audit passes, use mini-coder in headless mode from the repo root, e.g. `mc -p "review the current diff"`.
 - All exports need JSDoc; interface fields get single-line JSDoc. See `session.ts` for the pattern.
 - Dependency references:
   - pi-ai: `~/src/pi-mono/packages/ai/` (`src/types.ts`, `src/stream.ts`, `src/utils/oauth/`, `src/providers/faux.ts`)
