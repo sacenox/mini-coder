@@ -40,13 +40,13 @@ This replaces: `ai`, `@ai-sdk/anthropic`, `@ai-sdk/openai`, `@ai-sdk/google`, `@
 Declarative TUI framework with flexbox layout, built for exactly the kind of UI we need:
 
 - **Primitives**: `VStack`, `HStack`, `Text`, `TextInput` — composable, flexbox-based.
-- **Components**: `Markdown` (streaming-aware), `Button`, `Select`, `Divider`, `Spacer`.
+- **Components**: `SyntaxHighlight` (streaming-aware), `Button`, `Select`, `Divider`, `Spacer`.
 - **Input**: Kitty keyboard protocol, proper key handling, mouse scroll/click.
 - **Rendering**: Differential cell-buffer rendering, synchronized output (no flicker).
 - **Scroll**: Controlled/uncontrolled scroll with stick-to-bottom support.
 - **Focus**: Tab/Shift+Tab traversal, controlled/uncontrolled focus.
 
-The chat example (`cel-tui/examples/chat.ts`) is essentially a skeleton of our UI. Markdown streaming, TextInput, scroll — it's all there.
+The chat example (`cel-tui/examples/chat.ts`) is essentially a skeleton of our UI. TextInput, scroll, and streaming updates — it's all there.
 
 This replaces: `yoctocolors`, `yoctomarkdown`, `yoctoselect`, and all our custom widget/rendering code.
 
@@ -207,7 +207,7 @@ The core runtime. Streaming is the default behavior throughout the turn: user-vi
 2. **Build context** — construct a pi-ai `Context`: the system prompt (see [System prompt](#system-prompt)), the full message history, and the registered tool definitions (built-in + plugin tools). Git state in the session footer is refreshed at session start and after each turn.
 
 3. **Stream to LLM** — call `streamSimple(model, context, options)` from pi-ai. Iterate over the event stream:
-   - `text_delta` / `thinking_delta` / `toolcall_delta` → update the in-progress assistant message and the UI incrementally (stream markdown, show thinking if enabled, accumulate tool call arguments as they arrive).
+   - `text_delta` / `thinking_delta` / `toolcall_delta` → update the in-progress assistant message and the UI incrementally (stream raw markdown text, show thinking if enabled, accumulate tool call arguments as they arrive).
    - `toolcall_end` → finalize the structured tool call in the in-progress `AssistantMessage`.
    - `done` → append the `AssistantMessage` to history and DB. Update cumulative stats. If `stopReason` is `"toolUse"`, go to step 4. If `"stop"` or `"length"`, return to the input prompt.
    - `error` → display error in the log, return to the input prompt.
@@ -542,7 +542,7 @@ Message types and their rendering:
 Tool blocks share a common frame: a left border (`│`) plus a compact header pill naming the tool and direction (`tool ->` for assistant tool calls, `tool <-` for tool results). The body renders tool-specific content rather than raw JSON.
 
 - **User messages**: displayed as plain text with a subtle background color to distinguish them from agent responses. No prefix or role indicator.
-- **Assistant messages**: streamed markdown rendered via cel-tui's `Markdown` component on the default background. Thinking/reasoning content is collapsible (shown or hidden according to the user's persisted `/reasoning` preference; defaults to shown when no setting exists).
+- **Assistant messages**: streamed raw markdown rendered via cel-tui's `SyntaxHighlight` component on the default background so the log stays copy-friendly and preserves markdown markers. Thinking/reasoning content is collapsible (shown or hidden according to the user's persisted `/reasoning` preference; defaults to shown when no setting exists).
 - **Tool calls — shell**: rendered in the shared tool frame. The assistant tool call streams the command as it arrives. The command preview and shell tool result body use [verbose tool rendering](#verbose-tool-rendering). Shell tool results render the tool output content below a `shell <-` header.
 - **Tool calls — edit**: rendered in the shared tool frame. The in-progress tool-call preview shows the target path plus the streamed replacement content, preserving whitespace. The preview body uses [verbose tool rendering](#verbose-tool-rendering). Successful results render a compact confirmation block (`edit <-` plus the file path); errors render the returned error text.
 - **Tool calls — readImage**: rendered in the shared tool frame. The assistant tool call streams the path as it arrives. Successful results render a compact result block (`read image <-` plus the file path) rather than rendering the image itself.

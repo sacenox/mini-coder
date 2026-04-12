@@ -9,7 +9,6 @@
  */
 
 import {
-  Markdown,
   SyntaxHighlight,
   type SyntaxHighlightTheme,
 } from "@cel-tui/components";
@@ -142,11 +141,15 @@ type ToolRenderLineKind =
   | "summary"
   | "error";
 
-interface HighlightedToolBodySpec {
+type SyntaxThemeVariant = "markdown" | "shell";
+
+interface HighlightedBodySpec {
   /** Full raw source content to syntax-highlight. */
   text: string;
   /** Registered lextide language id. */
   language: string;
+  /** Semantic theme variant for this highlighted content. */
+  themeVariant: SyntaxThemeVariant;
 }
 
 interface ToolBlockSpec {
@@ -157,7 +160,7 @@ interface ToolBlockSpec {
   /** Logical body lines for the tool block. */
   bodyLines: readonly ToolRenderLine[];
   /** Optional syntax-highlighted body rendered from the full unsplit source. */
-  highlightedBody?: HighlightedToolBodySpec;
+  highlightedBody?: HighlightedBodySpec;
   /** Whether `/verbose` preview rules apply to the body. */
   previewBody: boolean;
 }
@@ -222,16 +225,25 @@ function renderUserMessage(msg: UserMessage, theme: Theme): Node {
   ]);
 }
 
-/** Render a markdown block with stable internal paragraph spacing. */
-function renderMarkdownBlock(content: string): Node | null {
-  const children = Markdown(content).map((node) => {
-    if (node.type === "text" && node.content === "") {
-      return node;
-    }
-    return HStack({ padding: { x: 1 } }, [VStack({ flex: 1 }, [node])]);
-  });
+/** Render a syntax-highlighted raw markdown block. */
+function renderMarkdownTextBlock(content: string, theme: Theme): Node | null {
+  if (content === "") {
+    return null;
+  }
 
-  return children.length > 0 ? VStack({ gap: 0 }, children) : null;
+  const children = getHighlightedBodyLines(
+    {
+      text: content,
+      language: "markdown",
+      themeVariant: "markdown",
+    },
+    theme,
+  );
+  if (children.length === 0) {
+    return null;
+  }
+
+  return HStack({ padding: { x: 1 } }, [VStack({ flex: 1 }, children)]);
 }
 
 function getAssistantErrorMessage(
@@ -275,7 +287,7 @@ function renderAssistantContentBlock(
   opts: ConversationRenderOpts,
 ): Node | null {
   if (block.type === "text" && block.text) {
-    return renderMarkdownBlock(block.text);
+    return renderMarkdownTextBlock(block.text, opts.theme);
   }
   if (block.type === "thinking" && block.thinking) {
     return renderThinkingBlock(block.thinking, opts);
@@ -388,7 +400,13 @@ type SyntaxThemeTokenColor = NonNullable<
 const graphemeSegmenter = new Intl.Segmenter(undefined, {
   granularity: "grapheme",
 });
-const shellSyntaxThemeCache = new WeakMap<Theme, SyntaxThemeRegistration>();
+const syntaxThemeCache: Record<
+  SyntaxThemeVariant,
+  WeakMap<Theme, SyntaxThemeRegistration>
+> = {
+  markdown: new WeakMap(),
+  shell: new WeakMap(),
+};
 
 function colorToHex(color: Color | undefined): string | undefined {
   return color ? ANSI_COLOR_HEX[color] : undefined;
@@ -414,14 +432,11 @@ function pushSyntaxTokenColor(
   });
 }
 
-function getShellSyntaxTheme(theme: Theme): SyntaxThemeRegistration {
-  const cached = shellSyntaxThemeCache.get(theme);
-  if (cached) {
-    return cached;
-  }
-
-  const tokenColors: SyntaxThemeTokenColor[] = [];
-  pushSyntaxTokenColor(tokenColors, ["comment", "quote"], theme.mutedText);
+function pushShellSyntaxTokenColors(
+  tokenColors: SyntaxThemeTokenColor[],
+  theme: Theme,
+): void {
+  pushSyntaxTokenColor(tokenColors, "comment", theme.mutedText);
   pushSyntaxTokenColor(
     tokenColors,
     ["keyword", "storage"],
@@ -472,12 +487,47 @@ function getShellSyntaxTheme(theme: Theme): SyntaxThemeRegistration {
     ["entity.name.tag", "name", "tag"],
     theme.accentText,
   );
+}
+
+function pushMarkdownSyntaxTokenColors(
+  tokenColors: SyntaxThemeTokenColor[],
+  theme: Theme,
+): void {
+  pushSyntaxTokenColor(tokenColors, "quote", theme.mutedText, "italic");
+  pushSyntaxTokenColor(tokenColors, "section", theme.accentText, "bold");
+  pushSyntaxTokenColor(
+    tokenColors,
+    "bullet",
+    theme.secondaryAccentText,
+    "bold",
+  );
+  pushSyntaxTokenColor(tokenColors, ["code", "string"], theme.diffAdded);
+  pushSyntaxTokenColor(tokenColors, "link", theme.accentText, "underline");
+  pushSyntaxTokenColor(tokenColors, "strong", undefined, "bold");
+  pushSyntaxTokenColor(tokenColors, "emphasis", undefined, "italic");
+}
+
+function getSyntaxTheme(
+  theme: Theme,
+  variant: SyntaxThemeVariant,
+): SyntaxThemeRegistration {
+  const cache = syntaxThemeCache[variant];
+  const cached = cache.get(theme);
+  if (cached) {
+    return cached;
+  }
+
+  const tokenColors: SyntaxThemeTokenColor[] = [];
+  if (variant === "shell") {
+    pushShellSyntaxTokenColors(tokenColors, theme);
+  } else {
+    pushMarkdownSyntaxTokenColors(tokenColors, theme);
+  }
 
   const syntaxTheme: SyntaxThemeRegistration = {
-    ...(colorToHex(theme.toolText) ? { fg: colorToHex(theme.toolText) } : {}),
     tokenColors,
   };
-  shellSyntaxThemeCache.set(theme, syntaxTheme);
+  cache.set(theme, syntaxTheme);
   return syntaxTheme;
 }
 
@@ -508,7 +558,7 @@ function splitHighlightedTextNode(
   return children;
 }
 
-function normalizeHighlightedToolLine(line: Node): Node {
+function normalizeHighlightedLine(line: Node): Node {
   if (line.type !== "hstack") {
     return line;
   }
@@ -519,8 +569,8 @@ function normalizeHighlightedToolLine(line: Node): Node {
   return HStack(line.props, children);
 }
 
-function getHighlightedToolBodyLines(
-  spec: HighlightedToolBodySpec,
+function getHighlightedBodyLines(
+  spec: HighlightedBodySpec,
   theme: Theme,
 ): Node[] {
   if (spec.text === "") {
@@ -528,9 +578,9 @@ function getHighlightedToolBodyLines(
   }
 
   const highlighted = SyntaxHighlight(spec.text, spec.language, {
-    theme: getShellSyntaxTheme(theme),
+    theme: getSyntaxTheme(theme, spec.themeVariant),
   });
-  return highlighted.children.map((line) => normalizeHighlightedToolLine(line));
+  return highlighted.children.map((line) => normalizeHighlightedLine(line));
 }
 
 /** Render a single styled text node for a tool line. */
@@ -663,7 +713,7 @@ function renderToolBody(
 ): { body: Node | null; summary?: ToolRenderLine } {
   if (spec.highlightedBody) {
     return renderToolBodyFromNodes(
-      getHighlightedToolBodyLines(spec.highlightedBody, opts.theme),
+      getHighlightedBodyLines(spec.highlightedBody, opts.theme),
       spec.previewBody,
       opts,
     );
@@ -720,6 +770,7 @@ function buildShellToolCallSpec(args: Record<string, unknown>): ToolBlockSpec {
         : {
             text: command,
             language: "bash",
+            themeVariant: "shell",
           },
     previewBody: true,
   };

@@ -64,7 +64,15 @@ async function renderBufferRows(
   node: Node | null,
   cols = PREVIEW_WIDTH,
   rows = 24,
-): Promise<Array<{ text: string; fgColors: Array<string | null> }>> {
+): Promise<
+  Array<{
+    text: string;
+    fgColors: Array<string | null>;
+    bold: boolean[];
+    italic: boolean[];
+    underline: boolean[];
+  }>
+> {
   if (!node) {
     return [];
   }
@@ -79,16 +87,28 @@ async function renderBufferRows(
     throw new Error("Expected cel-tui to produce a render buffer");
   }
 
-  const snapshot: Array<{ text: string; fgColors: Array<string | null> }> = [];
+  const snapshot: Array<{
+    text: string;
+    fgColors: Array<string | null>;
+    bold: boolean[];
+    italic: boolean[];
+    underline: boolean[];
+  }> = [];
   for (let y = 0; y < rows; y++) {
     let text = "";
     const fgColors: Array<string | null> = [];
+    const bold: boolean[] = [];
+    const italic: boolean[] = [];
+    const underline: boolean[] = [];
     for (let x = 0; x < cols; x++) {
       const cell = buffer.get(x, y);
       text += cell.char;
       fgColors.push(cell.fgColor);
+      bold.push(cell.bold);
+      italic.push(cell.italic);
+      underline.push(cell.underline);
     }
-    snapshot.push({ text, fgColors });
+    snapshot.push({ text, fgColors, bold, italic, underline });
   }
 
   cel.stop();
@@ -119,18 +139,20 @@ afterEach(() => {
 });
 
 describe("ui/conversation", () => {
-  test("renderAssistantMessage preserves visible paragraph order in streamed markdown", () => {
+  test("renderAssistantMessage keeps raw markdown markers visible in assistant text", () => {
     // Arrange
-    const message = fauxAssistantMessage("First paragraph\n\nSecond paragraph");
+    const message = fauxAssistantMessage(
+      "# Heading\n\nUse **bold** and `code`.\n- item",
+    );
 
     // Act
     const text = collectText(renderAssistantMessage(message, RENDER_OPTS));
-    const firstParagraphIndex = text.indexOf("First paragraph");
-    const secondParagraphIndex = text.indexOf("Second paragraph");
 
     // Assert
-    expect(firstParagraphIndex).toBeGreaterThanOrEqual(0);
-    expect(secondParagraphIndex).toBeGreaterThan(firstParagraphIndex);
+    expect(text).toContain("# Heading");
+    expect(text).toContain("Use **bold** and `code`.");
+    expect(text).toContain("- item");
+    expect(text).not.toContain("Use bold and code.");
   });
 
   test("renderAssistantMessage with reasoning enabled shows thinking blocks", () => {
@@ -196,18 +218,88 @@ describe("ui/conversation", () => {
     expect(height).toBe(6);
   });
 
-  test("renderAssistantMessage keeps markdown paragraph spacing inside a single text block", () => {
+  test("renderAssistantMessage syntax-highlights markdown tokens with theme-derived colors", async () => {
     // Arrange
-    const message = fauxAssistantMessage("First paragraph\n\nSecond paragraph");
+    const theme = {
+      ...DEFAULT_THEME,
+      accentText: "color14",
+      secondaryAccentText: "color09",
+      diffAdded: "color10",
+      mutedText: "color13",
+    } satisfies typeof DEFAULT_THEME;
+    const message = fauxAssistantMessage("# Heading\n- item\n> quote\n`code`");
 
     // Act
-    const height = measureRenderedHeight(
-      renderAssistantMessage(message, RENDER_OPTS),
-      PREVIEW_WIDTH,
+    const rows = await renderBufferRows(
+      renderAssistantMessage(message, {
+        ...RENDER_OPTS,
+        theme,
+      }),
+      32,
+      12,
+    );
+    const headingRow = rows.find((row) => row.text.includes("# Heading"));
+    const bulletRow = rows.find((row) => row.text.includes("- item"));
+    const quoteRow = rows.find((row) => row.text.includes("> quote"));
+    const codeRow = rows.find((row) => row.text.includes("`code`"));
+
+    // Assert
+    expect(headingRow).toBeDefined();
+    expect(bulletRow).toBeDefined();
+    expect(quoteRow).toBeDefined();
+    expect(codeRow).toBeDefined();
+    expect(headingRow?.fgColors[headingRow.text.indexOf("#")]).toBe(
+      theme.accentText ?? null,
+    );
+    expect(bulletRow?.fgColors[bulletRow.text.indexOf("-")]).toBe(
+      theme.secondaryAccentText ?? null,
+    );
+    expect(quoteRow?.fgColors[quoteRow.text.indexOf(">")]).toBe(
+      theme.mutedText ?? null,
+    );
+    expect(quoteRow?.italic[quoteRow.text.indexOf(">")]).toBe(true);
+    expect(codeRow?.fgColors[codeRow.text.indexOf("`")]).toBe(
+      theme.diffAdded ?? null,
+    );
+  });
+
+  test("renderAssistantMessage syntax-highlights markdown emphasis and links with style cues", async () => {
+    // Arrange
+    const theme = {
+      ...DEFAULT_THEME,
+      accentText: "color14",
+      diffAdded: "color10",
+    } satisfies typeof DEFAULT_THEME;
+    const message = fauxAssistantMessage(
+      "*italic* **bold** [label](https://example.com)",
+    );
+
+    // Act
+    const rows = await renderBufferRows(
+      renderAssistantMessage(message, {
+        ...RENDER_OPTS,
+        theme,
+      }),
+      64,
+      12,
+    );
+    const contentRow = rows.find((row) =>
+      row.text.includes("*italic* **bold** [label](https://example.com)"),
     );
 
     // Assert
-    expect(height).toBe(3);
+    expect(contentRow).toBeDefined();
+    expect(contentRow?.italic[contentRow.text.indexOf("*italic*")]).toBe(true);
+    expect(contentRow?.bold[contentRow.text.indexOf("**bold**")]).toBe(true);
+    expect(contentRow?.fgColors[contentRow.text.indexOf("label")]).toBe(
+      theme.diffAdded ?? null,
+    );
+    expect(
+      contentRow?.fgColors[contentRow.text.indexOf("https://example.com")],
+    ).toBe(theme.accentText ?? null);
+    expect(
+      contentRow?.underline[contentRow.text.indexOf("https://example.com")],
+    ).toBe(true);
   });
 
   test("buildConversationLogNodes with a pending shell result keeps the streamed call and result append-only", () => {
