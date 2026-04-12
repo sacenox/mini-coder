@@ -43,14 +43,14 @@ Two built-in tools, plus a read-only image tool:
 
 - **`shell`** — runs commands in the user's shell. Returns stdout, stderr, and exit code. Large output is truncated to protect model context.
 - **`edit`** — exact-text replacement in a single file. Fails deterministically if the target is missing or ambiguous. Creates new files when old text is empty.
-- **`readImage`** — reads PNG, JPEG, GIF, and WebP files so vision-capable models can inspect screenshots and other repo images.
+- **`readImage`** — reads PNG, JPEG, GIF, and WebP files as model input. Only registered when the active model supports images.
 
 Plugins can add more tools, but the core stays intentionally small.
 
 ## Features
 
 - **Multi-provider model support** — Anthropic, OpenAI, Google, Bedrock, Mistral, Groq, xAI, OpenRouter, Ollama, Copilot, and more via pi-ai.
-- **Streaming TUI** — a scrolling markdown log, compact tool blocks, an animated divider, multi-line input, and a one-line pill status bar for model, cwd, git state, and session usage.
+- **Streaming TUI** — markdown conversation log, tool blocks with diffs, animated divider, multi-line input, and a one-line pill status bar with independent ANSI16 effort/context tones.
 - **Session persistence** — SQLite-backed sessions with undo, fork, resume, and cumulative usage stats. Sessions are scoped to the working directory.
 - **Reasoning and verbosity controls** — toggle thinking visibility and verbose tool rendering on demand. Preferences persist across launches.
 - **[AGENTS.md](https://agents.md) support** — project-specific instructions discovered root-to-leaf, with `~/.agents/` for global instructions.
