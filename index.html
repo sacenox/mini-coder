@@ -372,8 +372,8 @@
           >
             <h3 class="mt-0 mb-2 font-semibold text-term-bright">readImage</h3>
             <p class="mb-0 text-sm leading-relaxed text-term-fg">
-              Reads PNG, JPEG, GIF, and WebP files so vision-capable models can
-              inspect screenshots and other repo images.
+              Reads PNG, JPEG, GIF, and WebP files as model input. Only
+              registered when the active model supports images.
             </p>
           </article>
         </div>
@@ -396,22 +396,24 @@
             <ul class="mb-0 text-sm">
               <li>
                 <strong>Multi-provider model support</strong> — Anthropic,
-                OpenAI, Google, Bedrock, Mistral, Groq, xAI, OpenRouter,
-                Ollama, Copilot, and more via pi-ai.
+                OpenAI, Google, Bedrock, Mistral, Groq, xAI, OpenRouter, Ollama,
+                Copilot, and more via pi-ai.
               </li>
               <li>
-                <strong>Streaming TUI</strong> — a scrolling markdown log,
-                compact tool blocks, an animated divider, multi-line input, and
-                a one-line pill status bar for model, cwd, git state, and
-                session usage.
+                <strong>Streaming TUI</strong> — markdown conversation log, tool
+                blocks with diffs, animated divider, multi-line input, and a
+                one-line pill status bar with independent ANSI16 effort/context
+                tones.
               </li>
               <li>
                 <strong>Session persistence</strong> — SQLite-backed sessions
-                with undo, fork, resume, and cumulative usage stats.
+                with undo, fork, resume, and cumulative usage stats. Sessions
+                are scoped to the working directory.
               </li>
               <li>
                 <strong>Reasoning and verbosity controls</strong> — toggle
                 thinking visibility and verbose tool rendering on demand.
+                Preferences persist across launches.
               </li>
             </ul>
           </article>
@@ -509,17 +511,17 @@
           <dl class="grid gap-x-4 gap-y-3 text-sm md:grid-cols-[auto_1fr]">
             <dt class="font-semibold text-term-bright">/model</dt>
             <dd class="text-term-fg">
-              Switch models. Persists as the global default.
+              Switch models and save the choice as the global default.
             </dd>
 
             <dt class="font-semibold text-term-bright">/session</dt>
             <dd class="text-term-fg">
-              List and resume sessions scoped to the current working directory.
+              Open the session picker for the current working directory.
             </dd>
 
             <dt class="font-semibold text-term-bright">/new</dt>
             <dd class="text-term-fg">
-              Start a fresh session and reset cumulative usage counters.
+              Start a fresh session and reset the running token and cost totals.
             </dd>
 
             <dt class="font-semibold text-term-bright">/fork</dt>
@@ -530,13 +532,14 @@
 
             <dt class="font-semibold text-term-bright">/undo</dt>
             <dd class="text-term-fg">
-              Remove the last conversational turn (does not revert file
-              changes).
+              Remove the last conversational turn without touching filesystem
+              changes.
             </dd>
 
             <dt class="font-semibold text-term-bright">/reasoning</dt>
             <dd class="text-term-fg">
-              Toggle thinking visibility. Persisted and restored on launch.
+              Show or hide model thinking. The setting is saved and restored on
+              launch.
             </dd>
 
             <dt class="font-semibold text-term-bright">/verbose</dt>
@@ -547,17 +550,17 @@
 
             <dt class="font-semibold text-term-bright">/login</dt>
             <dd class="text-term-fg">
-              Interactive OAuth login for supported providers.
+              Sign in with a supported OAuth provider.
             </dd>
 
             <dt class="font-semibold text-term-bright">/logout</dt>
             <dd class="text-term-fg">
-              Clear saved OAuth credentials for a logged-in provider.
+              Remove saved OAuth credentials for a logged-in provider.
             </dd>
 
             <dt class="font-semibold text-term-bright">/effort</dt>
             <dd class="text-term-fg">
-              Set reasoning effort: low, medium, high, or xhigh.
+              Choose low, medium, high, or xhigh reasoning effort.
             </dd>
 
             <dt class="font-semibold text-term-bright">/help</dt>
@@ -589,7 +592,8 @@ $ printf '%s\n' 'fix the failing tests' | mc</code></pre>
           </li>
           <li>
             <strong>No interactive fallback.</strong> If stdout is redirected
-            but stdin is still interactive, pass <code>-p</code> explicitly.
+            but stdin is still interactive, pass <code>-p</code>; headless mode
+            will not fall back to an interactive prompt.
           </li>
           <li>
             <strong>Shared input parsing.</strong> Plain text,
@@ -599,16 +603,17 @@ $ printf '%s\n' 'fix the failing tests' | mc</code></pre>
           <li>
             <strong>Raw NDJSON output.</strong> Stdout carries text deltas, tool
             activity, final messages, and <code>done</code>, <code>error</code>,
-            or <code>aborted</code> outcomes instead of terminal rendering.
+            or <code>aborted</code> outcomes.
           </li>
           <li>
-            <strong>Normal session persistence.</strong> Headless runs still show
-            up in <code>/session</code> history for that working directory.
+            <strong>Normal session persistence.</strong> Headless runs still
+            persist like normal sessions and show up in <code>/session</code>
+            history for that working directory.
           </li>
           <li>
             <strong>No interactive slash commands.</strong> Commands such as
             <code>/model</code>, <code>/session</code>, and <code>/help</code>
-            are rejected in headless mode.
+            are not available in headless mode.
           </li>
         </ul>
       </section>

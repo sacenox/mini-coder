@@ -40,13 +40,13 @@ This replaces: `ai`, `@ai-sdk/anthropic`, `@ai-sdk/openai`, `@ai-sdk/google`, `@
 Declarative TUI framework with flexbox layout, built for exactly the kind of UI we need:
 
 - **Primitives**: `VStack`, `HStack`, `Text`, `TextInput` — composable, flexbox-based.
-- **Components**: `Markdown` (streaming-aware), `Button`, `Select`, `Divider`, `Spacer`.
+- **Components**: `SyntaxHighlight` (streaming-aware), `Button`, `Select`, `Divider`, `Spacer`.
 - **Input**: Kitty keyboard protocol, proper key handling, mouse scroll/click.
 - **Rendering**: Differential cell-buffer rendering, synchronized output (no flicker).
 - **Scroll**: Controlled/uncontrolled scroll with stick-to-bottom support.
 - **Focus**: Tab/Shift+Tab traversal, controlled/uncontrolled focus.
 
-The chat example (`cel-tui/examples/chat.ts`) is essentially a skeleton of our UI. Markdown streaming, TextInput, scroll — it's all there.
+The chat example (`cel-tui/examples/chat.ts`) is essentially a skeleton of our UI. TextInput, scroll, and streaming updates — it's all there.
 
 This replaces: `yoctocolors`, `yoctomarkdown`, `yoctoselect`, and all our custom widget/rendering code.
 
@@ -207,7 +207,7 @@ The core runtime. Streaming is the default behavior throughout the turn: user-vi
 2. **Build context** — construct a pi-ai `Context`: the system prompt (see [System prompt](#system-prompt)), the full message history, and the registered tool definitions (built-in + plugin tools). Git state in the session footer is refreshed at session start and after each turn.
 
 3. **Stream to LLM** — call `streamSimple(model, context, options)` from pi-ai. Iterate over the event stream:
-   - `text_delta` / `thinking_delta` / `toolcall_delta` → update the in-progress assistant message and the UI incrementally (stream markdown, show thinking if enabled, accumulate tool call arguments as they arrive).
+   - `text_delta` / `thinking_delta` / `toolcall_delta` → update the in-progress assistant message and the UI incrementally (stream raw markdown text, show thinking if enabled, accumulate tool call arguments as they arrive).
    - `toolcall_end` → finalize the structured tool call in the in-progress `AssistantMessage`.
    - `done` → append the `AssistantMessage` to history and DB. Update cumulative stats. If `stopReason` is `"toolUse"`, go to step 4. If `"stop"` or `"length"`, return to the input prompt.
    - `error` → display error in the log, return to the input prompt.
@@ -217,10 +217,12 @@ The core runtime. Streaming is the default behavior throughout the turn: user-vi
    - Each result becomes a `ToolResultMessage` appended to history and DB (same turn number).
    - After all tool results are appended, loop back to step 2 (re-stream with the updated context).
 
-5. **Interrupt** — if the user presses `Escape` during streaming:
+5. **Interrupt** — if the user presses `Escape` during streaming with no overlay open:
    - Abort the stream via `AbortSignal`.
    - The partial `AssistantMessage` (with `stopReason: "aborted"`) is appended to history and DB as-is. This preserves context so the LLM knows what it was doing when interrupted.
-   - Return to the input prompt. The user can continue the conversation or `/undo` the interrupted turn.
+   - Return to the input prompt with focus on the input. The user can continue the conversation or `/undo` the interrupted turn.
+
+   If an overlay is open instead, that first `Escape` dismisses the overlay, leaves the current draft unchanged, and returns focus to the input without interrupting the turn.
 
 **No step limit** — the loop runs until the model stops (`stopReason: "stop"`) or the user interrupts. There is no maximum number of tool calls per turn.
 
@@ -302,6 +304,7 @@ Workflow: **inspect with shell → mutate with edit → verify with shell**.
 
 - Think first: before any tool call, decide all files and information you need.
 - Early in the task, look for acceptance criteria in tests, verifier scripts, eval scripts, examples, and expected-output files. Do not rely on the task text alone when machine-checkable criteria are available.
+- Before relying on a binary, interpreter, or CLI helper you have not yet confirmed, probe availability with focused checks such as `command -v <tool>`, `<tool> --version`, or `python3 -m pip --version`, then adapt to what is actually installed.
 - Batch reads: if you need multiple files, read them together in parallel rather than one at a time.
 - Only make sequential calls when a later call genuinely depends on an earlier result.
 
@@ -310,13 +313,15 @@ Workflow: **inspect with shell → mutate with edit → verify with shell**.
 - Be concise. Friendly coding teammate tone.
 - After making changes: lead with a quick explanation of what changed and why, then suggest logical next steps if any.
 - Don't dump large file contents you've written — reference file paths.
-- When suggesting multiple options, use numbered lists so the user can reply with a number.
+- When discussing multiple options, use numbered lists so the user can reply with a number without turning it into a questionnaire.
 - If asked for a review, focus on bugs, risks, regressions, and missing tests. Findings first, ordered by severity.
 
 # Persistence
 
 - Carry work through to completion within the current turn. Don't stop at analysis or partial fixes.
 - Once the contract is clear, create the required artifact early, then iterate and improve it. Do not spend most of the turn exploring.
+- Run the narrowest verifier or test as soon as there is a plausible first implementation or artifact. Do not delay the first verification run until the end.
+- When verification is down to a small number of failures, stop broad exploration and focus only on the remaining failing assertions or exact contract gaps until the last detail passes.
 - If you encounter an error, diagnose and fix it rather than reporting it and stopping.
 - Before concluding, run the smallest targeted verification that checks the exact contract: required files exist, names and signatures match, outputs are in the required format, and no forbidden extra artifacts were left behind.
 - Avoid excessive looping: if you're re-reading or re-editing the same files without progress, stop and ask the user.
@@ -512,7 +517,7 @@ One line, two-sided, rendered as compact padded pills rather than a full-width f
 
 **Right side:**
 
-- Inner-right: git branch, working tree counts (+ staged, ~ modified, ? untracked), ahead of remote (▲ N). Omitted outside a repo.
+- Inner-right: git branch, working tree counts (+ staged, ~ modified, ? untracked), and remote divergence counts when present (▲ N ahead, ▼ N behind). Omitted outside a repo.
 - Outer-right: `in:input out:output · context%/window · $cost`. `in`, `out`, and `$cost` are **cumulative for the session**. `context%/window` shows the **estimated current context usage for the next model request** as a percentage of the active model's context window.
 - Context tone mapping: `<25%` → scale 0, `25-49.9%` → scale 1, `50-74.9%` → scale 2, `75-89.9%` → scale 3, `>=90%` → scale 4.
 
@@ -523,7 +528,7 @@ Token counts use human-friendly units (1.2k, 45k, 1.2M). Context usage is estima
 ```text
 [ anthropic/sonnet-4 · med ] [ ~/src/mini-coder ]            [ main +3 ~1 ▲ 2 ] [ in:1.2k out:0.8k · 42.0%/200k · $0.03 ]
 [ openai/gpt-5-mini · low ] [ ~/src/mini-coder ]                                          [ in:220 out:90 · 8.0%/200k · $0.00 ]
-[ openrouter/qwen3-coder · xhigh ] [ …/mini-coder ]           [ feat/ui ~4 ?2 ▲ 7 ] [ in:180k out:24k · 93.0%/200k · $2.10 ]
+[ openrouter/qwen3-coder · xhigh ] [ …/mini-coder ]        [ feat/ui ~4 ?2 ▲ 7 ▼ 1 ] [ in:180k out:24k · 93.0%/200k · $2.10 ]
 ```
 
 The outer-left pill tone changes with effort, the outer-right pill tone changes with context pressure, and the inner pills stay neutral.
@@ -537,12 +542,12 @@ Message types and their rendering:
 Tool blocks share a common frame: a left border (`│`) plus a compact header pill naming the tool and direction (`tool ->` for assistant tool calls, `tool <-` for tool results). The body renders tool-specific content rather than raw JSON.
 
 - **User messages**: displayed as plain text with a subtle background color to distinguish them from agent responses. No prefix or role indicator.
-- **Assistant messages**: streamed markdown rendered via cel-tui's `Markdown` component on the default background. Thinking/reasoning content is collapsible (shown or hidden according to the user's persisted `/reasoning` preference; defaults to shown when no setting exists).
+- **Assistant messages**: streamed raw markdown rendered via cel-tui's `SyntaxHighlight` component on the default background so the log stays copy-friendly and preserves markdown markers. Thinking/reasoning content is collapsible (shown or hidden according to the user's persisted `/reasoning` preference; defaults to shown when no setting exists).
 - **Tool calls — shell**: rendered in the shared tool frame. The assistant tool call streams the command as it arrives. The command preview and shell tool result body use [verbose tool rendering](#verbose-tool-rendering). Shell tool results render the tool output content below a `shell <-` header.
-- **Tool calls — edit**: rendered in the shared tool frame. The in-progress tool-call preview shows the target path plus the streamed replacement content, preserving whitespace. The preview body uses [verbose tool rendering](#verbose-tool-rendering). Successful results render a compact confirmation block (`edit <-` plus the file path); errors render the returned error text.
+- **Tool calls — edit**: rendered in the shared tool frame. The in-progress tool-call preview shows the target path followed by the streamed `oldText` and `newText` bodies. Old text is styled as removed and new text as added, but the preview does not render literal `-`/`+` diff prefixes. The preview body uses [verbose tool rendering](#verbose-tool-rendering). Successful results render a compact confirmation block (`edit <-` plus the file path); errors render the returned error text.
 - **Tool calls — readImage**: rendered in the shared tool frame. The assistant tool call streams the path as it arrives. Successful results render a compact result block (`read image <-` plus the file path) rather than rendering the image itself.
 - **Tool calls — plugin tools**: rendered in the shared tool frame, prefixed with plugin/tool name when available.
-- **UI messages**: internal app messages such as `/help` output, OAuth progress, and other session-local notices. They are rendered in the conversation log, persisted with the session, excluded from model context, and do not participate in conversational turn numbering.
+- **UI messages**: internal app messages such as `/help` output, OAuth progress, `/fork` notices, and other session-local notices. They are rendered in the conversation log, persisted with the session, excluded from model context, and do not participate in conversational turn numbering.
 - **Errors**: one-line summary, styled distinctly.
 
 #### Verbose tool rendering
@@ -626,7 +631,7 @@ Representative entry shapes:
   │ edit ->
   │ src/session.ts
   │   const turn = getCurrentTurn(sessionId);
-  │   saveMessage(sessionId, turn, message);
+  │   const turn = getNextTurn(sessionId);
   │ And 9 lines more
 ```
 
@@ -635,6 +640,7 @@ Representative entry shapes:
 ```text
   │ edit ->
   │ src/session.ts
+  │   const turn = getCurrentTurn(sessionId);
   │   const turn = getNextTurn(sessionId);
   │   saveMessage(sessionId, turn, message);
   │   return turn;
@@ -691,7 +697,7 @@ Multi-line text input with no prompt prefix — the blinking cursor is the affor
 Supports:
 
 - `Tab` for file path autocomplete.
-- `Ctrl+R` for global input history search. Opens the same centered Select overlay pattern used by interactive commands, populated with previously submitted raw prompt text from all sessions and working directories, newest first. The list is searchable, selecting an entry restores the exact raw prompt into the input for editing (it does not auto-submit), and dismissing the overlay leaves the current draft unchanged.
+- `Ctrl+R` for global input history search. Opens the same centered Select overlay pattern used by interactive commands, populated with previously submitted raw prompt text from all sessions and working directories, newest first. The list is searchable, selecting an entry restores the exact raw prompt into the input for editing (it does not auto-submit), and dismissing the overlay leaves the current draft unchanged and returns focus to the input.
 - `/command` prefix for slash commands.
 - `/skill:skill-name` prefix to inject a skill's body into the user message. The `/skill:name` prefix is stripped from the input and the skill's `SKILL.md` body is prepended to the user message content. The rest of the input becomes the user's instruction. Example: `/skill:code-review check the auth module` sends the code-review skill body + "check the auth module" as the user message.
 - Image embedding: if we autocomplete a file path ending in `.png`, `.jpg`, `.jpeg`, `.gif`, or `.webp`, and the file exists, it is embedded as `ImageContent` in the user message (base64-encoded). Only when the current model supports image input (`Model.input` includes `"image"`). If the model doesn't support images, or the file doesn't exist, or the input contains other text, the path is sent as plain text. This is intentionally simple — no inline detection within sentences.
@@ -715,18 +721,20 @@ add tests for undo_
 
 ### Key bindings
 
-| Key           | Context       | Action                                            |
-| ------------- | ------------- | ------------------------------------------------- |
-| `Enter`       | Input focused | Submit message                                    |
-| `Shift+Enter` | Input focused | Insert newline                                    |
-| `Escape`      | Agent working | Interrupt current turn, preserve partial response |
-| `Tab`         | Input focused | File path autocomplete                            |
-| `Ctrl+R`      | Input focused | Search global raw input history                   |
-| `Ctrl+C`      | Any           | Graceful exit                                     |
-| `Ctrl+D`      | Input empty   | Graceful exit (EOF)                               |
-| `:q`          | Input focused | Graceful exit                                     |
-| `Ctrl+Z`      | Any           | Suspend/background process                        |
-| Mouse wheel   | Log area      | Scroll conversation history                       |
+| Key           | Context                   | Action                                                                           |
+| ------------- | ------------------------- | -------------------------------------------------------------------------------- |
+| `Enter`       | Input focused             | Submit message                                                                   |
+| `Shift+Enter` | Input focused             | Insert newline                                                                   |
+| `Escape`      | Overlay open              | Dismiss overlay, leave the draft unchanged, and return focus to the input        |
+| `Escape`      | Agent working, no overlay | Interrupt current turn, preserve partial response, and return focus to the input |
+| `Escape`      | Idle, no overlay          | No action                                                                        |
+| `Tab`         | Input focused             | File path autocomplete                                                           |
+| `Ctrl+R`      | Input focused             | Search global raw input history                                                  |
+| `Ctrl+C`      | Any                       | Graceful exit                                                                    |
+| `Ctrl+D`      | Input empty               | Graceful exit (EOF)                                                              |
+| `:q`          | Input focused             | Graceful exit                                                                    |
+| `Ctrl+Z`      | Any                       | Suspend/background process                                                       |
+| Mouse wheel   | Log area                  | Scroll conversation history                                                      |
 
 ### Commands
 
@@ -735,7 +743,7 @@ add tests for undo_
 | `/model`     | Interactive model selector. The list includes built-in models plus any custom OpenAI-compatible models discovered from `settings.json`. Switching models mid-session is allowed — pi-ai's context is model-agnostic. The `readImage` tool is re-evaluated (added/removed based on the new model's capabilities). The status bar updates immediately, and the selected model is persisted immediately as the user's global default. The session record's `model` field is not updated (it reflects the initial choice). |
 | `/session`   | Interactive session manager (list, resume). Sessions scoped to CWD.                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `/new`       | Start a new session. Clears conversation, resets cost/token counters.                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `/fork`      | Fork the current conversation into a new session. Copies the full message history, continues from here independently. The original session is preserved.                                                                                                                                                                                                                                                                                                                                                               |
+| `/fork`      | Fork the current conversation into a new session. Copies the full message history, continues from here independently, and appends a UI-only `Forked session.` notice in the new session. The original session is preserved.                                                                                                                                                                                                                                                                                            |
 | `/undo`      | Remove the last conversational turn from history: the most recent user message and all assistant/tool messages that followed in that turn. Persisted UI messages are not part of turns and are not removed by `/undo`. Context-only — does not revert filesystem changes.                                                                                                                                                                                                                                              |
 | `/reasoning` | Toggle display of model thinking/reasoning content in the log. The new on/off state is persisted immediately and restored on launch. When no setting exists yet, reasoning defaults to shown.                                                                                                                                                                                                                                                                                                                          |
 | `/verbose`   | Toggle [verbose tool rendering](#verbose-tool-rendering) for shell previews/results, edit previews, and edit errors. Successful edit results stay compact regardless of this setting.                                                                                                                                                                                                                                                                                                                                  |
@@ -902,7 +910,7 @@ CREATE INDEX idx_prompt_history_created_at ON prompt_history(created_at, id);
 
 **Messages as JSON blobs**: pi-ai's `Message` type (UserMessage, AssistantMessage, ToolResultMessage) is already serializable, and we also persist internal UI-only log entries in the same table. We store the full object as JSON in `data` rather than normalizing into columns. Session load returns the complete chronological log; model context construction filters out UI-only messages before replaying the remaining pi-ai messages into a pi-ai `Context`.
 
-**Turn grouping**: the `turn` column groups only conversational messages. A turn is: one user message + one or more assistant messages + any tool result messages from that agent loop. Persisted UI messages are stored alongside them but have `turn = NULL`, so they remain visible in session history without becoming part of `/undo`. `/fork` copies all persisted messages to a new session, preserving conversational turn numbers and UI messages as-is.
+**Turn grouping**: the `turn` column groups only conversational messages. A turn is: one user message + one or more assistant messages + any tool result messages from that agent loop. Persisted UI messages are stored alongside them but have `turn = NULL`, so they remain visible in session history without becoming part of `/undo`. `/fork` copies all existing persisted messages to a new session, preserving conversational turn numbers and existing UI messages as-is, then appends a new UI-only notice such as `Forked session.` in the fork.
 
 **Cumulative stats are computed, not stored**: the status bar's cumulative `in`, `out`, and `$cost` values are computed by summing `usage` from assistant messages on session load (deserialize all messages, filter for `role: "assistant"`, sum their `usage` fields). The message count per session is small (hundreds), so this is fast. No separate counters to keep in sync. During an active session, a running in-memory accumulator is updated after each assistant message to avoid re-scanning. `context%/window` is separate: it is estimated from the current model-visible history for the next request rather than stored cumulatively.
 
@@ -916,12 +924,12 @@ CREATE INDEX idx_prompt_history_created_at ON prompt_history(created_at, id);
 
 ### Operations
 
-| Operation      | SQL                                                                                                                                                      |
-| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| New session    | `INSERT INTO sessions`                                                                                                                                   |
-| Append message | `INSERT INTO messages` with the current conversational turn number (or `NULL` for UI-only messages), `UPDATE sessions SET updated_at`                    |
-| Undo           | `DELETE FROM messages WHERE session_id = ? AND turn = (SELECT MAX(turn) FROM messages WHERE session_id = ?)`                                             |
-| Fork           | `INSERT INTO sessions` (new id, `forked_from` set), then `INSERT INTO messages SELECT ... FROM messages WHERE session_id = ?` (copy all, new session_id) |
-| List sessions  | `SELECT * FROM sessions WHERE cwd = ? ORDER BY updated_at DESC`                                                                                          |
-| Load session   | `SELECT data FROM messages WHERE session_id = ? ORDER BY id` → parse JSON → persisted message log (`pi-ai Message[]` + internal UI messages)             |
-| Delete session | `DELETE FROM sessions WHERE id = ?` (cascade deletes messages)                                                                                           |
+| Operation      | SQL                                                                                                                                                                                                            |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| New session    | `INSERT INTO sessions`                                                                                                                                                                                         |
+| Append message | `INSERT INTO messages` with the current conversational turn number (or `NULL` for UI-only messages), `UPDATE sessions SET updated_at`                                                                          |
+| Undo           | `DELETE FROM messages WHERE session_id = ? AND turn = (SELECT MAX(turn) FROM messages WHERE session_id = ?)`                                                                                                   |
+| Fork           | `INSERT INTO sessions` (new id, `forked_from` set), then `INSERT INTO messages SELECT ... FROM messages WHERE session_id = ?` (copy all, new session_id), then append a UI-only fork notice with `turn = NULL` |
+| List sessions  | `SELECT * FROM sessions WHERE cwd = ? ORDER BY updated_at DESC`                                                                                                                                                |
+| Load session   | `SELECT data FROM messages WHERE session_id = ? ORDER BY id` → parse JSON → persisted message log (`pi-ai Message[]` + internal UI messages)                                                                   |
+| Delete session | `DELETE FROM sessions WHERE id = ?` (cascade deletes messages)                                                                                                                                                 |
