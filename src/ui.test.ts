@@ -90,7 +90,7 @@ function findConversationLogNodeOrNull(node: Node): ContainerNode | null {
   if (
     node.type === "vstack" &&
     node.props.overflow === "scroll" &&
-    node.props.scrollbar === true
+    typeof node.props.onScroll === "function"
   ) {
     return node;
   }
@@ -1867,6 +1867,24 @@ describe("ui rendering", () => {
       expect(newestIndex).toBeGreaterThan(-1);
       expect(olderIndex).toBeGreaterThan(-1);
       expect(newestIndex).toBeLessThan(olderIndex);
+    } finally {
+      state.db.close();
+    }
+  });
+
+  test("renderBaseLayout hides the conversation log scrollbar without disabling scrolling", () => {
+    const state = createTestState();
+    const controller = createInputController(state);
+
+    try {
+      const conversationLog = findConversationLogNode(
+        renderBaseLayout(state, 80, controller),
+      );
+
+      expect(conversationLog.props.overflow).toBe("scroll");
+      expect(conversationLog.props.scrollbar).toBeUndefined();
+      expect(conversationLog.props.scrollOffset).toBe(Infinity);
+      expect(typeof conversationLog.props.onScroll).toBe("function");
     } finally {
       state.db.close();
     }
