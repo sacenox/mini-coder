@@ -333,8 +333,9 @@
           </li>
           <li>
             <strong>Stop or interrupt safely.</strong> The loop runs until the
-            model stops or you press <kbd>Escape</kbd>; interrupted partial
-            output is preserved for the next turn or <code>/undo</code>.
+            model stops. If an overlay is open, <kbd>Escape</kbd> closes it
+            without touching your draft; otherwise it interrupts the turn and
+            keeps the partial output for the next turn or <code>/undo</code>.
           </li>
         </ol>
         <p>
@@ -371,8 +372,8 @@
           >
             <h3 class="mt-0 mb-2 font-semibold text-term-bright">readImage</h3>
             <p class="mb-0 text-sm leading-relaxed text-term-fg">
-              Reads PNG, JPEG, GIF, and WebP files as model input. It is only
-              registered when the active model supports images.
+              Reads PNG, JPEG, GIF, and WebP files so vision-capable models can
+              inspect screenshots and other repo images.
             </p>
           </article>
         </div>
@@ -399,10 +400,10 @@
                 Ollama, Copilot, and more via pi-ai.
               </li>
               <li>
-                <strong>Streaming TUI</strong> — markdown conversation log,
-                tool blocks with diffs, animated divider, multi-line input, and
-                a one-line pill status bar with independent ANSI16
-                effort/context tones.
+                <strong>Streaming TUI</strong> — a scrolling markdown log,
+                compact tool blocks, an animated divider, multi-line input, and
+                a one-line pill status bar for model, cwd, git state, and
+                session usage.
               </li>
               <li>
                 <strong>Session persistence</strong> — SQLite-backed sessions
@@ -480,17 +481,19 @@
                 newline.
               </li>
               <li>
-                <kbd>Tab</kbd> autocompletes file paths and filters slash
-                commands.
+                <kbd>Tab</kbd> autocompletes paths, or opens the command picker
+                when the draft starts with <code>/</code>.
               </li>
               <li><kbd>Ctrl+R</kbd> searches global raw prompt history.</li>
               <li>
-                <kbd>Escape</kbd> interrupts the current turn and keeps the
-                partial response.
+                <kbd>Escape</kbd> closes the overlay without changing the draft,
+                or interrupts the running turn when no overlay is open.
               </li>
               <li><kbd>Ctrl+C</kbd> exits cleanly.</li>
               <li><kbd>Ctrl+D</kbd> exits cleanly when the input is empty.</li>
               <li><code>:q</code> exits cleanly.</li>
+              <li><kbd>Ctrl+Z</kbd> suspends the process.</li>
+              <li>Mouse wheel scrolling reviews conversation history.</li>
               <li>
                 <code>/skill:name</code> prepends a skill body to the next user
                 message.
@@ -521,8 +524,8 @@
 
             <dt class="font-semibold text-term-bright">/fork</dt>
             <dd class="text-term-fg">
-              Copy the conversation into a new session and continue
-              independently.
+              Fork the current chat into a new session, keep the original, and
+              add a UI-only <code>Forked session.</code> note.
             </dd>
 
             <dt class="font-semibold text-term-bright">/undo</dt>
@@ -538,8 +541,8 @@
 
             <dt class="font-semibold text-term-bright">/verbose</dt>
             <dd class="text-term-fg">
-              Toggle verbose shell rendering plus edit previews/errors in the
-              log.
+              Expand shell output plus edit previews and edit errors in the
+              conversation log.
             </dd>
 
             <dt class="font-semibold text-term-bright">/login</dt>
@@ -559,8 +562,8 @@
 
             <dt class="font-semibold text-term-bright">/help</dt>
             <dd class="text-term-fg">
-              List commands, loaded AGENTS.md files, discovered skills, and
-              plugins.
+              Show commands, current toggles, loaded AGENTS.md files, skills,
+              and plugins.
             </dd>
           </dl>
         </div>
@@ -580,17 +583,32 @@ $ printf '%s\n' 'fix the failing tests' | mc</code></pre>
         </div>
         <ul>
           <li>
-            Enabled when <code>-p/--prompt</code> is provided or when
-            stdin/stdout is not a TTY.
+            <strong>Automatic mode selection.</strong> Headless mode starts when
+            <code>-p/--prompt</code> is provided or when stdin or stdout is not
+            a TTY.
           </li>
           <li>
-            Reuses the same input parsing rules as the interactive UI for plain
-            text, <code>/skill:name</code>, and standalone image paths.
+            <strong>No interactive fallback.</strong> If stdout is redirected
+            but stdin is still interactive, pass <code>-p</code> explicitly.
           </li>
-          <li>Streams newline-delimited JSON events to stdout.</li>
           <li>
-            Interactive slash commands such as <code>/model</code> and
-            <code>/help</code> are not available in headless mode.
+            <strong>Shared input parsing.</strong> Plain text,
+            <code>/skill:name</code>, and standalone image paths use the same
+            parser as the TUI.
+          </li>
+          <li>
+            <strong>Raw NDJSON output.</strong> Stdout carries text deltas, tool
+            activity, final messages, and <code>done</code>, <code>error</code>,
+            or <code>aborted</code> outcomes instead of terminal rendering.
+          </li>
+          <li>
+            <strong>Normal session persistence.</strong> Headless runs still show
+            up in <code>/session</code> history for that working directory.
+          </li>
+          <li>
+            <strong>No interactive slash commands.</strong> Commands such as
+            <code>/model</code>, <code>/session</code>, and <code>/help</code>
+            are rejected in headless mode.
           </li>
         </ul>
       </section>
