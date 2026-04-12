@@ -9,9 +9,11 @@ import type {
   UserMessage,
 } from "@mariozechner/pi-ai";
 import {
+  addMessageToContextTokens,
   addMessageToStats,
   appendMessage,
   appendPromptHistory,
+  computeContextTokens,
   computeStats,
   createSession,
   createUiMessage,
@@ -762,6 +764,52 @@ describe("cumulative stats", () => {
     expect(filtered).toHaveLength(2);
     expect(filtered[0]).toEqual(user);
     expect(filtered[1]).toEqual(assistant);
+  });
+
+  test("computeContextTokens uses the latest valid assistant usage as the anchor", () => {
+    const messages = [
+      makeUser("first request"),
+      makeAssistant("first reply", {
+        input: 120,
+        output: 30,
+        cacheRead: 25,
+        cacheWrite: 25,
+        totalTokens: 0,
+      }),
+      makeUiMessage("ignored"),
+      makeUser("follow-up"),
+      makeToolResult("tc1", "done"),
+    ];
+
+    expect(computeContextTokens(messages)).toBe(204);
+  });
+
+  test("addMessageToContextTokens matches computeContextTokens across incremental updates", () => {
+    const aborted = makeAssistant("partial reply");
+    aborted.stopReason = "aborted";
+
+    const messages = [
+      makeUser("hello world"),
+      makeAssistant("anchored reply", {
+        input: 200,
+        output: 50,
+        totalTokens: 250,
+      }),
+      makeToolResult("tc1", "ls\nREADME.md"),
+      aborted,
+      makeUiMessage("ignored"),
+      makeUser("follow-up"),
+    ];
+
+    let runningContextTokens = 0;
+    for (const message of messages) {
+      runningContextTokens = addMessageToContextTokens(
+        runningContextTokens,
+        message,
+      );
+    }
+
+    expect(runningContextTokens).toBe(computeContextTokens(messages));
   });
 });
 

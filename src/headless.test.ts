@@ -40,6 +40,7 @@ function createTestState(): AppState {
     effort: "medium",
     messages: [],
     stats: { totalInput: 0, totalOutput: 0, totalCost: 0 },
+    contextTokens: 0,
     agentsMd: [],
     skills: [],
     plugins: [],

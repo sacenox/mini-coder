@@ -19,6 +19,7 @@ import {
 } from "./index.ts";
 import { parseInput } from "./input.ts";
 import {
+  addMessageToContextTokens,
   addMessageToStats,
   appendMessage,
   appendPromptHistory,
@@ -212,9 +213,17 @@ function handleAgentEvent(event: AgentEvent, state: AppState): void {
     case "assistant_message":
       state.messages.push(event.message);
       state.stats = addMessageToStats(state.stats, event.message);
+      state.contextTokens = addMessageToContextTokens(
+        state.contextTokens,
+        event.message,
+      );
       break;
     case "tool_result":
       state.messages.push(event.message);
+      state.contextTokens = addMessageToContextTokens(
+        state.contextTokens,
+        event.message,
+      );
       break;
     case "text_delta":
     case "thinking_delta":
@@ -277,6 +286,10 @@ export async function submitResolvedInput(
 
   const turn = appendMessage(state.db, session.id, userMessage);
   state.messages.push(userMessage);
+  state.contextTokens = addMessageToContextTokens(
+    state.contextTokens,
+    userMessage,
+  );
   hooks?.onUserMessage?.(state);
 
   state.git = await loadGitState(state.cwd);

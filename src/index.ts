@@ -47,6 +47,7 @@ import {
 } from "./prompt.ts";
 import {
   appendMessage,
+  computeContextTokens,
   computeStats,
   createSession,
   filterModelMessages,
@@ -526,6 +527,8 @@ export interface AppState {
   messages: ReturnType<typeof loadMessages>;
   /** Cumulative session input/output/cost stats for the status bar. */
   stats: SessionStats;
+  /** Estimated model-visible context tokens for the next request. */
+  contextTokens: number;
   /** Discovered AGENTS.md files. */
   agentsMd: AgentsMdFile[];
   /** Discovered skills. */
@@ -610,6 +613,7 @@ export async function init(): Promise<AppState> {
   const effort = startup.effort;
   const messages: ReturnType<typeof loadMessages> = [];
   const stats = computeStats(messages);
+  const contextTokens = computeContextTokens(messages);
   const promptContext = await loadPromptContext(filterModelMessages(messages), {
     cwd,
   });
@@ -621,6 +625,7 @@ export async function init(): Promise<AppState> {
     effort,
     messages,
     stats,
+    contextTokens,
     agentsMd: promptContext.agentsMd,
     skills: promptContext.skills,
     plugins: promptContext.plugins,

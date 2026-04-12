@@ -19,6 +19,7 @@ import type { AppState } from "../index.ts";
 import { getAvailableModels, saveOAuthCredentials } from "../index.ts";
 import { COMMANDS } from "../input.ts";
 import {
+  computeContextTokens,
   computeStats,
   forkSession,
   listPromptHistory,
@@ -387,6 +388,7 @@ export function createCommandController(
             state.session = picked;
             state.messages = loadMessages(state.db, picked.id);
             state.stats = computeStats(state.messages);
+            state.contextTokens = computeContextTokens(state.messages);
             runtime.scrollConversationToBottom();
           }
         }
@@ -402,6 +404,7 @@ export function createCommandController(
     state.session = null;
     state.messages = [];
     state.stats = { totalInput: 0, totalOutput: 0, totalCost: 0 };
+    state.contextTokens = 0;
     await runtime.reloadPromptContext(state);
     runtime.scrollConversationToBottom();
     runtime.render();
@@ -415,6 +418,7 @@ export function createCommandController(
     state.session = forked;
     state.messages = loadMessages(state.db, forked.id);
     state.stats = computeStats(state.messages);
+    state.contextTokens = computeContextTokens(state.messages);
     runtime.appendInfoMessage("Forked session.", state);
   };
 
@@ -434,6 +438,7 @@ export function createCommandController(
     if (removed) {
       state.messages = loadMessages(state.db, state.session.id);
       state.stats = computeStats(state.messages);
+      state.contextTokens = computeContextTokens(state.messages);
       runtime.scrollConversationToBottom();
       runtime.render();
     }

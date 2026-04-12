@@ -8,6 +8,7 @@ import type { AppState } from "../index.ts";
 import { COMMANDS } from "../input.ts";
 import {
   appendPromptHistory,
+  computeContextTokens,
   createSession,
   openDatabase,
 } from "../session.ts";
@@ -75,6 +76,7 @@ function createTestState(): AppState {
     effort: "medium",
     messages: [],
     stats: { totalInput: 0, totalOutput: 0, totalCost: 0 },
+    contextTokens: 0,
     agentsMd: [],
     skills: [],
     plugins: [],
@@ -377,6 +379,7 @@ describe("ui/commands", () => {
         totalOutput: 0,
         totalCost: 0,
       });
+      expect(state.contextTokens).toBe(computeContextTokens(state.messages));
     } finally {
       state.db.close();
     }
@@ -436,6 +439,7 @@ describe("ui/commands", () => {
       { role: "ui", kind: "info", content: "old", timestamp: 1 },
     ];
     state.stats = { totalInput: 10, totalOutput: 20, totalCost: 0.5 };
+    state.contextTokens = 123;
 
     try {
       expect(controller.handleCommand("new", state)).toBe(true);
@@ -449,6 +453,7 @@ describe("ui/commands", () => {
         totalOutput: 0,
         totalCost: 0,
       });
+      expect(state.contextTokens).toBe(0);
       expect(state.agentsMd).toEqual([
         { path: "/tmp/reloaded/AGENTS.md", content: "Reloaded context" },
       ]);

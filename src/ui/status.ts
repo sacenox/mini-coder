@@ -2,8 +2,7 @@
  * Status-bar formatting and rendering for the terminal UI.
  *
  * Computes the cumulative usage pill, abbreviates the working directory, and
- * estimates current model-visible context usage from persisted conversation
- * history.
+ * formats the cached current-context estimate maintained on application state.
  *
  * @module
  */
@@ -12,13 +11,8 @@ import { homedir } from "node:os";
 import { Spacer } from "@cel-tui/components";
 import { HStack, Text, visibleWidth } from "@cel-tui/core";
 import type { Node } from "@cel-tui/types";
-import type { AssistantMessage, Message } from "@mariozechner/pi-ai";
 import type { AppState } from "../index.ts";
-import { filterModelMessages, getAssistantUsage } from "../session.ts";
 import type { StatusTone, Theme } from "../theme.ts";
-
-/** Conservative fixed estimate for an image block's token footprint. */
-const ESTIMATED_IMAGE_TOKENS = 1_200;
 
 /**
  * Abbreviate a path with `~` for the home directory.
@@ -84,143 +78,12 @@ function formatModelInfo(state: AppState): string {
   return `${state.model.provider}/${state.model.id} · ${formatEffort(state.effort)}`;
 }
 
-/** Calculate context tokens from assistant usage, falling back when `totalTokens` is zero. */
-function calculateUsageTokens(usage: AssistantMessage["usage"]): number {
-  return (
-    usage.totalTokens ||
-    usage.input + usage.output + usage.cacheRead + usage.cacheWrite
-  );
-}
-
-/** Estimate token usage from a character count using a conservative chars/4 heuristic. */
-function estimateCharacterTokens(charCount: number): number {
-  return Math.ceil(charCount / 4);
-}
-
-type UserMultipartContent = Exclude<
-  Extract<Message, { role: "user" }>["content"],
-  string
->;
-type TextOrImageContentBlock =
-  | UserMultipartContent[number]
-  | Extract<Message, { role: "toolResult" }>["content"][number];
-
-function estimateTextOrImageContentTokens(
-  content: readonly TextOrImageContentBlock[],
-): number {
-  let chars = 0;
-  let imageTokens = 0;
-
-  for (const block of content) {
-    if (block.type === "text") {
-      chars += block.text.length;
-      continue;
-    }
-    if (block.type === "image") {
-      imageTokens += ESTIMATED_IMAGE_TOKENS;
-    }
-  }
-
-  return estimateCharacterTokens(chars) + imageTokens;
-}
-
-function estimateUserMessageTokens(
-  message: Extract<Message, { role: "user" }>,
-): number {
-  if (typeof message.content === "string") {
-    return estimateCharacterTokens(message.content.length);
-  }
-  return estimateTextOrImageContentTokens(message.content);
-}
-
-function estimateAssistantBlockCharacters(
-  block: Extract<Message, { role: "assistant" }>["content"][number],
-): number {
-  if (block.type === "text") {
-    return block.text.length;
-  }
-  if (block.type === "thinking") {
-    return block.thinking.length;
-  }
-  return block.name.length + JSON.stringify(block.arguments).length;
-}
-
-function estimateAssistantMessageTokens(
-  message: Extract<Message, { role: "assistant" }>,
-): number {
-  const chars = message.content.reduce((total, block) => {
-    return total + estimateAssistantBlockCharacters(block);
-  }, 0);
-  return estimateCharacterTokens(chars);
-}
-
-function estimateToolResultMessageTokens(
-  message: Extract<Message, { role: "toolResult" }>,
-): number {
-  return estimateTextOrImageContentTokens(message.content);
-}
-
-/** Estimate token usage for a model-visible message. */
-function estimateMessageTokens(message: Message): number {
-  switch (message.role) {
-    case "user":
-      return estimateUserMessageTokens(message);
-    case "assistant":
-      return estimateAssistantMessageTokens(message);
-    case "toolResult":
-      return estimateToolResultMessageTokens(message);
-  }
-}
-
-/** Find the latest assistant usage that can anchor context estimation. */
-function getLatestValidAssistantUsage(
-  messages: readonly Message[],
-): { index: number; tokens: number } | null {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const message = messages[i];
-    if (
-      message?.role === "assistant" &&
-      message.stopReason !== "aborted" &&
-      message.stopReason !== "error"
-    ) {
-      const usage = getAssistantUsage(message);
-      if (!usage) {
-        continue;
-      }
-      return {
-        index: i,
-        tokens: calculateUsageTokens(usage),
-      };
-    }
-  }
-  return null;
-}
-
-/** Estimate the current model-visible context size for the next request. */
-function estimateCurrentContextTokens(state: AppState): number {
-  const messages = filterModelMessages(state.messages);
-  const latestUsage = getLatestValidAssistantUsage(messages);
-
-  if (!latestUsage) {
-    return messages.reduce((total, message) => {
-      return total + estimateMessageTokens(message);
-    }, 0);
-  }
-
-  let total = latestUsage.tokens;
-  for (let i = latestUsage.index + 1; i < messages.length; i++) {
-    total += estimateMessageTokens(messages[i]!);
-  }
-  return total;
-}
-
 /** Estimate current context usage as a percentage of the active model window. */
 function getContextPercentage(state: AppState): number {
   if (!state.model || state.model.contextWindow <= 0) {
     return 0;
   }
-  const contextTokens = estimateCurrentContextTokens(state);
-  return (contextTokens / state.model.contextWindow) * 100;
+  return (state.contextTokens / state.model.contextWindow) * 100;
 }
 
 /** Format cumulative session totals plus estimated current context usage for the status bar. */

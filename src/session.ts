@@ -107,7 +107,7 @@ export interface UiMessage {
 }
 
 /** Any message persisted in session history. */
-type PersistedMessage = Message | UiMessage;
+export type PersistedMessage = Message | UiMessage;
 
 /** Options for creating a new session. */
 interface CreateSessionOpts {
@@ -1070,4 +1070,154 @@ export function computeStats(
   }
 
   return stats;
+}
+
+// ---------------------------------------------------------------------------
+// Context estimation
+// ---------------------------------------------------------------------------
+
+/** Conservative fixed estimate for an image block's token footprint. */
+const ESTIMATED_IMAGE_TOKENS = 1_200;
+
+/** Calculate context tokens from assistant usage, falling back when `totalTokens` is zero. */
+function calculateUsageTokens(usage: AssistantMessage["usage"]): number {
+  return (
+    usage.totalTokens ||
+    usage.input + usage.output + usage.cacheRead + usage.cacheWrite
+  );
+}
+
+/** Estimate token usage from a character count using a conservative chars/4 heuristic. */
+function estimateCharacterTokens(charCount: number): number {
+  return Math.ceil(charCount / 4);
+}
+
+type UserMultipartContent = Exclude<
+  Extract<Message, { role: "user" }>["content"],
+  string
+>;
+type TextOrImageContentBlock =
+  | UserMultipartContent[number]
+  | Extract<Message, { role: "toolResult" }>["content"][number];
+
+function estimateTextOrImageContentTokens(
+  content: readonly TextOrImageContentBlock[],
+): number {
+  let chars = 0;
+  let imageTokens = 0;
+
+  for (const block of content) {
+    if (block.type === "text") {
+      chars += block.text.length;
+      continue;
+    }
+    if (block.type === "image") {
+      imageTokens += ESTIMATED_IMAGE_TOKENS;
+    }
+  }
+
+  return estimateCharacterTokens(chars) + imageTokens;
+}
+
+function estimateUserMessageTokens(
+  message: Extract<Message, { role: "user" }>,
+): number {
+  if (typeof message.content === "string") {
+    return estimateCharacterTokens(message.content.length);
+  }
+  return estimateTextOrImageContentTokens(message.content);
+}
+
+function estimateAssistantBlockCharacters(
+  block: Extract<Message, { role: "assistant" }>["content"][number],
+): number {
+  if (block.type === "text") {
+    return block.text.length;
+  }
+  if (block.type === "thinking") {
+    return block.thinking.length;
+  }
+  return block.name.length + JSON.stringify(block.arguments).length;
+}
+
+function estimateAssistantMessageTokens(
+  message: Extract<Message, { role: "assistant" }>,
+): number {
+  const chars = message.content.reduce((total, block) => {
+    return total + estimateAssistantBlockCharacters(block);
+  }, 0);
+  return estimateCharacterTokens(chars);
+}
+
+function estimateToolResultMessageTokens(
+  message: Extract<Message, { role: "toolResult" }>,
+): number {
+  return estimateTextOrImageContentTokens(message.content);
+}
+
+/** Estimate token usage for a model-visible message. */
+function estimateMessageTokens(message: Message): number {
+  switch (message.role) {
+    case "user":
+      return estimateUserMessageTokens(message);
+    case "assistant":
+      return estimateAssistantMessageTokens(message);
+    case "toolResult":
+      return estimateToolResultMessageTokens(message);
+  }
+}
+
+/**
+ * Fold one persisted message into the running context estimate for the next request.
+ *
+ * Assistant messages with valid usage anchor the full model-visible context for
+ * that point in the transcript, so they replace the running estimate. All other
+ * model-visible messages are added incrementally using the same conservative
+ * estimation logic used before the first valid assistant usage appears.
+ *
+ * @param contextTokens - Running estimate before this message.
+ * @param message - Persisted message to fold into the estimate.
+ * @returns Updated context-token estimate.
+ */
+export function addMessageToContextTokens(
+  contextTokens: number,
+  message: PersistedMessage,
+): number {
+  if (message.role === "ui") {
+    return contextTokens;
+  }
+
+  const usage = getAssistantUsage(message);
+  if (
+    message.role === "assistant" &&
+    usage &&
+    message.stopReason !== "aborted" &&
+    message.stopReason !== "error"
+  ) {
+    return calculateUsageTokens(usage);
+  }
+
+  return contextTokens + estimateMessageTokens(message);
+}
+
+/**
+ * Estimate the current model-visible context size for the next request.
+ *
+ * Recomputed on session-load boundaries and maintained incrementally during an
+ * active turn so render-time status-bar updates do not need to rescan the full
+ * message history.
+ *
+ * @param messages - Full persisted session history.
+ * @returns Estimated context tokens visible to the next model request.
+ */
+export function computeContextTokens(
+  messages: readonly PersistedMessage[],
+): number {
+  let contextTokens = 0;
+
+  for (const message of messages) {
+    contextTokens = addMessageToContextTokens(contextTokens, message);
+  }
+
+  return contextTokens;
 }

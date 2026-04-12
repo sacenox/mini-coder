@@ -4,7 +4,11 @@ import {
   registerFauxProvider,
 } from "@mariozechner/pi-ai";
 import type { AppState } from "../index.ts";
-import { createUiMessage, openDatabase } from "../session.ts";
+import {
+  computeContextTokens,
+  createUiMessage,
+  openDatabase,
+} from "../session.ts";
 import { DEFAULT_SHOW_REASONING, DEFAULT_VERBOSE } from "../settings.ts";
 import { DEFAULT_THEME } from "../theme.ts";
 import { renderStatusBar } from "./status.ts";
@@ -87,6 +91,7 @@ function createTestState(): AppState {
     effort: "medium",
     messages: [],
     stats: { totalInput: 0, totalOutput: 0, totalCost: 0 },
+    contextTokens: 0,
     agentsMd: [],
     skills: [],
     plugins: [],
@@ -107,6 +112,11 @@ function createTestState(): AppState {
     customModels: [],
     startupWarnings: [],
   };
+}
+
+function setMessages(state: AppState, messages: AppState["messages"]): void {
+  state.messages = messages;
+  state.contextTokens = computeContextTokens(messages);
 }
 
 function makeAssistantWithUsage(
@@ -217,17 +227,35 @@ describe("ui/status", () => {
       ] as const;
 
       for (const testCase of cases) {
-        state.messages = [
+        setMessages(state, [
           makeAssistantWithUsage("context anchor", {
             totalTokens: testCase.totalTokens,
           }),
-        ];
+        ]);
         expect(getUsagePill(state)).toMatchObject({
           text: `in:0 out:0 · ${testCase.totalTokens.toFixed(1)}%/100 · $0.00`,
           bgColor: testCase.bgColor,
           fgColor: testCase.fgColor,
         });
       }
+    } finally {
+      faux.unregister();
+      state.db.close();
+    }
+  });
+
+  test("renderStatusBar uses cached contextTokens instead of rescanning messages", () => {
+    const faux = registerFauxProvider();
+    const state = createTestState();
+    state.model = {
+      ...faux.getModel(),
+      contextWindow: 100,
+    };
+    state.messages = [{ role: "user", content: "x".repeat(400), timestamp: 1 }];
+    state.contextTokens = 25;
+
+    try {
+      expect(getUsageSummary(state)).toBe("in:0 out:0 · 25.0%/100 · $0.00");
     } finally {
       faux.unregister();
       state.db.close();
@@ -244,9 +272,9 @@ describe("ui/status", () => {
 
     try {
       state.effort = "xhigh";
-      state.messages = [
+      setMessages(state, [
         makeAssistantWithUsage("cold context", { totalTokens: 10 }),
-      ];
+      ]);
       expect(getModelPill(state)).toMatchObject({
         bgColor: "color09",
         fgColor: "color00",
@@ -257,9 +285,9 @@ describe("ui/status", () => {
       });
 
       state.effort = "low";
-      state.messages = [
+      setMessages(state, [
         makeAssistantWithUsage("hot context", { totalTokens: 95 }),
-      ];
+      ]);
       expect(getModelPill(state)).toMatchObject({
         bgColor: "color02",
         fgColor: "color00",
@@ -288,26 +316,29 @@ describe("ui/status", () => {
     };
 
     try {
-      state.messages = [
+      setMessages(state, [
         { role: "user", content: "first", timestamp: 1 },
         makeAssistantWithUsage("Second.", {
           input: 200,
           output: 50,
           totalTokens: 250,
         }),
-      ];
+      ]);
       const anchoredPercent = getUsagePercent(state);
 
-      state.messages = [...state.messages, createUiMessage("x".repeat(5_000))];
+      setMessages(state, [
+        ...state.messages,
+        createUiMessage("x".repeat(5_000)),
+      ]);
       const withUiOnlyPercent = getUsagePercent(state);
 
-      state.messages = [
+      setMessages(state, [
         ...state.messages,
         { role: "user", content: "12345678", timestamp: 2 },
-      ];
+      ]);
       const withTrailingUserPercent = getUsagePercent(state);
 
-      state.messages = [
+      setMessages(state, [
         ...state.messages,
         {
           role: "toolResult",
@@ -317,7 +348,7 @@ describe("ui/status", () => {
           isError: false,
           timestamp: 3,
         },
-      ];
+      ]);
       const withToolResultPercent = getUsagePercent(state);
 
       expect(getUsageSummary(state)).toBe(
@@ -341,16 +372,19 @@ describe("ui/status", () => {
     };
 
     try {
-      state.messages = [{ role: "user", content: "12345678", timestamp: 1 }];
+      setMessages(state, [{ role: "user", content: "12345678", timestamp: 1 }]);
       const initialPercent = getUsagePercent(state);
 
-      state.messages = [createUiMessage("x".repeat(5_000)), ...state.messages];
+      setMessages(state, [
+        createUiMessage("x".repeat(5_000)),
+        ...state.messages,
+      ]);
       const withUiOnlyPercent = getUsagePercent(state);
 
-      state.messages = [
+      setMessages(state, [
         ...state.messages,
         { role: "user", content: "more visible text", timestamp: 2 },
-      ];
+      ]);
       const withSecondUserPercent = getUsagePercent(state);
 
       expect(initialPercent).toBeGreaterThan(0);
@@ -383,7 +417,7 @@ describe("ui/status", () => {
         ...faux.getModel(),
         contextWindow: 1_000,
       };
-      state.messages = [
+      setMessages(state, [
         { role: "user", content: "first", timestamp: 1 },
         makeAssistantWithUsage("valid", {
           input: 150,
@@ -392,7 +426,7 @@ describe("ui/status", () => {
         }),
         aborted,
         { role: "user", content: "1234", timestamp: 2 },
-      ];
+      ]);
       return state;
     };
 
@@ -422,7 +456,7 @@ describe("ui/status", () => {
       ...faux.getModel(),
       contextWindow: 1_000,
     };
-    fromComponents.messages = [
+    setMessages(fromComponents, [
       makeAssistantWithUsage("fallback", {
         input: 120,
         output: 30,
@@ -430,8 +464,8 @@ describe("ui/status", () => {
         cacheWrite: 25,
         totalTokens: 0,
       }),
-    ];
-    fromTotalTokens.messages = [
+    ]);
+    setMessages(fromTotalTokens, [
       makeAssistantWithUsage("fallback", {
         input: 120,
         output: 30,
@@ -439,7 +473,7 @@ describe("ui/status", () => {
         cacheWrite: 25,
         totalTokens: 200,
       }),
-    ];
+    ]);
 
     try {
       expect(getUsagePercent(fromComponents)).toBe(
