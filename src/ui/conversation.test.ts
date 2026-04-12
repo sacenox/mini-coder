@@ -838,6 +838,93 @@ describe("ui/conversation", () => {
     expect(text.some((line) => line.includes("TAIL"))).toBe(true);
   });
 
+  test("renderAssistantMessage for a long single-token shell argument wraps through the tail in a narrow viewport", async () => {
+    // Arrange
+    const command = `printf ${"x".repeat(40)}TAIL`;
+    const assistant = {
+      content: [fauxToolCall("shell", { command }, { id: "tool-1" })],
+    };
+
+    // Act
+    const text = await renderVisibleText(
+      renderAssistantMessage(assistant, {
+        ...RENDER_OPTS,
+        verbose: true,
+        previewWidth: 12,
+      }),
+      12,
+      20,
+    );
+
+    // Assert
+    expect(text.some((line) => line.includes("TAIL"))).toBe(true);
+  });
+
+  test("renderAssistantMessage for a long quoted shell string preserves string color across wrapped rows", async () => {
+    // Arrange
+    const command = `printf "${"x".repeat(80)}TAIL"`;
+    const assistant = {
+      content: [fauxToolCall("shell", { command }, { id: "tool-1" })],
+    };
+
+    // Act
+    const rows = await renderBufferRows(
+      renderAssistantMessage(assistant, {
+        ...RENDER_OPTS,
+        verbose: true,
+        previewWidth: 24,
+      }),
+      24,
+      20,
+    );
+    const headRowIndex = rows.findIndex((row) => row.text.includes('"x'));
+    const headRow = headRowIndex >= 0 ? rows[headRowIndex] : undefined;
+    const wrappedRow =
+      headRowIndex >= 0
+        ? rows
+            .slice(headRowIndex + 1)
+            .find((row) => row.text.includes("xxxxxxxx"))
+        : undefined;
+
+    // Assert
+    expect(headRow).toBeDefined();
+    expect(wrappedRow).toBeDefined();
+    expect(headRow?.fgColors[headRow.text.indexOf('"')]).toBe(
+      DEFAULT_THEME.diffAdded ?? null,
+    );
+    expect(wrappedRow?.fgColors[wrappedRow.text.indexOf("x")]).toBe(
+      DEFAULT_THEME.diffAdded ?? null,
+    );
+  });
+
+  test("renderAssistantMessage for long inline markdown code keeps the tail visible", async () => {
+    // Arrange
+    const message = fauxAssistantMessage(`Use \`${"x".repeat(80)}TAIL\``);
+
+    // Act
+    const rows = await renderBufferRows(
+      renderAssistantMessage(message, {
+        ...RENDER_OPTS,
+        previewWidth: 24,
+      }),
+      24,
+      20,
+    );
+    const codeRows = rows.filter(
+      (row) => row.text.includes("x") || row.text.includes("TAIL`"),
+    );
+
+    // Assert
+    expect(codeRows.length).toBeGreaterThan(1);
+    expect(rows.some((row) => row.text.includes("TAIL`"))).toBe(true);
+    expect(codeRows[0]?.fgColors[codeRows[0].text.indexOf("x")]).toBe(
+      DEFAULT_THEME.diffAdded ?? null,
+    );
+    expect(codeRows.at(-1)?.fgColors[codeRows.at(-1)!.text.indexOf("T")]).toBe(
+      DEFAULT_THEME.diffAdded ?? null,
+    );
+  });
+
   test("renderAssistantMessage for a long single-token shell command uses wrapped preview height when verbose is off", () => {
     // Arrange
     const command = `printf ${"x".repeat(220)}TAIL`;

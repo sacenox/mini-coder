@@ -34,6 +34,9 @@ const UI_TOOL_PREVIEW_ROWS = 8;
 /** Default width used when preview measurements do not receive one explicitly. */
 const DEFAULT_TOOL_PREVIEW_WIDTH = 80;
 
+/** Horizontal columns consumed by assistant-markdown padding. */
+const MARKDOWN_BLOCK_CHROME_WIDTH = 2;
+
 /** Horizontal columns consumed by tool-block padding and the left border. */
 const TOOL_BLOCK_CHROME_WIDTH = 4;
 
@@ -226,7 +229,11 @@ function renderUserMessage(msg: UserMessage, theme: Theme): Node {
 }
 
 /** Render a syntax-highlighted raw markdown block. */
-function renderMarkdownTextBlock(content: string, theme: Theme): Node | null {
+function renderMarkdownTextBlock(
+  content: string,
+  theme: Theme,
+  previewWidth?: number,
+): Node | null {
   if (content === "") {
     return null;
   }
@@ -238,6 +245,7 @@ function renderMarkdownTextBlock(content: string, theme: Theme): Node | null {
       themeVariant: "markdown",
     },
     theme,
+    getMarkdownBodyWidth(previewWidth),
   );
   if (children.length === 0) {
     return null;
@@ -313,7 +321,7 @@ function renderAssistantContentBlock(
   opts: ConversationRenderOpts,
 ): Node | null {
   if (block.type === "text" && block.text) {
-    return renderMarkdownTextBlock(block.text, opts.theme);
+    return renderMarkdownTextBlock(block.text, opts.theme, opts.previewWidth);
   }
   if (block.type === "thinking" && block.thinking) {
     return renderThinkingBlock(block.thinking, opts);
@@ -366,8 +374,19 @@ function getPreviewWidth(previewWidth?: number): number {
   return Math.max(1, Math.floor(previewWidth!));
 }
 
+function getMarkdownBodyWidth(previewWidth?: number): number {
+  return Math.max(
+    1,
+    getPreviewWidth(previewWidth) - MARKDOWN_BLOCK_CHROME_WIDTH,
+  );
+}
+
 function getToolBodyWidth(previewWidth?: number): number {
   return Math.max(1, getPreviewWidth(previewWidth) - TOOL_BLOCK_CHROME_WIDTH);
+}
+
+function getHighlightWrapChunkSize(bodyWidth: number): number {
+  return Math.max(1, Math.min(HIGHLIGHT_WRAP_MAX_CHUNK_GRAPHEMES, bodyWidth));
 }
 
 /** Split multi-line tool text into logical render lines. */
@@ -426,6 +445,7 @@ type SyntaxThemeTokenColor = NonNullable<
 const graphemeSegmenter = new Intl.Segmenter(undefined, {
   granularity: "grapheme",
 });
+const HIGHLIGHT_WRAP_MAX_CHUNK_GRAPHEMES = 32;
 const syntaxThemeCache: Record<
   SyntaxThemeVariant,
   WeakMap<Theme, SyntaxThemeRegistration>
@@ -559,6 +579,7 @@ function getSyntaxTheme(
 
 function splitHighlightedTextNode(
   node: Extract<Node, { type: "text" }>,
+  chunkSize: number,
 ): Node[] {
   if (node.content === "") {
     return [Text("", node.props)];
@@ -576,21 +597,37 @@ function splitHighlightedTextNode(
       continue;
     }
 
+    let chunk = "";
+    let chunkGraphemes = 0;
     for (const { segment } of graphemeSegmenter.segment(part)) {
-      children.push(Text(segment, node.props));
+      chunk += segment;
+      chunkGraphemes += 1;
+
+      if (chunkGraphemes === chunkSize) {
+        children.push(Text(chunk, node.props));
+        chunk = "";
+        chunkGraphemes = 0;
+      }
+    }
+
+    if (chunk !== "") {
+      children.push(Text(chunk, node.props));
     }
   }
 
   return children;
 }
 
-function normalizeHighlightedLine(line: Node): Node {
+function normalizeHighlightedLine(line: Node, bodyWidth: number): Node {
   if (line.type !== "hstack") {
     return line;
   }
 
+  const chunkSize = getHighlightWrapChunkSize(bodyWidth);
   const children = line.children.flatMap((child) => {
-    return child.type === "text" ? splitHighlightedTextNode(child) : [child];
+    return child.type === "text"
+      ? splitHighlightedTextNode(child, chunkSize)
+      : [child];
   });
   return HStack(line.props, children);
 }
@@ -598,6 +635,7 @@ function normalizeHighlightedLine(line: Node): Node {
 function getHighlightedBodyLines(
   spec: HighlightedBodySpec,
   theme: Theme,
+  bodyWidth: number,
 ): Node[] {
   if (spec.text === "") {
     return [];
@@ -606,7 +644,9 @@ function getHighlightedBodyLines(
   const highlighted = SyntaxHighlight(spec.text, spec.language, {
     theme: getSyntaxTheme(theme, spec.themeVariant),
   });
-  return highlighted.children.map((line) => normalizeHighlightedLine(line));
+  return highlighted.children.map((line) =>
+    normalizeHighlightedLine(line, bodyWidth),
+  );
 }
 
 /** Render a single styled text node for a tool line. */
@@ -740,7 +780,11 @@ function renderToolBody(
 ): { body: Node | null; summary?: ToolRenderLine } {
   if (spec.highlightedBody) {
     return renderToolBodyFromNodes(
-      getHighlightedBodyLines(spec.highlightedBody, opts.theme),
+      getHighlightedBodyLines(
+        spec.highlightedBody,
+        opts.theme,
+        getToolBodyWidth(opts.previewWidth),
+      ),
       spec.previewBody,
       opts,
     );
