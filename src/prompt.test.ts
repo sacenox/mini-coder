@@ -343,7 +343,7 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("# Persistence");
   });
 
-  test("includes contract, verifier, and exactness guidance", () => {
+  test("includes contract, verification, and communication guidance", () => {
     const prompt = buildSystemPrompt({
       cwd: "/home/user/project",
       date: "2026-04-05",
@@ -353,7 +353,19 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain(
       "look for acceptance criteria in tests, verifier scripts, eval scripts, examples, and expected-output files",
     );
+    expect(prompt).toContain(
+      "probe availability with focused checks such as `command -v <tool>`, `<tool> --version`, or `python3 -m pip --version`",
+    );
     expect(prompt).toContain("create the required artifact early");
+    expect(prompt).toContain(
+      "Run the narrowest verifier or test as soon as there is a plausible first implementation or artifact",
+    );
+    expect(prompt).toContain(
+      "When verification is down to a small number of failures, stop broad exploration and focus only on the remaining failing assertions or exact contract gaps until the last detail passes",
+    );
+    expect(prompt).toContain(
+      "When discussing multiple options, use numbered lists so the user can reply with a number without turning it into a questionnaire.",
+    );
     expect(prompt).toContain(
       "run the smallest targeted verification that checks the exact contract",
     );
