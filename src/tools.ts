@@ -9,7 +9,15 @@
  * @module
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, extname, isAbsolute, join } from "node:path";
 import type { ImageContent, TextContent, Tool } from "@mariozechner/pi-ai";
 import { Type } from "@mariozechner/pi-ai";
@@ -490,6 +498,8 @@ interface ShellOpts {
   onUpdate?: ToolUpdateCallback;
 }
 
+type ShellProcess = ReturnType<typeof Bun.spawn>;
+
 const DEFAULT_MAX_LINES = 1000;
 const DEFAULT_MAX_BYTES = 50_000;
 const SHELL_UPDATE_INTERVAL_MS = 75;
@@ -837,26 +847,94 @@ function normalizeShellCommand(command: string): string {
   }
 }
 
-/** Read a spawned shell stream into a string, reporting progressive updates. */
-async function consumeShellStream(
-  stream: ReadableStream<Uint8Array>,
-  onChunk: (chunk: string) => void,
-): Promise<string> {
-  const reader = stream.getReader();
-  const decoder = new TextDecoder();
-  let output = "";
+interface ShellCaptureFiles {
+  stdoutPath: string;
+  stderrPath: string;
+  cleanup: () => void;
+}
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) {
-      output += decoder.decode();
-      return output;
-    }
+function createShellCaptureFiles(): ShellCaptureFiles {
+  const dir = mkdtempSync(join(tmpdir(), "mini-coder-shell-"));
+  return {
+    stdoutPath: join(dir, "stdout.log"),
+    stderrPath: join(dir, "stderr.log"),
+    cleanup: () => {
+      try {
+        rmSync(dir, { recursive: true, force: true });
+      } catch {
+        // Best-effort cleanup. Background processes may still hold the files open.
+      }
+    },
+  };
+}
 
-    const chunk = decoder.decode(value, { stream: true });
-    output += chunk;
-    onChunk(chunk);
+function readShellCapture(path: string): string {
+  try {
+    return readFileSync(path, "utf-8");
+  } catch {
+    return "";
   }
+}
+
+function readShellCaptureOutput(
+  capture: Pick<ShellCaptureFiles, "stdoutPath" | "stderrPath">,
+): { stdout: string; stderr: string } {
+  return {
+    stdout: readShellCapture(capture.stdoutPath),
+    stderr: readShellCapture(capture.stderrPath),
+  };
+}
+
+function buildShellSpawnOptions(
+  cwd: string,
+  capture: Pick<ShellCaptureFiles, "stdoutPath" | "stderrPath">,
+): Parameters<typeof Bun.spawn>[1] {
+  return {
+    cwd,
+    stdout: Bun.file(capture.stdoutPath),
+    stderr: Bun.file(capture.stderrPath),
+    ...(process.platform === "win32" ? {} : { detached: true }),
+  };
+}
+
+function abortShellProcess(proc: ShellProcess): void {
+  if (proc.killed || proc.exitCode !== null) {
+    return;
+  }
+
+  if (process.platform !== "win32") {
+    try {
+      process.kill(-proc.pid, "SIGTERM");
+      return;
+    } catch {
+      // Fall through to a direct kill when the process group is unavailable.
+    }
+  }
+
+  proc.kill("SIGTERM");
+}
+
+function registerShellAbort(
+  signal: AbortSignal | undefined,
+  proc: ShellProcess,
+): (() => void) | null {
+  if (!signal) {
+    return null;
+  }
+
+  const abortListener = (): void => {
+    abortShellProcess(proc);
+  };
+
+  if (signal.aborted) {
+    abortShellProcess(proc);
+    return null;
+  }
+
+  signal.addEventListener("abort", abortListener, { once: true });
+  return () => {
+    signal.removeEventListener("abort", abortListener);
+  };
 }
 
 /**
@@ -879,93 +957,59 @@ export async function executeShell(
   const shell = process.env.SHELL || "/bin/sh";
   const maxLines = opts?.maxLines ?? DEFAULT_MAX_LINES;
   const maxBytes = opts?.maxBytes ?? DEFAULT_MAX_BYTES;
-  let updateTimer: ReturnType<typeof setTimeout> | null = null;
+  const capture = createShellCaptureFiles();
+  let updateTimer: ReturnType<typeof setInterval> | null = null;
+  let cleanupAbort: (() => void) | null = null;
+  let lastReportedOutput = "";
 
   try {
-    const spawnOpts: Parameters<typeof Bun.spawn>[1] = {
-      cwd,
-      stdout: "pipe",
-      stderr: "pipe",
-    };
-    if (opts?.signal) spawnOpts.signal = opts.signal;
-    const command = normalizeShellCommand(args.command);
-    const proc = Bun.spawn([shell, "-c", command], spawnOpts);
-
-    let stdoutBuf = "";
-    let stderrBuf = "";
-    let lastReportedOutput = "";
-    let lastReportAt = 0;
-
-    const clearPendingUpdate = (): void => {
-      if (updateTimer) {
-        clearTimeout(updateTimer);
-        updateTimer = null;
-      }
-    };
-
-    const buildProgressOutput = (): string => {
+    const buildOutput = (trimEnd: boolean): string => {
+      const { stdout, stderr } = readShellCaptureOutput(capture);
       return truncateOutput(
-        formatShellOutput(stdoutBuf, stderrBuf),
+        formatShellOutput(
+          trimEnd ? stdout.trimEnd() : stdout,
+          trimEnd ? stderr.trimEnd() : stderr,
+        ),
         maxLines,
         maxBytes,
       );
     };
 
     const emitUpdate = (): void => {
-      clearPendingUpdate();
       if (!opts?.onUpdate) {
         return;
       }
 
-      const output = buildProgressOutput();
+      const output = buildOutput(false);
       if (!output || output === lastReportedOutput) {
         return;
       }
 
       lastReportedOutput = output;
-      lastReportAt = Date.now();
       opts.onUpdate(textResult(output, false));
     };
 
-    const scheduleUpdate = (): void => {
-      if (!opts?.onUpdate) {
-        return;
-      }
-
-      const elapsed = Date.now() - lastReportAt;
-      if (elapsed >= SHELL_UPDATE_INTERVAL_MS) {
-        emitUpdate();
-        return;
-      }
-      if (updateTimer) {
-        return;
-      }
-
-      updateTimer = setTimeout(() => {
-        emitUpdate();
-      }, SHELL_UPDATE_INTERVAL_MS - elapsed);
-    };
-
-    const [stdout, stderr, exitCode] = await Promise.all([
-      consumeShellStream(proc.stdout as ReadableStream<Uint8Array>, (chunk) => {
-        stdoutBuf += chunk;
-        scheduleUpdate();
-      }),
-      consumeShellStream(proc.stderr as ReadableStream<Uint8Array>, (chunk) => {
-        stderrBuf += chunk;
-        scheduleUpdate();
-      }),
-      proc.exited,
-    ]);
-
-    clearPendingUpdate();
-    const output = truncateOutput(
-      formatShellOutput(stdout.trimEnd(), stderr.trimEnd()),
-      maxLines,
-      maxBytes,
+    const command = normalizeShellCommand(args.command);
+    const proc = Bun.spawn(
+      [shell, "-c", command],
+      buildShellSpawnOptions(cwd, capture),
     );
+    cleanupAbort = registerShellAbort(opts?.signal, proc);
+
+    if (opts?.onUpdate) {
+      updateTimer = setInterval(emitUpdate, SHELL_UPDATE_INTERVAL_MS);
+    }
+
+    const exitCode = await proc.exited;
+
+    if (updateTimer) {
+      clearInterval(updateTimer);
+      updateTimer = null;
+    }
+    cleanupAbort?.();
+
+    const output = buildOutput(true);
     if (opts?.onUpdate && output && output !== lastReportedOutput) {
-      lastReportedOutput = output;
       opts.onUpdate(textResult(output, false));
     }
 
@@ -973,12 +1017,15 @@ export async function executeShell(
     const body = output || "(no output)";
     return textResult(`Exit code: ${exitCode}\n${body}`, isError);
   } catch (err) {
+    cleanupAbort?.();
     if (updateTimer) {
-      clearTimeout(updateTimer);
+      clearInterval(updateTimer);
       updateTimer = null;
     }
     const message = err instanceof Error ? err.message : String(err);
     return textResult(`Shell error: ${message}`, true);
+  } finally {
+    capture.cleanup();
   }
 }
 

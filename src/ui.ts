@@ -10,6 +10,7 @@
 
 import { spawn } from "node:child_process";
 import { platform } from "node:os";
+import { Select } from "@cel-tui/components";
 import {
   cel,
   HStack,
@@ -37,9 +38,14 @@ import {
 import type { InputController } from "./ui/input.ts";
 import {
   autocompleteInputPath,
+  findInputPathMatches,
   renderInputArea as renderInputAreaNode,
 } from "./ui/input.ts";
-import { type ActiveOverlay, renderOverlay } from "./ui/overlay.ts";
+import {
+  type ActiveOverlay,
+  OVERLAY_MAX_VISIBLE,
+  renderOverlay,
+} from "./ui/overlay.ts";
 import { renderStatusBar } from "./ui/status.ts";
 
 export type { InputController } from "./ui/input.ts";
@@ -286,6 +292,48 @@ function dismissOverlay(): void {
   cel.render();
 }
 
+function openPathAutocompleteOverlay(state: AppState): void {
+  const matches = findInputPathMatches(inputValue, state.cwd);
+  if (matches.length <= 1) {
+    return;
+  }
+
+  const select = Select({
+    items: matches.map((match) => ({
+      label: match.label,
+      value: match.value,
+      filterText: match.label,
+    })),
+    maxVisible: OVERLAY_MAX_VISIBLE,
+    placeholder: "type to filter paths...",
+    focused: true,
+    highlightColor: state.theme.accentText,
+    onSelect: (value) => {
+      inputValue = value;
+      dismissOverlay();
+    },
+    onBlur: dismissOverlay,
+  });
+
+  openOverlay({ select, title: "Path matches" });
+}
+
+function handleTabKeyPress(state: AppState): void {
+  if (inputValue.startsWith("/")) {
+    commandController.showCommandAutocomplete(state);
+    return;
+  }
+
+  const completedInput = autocompleteInputPath(inputValue, state.cwd);
+  if (completedInput) {
+    inputValue = completedInput;
+    cel.render();
+    return;
+  }
+
+  openPathAutocompleteOverlay(state);
+}
+
 /**
  * Render the active overlay when one is open.
  *
@@ -344,15 +392,7 @@ export function createInputController(state: AppState): InputController {
         return false;
       }
       if (key === "tab") {
-        if (inputValue.startsWith("/")) {
-          commandController.showCommandAutocomplete(state);
-        } else {
-          const completedInput = autocompleteInputPath(inputValue, state.cwd);
-          if (completedInput) {
-            inputValue = completedInput;
-            cel.render();
-          }
-        }
+        handleTabKeyPress(state);
         return false;
       }
     },

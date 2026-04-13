@@ -25,39 +25,18 @@ export interface InputController {
   onKeyPress: (key: string) => boolean | undefined;
 }
 
-/** Find the longest common prefix across a list of strings. */
-function getLongestCommonPrefix(values: readonly string[]): string {
-  if (values.length === 0) {
-    return "";
-  }
-
-  let prefix = values[0]!;
-  for (let i = 1; i < values.length && prefix.length > 0; i++) {
-    const value = values[i]!;
-    let j = 0;
-    while (j < prefix.length && j < value.length && prefix[j] === value[j]) {
-      j++;
-    }
-    prefix = prefix.slice(0, j);
-  }
-
-  return prefix;
+/** A selectable path-autocomplete match for the current input draft. */
+export interface InputPathMatch {
+  /** Path label shown in the overlay. */
+  label: string;
+  /** Full draft value to apply when this match is selected. */
+  value: string;
 }
 
-/**
- * Attempt to autocomplete the final path token in the current draft.
- *
- * @param value - Current input draft.
- * @param cwd - Working directory used to resolve relative paths.
- * @returns The completed input value, or `null` when no completion is available.
- */
-export function autocompleteInputPath(
-  value: string,
-  cwd: string,
-): string | null {
+function listInputPathMatches(value: string, cwd: string): InputPathMatch[] {
   const tokenMatch = /(^|\s)(\S+)$/.exec(value);
   if (!tokenMatch?.[2]) {
-    return null;
+    return [];
   }
 
   const token = tokenMatch[2];
@@ -80,35 +59,50 @@ export function autocompleteInputPath(
     }
   })();
   if (!entries) {
-    return null;
+    return [];
   }
 
   const showHidden = partial.startsWith(".");
-  const matches = entries
+  return entries
     .filter((entry) => (showHidden ? true : !entry.name.startsWith(".")))
     .filter((entry) => entry.name.startsWith(partial))
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((entry) => {
+      const completedPath = `${dirToken}${entry.name}${entry.isDirectory() ? "/" : ""}`;
+      return {
+        label: completedPath,
+        value: `${value.slice(0, tokenStart)}${completedPath}`,
+      };
+    });
+}
 
-  if (matches.length === 0) {
-    return null;
-  }
+/**
+ * Find selectable path matches for the final path token in the current draft.
+ *
+ * @param value - Current input draft.
+ * @param cwd - Working directory used to resolve relative paths.
+ * @returns Matching path completions with their applied draft values.
+ */
+export function findInputPathMatches(
+  value: string,
+  cwd: string,
+): InputPathMatch[] {
+  return listInputPathMatches(value, cwd);
+}
 
-  let completedName: string | null = null;
-  if (matches.length === 1) {
-    const match = matches[0]!;
-    completedName = `${match.name}${match.isDirectory() ? "/" : ""}`;
-  } else {
-    const prefix = getLongestCommonPrefix(matches.map((entry) => entry.name));
-    if (prefix.length > partial.length) {
-      completedName = prefix;
-    }
-  }
-
-  if (!completedName) {
-    return null;
-  }
-
-  return `${value.slice(0, tokenStart)}${dirToken}${completedName}`;
+/**
+ * Attempt to autocomplete the final path token in the current draft.
+ *
+ * @param value - Current input draft.
+ * @param cwd - Working directory used to resolve relative paths.
+ * @returns The completed input value, or `null` when direct completion is unavailable.
+ */
+export function autocompleteInputPath(
+  value: string,
+  cwd: string,
+): string | null {
+  const matches = listInputPathMatches(value, cwd);
+  return matches.length === 1 ? matches[0]!.value : null;
 }
 
 /**

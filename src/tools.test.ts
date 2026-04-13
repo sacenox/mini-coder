@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -89,6 +90,29 @@ function hasUnpairedSurrogate(input: string): boolean {
   }
 
   return false;
+}
+
+async function waitFor(
+  predicate: () => boolean,
+  timeoutMs = 1_000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (predicate()) {
+      return;
+    }
+    await new Promise<void>((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error("Timed out waiting for condition");
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -428,6 +452,68 @@ describe("shell", () => {
       signal: controller.signal,
     });
     expect(result.isError).toBe(true);
+  });
+
+  test("returns after the shell exits even when a background child keeps stdout and stderr open", async () => {
+    const pidFile = join(tmp, "child.pid");
+    const command = `sleep 30 & pid=$!; echo "$pid" > '${pidFile}'; echo ready`;
+    let childPid: number | null = null;
+
+    try {
+      const result = await Promise.race([
+        executeShell({ command }, tmp),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => {
+            reject(new Error("Shell command did not return promptly"));
+          }, 1_000);
+        }),
+      ]);
+
+      childPid = Number(readFileSync(pidFile, "utf-8").trim());
+
+      expect(result.isError).toBe(false);
+      expect(resultText(result)).toContain("Exit code: 0");
+      expect(resultText(result)).toContain("ready");
+      expect(isProcessAlive(childPid)).toBe(true);
+    } finally {
+      if (childPid !== null && isProcessAlive(childPid)) {
+        process.kill(childPid, "SIGKILL");
+      }
+    }
+  });
+
+  test("abort signal kills spawned child processes that keep the shell pipes open", async () => {
+    const controller = new AbortController();
+    const pidFile = join(tmp, "child.pid");
+    const command = `sleep 30 & echo $! > '${pidFile}' && wait`;
+    const resultPromise = executeShell({ command }, tmp, {
+      signal: controller.signal,
+    });
+
+    let childPid: number | null = null;
+    try {
+      await waitFor(() => existsSync(pidFile));
+      childPid = Number(readFileSync(pidFile, "utf-8").trim());
+      const startedChildPid = childPid;
+
+      controller.abort();
+
+      const result = await Promise.race([
+        resultPromise,
+        new Promise<never>((_, reject) => {
+          setTimeout(() => {
+            reject(new Error("Shell command did not abort promptly"));
+          }, 1_000);
+        }),
+      ]);
+
+      expect(result.isError).toBe(true);
+      await waitFor(() => !isProcessAlive(startedChildPid), 1_000);
+    } finally {
+      if (childPid !== null && isProcessAlive(childPid)) {
+        process.kill(childPid, "SIGKILL");
+      }
+    }
   });
 
   test("combines stdout and stderr in output", async () => {

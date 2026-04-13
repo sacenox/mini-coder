@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { DEFAULT_THEME } from "../theme.ts";
 import {
   autocompleteInputPath,
+  findInputPathMatches,
   type InputController,
   renderInputArea,
 } from "./input.ts";
@@ -60,7 +61,7 @@ describe("ui/input", () => {
     expect(placeholder.props.italic).toBe(true);
   });
 
-  test("autocompleteInputPath completes the last file path token", () => {
+  test("autocompleteInputPath completes the last file path token when exactly one match is available", () => {
     const cwd = createTempDir();
     mkdirSync(join(cwd, "src"), { recursive: true });
     writeFileSync(join(cwd, "src", "ui.ts"), "", "utf-8");
@@ -68,6 +69,33 @@ describe("ui/input", () => {
     expect(autocompleteInputPath("inspect src/u", cwd)).toBe(
       "inspect src/ui.ts",
     );
+  });
+
+  test("autocompleteInputPath returns null when multiple matches are available", () => {
+    const cwd = createTempDir();
+    mkdirSync(join(cwd, "src"), { recursive: true });
+    writeFileSync(join(cwd, "src", "ui.ts"), "", "utf-8");
+    writeFileSync(join(cwd, "src", "utils.ts"), "", "utf-8");
+
+    expect(autocompleteInputPath("inspect src/u", cwd)).toBeNull();
+  });
+
+  test("findInputPathMatches returns sorted selectable matches for the last file path token", () => {
+    const cwd = createTempDir();
+    mkdirSync(join(cwd, "src"), { recursive: true });
+    writeFileSync(join(cwd, "src", "alpine.ts"), "", "utf-8");
+    writeFileSync(join(cwd, "src", "alpha.ts"), "", "utf-8");
+
+    expect(findInputPathMatches("inspect src/al", cwd)).toEqual([
+      {
+        label: "src/alpha.ts",
+        value: "inspect src/alpha.ts",
+      },
+      {
+        label: "src/alpine.ts",
+        value: "inspect src/alpine.ts",
+      },
+    ]);
   });
 
   test("autocompleteInputPath returns null when no completion is available", () => {

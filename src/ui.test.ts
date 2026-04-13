@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { cel, MockTerminal, measureContentHeight, VStack } from "@cel-tui/core";
@@ -277,6 +284,15 @@ async function stopRunningTurn(
     await waitFor(() => !state.running);
   } catch {
     // Ignore cleanup timeouts so test failures surface the original cause.
+  }
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -1812,6 +1828,72 @@ describe("ui rendering", () => {
     }
   });
 
+  test("Escape aborts a running shell tool even when the shell command spawned a child process", async () => {
+    const state = createTestState();
+    const faux = registerFauxProvider();
+    const cwd = createTempDir();
+    const terminal = new MockTerminal(80, 20);
+    const pidFile = join(cwd, "child.pid");
+    let childPid: number | null = null;
+    state.model = faux.getModel();
+    state.cwd = cwd;
+    state.canonicalCwd = cwd;
+    faux.setResponses([
+      fauxAssistantMessage(
+        [
+          fauxToolCall("shell", {
+            command: `sleep 30 & echo $! > '${pidFile}' && wait`,
+          }),
+        ],
+        {
+          stopReason: "toolUse",
+        },
+      ),
+    ]);
+
+    try {
+      const controller = createInputController(state);
+      startUiViewport(state, terminal, controller);
+      await waitForCelRender();
+
+      handleInput("interrupt the spawned tool", state);
+
+      await waitFor(
+        () =>
+          state.running &&
+          state.activeTurnPromise !== null &&
+          existsSync(pidFile),
+      );
+      childPid = Number(readFileSync(pidFile, "utf-8").trim());
+
+      terminal.sendInput("\x1b");
+      await waitFor(() => !state.running, 1_000);
+
+      const activeTurnPromise = state.activeTurnPromise;
+      if (activeTurnPromise) {
+        await activeTurnPromise;
+      }
+
+      expect(state.messages.map((message) => message.role)).toEqual([
+        "user",
+        "assistant",
+        "toolResult",
+      ]);
+      await waitFor(
+        () => childPid !== null && !isProcessAlive(childPid),
+        1_000,
+      );
+    } finally {
+      if (childPid !== null && isProcessAlive(childPid)) {
+        process.kill(childPid, "SIGKILL");
+      }
+      await stopRunningTurn(state);
+      cel.stop();
+      faux.unregister();
+      state.db.close();
+    }
+  });
+
   test("Tab autocompletes the last file path in normal input mode", () => {
     const state = createTestState();
     const cwd = createTempDir();
@@ -1830,6 +1912,88 @@ describe("ui rendering", () => {
       expect(input.props.value).toBe("inspect src/ui.ts");
       expect(renderActiveOverlay(state)).toBeNull();
     } finally {
+      state.db.close();
+    }
+  });
+
+  test("Tab opens a path picker when multiple file path matches are available", () => {
+    const state = createTestState();
+    const cwd = createTempDir();
+    mkdirSync(join(cwd, "src"), { recursive: true });
+    writeFileSync(join(cwd, "src", "ui.ts"), "", "utf-8");
+    writeFileSync(join(cwd, "src", "utils.ts"), "", "utf-8");
+    state.cwd = cwd;
+    state.canonicalCwd = cwd;
+
+    try {
+      const controller = createInputController(state);
+      controller.onChange("inspect src/u");
+
+      expect(controller.onKeyPress("tab")).toBe(false);
+
+      const overlay = renderActiveOverlay(state);
+      if (!overlay || overlay.type !== "vstack") {
+        throw new Error("Expected an active path picker overlay");
+      }
+      const overlayText = collectText(overlay);
+      expect(overlayText.some((line) => line.includes("src/ui.ts"))).toBe(true);
+      expect(overlayText.some((line) => line.includes("src/utils.ts"))).toBe(
+        true,
+      );
+      expect(
+        expectTextInput(renderInputArea(state.theme, controller)).props.value,
+      ).toBe("inspect src/u");
+      expect(
+        expectTextInput(renderInputArea(state.theme, controller)).props.focused,
+      ).toBe(false);
+
+      const modal = expectVStack(overlay.children[0]!);
+      const selectNode = expectVStack(modal.children[1]!);
+      selectNode.props.onKeyPress?.("down");
+      selectNode.props.onKeyPress?.("enter");
+
+      const input = expectTextInput(renderInputArea(state.theme, controller));
+      expect(input.props.value).toBe("inspect src/utils.ts");
+      expect(input.props.focused).toBe(true);
+      expect(renderActiveOverlay(state)).toBeNull();
+    } finally {
+      state.db.close();
+    }
+  });
+
+  test("Escape cancels the path picker and leaves the draft unchanged", async () => {
+    const state = createTestState();
+    const cwd = createTempDir();
+    const terminal = new MockTerminal(80, 20);
+    mkdirSync(join(cwd, "src"), { recursive: true });
+    writeFileSync(join(cwd, "src", "ui.ts"), "", "utf-8");
+    writeFileSync(join(cwd, "src", "utils.ts"), "", "utf-8");
+    state.cwd = cwd;
+    state.canonicalCwd = cwd;
+
+    try {
+      const controller = createInputController(state);
+      startUiViewport(state, terminal, controller);
+      await waitForCelRender();
+
+      controller.onChange("inspect src/u");
+      controller.onKeyPress("tab");
+      await waitForCelRender();
+
+      expect(renderActiveOverlay(state)).not.toBeNull();
+      expect(
+        expectTextInput(renderInputArea(state.theme, controller)).props.focused,
+      ).toBe(false);
+
+      terminal.sendInput("\x1b");
+      await waitForCelRender();
+
+      expect(renderActiveOverlay(state)).toBeNull();
+      const input = expectTextInput(renderInputArea(state.theme, controller));
+      expect(input.props.value).toBe("inspect src/u");
+      expect(input.props.focused).toBe(true);
+    } finally {
+      cel.stop();
       state.db.close();
     }
   });
