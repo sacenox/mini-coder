@@ -19,6 +19,7 @@ import type {
   OAuthCredentials,
   ThinkingLevel,
   Tool,
+  UserMessage,
 } from "@mariozechner/pi-ai";
 import { getEnvApiKey, getModels, getProviders } from "@mariozechner/pi-ai";
 import { getOAuthApiKey, getOAuthProviders } from "@mariozechner/pi-ai/oauth";
@@ -561,6 +562,8 @@ export interface AppState {
   abortController: AbortController | null;
   /** Promise for the active conversational turn, used to serialize cleanup like `/undo`. */
   activeTurnPromise: Promise<void> | null;
+  /** Resolved user messages queued while the current run is still active. */
+  queuedUserMessages: UserMessage[];
   /** Whether to show thinking content. */
   showReasoning: boolean;
   /** Whether to show full (un-truncated) tool output. */
@@ -641,6 +644,7 @@ export async function init(): Promise<AppState> {
     running: false,
     abortController: null,
     activeTurnPromise: null,
+    queuedUserMessages: [],
     showReasoning: startup.showReasoning,
     verbose: startup.verbose,
     customModels: customResult.models,

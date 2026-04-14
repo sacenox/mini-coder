@@ -243,6 +243,7 @@ function createTestState(): AppState {
     running: false,
     abortController: null,
     activeTurnPromise: null,
+    queuedUserMessages: [],
     showReasoning: DEFAULT_SHOW_REASONING,
     verbose: DEFAULT_VERBOSE,
     versionLabel: "dev",
@@ -655,6 +656,134 @@ describe("ui rendering", () => {
       await stopRunningTurn(state);
       process.env.PATH = originalPath;
       faux.unregister();
+      state.db.close();
+    }
+  });
+
+  test("queues a mid-run submitted prompt, records its raw input immediately, and replays it on the next model request", async () => {
+    const api = "ui-steering-message-test";
+    const sourceId = "ui-steering-message-test-source";
+    const model: Model<string> = {
+      id: "ui-steering-message-model",
+      name: "UI Steering Message Model",
+      api,
+      provider: "test",
+      baseUrl: "http://localhost:0",
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 128000,
+      maxTokens: 4096,
+    };
+
+    const releaseFirstResponse = createDeferred<void>();
+    let requestCount = 0;
+    const buildProviderStream = () => {
+      requestCount += 1;
+      const stream = createAssistantMessageEventStream();
+
+      if (requestCount === 1) {
+        const firstMessage: AssistantMessage = {
+          role: "assistant",
+          content: [fauxText("First response.")],
+          api,
+          provider: model.provider,
+          model: model.id,
+          usage: {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            totalTokens: 0,
+            cost: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              total: 0,
+            },
+          },
+          stopReason: "stop",
+          timestamp: Date.now(),
+        };
+
+        queueMicrotask(() => {
+          void releaseFirstResponse.promise.then(() => {
+            stream.push({
+              type: "done",
+              reason: "stop",
+              message: firstMessage,
+            });
+            stream.end(firstMessage);
+          });
+        });
+
+        return stream;
+      }
+
+      const secondMessage = fauxAssistantMessage("Handled steering.");
+      queueMicrotask(() => {
+        stream.push({
+          type: "done",
+          reason: "stop",
+          message: secondMessage,
+        });
+        stream.end(secondMessage);
+      });
+      return stream;
+    };
+
+    registerApiProvider(
+      {
+        api,
+        stream: () => buildProviderStream(),
+        streamSimple: () => buildProviderStream(),
+      },
+      sourceId,
+    );
+
+    const state = createTestState();
+    state.cwd = process.cwd();
+    state.canonicalCwd = process.cwd();
+    state.model = model;
+
+    try {
+      handleInput("hello", state);
+      await waitFor(() => state.running && state.session !== null);
+
+      handleInput("steer later", state);
+
+      const queuedRows = state.db
+        .query<
+          { text: string; cwd: string; session_id: string | null },
+          []
+        >("SELECT text, cwd, session_id FROM prompt_history ORDER BY id DESC LIMIT 2")
+        .all();
+      expect(queuedRows.map((row) => row.text)).toEqual([
+        "steer later",
+        "hello",
+      ]);
+      expect(queuedRows[0]?.cwd).toBe(state.cwd);
+      expect(queuedRows[0]?.session_id).toBe(state.session?.id ?? null);
+      expect(state.messages.map((message) => message.role)).toEqual(["user"]);
+
+      releaseFirstResponse.resolve();
+
+      await waitFor(() => !state.running);
+      expect(state.messages.map((message) => message.role)).toEqual([
+        "user",
+        "assistant",
+        "user",
+        "assistant",
+      ]);
+      expect(state.messages[2]).toMatchObject({
+        role: "user",
+        content: "steer later",
+      });
+      expect(requestCount).toBe(2);
+    } finally {
+      await stopRunningTurn(state);
+      unregisterApiProviders(sourceId);
       state.db.close();
     }
   });

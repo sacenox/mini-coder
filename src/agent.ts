@@ -18,6 +18,7 @@ import type {
   Tool,
   ToolCall,
   ToolResultMessage,
+  UserMessage,
 } from "@mariozechner/pi-ai";
 import { streamSimple } from "@mariozechner/pi-ai";
 import { appendMessage } from "./session.ts";
@@ -79,6 +80,7 @@ export type AgentEvent =
       args: Record<string, unknown>;
       content: AssistantMessage["content"];
     }
+  | { type: "user_message"; message: UserMessage }
   | { type: "assistant_message"; message: AssistantMessage }
   | {
       type: "tool_start";
@@ -131,6 +133,8 @@ interface RunAgentOpts {
   signal?: AbortSignal;
   /** Callback for UI events. */
   onEvent?: (event: AgentEvent) => void;
+  /** Dequeue the next queued steering message, if one is waiting. */
+  takeQueuedUserMessage?: () => UserMessage | null;
 }
 
 /** Result of the agent loop. */
@@ -462,6 +466,19 @@ async function streamAssistantMessage(
   return mergeAssistantMessage(partialAssistantMessage, finalAssistantMessage);
 }
 
+function appendUserMessage(
+  db: Database,
+  sessionId: string,
+  messages: Message[],
+  userMessage: UserMessage,
+  onEvent: RunAgentOpts["onEvent"],
+): number {
+  messages.push(userMessage);
+  const turn = appendMessage(db, sessionId, userMessage);
+  onEvent?.({ type: "user_message", message: userMessage });
+  return turn;
+}
+
 function appendAssistantMessage(
   db: Database,
   sessionId: string,
@@ -490,15 +507,22 @@ function resolveLoopStopReason(
     return { messages, stopReason: assistantMessage.stopReason };
   }
 
-  if (
-    assistantMessage.stopReason === "stop" ||
-    assistantMessage.stopReason === "length"
-  ) {
-    onEvent?.({ type: "done", message: assistantMessage });
-    return { messages, stopReason: assistantMessage.stopReason };
+  return null;
+}
+
+function consumeQueuedUserMessage(
+  db: Database,
+  sessionId: string,
+  messages: Message[],
+  takeQueuedUserMessage: RunAgentOpts["takeQueuedUserMessage"],
+  onEvent: RunAgentOpts["onEvent"],
+): number | null {
+  const queuedUserMessage = takeQueuedUserMessage?.();
+  if (!queuedUserMessage) {
+    return null;
   }
 
-  return null;
+  return appendUserMessage(db, sessionId, messages, queuedUserMessage, onEvent);
 }
 
 function getAssistantToolCalls(message: AssistantMessage): ToolCall[] {
@@ -581,6 +605,72 @@ function appendToolResultMessage(
   onEvent?.({ type: "tool_result", message: toolResultMessage });
 }
 
+function finalizeStoppedAssistantMessage(
+  db: Database,
+  sessionId: string,
+  messages: Message[],
+  assistantMessage: AssistantMessage,
+  stopReason: "stop" | "length",
+  takeQueuedUserMessage: RunAgentOpts["takeQueuedUserMessage"],
+  onEvent: RunAgentOpts["onEvent"],
+): AgentLoopResult | number {
+  const queuedTurn = consumeQueuedUserMessage(
+    db,
+    sessionId,
+    messages,
+    takeQueuedUserMessage,
+    onEvent,
+  );
+  if (queuedTurn !== null) {
+    return queuedTurn;
+  }
+
+  onEvent?.({ type: "done", message: assistantMessage });
+  return { messages, stopReason };
+}
+
+async function executeAssistantToolCalls(
+  assistantMessage: AssistantMessage,
+  opts: Pick<
+    RunAgentOpts,
+    | "db"
+    | "sessionId"
+    | "messages"
+    | "toolHandlers"
+    | "cwd"
+    | "signal"
+    | "onEvent"
+    | "model"
+  >,
+  turn: number,
+): Promise<AgentLoopResult | null> {
+  for (const toolCall of getAssistantToolCalls(assistantMessage)) {
+    const result = await executeToolCall(toolCall, opts);
+    appendToolResultMessage(
+      opts.db,
+      opts.sessionId,
+      opts.messages,
+      toolCall,
+      result,
+      turn,
+      opts.onEvent,
+    );
+
+    if (opts.signal?.aborted) {
+      opts.onEvent?.({
+        type: "aborted",
+        message: buildIncompleteAssistantMessage(
+          { model: opts.model, signal: opts.signal },
+          assistantMessage,
+        ),
+      });
+      return { messages: opts.messages, stopReason: "aborted" };
+    }
+  }
+
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Agent loop
 // ---------------------------------------------------------------------------
@@ -609,7 +699,9 @@ export async function runAgentLoop(
     onEvent,
     toolHandlers,
     cwd,
+    takeQueuedUserMessage,
   } = opts;
+  let currentTurn = turn;
 
   while (true) {
     const assistantMessage = await streamAssistantMessage(opts);
@@ -618,7 +710,7 @@ export async function runAgentLoop(
       sessionId,
       messages,
       assistantMessage,
-      turn,
+      currentTurn,
       onEvent,
     );
 
@@ -631,33 +723,53 @@ export async function runAgentLoop(
       return stopResult;
     }
 
-    for (const toolCall of getAssistantToolCalls(assistantMessage)) {
-      const result = await executeToolCall(toolCall, {
+    if (
+      assistantMessage.stopReason === "stop" ||
+      assistantMessage.stopReason === "length"
+    ) {
+      const finalResult = finalizeStoppedAssistantMessage(
+        db,
+        sessionId,
+        messages,
+        assistantMessage,
+        assistantMessage.stopReason,
+        takeQueuedUserMessage,
+        onEvent,
+      );
+      if (typeof finalResult === "number") {
+        currentTurn = finalResult;
+        continue;
+      }
+      return finalResult;
+    }
+
+    const toolStopResult = await executeAssistantToolCalls(
+      assistantMessage,
+      {
+        db,
+        sessionId,
+        messages,
         toolHandlers,
         cwd,
         signal,
         onEvent,
-      });
-      appendToolResultMessage(
-        db,
-        sessionId,
-        messages,
-        toolCall,
-        result,
-        turn,
-        onEvent,
-      );
+        model,
+      },
+      currentTurn,
+    );
+    if (toolStopResult) {
+      return toolStopResult;
+    }
 
-      if (signal?.aborted) {
-        onEvent?.({
-          type: "aborted",
-          message: buildIncompleteAssistantMessage(
-            { model, signal },
-            assistantMessage,
-          ),
-        });
-        return { messages, stopReason: "aborted" };
-      }
+    const queuedTurn = consumeQueuedUserMessage(
+      db,
+      sessionId,
+      messages,
+      takeQueuedUserMessage,
+      onEvent,
+    );
+    if (queuedTurn !== null) {
+      currentTurn = queuedTurn;
     }
   }
 }

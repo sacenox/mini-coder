@@ -51,6 +51,7 @@ function createTestState(plugins: LoadedPlugin[] = []): AppState {
     running: false,
     abortController: null,
     activeTurnPromise: null,
+    queuedUserMessages: [],
     showReasoning: true,
     verbose: false,
     versionLabel: "dev",

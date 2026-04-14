@@ -5,8 +5,13 @@ Don't keep completed items bloating the file, remove them before committing.
 Keep the file structured and minimal.
 The spec.md and code are the sources of truth, not this file, don't assume anything because it's documented here.
 
+## In progress
+
+- [ ] Terminal-Bench leaderboard run `leaderboard-2026-04-13__15-33-42` is running in the background using the published npm package `mini-coder@0.5.6`. Do not publish a new version or otherwise interfere with this benchmark setup until the run completes.
+
 ## Open items
 
+- [ ] Headless mode and json output should be separated, without --json headless mode outputs the final response only.
 - [ ] Invalid `settings.json` is fatal instead of falling back to no saved settings (`src/settings.ts`)
 
 ## Low priority (deferred until further notice)

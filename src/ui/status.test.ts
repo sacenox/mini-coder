@@ -106,6 +106,7 @@ function createTestState(): AppState {
     running: false,
     abortController: null,
     activeTurnPromise: null,
+    queuedUserMessages: [],
     showReasoning: DEFAULT_SHOW_REASONING,
     verbose: DEFAULT_VERBOSE,
     versionLabel: "dev",

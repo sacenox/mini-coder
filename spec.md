@@ -200,7 +200,7 @@ Plugins are declared in a config file (`~/.config/mini-coder/plugins.json` or si
 
 ## Agent loop
 
-The core runtime. Streaming is the default behavior throughout the turn: user-visible state should update incrementally as the model emits text, thinking, and tool-call events, rather than waiting for whole responses to complete. This is what happens on each turn:
+The core runtime. Streaming is the default behavior throughout the turn: user-visible state should update incrementally as the model emits text, thinking, and tool-call events, rather than waiting for whole responses to complete. This is what happens while the agent is active:
 
 1. **User submits a message** — the input text (plus any embedded images or skill bodies from `/skill:name`) becomes a pi-ai `UserMessage`. It is appended to the session's message history, rendered in the UI immediately, and persisted to the DB.
 
@@ -209,15 +209,21 @@ The core runtime. Streaming is the default behavior throughout the turn: user-vi
 3. **Stream to LLM** — call `streamSimple(model, context, options)` from pi-ai. Iterate over the event stream:
    - `text_delta` / `thinking_delta` / `toolcall_delta` → update the in-progress assistant message and the UI incrementally (stream raw markdown text, show thinking if enabled, accumulate tool call arguments as they arrive).
    - `toolcall_end` → finalize the structured tool call in the in-progress `AssistantMessage`.
-   - `done` → append the `AssistantMessage` to history and DB. Update cumulative stats. If `stopReason` is `"toolUse"`, go to step 4. If `"stop"` or `"length"`, return to the input prompt.
+   - `done` → append the `AssistantMessage` to history and DB. Update cumulative stats. If `stopReason` is `"toolUse"`, go to step 4. If `"stop"` or `"length"` and queued steering messages exist, go to step 5. Otherwise return to the input prompt.
    - `error` → display error in the log, return to the input prompt.
 
 4. **Tool execution** — when the LLM requests tool calls:
    - Execute each tool call. For `shell`: run the command, capture output, truncate if needed. For `edit`: perform the replacement. For `readImage`: read and base64-encode the file. For plugin tools: delegate to the plugin.
    - Each result becomes a `ToolResultMessage` appended to history and DB (same turn number).
-   - After all tool results are appended, loop back to step 2 (re-stream with the updated context).
+   - After all tool results are appended, if queued steering messages exist go to step 5; otherwise loop back to step 2 (re-stream with the updated context).
 
-5. **Interrupt** — if the user presses `Escape` during streaming with no overlay open:
+5. **Steering messages** — if the user submits a model-visible message while an active run is already in progress, mini-coder queues it instead of dropping it or interrupting the current work.
+   - Steering messages are consumed FIFO at the next model-request boundary: after the current assistant message is finalized and after any tool calls already requested by that assistant message have completed and their tool results have been appended.
+   - When consumed, each steering message is appended to history and DB as a normal `UserMessage`, starting a new conversational turn.
+   - After appending the next queued steering message, loop back to step 2 so the next `streamSimple(...)` call sees the updated history.
+   - Submitting a steering message does not abort the current stream or running tool. Use `Escape` to interrupt immediately.
+
+6. **Interrupt** — if the user presses `Escape` during streaming with no overlay open:
    - Abort the stream via `AbortSignal`.
    - The partial `AssistantMessage` (with `stopReason: "aborted"`) is appended to history and DB as-is. This preserves context so the LLM knows what it was doing when interrupted.
    - Return to the input prompt with focus on the input. The user can continue the conversation or `/undo` the interrupted turn.
@@ -692,7 +698,7 @@ frame3: ────────────────────────
 
 ### Input area
 
-Multi-line text input with no prompt prefix — the blinking cursor is the affordance. Intrinsic height starts at 2 lines when empty (`minHeight: 2`), grows with content up to `maxHeight: 10`, then scrolls internally. Enter submits, Shift+Enter adds newlines (via cel-tui's `TextInput` `onKeyPress` pattern).
+Multi-line text input with no prompt prefix — the blinking cursor is the affordance. Intrinsic height starts at 2 lines when empty (`minHeight: 2`), grows with content up to `maxHeight: 10`, then scrolls internally. Enter submits, Shift+Enter adds newlines (via cel-tui's `TextInput` `onKeyPress` pattern). If the agent is already working, a submitted model-visible message becomes a queued steering message rather than interrupting or disappearing; use `Escape` to interrupt immediately.
 
 Supports:
 
@@ -910,11 +916,11 @@ CREATE INDEX idx_prompt_history_created_at ON prompt_history(created_at, id);
 
 **Messages as JSON blobs**: pi-ai's `Message` type (UserMessage, AssistantMessage, ToolResultMessage) is already serializable, and we also persist internal UI-only log entries in the same table. We store the full object as JSON in `data` rather than normalizing into columns. Session load returns the complete chronological log; model context construction filters out UI-only messages before replaying the remaining pi-ai messages into a pi-ai `Context`.
 
-**Turn grouping**: the `turn` column groups only conversational messages. A turn is: one user message + one or more assistant messages + any tool result messages from that agent loop. Persisted UI messages are stored alongside them but have `turn = NULL`, so they remain visible in session history without becoming part of `/undo`. `/fork` copies all existing persisted messages to a new session, preserving conversational turn numbers and existing UI messages as-is, then appends a new UI-only notice such as `Forked session.` in the fork.
+**Turn grouping**: the `turn` column groups only conversational messages. A turn is: one user message + the assistant messages and tool result messages produced after that user message until the next user message is consumed. Persisted UI messages are stored alongside them but have `turn = NULL`, so they remain visible in session history without becoming part of `/undo`. Queued steering messages submitted mid-run still start their own turn when they are consumed; tool results already requested by the previous assistant message stay in the previous turn even if the steering message was queued while those tools were running. `/fork` copies all existing persisted messages to a new session, preserving conversational turn numbers and existing UI messages as-is, then appends a new UI-only notice such as `Forked session.` in the fork.
 
 **Cumulative stats are computed, not stored**: the status bar's cumulative `in`, `out`, and `$cost` values are computed by summing `usage` from assistant messages on session load (deserialize all messages, filter for `role: "assistant"`, sum their `usage` fields). The message count per session is small (hundreds), so this is fast. No separate counters to keep in sync. During an active session, a running in-memory accumulator is updated after each assistant message to avoid re-scanning. `context%/window` is separate: it is estimated from the current model-visible history for the next request rather than stored cumulatively.
 
-**Turn number assignment**: when a user message is appended, its turn number is `MAX(turn) + 1` for the session (or 1 for the first conversational message). All subsequent assistant responses and tool results in the same agent loop share that turn number. UI-only messages do not receive a turn number. This is what makes `/undo` atomic for conversation history without removing system notices that are still true after the undo.
+**Turn number assignment**: when a user message is appended, whether from an idle submission or a queued steering message that is being consumed, its turn number is `MAX(turn) + 1` for the session (or 1 for the first conversational message). Assistant responses and tool results keep the current active turn number until another queued user message is consumed and becomes the next model input. UI-only messages do not receive a turn number. This is what makes `/undo` atomic for conversation history without removing system notices that are still true after the undo.
 
 **Model/effort on the session**: stored at creation for display in `/session` list. The user can change models and effort mid-session via `/model` and `/effort`; those commands update the current in-memory state and global user settings, but the session record still reflects the initial values for that session. Individual assistant messages record their actual model via pi-ai's `AssistantMessage.model`.
 

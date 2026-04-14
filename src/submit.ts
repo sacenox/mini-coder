@@ -204,12 +204,63 @@ export function resolveRawInput(
   }
 }
 
+function recordRawPromptHistory(
+  rawInput: string,
+  state: Pick<AppState, "db" | "cwd">,
+  sessionId: string,
+): void {
+  appendPromptHistory(state.db, {
+    text: rawInput,
+    cwd: state.cwd,
+    sessionId,
+  });
+  truncatePromptHistory(state.db, MAX_PROMPT_HISTORY);
+}
+
+/**
+ * Queue resolved user content for the next model-request boundary of an active run.
+ *
+ * The raw prompt is recorded immediately in prompt history, but the model-visible
+ * `UserMessage` is only appended to session history when the agent loop consumes it.
+ *
+ * @param rawInput - Exact raw submitted prompt text.
+ * @param content - Resolved model-visible user content.
+ * @param state - Mutable application state.
+ */
+export function queueResolvedInput(
+  rawInput: string,
+  content: UserMessage["content"],
+  state: AppState,
+): void {
+  if (!state.running) {
+    throw new Error("Cannot queue input while no turn is running.");
+  }
+  if (isEmptyUserContent(content)) {
+    throw new Error("Cannot queue empty input.");
+  }
+
+  const session = ensureSession(state);
+  recordRawPromptHistory(rawInput, state, session.id);
+  state.queuedUserMessages.push({
+    role: "user",
+    content,
+    timestamp: Date.now(),
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Turn submission
 // ---------------------------------------------------------------------------
 
 function handleAgentEvent(event: AgentEvent, state: AppState): void {
   switch (event.type) {
+    case "user_message":
+      state.messages.push(event.message);
+      state.contextTokens = addMessageToContextTokens(
+        state.contextTokens,
+        event.message,
+      );
+      break;
     case "assistant_message":
       state.messages.push(event.message);
       state.stats = addMessageToStats(state.stats, event.message);
@@ -270,12 +321,7 @@ export async function submitResolvedInput(
   }
 
   const session = ensureSession(state);
-  appendPromptHistory(state.db, {
-    text: rawInput,
-    cwd: state.cwd,
-    sessionId: session.id,
-  });
-  truncatePromptHistory(state.db, MAX_PROMPT_HISTORY);
+  recordRawPromptHistory(rawInput, state, session.id);
 
   const userMessage = {
     role: "user",
@@ -318,6 +364,7 @@ export async function submitResolvedInput(
       apiKey: state.providers.get(state.model.provider),
       effort: state.effort,
       signal: state.abortController.signal,
+      takeQueuedUserMessage: () => state.queuedUserMessages.shift() ?? null,
       onEvent: (event) => {
         handleAgentEvent(event, state);
         hooks?.onEvent?.(event, state);

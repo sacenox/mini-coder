@@ -13,7 +13,11 @@ import type { AssistantMessage } from "@mariozechner/pi-ai";
 import type { AgentEvent } from "../agent.ts";
 import { getErrorMessage } from "../errors.ts";
 import type { AppState } from "../index.ts";
-import { resolveRawInput, submitResolvedInput } from "../submit.ts";
+import {
+  queueResolvedInput,
+  resolveRawInput,
+  submitResolvedInput,
+} from "../submit.ts";
 import type {
   PendingToolResult,
   StreamingConversationState,
@@ -103,7 +107,12 @@ export function createUiAgentController(
         break;
     }
 
-    if (!state.model || state.running) {
+    if (state.running) {
+      queueResolvedInput(rawInput, resolved.content, state);
+      return;
+    }
+
+    if (!state.model) {
       return;
     }
 
@@ -151,6 +160,11 @@ export function createUiAgentController(
       case "toolcall_delta":
       case "toolcall_end":
         streamingContent = event.content;
+        runtime.render();
+        break;
+
+      case "user_message":
+        runtime.scrollConversationToBottom();
         runtime.render();
         break;
 

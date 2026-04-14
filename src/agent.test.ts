@@ -334,6 +334,121 @@ describe("agent loop", () => {
     expect(loadMessages(db, session.id)).toHaveLength(0);
   });
 
+  test("consumes queued steering messages one at a time after stop responses in FIFO turn order", async () => {
+    faux.setResponses([
+      fauxAssistantMessage("First response."),
+      fauxAssistantMessage("Second response."),
+      fauxAssistantMessage("Third response."),
+    ]);
+
+    const events: AgentEvent[] = [];
+    const session = createSession(db, { cwd: tmp });
+    const userMsg = makeUser("initial prompt");
+    const turn = appendMessage(db, session.id, userMsg);
+    const queuedMessages = [makeUser("steer one"), makeUser("steer two")];
+
+    const result = await runAgentLoop({
+      db,
+      sessionId: session.id,
+      turn,
+      model: faux.getModel(),
+      systemPrompt: "Test",
+      tools: [],
+      toolHandlers: new Map(),
+      messages: [userMsg],
+      cwd: tmp,
+      takeQueuedUserMessage: () => queuedMessages.shift() ?? null,
+      onEvent: (event) => events.push(event),
+    });
+
+    expect(result.stopReason).toBe("stop");
+    expect(result.messages.map((message) => message.role)).toEqual([
+      "user",
+      "assistant",
+      "user",
+      "assistant",
+      "user",
+      "assistant",
+    ]);
+    expect(result.messages[2]).toMatchObject({
+      role: "user",
+      content: "steer one",
+    });
+    expect(result.messages[4]).toMatchObject({
+      role: "user",
+      content: "steer two",
+    });
+
+    const dbTurns = db
+      .query<{ turn: number | null }, [string]>(
+        "SELECT turn FROM messages WHERE session_id = ? ORDER BY id",
+      )
+      .all(session.id)
+      .map((row) => row.turn);
+    expect(dbTurns).toEqual([1, 1, 2, 2, 3, 3]);
+
+    const queuedUserEvents = events.filter(
+      (event) => event.type === "user_message",
+    );
+    expect(queuedUserEvents).toHaveLength(2);
+    expect(queuedUserEvents[0]).toMatchObject({
+      type: "user_message",
+      message: { role: "user", content: "steer one" },
+    });
+    expect(queuedUserEvents[1]).toMatchObject({
+      type: "user_message",
+      message: { role: "user", content: "steer two" },
+    });
+  });
+
+  test("consumes a queued steering message after tool results and starts a new turn", async () => {
+    faux.setResponses([
+      fauxAssistantMessage([fauxToolCall("shell", { command: "echo hi" })], {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage("Handled steering."),
+    ]);
+
+    const session = createSession(db, { cwd: tmp });
+    const userMsg = makeUser("initial prompt");
+    const turn = appendMessage(db, session.id, userMsg);
+    const queuedMessages = [makeUser("steer after tool")];
+
+    const result = await runAgentLoop({
+      db,
+      sessionId: session.id,
+      turn,
+      model: faux.getModel(),
+      systemPrompt: "Test",
+      tools: builtinToolDefs(),
+      toolHandlers: builtinToolHandlers(),
+      messages: [userMsg],
+      cwd: tmp,
+      takeQueuedUserMessage: () => queuedMessages.shift() ?? null,
+    });
+
+    expect(result.stopReason).toBe("stop");
+    expect(result.messages.map((message) => message.role)).toEqual([
+      "user",
+      "assistant",
+      "toolResult",
+      "user",
+      "assistant",
+    ]);
+    expect(result.messages[3]).toMatchObject({
+      role: "user",
+      content: "steer after tool",
+    });
+
+    const dbTurns = db
+      .query<{ turn: number | null }, [string]>(
+        "SELECT turn FROM messages WHERE session_id = ? ORDER BY id",
+      )
+      .all(session.id)
+      .map((row) => row.turn);
+    expect(dbTurns).toEqual([1, 1, 1, 2, 2]);
+  });
+
   test("emits events during streaming", async () => {
     faux.setResponses([fauxAssistantMessage("Hello world")]);
 
