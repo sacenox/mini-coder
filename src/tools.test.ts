@@ -482,6 +482,36 @@ describe("shell", () => {
     }
   });
 
+  test("closes captured pipes after the shell exits so background writers do not keep running", async () => {
+    const pidFile = join(tmp, "child.pid");
+    const command =
+      `bun -e "setInterval(() => process.stdout.write('tick\\n'), 50)" & ` +
+      `echo $! > '${pidFile}'; echo ready`;
+    let childPid: number | null = null;
+
+    try {
+      const result = await Promise.race([
+        executeShell({ command }, tmp),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => {
+            reject(new Error("Shell command did not return promptly"));
+          }, 1_000);
+        }),
+      ]);
+
+      childPid = Number(readFileSync(pidFile, "utf-8").trim());
+
+      expect(result.isError).toBe(false);
+      expect(resultText(result)).toContain("Exit code: 0");
+      expect(resultText(result)).toContain("ready");
+      await waitFor(() => childPid !== null && !isProcessAlive(childPid));
+    } finally {
+      if (childPid !== null && isProcessAlive(childPid)) {
+        process.kill(childPid, "SIGKILL");
+      }
+    }
+  });
+
   test("abort signal kills spawned child processes that keep the shell pipes open", async () => {
     const controller = new AbortController();
     const pidFile = join(tmp, "child.pid");

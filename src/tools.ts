@@ -9,15 +9,7 @@
  * @module
  */
 
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, extname, isAbsolute, join } from "node:path";
 import type { ImageContent, TextContent, Tool } from "@mariozechner/pi-ai";
 import { Type } from "@mariozechner/pi-ai";
@@ -503,6 +495,7 @@ type ShellProcess = ReturnType<typeof Bun.spawn>;
 const DEFAULT_MAX_LINES = 1000;
 const DEFAULT_MAX_BYTES = 50_000;
 const SHELL_UPDATE_INTERVAL_MS = 75;
+const SHELL_STREAM_DRAIN_TIMEOUT_MS = 25;
 
 /** Format combined stdout/stderr for display in tool results. */
 function formatShellOutput(stdout: string, stderr: string): string {
@@ -847,52 +840,90 @@ function normalizeShellCommand(command: string): string {
   }
 }
 
-interface ShellCaptureFiles {
-  stdoutPath: string;
-  stderrPath: string;
-  cleanup: () => void;
+interface ShellStreamCapture {
+  done: Promise<void>;
+  getOutput: () => string;
+  isFinished: () => boolean;
+  close: () => Promise<void>;
 }
 
-function createShellCaptureFiles(): ShellCaptureFiles {
-  const dir = mkdtempSync(join(tmpdir(), "mini-coder-shell-"));
-  return {
-    stdoutPath: join(dir, "stdout.log"),
-    stderrPath: join(dir, "stderr.log"),
-    cleanup: () => {
-      try {
-        rmSync(dir, { recursive: true, force: true });
-      } catch {
-        // Best-effort cleanup. Background processes may still hold the files open.
+function startShellStreamCapture(
+  stream: ReadableStream<Uint8Array>,
+  onChunk: (chunk: string) => void,
+): ShellStreamCapture {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let output = "";
+  let closed = false;
+  let finished = false;
+
+  const done = (async (): Promise<void> => {
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          break;
+        }
+
+        const chunk = decoder.decode(value, { stream: true });
+        output += chunk;
+        onChunk(chunk);
       }
+    } catch (error) {
+      if (!closed) {
+        throw error;
+      }
+    } finally {
+      const trailing = decoder.decode();
+      output += trailing;
+      onChunk(trailing);
+      finished = true;
+    }
+  })();
+
+  return {
+    done,
+    getOutput: () => output,
+    isFinished: () => finished,
+    close: async (): Promise<void> => {
+      if (!finished) {
+        closed = true;
+        try {
+          await reader.cancel();
+        } catch {
+          // Ignore cancellation errors while closing the pipe after exit/abort.
+        }
+      }
+      await done;
     },
   };
 }
 
-function readShellCapture(path: string): string {
-  try {
-    return readFileSync(path, "utf-8");
-  } catch {
-    return "";
+async function finalizeShellStreamCaptures(
+  captures: readonly ShellStreamCapture[],
+): Promise<void> {
+  const pending = captures
+    .filter((capture) => !capture.isFinished())
+    .map((capture) => capture.done);
+
+  if (pending.length > 0) {
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, SHELL_STREAM_DRAIN_TIMEOUT_MS);
+      void Promise.allSettled(pending).then(() => {
+        clearTimeout(timer);
+        resolve();
+      });
+    });
   }
+
+  await Promise.all(captures.map((capture) => capture.close()));
 }
 
-function readShellCaptureOutput(
-  capture: Pick<ShellCaptureFiles, "stdoutPath" | "stderrPath">,
-): { stdout: string; stderr: string } {
-  return {
-    stdout: readShellCapture(capture.stdoutPath),
-    stderr: readShellCapture(capture.stderrPath),
-  };
-}
-
-function buildShellSpawnOptions(
-  cwd: string,
-  capture: Pick<ShellCaptureFiles, "stdoutPath" | "stderrPath">,
-): Parameters<typeof Bun.spawn>[1] {
+function buildShellSpawnOptions(cwd: string): Parameters<typeof Bun.spawn>[1] {
   return {
     cwd,
-    stdout: Bun.file(capture.stdoutPath),
-    stderr: Bun.file(capture.stderrPath),
+    stdout: "pipe",
+    stderr: "pipe",
     ...(process.platform === "win32" ? {} : { detached: true }),
   };
 }
@@ -957,14 +988,24 @@ export async function executeShell(
   const shell = process.env.SHELL || "/bin/sh";
   const maxLines = opts?.maxLines ?? DEFAULT_MAX_LINES;
   const maxBytes = opts?.maxBytes ?? DEFAULT_MAX_BYTES;
-  const capture = createShellCaptureFiles();
-  let updateTimer: ReturnType<typeof setInterval> | null = null;
+  let updateTimer: ReturnType<typeof setTimeout> | null = null;
   let cleanupAbort: (() => void) | null = null;
   let lastReportedOutput = "";
+  let lastReportAt = 0;
+  let stdoutCapture: ShellStreamCapture | null = null;
+  let stderrCapture: ShellStreamCapture | null = null;
 
   try {
+    const clearPendingUpdate = (): void => {
+      if (updateTimer) {
+        clearTimeout(updateTimer);
+        updateTimer = null;
+      }
+    };
+
     const buildOutput = (trimEnd: boolean): string => {
-      const { stdout, stderr } = readShellCaptureOutput(capture);
+      const stdout = stdoutCapture?.getOutput() ?? "";
+      const stderr = stderrCapture?.getOutput() ?? "";
       return truncateOutput(
         formatShellOutput(
           trimEnd ? stdout.trimEnd() : stdout,
@@ -976,6 +1017,7 @@ export async function executeShell(
     };
 
     const emitUpdate = (): void => {
+      clearPendingUpdate();
       if (!opts?.onUpdate) {
         return;
       }
@@ -986,30 +1028,54 @@ export async function executeShell(
       }
 
       lastReportedOutput = output;
+      lastReportAt = Date.now();
       opts.onUpdate(textResult(output, false));
     };
 
-    const command = normalizeShellCommand(args.command);
-    const proc = Bun.spawn(
-      [shell, "-c", command],
-      buildShellSpawnOptions(cwd, capture),
-    );
-    cleanupAbort = registerShellAbort(opts?.signal, proc);
+    const scheduleUpdate = (): void => {
+      if (!opts?.onUpdate) {
+        return;
+      }
 
-    if (opts?.onUpdate) {
-      updateTimer = setInterval(emitUpdate, SHELL_UPDATE_INTERVAL_MS);
-    }
+      const elapsed = Date.now() - lastReportAt;
+      if (elapsed >= SHELL_UPDATE_INTERVAL_MS) {
+        emitUpdate();
+        return;
+      }
+      if (updateTimer) {
+        return;
+      }
+
+      updateTimer = setTimeout(() => {
+        emitUpdate();
+      }, SHELL_UPDATE_INTERVAL_MS - elapsed);
+    };
+
+    const command = normalizeShellCommand(args.command);
+    const proc = Bun.spawn([shell, "-c", command], buildShellSpawnOptions(cwd));
+    cleanupAbort = registerShellAbort(opts?.signal, proc);
+    stdoutCapture = startShellStreamCapture(
+      proc.stdout as ReadableStream<Uint8Array>,
+      () => {
+        scheduleUpdate();
+      },
+    );
+    stderrCapture = startShellStreamCapture(
+      proc.stderr as ReadableStream<Uint8Array>,
+      () => {
+        scheduleUpdate();
+      },
+    );
 
     const exitCode = await proc.exited;
-
-    if (updateTimer) {
-      clearInterval(updateTimer);
-      updateTimer = null;
-    }
     cleanupAbort?.();
+    cleanupAbort = null;
 
+    await finalizeShellStreamCaptures([stdoutCapture, stderrCapture]);
+    clearPendingUpdate();
     const output = buildOutput(true);
     if (opts?.onUpdate && output && output !== lastReportedOutput) {
+      lastReportedOutput = output;
       opts.onUpdate(textResult(output, false));
     }
 
@@ -1018,14 +1084,19 @@ export async function executeShell(
     return textResult(`Exit code: ${exitCode}\n${body}`, isError);
   } catch (err) {
     cleanupAbort?.();
+    cleanupAbort = null;
+    const captures = [stdoutCapture, stderrCapture].filter(
+      (capture): capture is ShellStreamCapture => capture !== null,
+    );
+    if (captures.length > 0) {
+      await Promise.allSettled(captures.map((capture) => capture.close()));
+    }
     if (updateTimer) {
-      clearInterval(updateTimer);
+      clearTimeout(updateTimer);
       updateTimer = null;
     }
     const message = err instanceof Error ? err.message : String(err);
     return textResult(`Shell error: ${message}`, true);
-  } finally {
-    capture.cleanup();
   }
 }
 
