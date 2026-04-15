@@ -71,7 +71,7 @@ function parseEventLines(lines: string[]): Array<Record<string, unknown>> {
 }
 
 describe("headless", () => {
-  test("runHeadlessPrompt streams NDJSON events and persists the completed turn", async () => {
+  test("runHeadlessPrompt streams only completed NDJSON events and persists the completed turn", async () => {
     faux.setResponses([
       fauxAssistantMessage([
         fauxThinking("Need to inspect the failing test."),
@@ -89,11 +89,10 @@ describe("headless", () => {
 
     const events = parseEventLines(lines);
     expect(stopReason).toBe("stop");
-    expect(events.some((event) => event.type === "thinking_delta")).toBe(true);
-    expect(events.some((event) => event.type === "assistant_message")).toBe(
-      true,
-    );
-    expect(events.at(-1)?.type).toBe("done");
+    expect(events.map((event) => event.type)).toEqual([
+      "assistant_message",
+      "done",
+    ]);
 
     const sessionId = state.session?.id;
     if (!sessionId) {
@@ -174,7 +173,7 @@ describe("headless", () => {
     expect(listPromptHistory(state.db, 1)).toEqual([]);
   });
 
-  test("runHeadlessPrompt streams tool execution events for tool-use turns", async () => {
+  test("runHeadlessPrompt streams only completed events for tool-use turns", async () => {
     faux.setResponses([
       fauxAssistantMessage(
         [fauxToolCall("shell", { command: "printf tool-output" })],
@@ -193,10 +192,12 @@ describe("headless", () => {
 
     const events = parseEventLines(lines);
     expect(stopReason).toBe("stop");
-    expect(events.some((event) => event.type === "tool_start")).toBe(true);
-    expect(events.some((event) => event.type === "tool_delta")).toBe(true);
-    expect(events.some((event) => event.type === "tool_end")).toBe(true);
-    expect(events.some((event) => event.type === "tool_result")).toBe(true);
+    expect(events.map((event) => event.type)).toEqual([
+      "assistant_message",
+      "tool_result",
+      "assistant_message",
+      "done",
+    ]);
 
     const sessionId = state.session?.id;
     if (!sessionId) {
@@ -221,7 +222,7 @@ describe("headless", () => {
       writeLine: (line) => {
         lines.push(line);
         const event = JSON.parse(line) as { type?: string };
-        if (event.type === "tool_start") {
+        if (event.type === "assistant_message") {
           state.abortController?.abort();
         }
       },
@@ -229,8 +230,11 @@ describe("headless", () => {
 
     const events = parseEventLines(lines);
     expect(stopReason).toBe("aborted");
-    expect(events.some((event) => event.type === "tool_result")).toBe(true);
-    expect(events.at(-1)?.type).toBe("aborted");
+    expect(events.map((event) => event.type)).toEqual([
+      "assistant_message",
+      "tool_result",
+      "aborted",
+    ]);
 
     const abortedEvent = events.at(-1);
     const message = abortedEvent?.message;

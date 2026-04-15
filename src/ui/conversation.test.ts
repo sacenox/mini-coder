@@ -1057,6 +1057,33 @@ describe("ui/conversation", () => {
     expect(text).not.toContain("{");
   });
 
+  test("renderAssistantMessage for a todoWrite tool call shows a todo-count summary instead of raw JSON", () => {
+    // Arrange
+    const assistant = {
+      content: [
+        fauxToolCall(
+          "todoWrite",
+          {
+            todos: [
+              { content: "Inspect headless JSON output", status: "completed" },
+              { content: "Update the TUI preview", status: "in_progress" },
+            ],
+          },
+          { id: "tool-1" },
+        ),
+      ],
+    };
+
+    // Act
+    const text = collectText(renderAssistantMessage(assistant, RENDER_OPTS));
+
+    // Assert
+    expect(text).toContain("todo write ->");
+    expect(text).toContain("Updating todos... 2 todos updated");
+    expect(text).not.toContain("{");
+    expect(text).not.toContain('"todos"');
+  });
+
   test("renderAssistantMessage for an edit tool call shows both old and new content without diff prefixes", () => {
     // Arrange
     const assistant = {

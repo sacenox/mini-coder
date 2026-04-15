@@ -5,10 +5,6 @@ Don't keep completed items bloating the file, remove them before committing.
 Keep the file structured and minimal.
 The spec.md and code are the sources of truth, not this file, don't assume anything because it's documented here.
 
-## Open items
-
-- [ ] headless mode with --json should only output completed messages and not delta messages.
-
 ## Forge comparison follow-ups (high-value gaps, highest priority first)
 
 - [x] Add first-class todo tools plus prompt/UI integration so the agent can track and complete work explicitly instead of relying only on a `/tmp` file (`src/tools.ts`, `src/agent.ts`, `src/prompt.ts`, `src/ui/conversation.ts`)

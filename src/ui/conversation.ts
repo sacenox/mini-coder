@@ -415,6 +415,12 @@ function getToolArgString(args: Record<string, unknown>, key: string): string {
   return typeof value === "string" ? value : "";
 }
 
+function formatTodoWriteCallSummary(args: Record<string, unknown>): string {
+  const todoCount = Array.isArray(args.todos) ? args.todos.length : 0;
+  const todoLabel = todoCount === 1 ? "todo" : "todos";
+  return `Updating todos... ${todoCount} ${todoLabel} updated`;
+}
+
 /** Strip shell execution labels and normalize the exit line for the UI. */
 function normalizeShellOutput(output: string): string {
   return output
@@ -918,6 +924,17 @@ function buildEditToolCallSpec(args: Record<string, unknown>): ToolBlockSpec {
   };
 }
 
+function buildTodoWriteToolCallSpec(
+  args: Record<string, unknown>,
+): ToolBlockSpec {
+  return {
+    toolName: "todoWrite",
+    direction: "->",
+    bodyLines: [{ kind: "text", text: formatTodoWriteCallSummary(args) }],
+    previewBody: false,
+  };
+}
+
 function buildReadImageToolCallSpec(
   args: Record<string, unknown>,
 ): ToolBlockSpec {
@@ -952,6 +969,9 @@ function buildToolCallSpec(
   }
   if (toolName === "edit") {
     return buildEditToolCallSpec(args);
+  }
+  if (toolName === "todoWrite") {
+    return buildTodoWriteToolCallSpec(args);
   }
   if (toolName === "readImage") {
     return buildReadImageToolCallSpec(args);

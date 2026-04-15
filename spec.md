@@ -798,23 +798,17 @@ In headless mode without `--json`, stdout contains only the final persisted assi
 
 With `--json`, stdout is a newline-delimited JSON stream (NDJSON). Each line is one JSON object with a `type` field.
 
-This stream is intentionally raw and close to the internal agent event protocol rather than a flattened summary format. It carries the streaming event payloads needed to observe the full run, including text deltas, thinking deltas, tool-call progress, tool execution progress, persisted assistant/tool-result messages, and terminal events.
+This stream is intentionally close to the persisted agent event protocol rather than a flattened summary format, but it only includes completed events. Streaming text/thinking deltas, tool-call assembly events, and tool progress updates are omitted so scripts do not receive duplicate partial content.
 
 At minimum, the streamed event types are:
 
-- `text_delta`
-- `thinking_delta`
-- `toolcall_start`
-- `toolcall_delta`
-- `toolcall_end`
 - `assistant_message`
-- `tool_start`
-- `tool_delta`
-- `tool_end`
 - `tool_result`
 - `done`
 - `error`
 - `aborted`
+
+Queued/persisted `user_message` events may also appear when the loop injects an additional user message before the next model boundary.
 
 Event payload fields use the same JSON-serializable shapes as the in-process agent stream and persisted pi-ai message content where applicable. No terminal-only formatting, status bar text, markdown rendering, or other TUI presentation output is written to stdout in this mode.
 

@@ -5,6 +5,7 @@
  */
 
 import type { AssistantMessage, UserMessage } from "@mariozechner/pi-ai";
+import type { AgentEvent } from "./agent.ts";
 import type { AppState } from "./index.ts";
 import {
   resolveRawInput,
@@ -20,7 +21,7 @@ type HeadlessStopReason = "stop" | "length" | "error" | "aborted";
 
 /** Options for a headless NDJSON run. */
 export interface HeadlessRunOptions {
-  /** Optional line writer for NDJSON event output. */
+  /** Optional line writer for completed NDJSON event output. */
   writeLine?: (line: string) => void;
 }
 
@@ -109,6 +110,20 @@ function extractAssistantText(message: AssistantMessage | null): string {
     .join("");
 }
 
+function shouldWriteHeadlessJsonEvent(event: AgentEvent): boolean {
+  switch (event.type) {
+    case "user_message":
+    case "assistant_message":
+    case "tool_result":
+    case "done":
+    case "error":
+    case "aborted":
+      return true;
+    default:
+      return false;
+  }
+}
+
 function createHeadlessOutputController(
   state: AppState,
   writeImpl: (text: string) => void,
@@ -168,11 +183,12 @@ function createHeadlessOutputController(
 }
 
 /**
- * Run a single headless prompt to completion and stream NDJSON events.
+ * Run a single headless prompt to completion and stream completed NDJSON events.
  *
  * The raw input is parsed with the same rules as interactive input. Slash
- * commands are rejected in headless mode. Assistant/tool events are written as
- * one JSON object per line.
+ * commands are rejected in headless mode. Persisted messages and terminal
+ * events are written as one JSON object per line; streaming delta/progress
+ * events are omitted.
  *
  * @param state - Mutable application state for the run.
  * @param rawInput - Exact raw prompt text supplied by the user.
@@ -191,6 +207,9 @@ export async function runHeadlessPrompt(
   );
   const hooks: SubmitTurnHooks = {
     onEvent: (event) => {
+      if (!shouldWriteHeadlessJsonEvent(event)) {
+        return;
+      }
       output.write(JSON.stringify(event));
     },
   };
