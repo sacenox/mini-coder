@@ -10,7 +10,7 @@ import {
   fauxToolCall,
   registerFauxProvider,
 } from "@mariozechner/pi-ai";
-import { runHeadlessPrompt } from "./headless.ts";
+import { runHeadlessPrompt, runHeadlessPromptText } from "./headless.ts";
 import type { AppState } from "./index.ts";
 import { listPromptHistory, loadMessages, openDatabase } from "./session.ts";
 import { DEFAULT_THEME } from "./theme.ts";
@@ -104,6 +104,46 @@ describe("headless", () => {
       loadMessages(state.db, sessionId).map((message) => message.role),
     ).toEqual(["user", "assistant"]);
     expect(listPromptHistory(state.db, 1)[0]?.text).toBe("fix the tests");
+  });
+
+  test("runHeadlessPromptText writes only the final assistant text", async () => {
+    faux.setResponses([
+      fauxAssistantMessage(
+        [fauxToolCall("shell", { command: "printf intermediate" })],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage([
+        fauxThinking("Need to summarize the result."),
+        fauxText("Done."),
+      ]),
+    ]);
+    const state = createTestState();
+    let output = "";
+
+    const stopReason = await runHeadlessPromptText(
+      state,
+      "run the shell command",
+      {
+        writeText: (text) => {
+          output += text;
+        },
+      },
+    );
+
+    expect(stopReason).toBe("stop");
+    expect(output).toBe("Done.");
+
+    const sessionId = state.session?.id;
+    if (!sessionId) {
+      throw new Error("Expected a session to be created");
+    }
+
+    expect(
+      loadMessages(state.db, sessionId).map((message) => message.role),
+    ).toEqual(["user", "assistant", "toolResult", "assistant"]);
+    expect(listPromptHistory(state.db, 1)[0]?.text).toBe(
+      "run the shell command",
+    );
   });
 
   test("runHeadlessPrompt rejects slash commands before creating a session", async () => {

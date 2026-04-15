@@ -6,15 +6,26 @@ import {
 } from "./cli.ts";
 
 describe("cli", () => {
-  test("parseCliArgs recognizes -p and --prompt", () => {
+  test("parseCliArgs recognizes -p, --prompt, and --json", () => {
     expect(parseCliArgs(["-p", "fix the tests"])).toEqual({
       prompt: "fix the tests",
+      json: false,
     });
     expect(parseCliArgs(["--prompt", "fix the tests"])).toEqual({
       prompt: "fix the tests",
+      json: false,
     });
     expect(parseCliArgs(["--prompt=fix the tests"])).toEqual({
       prompt: "fix the tests",
+      json: false,
+    });
+    expect(parseCliArgs(["--json"])).toEqual({
+      prompt: null,
+      json: true,
+    });
+    expect(parseCliArgs(["--json", "-p", "fix the tests"])).toEqual({
+      prompt: "fix the tests",
+      json: true,
     });
   });
 
@@ -37,25 +48,25 @@ describe("cli", () => {
   test("shouldUseHeadlessMode selects prompt mode or missing TTYs", () => {
     expect(
       shouldUseHeadlessMode(
-        { prompt: null },
+        { prompt: null, json: false },
         { stdinIsTTY: true, stdoutIsTTY: true },
       ),
     ).toBe(false);
     expect(
       shouldUseHeadlessMode(
-        { prompt: "fix the tests" },
+        { prompt: "fix the tests", json: false },
         { stdinIsTTY: true, stdoutIsTTY: true },
       ),
     ).toBe(true);
     expect(
       shouldUseHeadlessMode(
-        { prompt: null },
+        { prompt: null, json: false },
         { stdinIsTTY: false, stdoutIsTTY: true },
       ),
     ).toBe(true);
     expect(
       shouldUseHeadlessMode(
-        { prompt: null },
+        { prompt: null, json: false },
         { stdinIsTTY: true, stdoutIsTTY: false },
       ),
     ).toBe(true);
@@ -63,7 +74,7 @@ describe("cli", () => {
 
   test("resolveHeadlessPrompt prefers the CLI prompt and preserves whitespace", async () => {
     const prompt = await resolveHeadlessPrompt(
-      { prompt: "  fix the tests  " },
+      { prompt: "  fix the tests  ", json: false },
       { stdinIsTTY: true, stdoutIsTTY: false },
       async () => {
         throw new Error("stdin should not be read");
@@ -75,7 +86,7 @@ describe("cli", () => {
 
   test("resolveHeadlessPrompt reads piped stdin when no CLI prompt was provided", async () => {
     const prompt = await resolveHeadlessPrompt(
-      { prompt: null },
+      { prompt: null, json: false },
       { stdinIsTTY: false, stdoutIsTTY: true },
       async () => "fix the tests\n",
     );
@@ -86,7 +97,7 @@ describe("cli", () => {
   test("resolveHeadlessPrompt rejects interactive stdin when stdout is not a TTY", async () => {
     await expect(
       resolveHeadlessPrompt(
-        { prompt: null },
+        { prompt: null, json: false },
         { stdinIsTTY: true, stdoutIsTTY: false },
         async () => "",
       ),
@@ -96,7 +107,7 @@ describe("cli", () => {
   test("resolveHeadlessPrompt rejects empty headless input", async () => {
     await expect(
       resolveHeadlessPrompt(
-        { prompt: "   \n\t" },
+        { prompt: "   \n\t", json: false },
         { stdinIsTTY: true, stdoutIsTTY: false },
         async () => "",
       ),
@@ -104,7 +115,7 @@ describe("cli", () => {
 
     await expect(
       resolveHeadlessPrompt(
-        { prompt: null },
+        { prompt: null, json: false },
         { stdinIsTTY: false, stdoutIsTTY: true },
         async () => "  \n",
       ),

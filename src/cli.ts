@@ -12,6 +12,8 @@
 export interface CliOptions {
   /** One-shot prompt text, or `null` when not provided. */
   prompt: string | null;
+  /** Whether to stream headless output as NDJSON instead of final text. */
+  json: boolean;
 }
 
 /** TTY availability for stdin/stdout. */
@@ -29,7 +31,8 @@ export interface TtyState {
 /**
  * Parse supported CLI arguments.
  *
- * Currently supports only `-p, --prompt <text>` for headless one-shot mode.
+ * Supports `-p, --prompt <text>` for headless one-shot mode and `--json`
+ * to stream NDJSON events instead of the default final-text output.
  * Unknown flags and positional arguments fail eagerly.
  *
  * @param argv - Process arguments excluding the Bun executable and script path.
@@ -37,6 +40,7 @@ export interface TtyState {
  */
 export function parseCliArgs(argv: readonly string[]): CliOptions {
   let prompt: string | null = null;
+  let json = false;
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -59,6 +63,11 @@ export function parseCliArgs(argv: readonly string[]): CliOptions {
       continue;
     }
 
+    if (arg === "--json") {
+      json = true;
+      continue;
+    }
+
     if (arg.startsWith("-")) {
       throw new Error(`Unknown argument: ${arg}`);
     }
@@ -66,7 +75,7 @@ export function parseCliArgs(argv: readonly string[]): CliOptions {
     throw new Error(`Unexpected positional argument: ${arg}`);
   }
 
-  return { prompt };
+  return { prompt, json };
 }
 
 // ---------------------------------------------------------------------------

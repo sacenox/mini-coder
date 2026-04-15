@@ -1363,69 +1363,6 @@ describe("ui rendering", () => {
     }
   });
 
-  test("git status refreshes after a completed turn mutates the repo", async () => {
-    const faux = registerFauxProvider();
-    const state = createTestState();
-    const repo = createTempDir();
-    const gitRefreshes: string[] = [];
-    const cleanGitState = {
-      root: repo,
-      branch: "main",
-      upstream: "origin/main",
-      staged: 0,
-      modified: 0,
-      untracked: 0,
-      ahead: 0,
-      behind: 0,
-    };
-    const dirtyGitState = {
-      ...cleanGitState,
-      modified: 1,
-    };
-    const gitStates = [cleanGitState, dirtyGitState];
-
-    writeFileSync(join(repo, "tracked.txt"), "initial\n", "utf-8");
-
-    state.cwd = repo;
-    state.canonicalCwd = repo;
-    state.model = faux.getModel();
-    state.git = cleanGitState;
-    state.loadGitState = async (cwd) => {
-      gitRefreshes.push(cwd);
-      const next = gitStates.shift();
-      if (!next) {
-        throw new Error("Unexpected extra git refresh");
-      }
-      return next;
-    };
-    faux.setResponses([
-      fauxAssistantMessage(
-        [
-          fauxToolCall("shell", {
-            command: "printf 'updated\\n' >> tracked.txt",
-          }),
-        ],
-        { stopReason: "toolUse" },
-      ),
-      fauxAssistantMessage("Done."),
-    ]);
-
-    try {
-      expect(state.git?.modified).toBe(0);
-
-      handleInput("update the repo", state);
-
-      await waitFor(() => state.running);
-      await waitFor(() => !state.running);
-      expect(state.git?.modified).toBe(1);
-      expect(gitRefreshes).toEqual([repo, repo]);
-    } finally {
-      await stopRunningTurn(state);
-      faux.unregister();
-      state.db.close();
-    }
-  });
-
   test("streamed tool call arguments stay visible before execution begins", async () => {
     const api = "ui-streaming-toolcall-test";
     const sourceId = "ui-streaming-toolcall-test-source";

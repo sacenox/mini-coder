@@ -9,7 +9,6 @@ import type { UserMessage } from "@mariozechner/pi-ai";
 import type { AgentEvent } from "./agent.ts";
 import { runAgentLoop } from "./agent.ts";
 import { getErrorMessage } from "./errors.ts";
-import { getGitState } from "./git.ts";
 import {
   type AppState,
   buildPrompt,
@@ -328,7 +327,6 @@ export async function submitResolvedInput(
     content,
     timestamp: Date.now(),
   } satisfies UserMessage;
-  const loadGitState = state.loadGitState ?? getGitState;
 
   const turn = appendMessage(state.db, session.id, userMessage);
   state.messages.push(userMessage);
@@ -337,8 +335,6 @@ export async function submitResolvedInput(
     userMessage,
   );
   hooks?.onUserMessage?.(state);
-
-  state.git = await loadGitState(state.cwd);
 
   const systemPrompt = buildPrompt(state);
   const { tools, toolHandlers } = buildToolList(state);
@@ -371,7 +367,6 @@ export async function submitResolvedInput(
       },
     });
     stopReason = result.stopReason;
-    state.git = await loadGitState(state.cwd);
     return result.stopReason;
   } finally {
     state.running = false;

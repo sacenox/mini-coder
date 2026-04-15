@@ -204,7 +204,7 @@ The core runtime. Streaming is the default behavior throughout the turn: user-vi
 
 1. **User submits a message** — the input text (plus any embedded images or skill bodies from `/skill:name`) becomes a pi-ai `UserMessage`. It is appended to the session's message history, rendered in the UI immediately, and persisted to the DB.
 
-2. **Build context** — construct a pi-ai `Context`: the system prompt (see [System prompt](#system-prompt)), the full message history, and the registered tool definitions (built-in + plugin tools). The dynamic environment values in the prompt are refreshed at session start and after each turn.
+2. **Build context** — construct a pi-ai `Context`: the system prompt (see [System prompt](#system-prompt)), the full message history, and the registered tool definitions (built-in + plugin tools). The prompt context snapshot is loaded once at startup or another explicit reload boundary and then reused across turns so provider prompt caching stays effective. It is refreshed only at boundaries such as `/new` or CWD change.
 
 3. **Stream to LLM** — call `streamSimple(model, context, options)` from pi-ai. Iterate over the event stream:
    - `text_delta` / `thinking_delta` / `toolcall_delta` → update the in-progress assistant message and the UI incrementally (stream raw markdown text, show thinking if enabled, accumulate tool call arguments as they arrive).
@@ -256,7 +256,7 @@ This is suggestive, not prescriptive. Files may split or merge as the code evolv
 
 ## System prompt
 
-A single prompt, model-agnostic. Assembled from a static core prompt plus dynamic context.
+A single prompt, model-agnostic. Assembled from a static core prompt plus prompt context captured at startup or another explicit reload boundary.
 
 ### Prompt template
 
@@ -346,9 +346,11 @@ Environment block notes:
 - Empty git fields are omitted.
 - The `Read Image` line is omitted when the active model does not support image input.
 - The OS value is normalized to `linux`, `mac`, or `docker`.
-- The static core prompt text should remain identical across turns. AGENTS.md content, skills, and plugin suffixes are stable within a session, changing only on `/new` or CWD change. The dynamic environment values are refreshed as needed across turns.
+- The static core prompt text should remain identical across turns.
+- AGENTS.md content, skills, plugin suffixes, and the git snapshot are stable within a session, changing only on `/new` or CWD change.
+- Rebuilding the prompt for later turns must reuse that same session-start snapshot so provider prompt caching keeps working.
 
-Git state is gathered once at session start and refreshed each turn via fast git commands:
+Git state is gathered when the session prompt context is loaded (startup, `/new`, or CWD change), not after each turn, via fast git commands:
 
 - `git rev-parse --show-toplevel` — repo root
 - `git branch --show-current` — current branch
@@ -737,7 +739,7 @@ Commands are discoverable when the input starts with `/`: pressing `Tab` in that
 
 mini-coder also supports a non-interactive one-shot mode for scripting and benchmark harnesses.
 
-`-p, --prompt <text>` submits exactly one user prompt, runs the full agent loop for that turn, and exits after the loop ends. No TUI is started.
+`-p, --prompt <text>` submits exactly one user prompt, runs the full agent loop for that turn, and exits after the loop ends. No TUI is started. `--json` switches headless stdout from final-text output to the raw NDJSON event stream.
 
 Headless mode is selected when either:
 
@@ -754,9 +756,13 @@ Prompt source in headless mode:
 
 Input parsing in headless mode reuses the same rules as the interactive input area for plain text, `/skill:name`, and standalone image-file paths. Interactive slash commands such as `/model`, `/session`, `/new`, `/fork`, `/undo`, `/login`, `/logout`, `/effort`, and `/help` are not available in headless mode and should fail clearly rather than attempting to open interactive UI.
 
+### Headless text output
+
+In headless mode without `--json`, stdout contains only the final persisted assistant message's text content for the one-shot run. No intermediate streaming events, tool progress, status text, markdown rendering, or other TUI presentation output is written to stdout in this mode.
+
 ### Headless JSON output
 
-In headless mode, stdout is a newline-delimited JSON stream (NDJSON). Each line is one JSON object with a `type` field.
+With `--json`, stdout is a newline-delimited JSON stream (NDJSON). Each line is one JSON object with a `type` field.
 
 This stream is intentionally raw and close to the internal agent event protocol rather than a flattened summary format. It carries the streaming event payloads needed to observe the full run, including text deltas, thinking deltas, tool-call progress, tool execution progress, persisted assistant/tool-result messages, and terminal events.
 
@@ -776,7 +782,7 @@ At minimum, the streamed event types are:
 - `error`
 - `aborted`
 
-Event payload fields use the same JSON-serializable shapes as the in-process agent stream and persisted pi-ai message content where applicable. No terminal-only formatting, status bar text, markdown rendering, or other TUI presentation output is written to stdout in headless mode.
+Event payload fields use the same JSON-serializable shapes as the in-process agent stream and persisted pi-ai message content where applicable. No terminal-only formatting, status bar text, markdown rendering, or other TUI presentation output is written to stdout in this mode.
 
 A successful one-shot run continues through any assistant/tool loops and ends only when the agent loop emits `done` (with `stopReason: "stop"` or `"length"`). Errors and user interrupts terminate the stream with `error` or `aborted` respectively.
 
@@ -809,7 +815,7 @@ On launch, mini-coder:
 7. In interactive mode, renders the UI with an empty conversation log, a minimal `mini-coder` empty-state banner (showing the packaged version when available, otherwise a simple dev label), and the status bar populated.
 8. Starts a new session only when a prompt is actually submitted (no 0-message sessions in the DB).
 
-The empty-state banner is only shown while the conversation log has no messages. In headless mode, stdout is reserved for NDJSON event output.
+The empty-state banner is only shown while the conversation log has no messages. In headless mode, stdout is reserved for the final assistant text response by default, or NDJSON event output when `--json` is used.
 
 ## User settings persistence
 

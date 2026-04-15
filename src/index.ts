@@ -542,8 +542,6 @@ export interface AppState {
   versionLabel: string;
   /** Current git state (null if not in a repo). */
   git: GitState | null;
-  /** Optional git state loader override used by tests. */
-  loadGitState?: (cwd: string) => Promise<GitState | null>;
   /** Available provider credentials (provider → API key). */
   providers: Map<string, string>;
   /** OAuth credentials on disk. */
@@ -671,8 +669,8 @@ function resolvePromptOs(): "linux" | "mac" | "docker" {
 /**
  * Build the system prompt for the current state.
  *
- * Separated from `init` because it's called on every turn (git state
- * may change between turns).
+ * Separated from `init` because turns still rebuild the assembled prompt
+ * from the session-stable prompt context plus the current runtime state.
  */
 export function buildPrompt(state: AppState): string {
   return buildSystemPrompt({
@@ -790,8 +788,11 @@ export async function main(): Promise<void> {
       const rawPrompt = await resolveHeadlessPrompt(cli, tty, async () => {
         return Bun.stdin.text();
       });
-      const { runHeadlessPrompt } = await import("./headless.ts");
-      const stopReason = await runHeadlessPrompt(state, rawPrompt);
+      const { runHeadlessPrompt, runHeadlessPromptText } =
+        await import("./headless.ts");
+      const stopReason = cli.json
+        ? await runHeadlessPrompt(state, rawPrompt)
+        : await runHeadlessPromptText(state, rawPrompt);
       if (stopReason === "aborted") {
         process.exitCode = 130;
       } else if (stopReason === "error") {
