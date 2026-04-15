@@ -39,10 +39,12 @@ $ mc
 
 ## Tools
 
-Two built-in tools, plus a read-only image tool:
+Four built-in tools, plus a read-only image tool:
 
 - **`shell`** — runs commands in the user's shell. Returns stdout, stderr, and exit code. Large output is truncated to protect model context.
 - **`edit`** — exact-text replacement in a single file. Fails deterministically if the target is missing or ambiguous. Creates new files when old text is empty.
+- **`todoWrite`** — creates or updates the session todo list incrementally and returns the full current snapshot.
+- **`todoRead`** — returns the full current session todo list snapshot.
 - **`readImage`** — reads PNG, JPEG, GIF, and WebP files as model input. Only registered when the active model supports images.
 
 Plugins can add more tools, but the core stays intentionally small.
@@ -68,6 +70,7 @@ Plugins can add more tools, but the core stays intentionally small.
 | `/undo`      | Remove the last conversational turn without touching filesystem changes.                               |
 | `/reasoning` | Show or hide model thinking. The setting is saved and restored on launch.                              |
 | `/verbose`   | Expand shell output plus edit previews and edit errors in the conversation log.                        |
+| `/todo`      | Show the current session todo list in the conversation log as a UI-only checklist block.               |
 | `/login`     | Sign in with a supported OAuth provider.                                                               |
 | `/logout`    | Remove saved OAuth credentials for a logged-in provider.                                               |
 | `/effort`    | Choose low, medium, high, or xhigh reasoning effort.                                                   |
