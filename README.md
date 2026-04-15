@@ -39,10 +39,12 @@ $ mc
 
 ## Tools
 
-Two built-in tools, plus a read-only image tool:
+Four built-in tools, plus a read-only image tool:
 
 - **`shell`** — runs commands in the user's shell. Returns stdout, stderr, and exit code. Large output is truncated to protect model context.
 - **`edit`** — exact-text replacement in a single file. Fails deterministically if the target is missing or ambiguous. Creates new files when old text is empty.
+- **`todoWrite`** — creates or updates the session todo list incrementally and returns the full current snapshot.
+- **`todoRead`** — returns the full current session todo list snapshot.
 - **`readImage`** — reads PNG, JPEG, GIF, and WebP files as model input. Only registered when the active model supports images.
 
 Plugins can add more tools, but the core stays intentionally small.
@@ -68,6 +70,7 @@ Plugins can add more tools, but the core stays intentionally small.
 | `/undo`      | Remove the last conversational turn without touching filesystem changes.                               |
 | `/reasoning` | Show or hide model thinking. The setting is saved and restored on launch.                              |
 | `/verbose`   | Expand shell output plus edit previews and edit errors in the conversation log.                        |
+| `/todo`      | Show the current session todo list in the conversation log as a UI-only checklist block.               |
 | `/login`     | Sign in with a supported OAuth provider.                                                               |
 | `/logout`    | Remove saved OAuth credentials for a logged-in provider.                                               |
 | `/effort`    | Choose low, medium, high, or xhigh reasoning effort.                                                   |
@@ -100,7 +103,7 @@ $ printf '%s\n' 'fix the failing tests' | mc
 - Starts when `-p/--prompt` is provided or when stdin or stdout is not a TTY.
 - If stdout is redirected but stdin is still interactive, pass `-p`; headless mode will not fall back to an interactive prompt.
 - Uses the same parser as the TUI for plain text, `/skill:name`, and standalone image paths.
-- Writes raw NDJSON events to stdout for text deltas, tool activity, final messages, and `done` / `error` / `aborted` outcomes.
+- With `--json`, writes NDJSON events for completed assistant/tool-result messages plus `done` / `error` / `aborted` outcomes; streaming deltas are omitted.
 - Headless runs still persist like normal sessions and show up in `/session` history for that working directory.
 - Interactive slash commands such as `/model`, `/session`, and `/help` are not available in headless mode.
 

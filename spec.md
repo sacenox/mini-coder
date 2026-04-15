@@ -57,7 +57,7 @@ This replaces: `yoctocolors`, `yoctomarkdown`, `yoctoselect`, and all our custom
 
 ## Tools
 
-Two built-in tools, plus a read-only image tool. Plugins may add more (see [Plugins](#plugins)).
+Four built-in tools, plus a read-only image tool. Plugins may add more (see [Plugins](#plugins)).
 
 ### `shell`
 
@@ -84,6 +84,31 @@ Implementation details:
 - Create new files by passing empty old text and the full file content as new text. Parent directories are created automatically.
 - Returns a confirmation or error message — no diff output (the agent already knows what it wrote).
 - Encoding: reads and writes UTF-8. Preserves the file's existing line endings.
+
+### `todoWrite`
+
+Creates or updates the session todo list incrementally. Use it to track multi-step or non-trivial work, keep progress visible, and mark tasks complete explicitly.
+
+Implementation details:
+
+- Takes a `todos` array. Each item must include `content` and `status`.
+- `content` is the exact matching key. If an item with the same content already exists, its status is updated in place. Otherwise a new item is appended.
+- Allowed statuses: `pending`, `in_progress`, `completed`, `cancelled`.
+- `cancelled` removes the matching item entirely.
+- Items omitted from a call remain unchanged.
+- Successful results return the full current todo-list snapshot in insertion order. Surviving items keep their relative order; newly added items are appended.
+- Todo content must not be empty or whitespace-only and must stay within a small fixed length limit.
+- Todo state is session-local and derived from the latest successful todo snapshot persisted in message history, so `/undo`, `/fork`, session reload, and session switching all restore the correct list automatically.
+
+### `todoRead`
+
+Returns the current session todo list.
+
+Implementation details:
+
+- Takes no arguments.
+- Returns the full current todo-list snapshot, which may be empty.
+- The returned snapshot uses the same shape as `todoWrite` success results.
 
 ### `readImage`
 
@@ -204,26 +229,31 @@ The core runtime. Streaming is the default behavior throughout the turn: user-vi
 
 1. **User submits a message** — the input text (plus any embedded images or skill bodies from `/skill:name`) becomes a pi-ai `UserMessage`. It is appended to the session's message history, rendered in the UI immediately, and persisted to the DB.
 
-2. **Build context** — construct a pi-ai `Context`: the system prompt (see [System prompt](#system-prompt)), the full message history, and the registered tool definitions (built-in + plugin tools). The dynamic environment values in the prompt are refreshed at session start and after each turn.
+2. **Build context** — construct a pi-ai `Context`: the system prompt (see [System prompt](#system-prompt)), the full message history, and the registered tool definitions (built-in + plugin tools). The prompt context snapshot is loaded once at startup or another explicit reload boundary and then reused across turns so provider prompt caching stays effective. It is refreshed only at boundaries such as `/new` or CWD change.
 
 3. **Stream to LLM** — call `streamSimple(model, context, options)` from pi-ai. Iterate over the event stream:
    - `text_delta` / `thinking_delta` / `toolcall_delta` → update the in-progress assistant message and the UI incrementally (stream raw markdown text, show thinking if enabled, accumulate tool call arguments as they arrive).
    - `toolcall_end` → finalize the structured tool call in the in-progress `AssistantMessage`.
-   - `done` → append the `AssistantMessage` to history and DB. Update cumulative stats. If `stopReason` is `"toolUse"`, go to step 4. If `"stop"` or `"length"` and queued steering messages exist, go to step 5. Otherwise return to the input prompt.
+   - `done` → append the `AssistantMessage` to history and DB. Update cumulative stats. If `stopReason` is `"toolUse"`, go to step 4. If `"stop"` or `"length"` and queued steering messages exist, go to step 6. If `"stop"` or `"length"` and incomplete todo items remain, go to step 5. Otherwise return to the input prompt.
    - `error` → display error in the log, return to the input prompt.
 
 4. **Tool execution** — when the LLM requests tool calls:
-   - Execute each tool call. For `shell`: run the command, capture output, truncate if needed. For `edit`: perform the replacement. For `readImage`: read and base64-encode the file. For plugin tools: delegate to the plugin.
+   - Execute each tool call. For `shell`: run the command, capture output, truncate if needed. For `edit`: perform the replacement. For `todoWrite`: apply the incremental todo changes and return the full current list. For `todoRead`: return the full current list. For `readImage`: read and base64-encode the file. For plugin tools: delegate to the plugin.
    - Each result becomes a `ToolResultMessage` appended to history and DB (same turn number).
-   - After all tool results are appended, if queued steering messages exist go to step 5; otherwise loop back to step 2 (re-stream with the updated context).
+   - After all tool results are appended, if queued steering messages exist go to step 6; otherwise loop back to step 2 (re-stream with the updated context).
 
-5. **Steering messages** — if the user submits a model-visible message while an active run is already in progress, mini-coder queues it instead of dropping it or interrupting the current work.
+5. **Todo reminders** — when the assistant tries to stop while incomplete todo items still exist:
+   - Inject a model-visible reminder listing the current `pending` and `in_progress` items, then loop back to step 2.
+   - Reminders are ephemeral: they are included in model context for the follow-up request but are not rendered in the conversation pane and are not persisted to the session DB.
+   - If the exact same incomplete-todo set was already reminded during the current run, do not inject a duplicate reminder. In that case the turn ends normally instead of looping forever.
+
+6. **Steering messages** — if the user submits a model-visible message while an active run is already in progress, mini-coder queues it instead of dropping it or interrupting the current work.
    - Steering messages are consumed FIFO at the next model-request boundary: after the current assistant message is finalized and after any tool calls already requested by that assistant message have completed and their tool results have been appended.
    - When consumed, each steering message is appended to history and DB as a normal `UserMessage`, starting a new conversational turn.
    - After appending the next queued steering message, loop back to step 2 so the next `streamSimple(...)` call sees the updated history.
    - Submitting a steering message does not abort the current stream or running tool. Use `Escape` to interrupt immediately.
 
-6. **Interrupt** — if the user presses `Escape` during streaming with no overlay open:
+7. **Interrupt** — if the user presses `Escape` during streaming with no overlay open:
    - Abort the stream via `AbortSignal`.
    - The partial `AssistantMessage` (with `stopReason: "aborted"`) is appended to history and DB as-is. This preserves context so the LLM knows what it was doing when interrupted.
    - Return to the input prompt with focus on the input. The user can continue the conversation or `/undo` the interrupted turn.
@@ -256,7 +286,7 @@ This is suggestive, not prescriptive. Files may split or merge as the code evolv
 
 ## System prompt
 
-A single prompt, model-agnostic. Assembled from a static core prompt plus dynamic context.
+A single prompt, model-agnostic. Assembled from a static core prompt plus prompt context captured at startup or another explicit reload boundary.
 
 ### Prompt template
 
@@ -305,11 +335,13 @@ The current environment is:
 
 ### Task management
 
-- Use the /tmp or equivalent temp directory to make a To-do list for your task.
-- This to-do list is **extremly** helpful for breaking down your task into smaller less complex steps.
-- Not using a to-do list may cause you to forget important steps, or loose focus of the user request, that would be unacceptable.
-- Keep the to-do list up-to-date above all, mark your completions as soon as you verify them.
-- A to-do item is only complete if verification was successful and thorough.
+- Use `todoWrite` proactively for multi-step or non-trivial tasks.
+- Capture new requirements in the todo list as soon as you understand them.
+- Use `todoRead` when you need to inspect the current list before updating it or when the user asks for the current plan/status.
+- Keep the todo list up-to-date above all; mark tasks `in_progress` before starting them and `completed` as soon as verification succeeds.
+- A todo item is only complete if the requested work is actually finished and verified to the degree the task requires.
+- Use `cancelled` to remove tasks that are no longer relevant.
+- Skip todo tools for single trivial tasks and purely conversational/informational requests.
 - You have the option to delegate tasks to copies of yourself with `mc -p "subtask prompt"` in the shell.
 - Delegate when you are orchestarting a large to-do/plan execution.
 ```
@@ -346,9 +378,11 @@ Environment block notes:
 - Empty git fields are omitted.
 - The `Read Image` line is omitted when the active model does not support image input.
 - The OS value is normalized to `linux`, `mac`, or `docker`.
-- The static core prompt text should remain identical across turns. AGENTS.md content, skills, and plugin suffixes are stable within a session, changing only on `/new` or CWD change. The dynamic environment values are refreshed as needed across turns.
+- The static core prompt text should remain identical across turns.
+- AGENTS.md content, skills, plugin suffixes, and the git snapshot are stable within a session, changing only on `/new` or CWD change.
+- Rebuilding the prompt for later turns must reuse that same session-start snapshot so provider prompt caching keeps working.
 
-Git state is gathered once at session start and refreshed each turn via fast git commands:
+Git state is gathered when the session prompt context is loaded (startup, `/new`, or CWD change), not after each turn, via fast git commands:
 
 - `git rev-parse --show-toplevel` — repo root
 - `git branch --show-current` — current branch
@@ -524,16 +558,17 @@ Tool blocks share a common frame: a left border (`│`) plus a compact header pi
 - **Assistant messages**: streamed raw markdown rendered via cel-tui's `SyntaxHighlight` component on the default background so the log stays copy-friendly and preserves markdown markers. Thinking/reasoning content is collapsible (shown or hidden according to the user's persisted `/reasoning` preference; defaults to shown when no setting exists).
 - **Tool calls — shell**: rendered in the shared tool frame. The assistant tool call streams the command as it arrives. The command preview and shell tool result body use [verbose tool rendering](#verbose-tool-rendering). Shell tool results render the tool output content below a `shell <-` header.
 - **Tool calls — edit**: rendered in the shared tool frame. The in-progress tool-call preview shows the target path followed by the streamed `oldText` and `newText` bodies. Old text is styled as removed and new text as added, but the preview does not render literal `-`/`+` diff prefixes. The preview body uses [verbose tool rendering](#verbose-tool-rendering). Successful results render a compact confirmation block (`edit <-` plus the file path); errors render the returned error text.
+- **Tool calls — todoWrite / todoRead**: rendered in the shared tool frame. Successful results render the full current todo list as a structured themed checklist with status markers (`[ ]`, `[~]`, `[x]`). This checklist is always shown in full and never truncated, regardless of `/verbose`. Errors render the returned error text.
 - **Tool calls — readImage**: rendered in the shared tool frame. The assistant tool call streams the path as it arrives. Successful results render a compact result block (`read image <-` plus the file path) rather than rendering the image itself.
 - **Tool calls — plugin tools**: rendered in the shared tool frame, prefixed with plugin/tool name when available.
-- **UI messages**: internal app messages such as `/help` output, OAuth progress, `/fork` notices, and other session-local notices. They are rendered in the conversation log, persisted with the session, excluded from model context, and do not participate in conversational turn numbering.
+- **UI messages**: internal app messages such as `/help` output, OAuth progress, `/fork` notices, and other session-local notices. They are rendered in the conversation log, persisted with the session, excluded from model context, and do not participate in conversational turn numbering. `/todo` output is also UI-only, but it renders using the same structured todo-checklist block as todo tool results instead of plain info text.
 - **Errors**: one-line summary, styled distinctly.
 
 #### Verbose tool rendering
 
 `/verbose` controls a single persisted UI preference for how tool-call previews and selected tool-result bodies are displayed in the conversation log.
 
-- Scope: shell tool-call bodies, shell tool-result bodies, edit tool-call preview bodies, and edit error results only. Successful edit results stay compact in both modes.
+- Scope: shell tool-call bodies, shell tool-result bodies, edit tool-call preview bodies, and edit error results only. Successful edit results stay compact in both modes. Todo tool results ignore `/verbose` and always show the full current list.
 - Default: off when no saved setting exists.
 - Off: show as many trailing logical lines as fit within a fixed rendered-height preview, followed by `And X lines more` when earlier lines are hidden. The preview height stays stable for a given block, so wrapped long lines do not make the log jump while content streams.
 - On: show the full stored tool result or preview body.
@@ -725,7 +760,8 @@ add tests for undo_
 | `/fork`      | Fork the current conversation into a new session. Copies the full message history, continues from here independently, and appends a UI-only `Forked session.` notice in the new session. The original session is preserved.                                                                                                                                                                                                                                                                                            |
 | `/undo`      | Remove the last conversational turn from history: the most recent user message and all assistant/tool messages that followed in that turn. Persisted UI messages are not part of turns and are not removed by `/undo`. Context-only — does not revert filesystem changes.                                                                                                                                                                                                                                              |
 | `/reasoning` | Toggle display of model thinking/reasoning content in the log. The new on/off state is persisted immediately and restored on launch. When no setting exists yet, reasoning defaults to shown.                                                                                                                                                                                                                                                                                                                          |
-| `/verbose`   | Toggle [verbose tool rendering](#verbose-tool-rendering) for shell previews/results, edit previews, and edit errors. Successful edit results stay compact regardless of this setting.                                                                                                                                                                                                                                                                                                                                  |
+| `/verbose`   | Toggle [verbose tool rendering](#verbose-tool-rendering) for shell previews/results, edit previews, and edit errors. Successful edit results stay compact regardless of this setting. Todo tool results always render in full.                                                                                                                                                                                                                                                                                         |
+| `/todo`      | Append the current session todo list to the conversation pane as a UI-only checklist block. The message is persisted with the session, excluded from model context, and does not create a session by itself when no session exists yet.                                                                                                                                                                                                                                                                                |
 | `/login`     | Interactive OAuth login. Shows a selector with available OAuth providers and their login status (logged in / not logged in). Selecting a provider starts the browser-based OAuth flow. Uses pi-ai's OAuth registry. Credentials are persisted to the app data directory and used for provider discovery on subsequent launches.                                                                                                                                                                                        |
 | `/logout`    | Interactive OAuth logout. Shows a selector with logged-in OAuth providers. Selecting one clears its saved credentials.                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `/effort`    | Interactive effort selector. Shows the four reasoning levels (`low`, `medium`, `high`, `xhigh`) with the current level highlighted. Updates the status bar immediately, and the selected effort is persisted immediately as the user's global default. The session record's `effort` field is not updated (it reflects the initial choice, like `/model`).                                                                                                                                                             |
@@ -737,7 +773,7 @@ Commands are discoverable when the input starts with `/`: pressing `Tab` in that
 
 mini-coder also supports a non-interactive one-shot mode for scripting and benchmark harnesses.
 
-`-p, --prompt <text>` submits exactly one user prompt, runs the full agent loop for that turn, and exits after the loop ends. No TUI is started.
+`-p, --prompt <text>` submits exactly one user prompt, runs the full agent loop for that turn, and exits after the loop ends. No TUI is started. `--json` switches headless stdout from final-text output to the raw NDJSON event stream.
 
 Headless mode is selected when either:
 
@@ -752,31 +788,29 @@ Prompt source in headless mode:
 - If headless mode was selected because `stdout` is not a TTY but `stdin` is still interactive, startup fails with a clear error unless `-p` was provided. Headless mode does not fall back to an interactive prompt.
 - Empty or whitespace-only headless input is an error.
 
-Input parsing in headless mode reuses the same rules as the interactive input area for plain text, `/skill:name`, and standalone image-file paths. Interactive slash commands such as `/model`, `/session`, `/new`, `/fork`, `/undo`, `/login`, `/logout`, `/effort`, and `/help` are not available in headless mode and should fail clearly rather than attempting to open interactive UI.
+Input parsing in headless mode reuses the same rules as the interactive input area for plain text, `/skill:name`, and standalone image-file paths. Interactive slash commands such as `/model`, `/session`, `/new`, `/fork`, `/undo`, `/login`, `/logout`, `/effort`, `/todo`, and `/help` are not available in headless mode and should fail clearly rather than attempting to open interactive UI.
+
+### Headless text output
+
+In headless mode without `--json`, stdout contains only the final persisted assistant message's text content for the one-shot run. No intermediate streaming events, tool progress, status text, markdown rendering, or other TUI presentation output is written to stdout in this mode.
 
 ### Headless JSON output
 
-In headless mode, stdout is a newline-delimited JSON stream (NDJSON). Each line is one JSON object with a `type` field.
+With `--json`, stdout is a newline-delimited JSON stream (NDJSON). Each line is one JSON object with a `type` field.
 
-This stream is intentionally raw and close to the internal agent event protocol rather than a flattened summary format. It carries the streaming event payloads needed to observe the full run, including text deltas, thinking deltas, tool-call progress, tool execution progress, persisted assistant/tool-result messages, and terminal events.
+This stream is intentionally close to the persisted agent event protocol rather than a flattened summary format, but it only includes completed events. Streaming text/thinking deltas, tool-call assembly events, and tool progress updates are omitted so scripts do not receive duplicate partial content.
 
 At minimum, the streamed event types are:
 
-- `text_delta`
-- `thinking_delta`
-- `toolcall_start`
-- `toolcall_delta`
-- `toolcall_end`
 - `assistant_message`
-- `tool_start`
-- `tool_delta`
-- `tool_end`
 - `tool_result`
 - `done`
 - `error`
 - `aborted`
 
-Event payload fields use the same JSON-serializable shapes as the in-process agent stream and persisted pi-ai message content where applicable. No terminal-only formatting, status bar text, markdown rendering, or other TUI presentation output is written to stdout in headless mode.
+Queued/persisted `user_message` events may also appear when the loop injects an additional user message before the next model boundary.
+
+Event payload fields use the same JSON-serializable shapes as the in-process agent stream and persisted pi-ai message content where applicable. No terminal-only formatting, status bar text, markdown rendering, or other TUI presentation output is written to stdout in this mode.
 
 A successful one-shot run continues through any assistant/tool loops and ends only when the agent loop emits `done` (with `stopReason: "stop"` or `"length"`). Errors and user interrupts terminate the stream with `error` or `aborted` respectively.
 
@@ -809,7 +843,7 @@ On launch, mini-coder:
 7. In interactive mode, renders the UI with an empty conversation log, a minimal `mini-coder` empty-state banner (showing the packaged version when available, otherwise a simple dev label), and the status bar populated.
 8. Starts a new session only when a prompt is actually submitted (no 0-message sessions in the DB).
 
-The empty-state banner is only shown while the conversation log has no messages. In headless mode, stdout is reserved for NDJSON event output.
+The empty-state banner is only shown while the conversation log has no messages. In headless mode, stdout is reserved for the final assistant text response by default, or NDJSON event output when `--json` is used.
 
 ## User settings persistence
 
@@ -888,6 +922,8 @@ CREATE INDEX idx_prompt_history_created_at ON prompt_history(created_at, id);
 ### Design decisions
 
 **Messages as JSON blobs**: pi-ai's `Message` type (UserMessage, AssistantMessage, ToolResultMessage) is already serializable, and we also persist internal UI-only log entries in the same table. We store the full object as JSON in `data` rather than normalizing into columns. Session load returns the complete chronological log; model context construction filters out UI-only messages before replaying the remaining pi-ai messages into a pi-ai `Context`.
+
+**Todo state lives in message history**: there is no separate todo table. The current todo list is reconstructed from the latest successful persisted todo snapshot found in session messages. Because that snapshot rides along with normal message history, `/undo`, `/fork`, session reload, and session switching all restore the expected todo state automatically.
 
 **Turn grouping**: the `turn` column groups only conversational messages. A turn is: one user message + the assistant messages and tool result messages produced after that user message until the next user message is consumed. Persisted UI messages are stored alongside them but have `turn = NULL`, so they remain visible in session history without becoming part of `/undo`. Queued steering messages submitted mid-run still start their own turn when they are consumed; tool results already requested by the previous assistant message stay in the previous turn even if the steering message was queued while those tools were running. `/fork` copies all existing persisted messages to a new session, preserving conversational turn numbers and existing UI messages as-is, then appends a new UI-only notice such as `Forked session.` in the fork.
 

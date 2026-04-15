@@ -95,6 +95,7 @@
 - Before 1.0, prefer correct/simple semantics over speculative compatibility shims, but call out intentional breaking changes.
 - TUI changes need real terminal validation in `tmux`; passing tests is not enough.
 - Stay within the agreed TODO scope. Do not pull in adjacent items without discussion.
+- Don't write tests that call real git commands
 
 ## Testing strategy
 

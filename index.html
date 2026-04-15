@@ -370,6 +370,23 @@
           <article
             class="rounded-lg border border-term-border bg-term-surface p-4"
           >
+            <h3 class="mt-0 mb-2 font-semibold text-term-bright">todoWrite</h3>
+            <p class="mb-0 text-sm leading-relaxed text-term-fg">
+              Creates or updates the session todo list incrementally and returns
+              the full current snapshot.
+            </p>
+          </article>
+          <article
+            class="rounded-lg border border-term-border bg-term-surface p-4"
+          >
+            <h3 class="mt-0 mb-2 font-semibold text-term-bright">todoRead</h3>
+            <p class="mb-0 text-sm leading-relaxed text-term-fg">
+              Returns the full current session todo list snapshot.
+            </p>
+          </article>
+          <article
+            class="rounded-lg border border-term-border bg-term-surface p-4"
+          >
             <h3 class="mt-0 mb-2 font-semibold text-term-bright">readImage</h3>
             <p class="mb-0 text-sm leading-relaxed text-term-fg">
               Reads PNG, JPEG, GIF, and WebP files as model input. Only
@@ -379,7 +396,8 @@
         </div>
         <p>
           Plugins can add more tools, but the core stays intentionally small:
-          <code>shell</code> and <code>edit</code> do the real work, and
+          <code>shell</code>, <code>edit</code>, <code>todoWrite</code>, and
+          <code>todoRead</code> cover repo work and task tracking, and
           <code>readImage</code> appears only when it is useful.
         </p>
       </section>
@@ -548,6 +566,12 @@
               conversation log.
             </dd>
 
+            <dt class="font-semibold text-term-bright">/todo</dt>
+            <dd class="text-term-fg">
+              Show the current session todo list in the conversation log as a
+              UI-only checklist block.
+            </dd>
+
             <dt class="font-semibold text-term-bright">/login</dt>
             <dd class="text-term-fg">
               Sign in with a supported OAuth provider.
@@ -601,9 +625,10 @@ $ printf '%s\n' 'fix the failing tests' | mc</code></pre>
             parser as the TUI.
           </li>
           <li>
-            <strong>Raw NDJSON output.</strong> Stdout carries text deltas, tool
-            activity, final messages, and <code>done</code>, <code>error</code>,
-            or <code>aborted</code> outcomes.
+            <strong>Completed NDJSON output.</strong> With <code>--json</code>,
+            stdout carries completed assistant and tool-result messages plus
+            <code>done</code>, <code>error</code>, or <code>aborted</code>
+            outcomes. Streaming deltas are omitted.
           </li>
           <li>
             <strong>Normal session persistence.</strong> Headless runs still
