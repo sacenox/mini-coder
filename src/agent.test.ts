@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
   AssistantMessage,
+  Message,
   Model,
   Tool,
   Usage,
@@ -28,7 +29,16 @@ import {
   loadMessages,
   openDatabase,
 } from "./session.ts";
-import { editTool, executeEdit, executeShell, shellTool } from "./tools.ts";
+import {
+  editTool,
+  executeEdit,
+  executeShell,
+  executeTodoRead,
+  executeTodoWrite,
+  shellTool,
+  todoReadTool,
+  todoWriteTool,
+} from "./tools.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -52,6 +62,22 @@ afterEach(() => {
 
 function makeUser(text: string): UserMessage {
   return { role: "user", content: text, timestamp: Date.now() };
+}
+
+function makeTodoSnapshotMessage(
+  todos: Array<{
+    content: string;
+    status: "pending" | "in_progress" | "completed";
+  }>,
+): Message {
+  return {
+    role: "toolResult",
+    toolCallId: `todo-${Date.now()}`,
+    toolName: "todoWrite",
+    content: [{ type: "text", text: JSON.stringify({ todos }) }],
+    isError: false,
+    timestamp: Date.now(),
+  };
 }
 
 const ZERO_USAGE: Usage = {
@@ -97,11 +123,13 @@ function expectLastEvent<TType extends AgentEvent["type"]>(
 
 /** Built-in tool definitions for tests. */
 function builtinToolDefs(): Tool[] {
-  return [shellTool, editTool];
+  return [shellTool, editTool, todoWriteTool, todoReadTool];
 }
 
 /** Built-in tool handlers for tests. */
-function builtinToolHandlers(): Map<string, ToolHandler> {
+function builtinToolHandlers(
+  messages: Message[] = [],
+): Map<string, ToolHandler> {
   return new Map<string, ToolHandler>([
     [
       "shell",
@@ -123,6 +151,20 @@ function builtinToolHandlers(): Map<string, ToolHandler> {
           cwd,
         ),
     ],
+    [
+      "todoWrite",
+      (args) =>
+        executeTodoWrite(
+          {
+            todos: args.todos as Array<{
+              content: string;
+              status: "pending" | "in_progress" | "completed" | "cancelled";
+            }>,
+          },
+          messages,
+        ),
+    ],
+    ["todoRead", () => executeTodoRead(messages)],
   ]);
 }
 
@@ -1510,6 +1552,215 @@ describe("agent loop", () => {
     expect(events.indexOf(toolEnd)).toBeLessThan(
       events.indexOf(toolResultEvent),
     );
+  });
+
+  test("injects a todo reminder and re-prompts when pending todos remain", async () => {
+    faux.setResponses([
+      fauxAssistantMessage("All done."),
+      fauxAssistantMessage("I still need to finish the pending work."),
+    ]);
+
+    const session = createSession(db, { cwd: tmp });
+    const userMsg = makeUser("finish the task");
+    const turn = appendMessage(db, session.id, userMsg);
+    const messages: Message[] = [
+      makeTodoSnapshotMessage([
+        { content: "Run the test suite", status: "pending" },
+        { content: "Summarize the verified changes", status: "in_progress" },
+      ]),
+      userMsg,
+    ];
+
+    const result = await runAgentLoop({
+      db,
+      sessionId: session.id,
+      turn,
+      model: faux.getModel(),
+      systemPrompt: "Test",
+      tools: builtinToolDefs(),
+      toolHandlers: builtinToolHandlers(messages),
+      messages,
+      cwd: tmp,
+    });
+
+    expect(result.stopReason).toBe("stop");
+    expect(
+      result.messages.filter((message) => message.role === "assistant"),
+    ).toHaveLength(2);
+    const lastMessage = result.messages.at(-1);
+    if (!lastMessage || lastMessage.role !== "assistant") {
+      throw new Error("Expected a final assistant message");
+    }
+    expect(lastMessage.content).toEqual([
+      { type: "text", text: "I still need to finish the pending work." },
+    ]);
+  });
+
+  test("does not inject duplicate todo reminders for the same pending set", async () => {
+    faux.setResponses([
+      fauxAssistantMessage("All done."),
+      fauxAssistantMessage("All done again."),
+    ]);
+
+    const session = createSession(db, { cwd: tmp });
+    const userMsg = makeUser("finish the task");
+    const turn = appendMessage(db, session.id, userMsg);
+    const messages: Message[] = [
+      makeTodoSnapshotMessage([
+        { content: "Run the test suite", status: "pending" },
+      ]),
+      userMsg,
+    ];
+
+    const result = await runAgentLoop({
+      db,
+      sessionId: session.id,
+      turn,
+      model: faux.getModel(),
+      systemPrompt: "Test",
+      tools: builtinToolDefs(),
+      toolHandlers: builtinToolHandlers(messages),
+      messages,
+      cwd: tmp,
+    });
+
+    expect(result.stopReason).toBe("stop");
+    expect(
+      result.messages.filter((message) => message.role === "assistant"),
+    ).toHaveLength(2);
+    const lastMessage = result.messages.at(-1);
+    if (!lastMessage || lastMessage.role !== "assistant") {
+      throw new Error("Expected a final assistant message");
+    }
+    expect(lastMessage.content).toEqual([
+      { type: "text", text: "All done again." },
+    ]);
+  });
+
+  test("does not re-inject the same todo reminder after a queued steering message starts a new turn", async () => {
+    faux.setResponses([
+      fauxAssistantMessage("All done."),
+      fauxAssistantMessage("Still done."),
+      fauxAssistantMessage("Handled steering without a duplicate reminder."),
+      fauxAssistantMessage("Duplicate reminder fired."),
+    ]);
+
+    const session = createSession(db, { cwd: tmp });
+    const userMsg = makeUser("finish the task");
+    const turn = appendMessage(db, session.id, userMsg);
+    const messages: Message[] = [
+      makeTodoSnapshotMessage([
+        { content: "Run the test suite", status: "pending" },
+      ]),
+      userMsg,
+    ];
+    let dequeueCallCount = 0;
+
+    const result = await runAgentLoop({
+      db,
+      sessionId: session.id,
+      turn,
+      model: faux.getModel(),
+      systemPrompt: "Test",
+      tools: builtinToolDefs(),
+      toolHandlers: builtinToolHandlers(messages),
+      messages,
+      cwd: tmp,
+      takeQueuedUserMessage: () => {
+        dequeueCallCount += 1;
+        return dequeueCallCount === 2 ? makeUser("steer once") : null;
+      },
+    });
+
+    expect(result.stopReason).toBe("stop");
+    const assistantMessages = result.messages.filter(
+      (message): message is AssistantMessage => message.role === "assistant",
+    );
+    expect(assistantMessages).toHaveLength(3);
+    expect(assistantMessages.at(-1)?.content).toEqual([
+      {
+        type: "text",
+        text: "Handled steering without a duplicate reminder.",
+      },
+    ]);
+  });
+
+  test("does not re-inject the same todo reminder when the incomplete set is only reordered", async () => {
+    faux.setResponses([
+      fauxAssistantMessage("All done."),
+      fauxAssistantMessage(
+        [
+          fauxToolCall("todoWrite", {
+            todos: [
+              {
+                content: "Summarize the verified changes",
+                status: "in_progress",
+              },
+              { content: "Run the test suite", status: "pending" },
+            ],
+          }),
+        ],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage(
+        "Handled reordered todos without a duplicate reminder.",
+      ),
+      fauxAssistantMessage("Duplicate reminder fired."),
+    ]);
+
+    const session = createSession(db, { cwd: tmp });
+    const userMsg = makeUser("finish the task");
+    const turn = appendMessage(db, session.id, userMsg);
+    const messages: Message[] = [
+      makeTodoSnapshotMessage([
+        { content: "Run the test suite", status: "pending" },
+        { content: "Summarize the verified changes", status: "in_progress" },
+      ]),
+      userMsg,
+    ];
+    const reorderedTodoWriteHandler: ToolHandler = () => {
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              todos: [
+                {
+                  content: "Summarize the verified changes",
+                  status: "in_progress",
+                },
+                { content: "Run the test suite", status: "pending" },
+              ],
+            }),
+          },
+        ],
+        isError: false,
+      };
+    };
+
+    const result = await runAgentLoop({
+      db,
+      sessionId: session.id,
+      turn,
+      model: faux.getModel(),
+      systemPrompt: "Test",
+      tools: [todoWriteTool],
+      toolHandlers: new Map([[todoWriteTool.name, reorderedTodoWriteHandler]]),
+      messages,
+      cwd: tmp,
+    });
+
+    expect(result.stopReason).toBe("stop");
+    const assistantMessages = result.messages.filter(
+      (message): message is AssistantMessage => message.role === "assistant",
+    );
+    expect(assistantMessages).toHaveLength(3);
+    expect(assistantMessages.at(-1)?.content).toEqual([
+      {
+        type: "text",
+        text: "Handled reordered todos without a duplicate reminder.",
+      },
+    ]);
   });
 
   test("stopReason 'length' returns without looping", async () => {

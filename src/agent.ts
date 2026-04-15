@@ -22,7 +22,7 @@ import type {
 } from "@mariozechner/pi-ai";
 import { streamSimple } from "@mariozechner/pi-ai";
 import { appendMessage } from "./session.ts";
-import type { ToolExecResult } from "./tools.ts";
+import { getTodoItems, type ToolExecResult } from "./tools.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -605,28 +605,111 @@ function appendToolResultMessage(
   onEvent?.({ type: "tool_result", message: toolResultMessage });
 }
 
-function finalizeStoppedAssistantMessage(
-  db: Database,
-  sessionId: string,
-  messages: Message[],
-  assistantMessage: AssistantMessage,
-  stopReason: "stop" | "length",
-  takeQueuedUserMessage: RunAgentOpts["takeQueuedUserMessage"],
-  onEvent: RunAgentOpts["onEvent"],
-): AgentLoopResult | number {
-  const queuedTurn = consumeQueuedUserMessage(
-    db,
-    sessionId,
-    messages,
-    takeQueuedUserMessage,
-    onEvent,
+function getIncompleteTodos(messages: readonly Message[]) {
+  return getTodoItems(messages).filter((todo) => todo.status !== "completed");
+}
+
+function getTodoReminderSignature(
+  todos: ReturnType<typeof getIncompleteTodos>,
+): string {
+  return JSON.stringify(
+    [...todos].sort((left, right) => {
+      const contentOrder = left.content.localeCompare(right.content);
+      if (contentOrder !== 0) {
+        return contentOrder;
+      }
+      return left.status.localeCompare(right.status);
+    }),
   );
-  if (queuedTurn !== null) {
-    return queuedTurn;
+}
+
+function createTodoReminderMessage(
+  messages: readonly Message[],
+  remindedTodoSignatures: Set<string>,
+): UserMessage | null {
+  const incompleteTodos = getIncompleteTodos(messages);
+  if (incompleteTodos.length === 0) {
+    return null;
   }
 
-  onEvent?.({ type: "done", message: assistantMessage });
-  return { messages, stopReason };
+  const signature = getTodoReminderSignature(incompleteTodos);
+  if (remindedTodoSignatures.has(signature)) {
+    return null;
+  }
+  remindedTodoSignatures.add(signature);
+
+  const lines = [
+    "You have pending todo items that must be completed before finishing the task:",
+    "",
+    ...incompleteTodos.map((todo) => {
+      const status = todo.status === "in_progress" ? "IN_PROGRESS" : "PENDING";
+      return `- [${status}] ${todo.content}`;
+    }),
+    "",
+    "Please complete all pending items before finishing.",
+  ];
+
+  return {
+    role: "user",
+    content: lines.join("\n"),
+    timestamp: Date.now(),
+  };
+}
+
+interface StoppedAssistantResolution {
+  /** Next turn number when a queued steering message was consumed. */
+  nextTurn: number | null;
+  /** Ephemeral context messages to include on the next model request. */
+  pendingContextMessages: Message[];
+  /** Final loop result when the turn should stop immediately. */
+  finalResult: AgentLoopResult | null;
+}
+
+function resolveStoppedAssistantMessage(
+  assistantMessage: AssistantMessage,
+  stopReason: "stop" | "length",
+  opts: Pick<
+    RunAgentOpts,
+    "db" | "sessionId" | "messages" | "takeQueuedUserMessage" | "onEvent"
+  >,
+  remindedTodoSignatures: Set<string>,
+): StoppedAssistantResolution {
+  const queuedTurn = consumeQueuedUserMessage(
+    opts.db,
+    opts.sessionId,
+    opts.messages,
+    opts.takeQueuedUserMessage,
+    opts.onEvent,
+  );
+  if (queuedTurn !== null) {
+    return {
+      nextTurn: queuedTurn,
+      pendingContextMessages: [],
+      finalResult: null,
+    };
+  }
+
+  const todoReminder = createTodoReminderMessage(
+    opts.messages,
+    remindedTodoSignatures,
+  );
+  if (todoReminder) {
+    return {
+      nextTurn: null,
+      pendingContextMessages: [todoReminder],
+      finalResult: null,
+    };
+  }
+
+  opts.onEvent?.({ type: "done", message: assistantMessage });
+  return {
+    nextTurn: null,
+    pendingContextMessages: [],
+    finalResult: {
+      messages: opts.messages,
+      stopReason,
+    },
+  };
 }
 
 async function executeAssistantToolCalls(
@@ -671,6 +754,95 @@ async function executeAssistantToolCalls(
   return null;
 }
 
+interface AgentIterationOutcome {
+  /** Final loop result when the run should stop immediately. */
+  finalResult: AgentLoopResult | null;
+  /** Next turn number when a queued steering message starts a new turn. */
+  nextTurn: number;
+  /** Ephemeral context messages for the next model request. */
+  pendingContextMessages: Message[];
+}
+
+async function resolveAgentIteration(
+  assistantMessage: AssistantMessage,
+  currentTurn: number,
+  remindedTodoSignatures: Set<string>,
+  opts: Pick<
+    RunAgentOpts,
+    | "db"
+    | "sessionId"
+    | "messages"
+    | "toolHandlers"
+    | "cwd"
+    | "signal"
+    | "onEvent"
+    | "model"
+    | "takeQueuedUserMessage"
+  >,
+): Promise<AgentIterationOutcome> {
+  const stopResult = resolveLoopStopReason(
+    assistantMessage,
+    opts.messages,
+    opts.onEvent,
+  );
+  if (stopResult) {
+    return {
+      finalResult: stopResult,
+      nextTurn: currentTurn,
+      pendingContextMessages: [],
+    };
+  }
+
+  if (
+    assistantMessage.stopReason === "stop" ||
+    assistantMessage.stopReason === "length"
+  ) {
+    const stopResolution = resolveStoppedAssistantMessage(
+      assistantMessage,
+      assistantMessage.stopReason,
+      {
+        db: opts.db,
+        sessionId: opts.sessionId,
+        messages: opts.messages,
+        takeQueuedUserMessage: opts.takeQueuedUserMessage,
+        onEvent: opts.onEvent,
+      },
+      remindedTodoSignatures,
+    );
+    return {
+      finalResult: stopResolution.finalResult,
+      nextTurn: stopResolution.nextTurn ?? currentTurn,
+      pendingContextMessages: stopResolution.pendingContextMessages,
+    };
+  }
+
+  const toolStopResult = await executeAssistantToolCalls(
+    assistantMessage,
+    opts,
+    currentTurn,
+  );
+  if (toolStopResult) {
+    return {
+      finalResult: toolStopResult,
+      nextTurn: currentTurn,
+      pendingContextMessages: [],
+    };
+  }
+
+  const queuedTurn = consumeQueuedUserMessage(
+    opts.db,
+    opts.sessionId,
+    opts.messages,
+    opts.takeQueuedUserMessage,
+    opts.onEvent,
+  );
+  return {
+    finalResult: null,
+    nextTurn: queuedTurn ?? currentTurn,
+    pendingContextMessages: [],
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Agent loop
 // ---------------------------------------------------------------------------
@@ -702,9 +874,18 @@ export async function runAgentLoop(
     takeQueuedUserMessage,
   } = opts;
   let currentTurn = turn;
+  let pendingContextMessages: Message[] = [];
+  const remindedTodoSignatures = new Set<string>();
 
   while (true) {
-    const assistantMessage = await streamAssistantMessage(opts);
+    const assistantMessage = await streamAssistantMessage({
+      ...opts,
+      messages:
+        pendingContextMessages.length > 0
+          ? [...messages, ...pendingContextMessages]
+          : messages,
+    });
+    pendingContextMessages = [];
     appendAssistantMessage(
       db,
       sessionId,
@@ -714,37 +895,10 @@ export async function runAgentLoop(
       onEvent,
     );
 
-    const stopResult = resolveLoopStopReason(
+    const iterationOutcome = await resolveAgentIteration(
       assistantMessage,
-      messages,
-      onEvent,
-    );
-    if (stopResult) {
-      return stopResult;
-    }
-
-    if (
-      assistantMessage.stopReason === "stop" ||
-      assistantMessage.stopReason === "length"
-    ) {
-      const finalResult = finalizeStoppedAssistantMessage(
-        db,
-        sessionId,
-        messages,
-        assistantMessage,
-        assistantMessage.stopReason,
-        takeQueuedUserMessage,
-        onEvent,
-      );
-      if (typeof finalResult === "number") {
-        currentTurn = finalResult;
-        continue;
-      }
-      return finalResult;
-    }
-
-    const toolStopResult = await executeAssistantToolCalls(
-      assistantMessage,
+      currentTurn,
+      remindedTodoSignatures,
       {
         db,
         sessionId,
@@ -754,22 +908,14 @@ export async function runAgentLoop(
         signal,
         onEvent,
         model,
+        takeQueuedUserMessage,
       },
-      currentTurn,
     );
-    if (toolStopResult) {
-      return toolStopResult;
+    if (iterationOutcome.finalResult) {
+      return iterationOutcome.finalResult;
     }
 
-    const queuedTurn = consumeQueuedUserMessage(
-      db,
-      sessionId,
-      messages,
-      takeQueuedUserMessage,
-      onEvent,
-    );
-    if (queuedTurn !== null) {
-      currentTurn = queuedTurn;
-    }
+    currentTurn = iterationOutcome.nextTurn;
+    pendingContextMessages = iterationOutcome.pendingContextMessages;
   }
 }

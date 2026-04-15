@@ -22,7 +22,11 @@ import {
 import type { Node } from "@cel-tui/types";
 import type { AppState } from "./index.ts";
 import { reloadPromptContext, shutdown } from "./index.ts";
-import { appendMessage, createUiMessage } from "./session.ts";
+import {
+  appendMessage,
+  createUiMessage,
+  createUiTodoMessage,
+} from "./session.ts";
 import type { Theme } from "./theme.ts";
 import {
   createUiAgentController,
@@ -466,6 +470,18 @@ function scrollConversationToBottom(): void {
   stickToBottom = true;
 }
 
+function appendUiMessage(
+  message: AppState["messages"][number],
+  state: AppState,
+): void {
+  if (state.session) {
+    appendMessage(state.db, state.session.id, message);
+  }
+  state.messages.push(message);
+  scrollConversationToBottom();
+  cel.render();
+}
+
 /**
  * Append a UI-only info message to the conversation log.
  *
@@ -476,13 +492,23 @@ function scrollConversationToBottom(): void {
  * @param state - Application state.
  */
 function appendInfoMessage(text: string, state: AppState): void {
-  const msg = createUiMessage(text);
-  if (state.session) {
-    appendMessage(state.db, state.session.id, msg);
-  }
-  state.messages.push(msg);
-  scrollConversationToBottom();
-  cel.render();
+  appendUiMessage(createUiMessage(text), state);
+}
+
+/**
+ * Append a UI-only todo snapshot to the conversation log.
+ *
+ * When no persisted session exists yet, the message stays in memory and is
+ * backfilled if the user later starts a session by sending a message.
+ *
+ * @param todos - Todo snapshot to append.
+ * @param state - Application state.
+ */
+function appendTodoMessage(
+  todos: Parameters<typeof createUiTodoMessage>[0],
+  state: AppState,
+): void {
+  appendUiMessage(createUiTodoMessage(todos), state);
 }
 
 /** Command controller bound to the module-scoped UI runtime hooks. */
@@ -493,6 +519,7 @@ const commandController = createCommandController({
     inputValue = value;
   },
   appendInfoMessage,
+  appendTodoMessage,
   scrollConversationToBottom,
   render: () => {
     cel.render();

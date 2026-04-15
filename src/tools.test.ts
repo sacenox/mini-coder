@@ -9,13 +9,19 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { Message } from "@mariozechner/pi-ai";
 import {
   editTool,
   executeEdit,
   executeReadImage,
   executeShell,
+  executeTodoRead,
+  executeTodoWrite,
+  getTodoItems,
   shellTool,
   type ToolExecResult,
+  todoReadTool,
+  todoWriteTool,
   truncateOutput,
 } from "./tools.ts";
 
@@ -24,6 +30,15 @@ function resultText(r: ToolExecResult): string {
   const block = r.content[0];
   if (!block || block.type !== "text") throw new Error("Expected text content");
   return block.text;
+}
+
+function todoSnapshot(r: ToolExecResult) {
+  return JSON.parse(resultText(r)) as {
+    todos: Array<{
+      content: string;
+      status: "pending" | "in_progress" | "completed";
+    }>;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -688,6 +703,183 @@ describe("truncateOutput", () => {
 });
 
 // ---------------------------------------------------------------------------
+// todo tools
+// ---------------------------------------------------------------------------
+
+describe("todo tools", () => {
+  test("todoWrite creates a new todo list snapshot", () => {
+    const result = executeTodoWrite(
+      {
+        todos: [
+          { content: "Inspect the current command surface", status: "pending" },
+          { content: "Implement todo tooling", status: "in_progress" },
+        ],
+      },
+      [],
+    );
+
+    expect(result.isError).toBe(false);
+    expect(todoSnapshot(result)).toEqual({
+      todos: [
+        { content: "Inspect the current command surface", status: "pending" },
+        { content: "Implement todo tooling", status: "in_progress" },
+      ],
+    });
+  });
+
+  test("todoWrite updates existing items incrementally and preserves order", () => {
+    const messages: Message[] = [
+      {
+        role: "toolResult",
+        toolCallId: "call-1",
+        toolName: "todoWrite",
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              todos: [
+                {
+                  content: "Inspect the current command surface",
+                  status: "completed",
+                },
+                { content: "Implement todo tooling", status: "pending" },
+              ],
+            }),
+          },
+        ],
+        isError: false,
+        timestamp: 1,
+      },
+    ];
+
+    const result = executeTodoWrite(
+      {
+        todos: [
+          { content: "Implement todo tooling", status: "in_progress" },
+          { content: "Add UI /todo command", status: "pending" },
+        ],
+      },
+      messages,
+    );
+
+    expect(result.isError).toBe(false);
+    expect(todoSnapshot(result)).toEqual({
+      todos: [
+        {
+          content: "Inspect the current command surface",
+          status: "completed",
+        },
+        { content: "Implement todo tooling", status: "in_progress" },
+        { content: "Add UI /todo command", status: "pending" },
+      ],
+    });
+  });
+
+  test("todoWrite removes items marked cancelled", () => {
+    const messages: Message[] = [
+      {
+        role: "toolResult",
+        toolCallId: "call-1",
+        toolName: "todoRead",
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              todos: [
+                {
+                  content: "Inspect the current command surface",
+                  status: "completed",
+                },
+                { content: "Implement todo tooling", status: "in_progress" },
+              ],
+            }),
+          },
+        ],
+        isError: false,
+        timestamp: 1,
+      },
+    ];
+
+    const result = executeTodoWrite(
+      {
+        todos: [{ content: "Implement todo tooling", status: "cancelled" }],
+      },
+      messages,
+    );
+
+    expect(result.isError).toBe(false);
+    expect(todoSnapshot(result)).toEqual({
+      todos: [
+        {
+          content: "Inspect the current command surface",
+          status: "completed",
+        },
+      ],
+    });
+  });
+
+  test("todoRead returns the latest successful persisted snapshot and ignores later errors", () => {
+    const messages: Message[] = [
+      {
+        role: "toolResult",
+        toolCallId: "call-1",
+        toolName: "todoWrite",
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              todos: [
+                {
+                  content: "Inspect the current command surface",
+                  status: "completed",
+                },
+                { content: "Implement todo tooling", status: "pending" },
+              ],
+            }),
+          },
+        ],
+        isError: false,
+        timestamp: 1,
+      },
+      {
+        role: "toolResult",
+        toolCallId: "call-2",
+        toolName: "todoWrite",
+        content: [{ type: "text", text: "Todo content cannot be empty" }],
+        isError: true,
+        timestamp: 2,
+      },
+    ];
+
+    expect(getTodoItems(messages)).toEqual([
+      { content: "Inspect the current command surface", status: "completed" },
+      { content: "Implement todo tooling", status: "pending" },
+    ]);
+    expect(todoSnapshot(executeTodoRead(messages))).toEqual({
+      todos: [
+        {
+          content: "Inspect the current command surface",
+          status: "completed",
+        },
+        { content: "Implement todo tooling", status: "pending" },
+      ],
+    });
+  });
+
+  test("todoWrite rejects empty content", () => {
+    const result = executeTodoWrite(
+      {
+        todos: [{ content: "   ", status: "pending" }],
+      },
+      [],
+    );
+
+    expect(result.isError).toBe(true);
+    expect(resultText(result)).toBe("Todo content cannot be empty");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // tool definitions
 // ---------------------------------------------------------------------------
 
@@ -702,6 +894,22 @@ describe("tool definitions", () => {
     expect(editTool.description).toContain(
       "write the exact final file content the task requires",
     );
+  });
+
+  test("todoWrite description emphasizes incremental task tracking", () => {
+    expect(todoWriteTool.description).toContain(
+      "create and manage a structured task list",
+    );
+    expect(todoWriteTool.description).toContain(
+      "Only send the items that changed",
+    );
+  });
+
+  test("todoRead description explains that it returns the current list", () => {
+    expect(todoReadTool.description).toContain(
+      "Retrieves the current todo list for this coding session",
+    );
+    expect(todoReadTool.description).toContain("If no todos exist yet");
   });
 });
 

@@ -945,6 +945,7 @@ describe("ui rendering", () => {
         state.messages.some(
           (message) =>
             message.role === "ui" &&
+            message.kind === "info" &&
             message.content === "Submit failed: provider exploded",
         ),
       );
@@ -959,7 +960,7 @@ describe("ui rendering", () => {
       expect(messages.map((message) => message.role)).toEqual(["user", "ui"]);
       const uiMessage = messages[1];
       expect(uiMessage?.role).toBe("ui");
-      if (!uiMessage || uiMessage.role !== "ui") {
+      if (!uiMessage || uiMessage.role !== "ui" || uiMessage.kind !== "info") {
         throw new Error("Expected persisted UI message");
       }
       expect(uiMessage.content).toBe("Submit failed: provider exploded");

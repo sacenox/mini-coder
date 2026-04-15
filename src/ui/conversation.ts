@@ -23,6 +23,7 @@ import type {
 import type { AppState } from "../index.ts";
 import type { UiMessage } from "../session.ts";
 import type { Theme } from "../theme.ts";
+import { parseTodoSnapshot, type TodoItem } from "../tools.ts";
 import { APP_NAME, DEV_VERSION_LABEL } from "../version.ts";
 
 /** Single blank-line gap used between conversation-level blocks. */
@@ -164,6 +165,8 @@ interface ToolBlockSpec {
   bodyLines: readonly ToolRenderLine[];
   /** Optional syntax-highlighted body rendered from the full unsplit source. */
   highlightedBody?: HighlightedBodySpec;
+  /** Optional custom body node rendered as-is. */
+  bodyNode?: Node;
   /** Whether `/verbose` preview rules apply to the body. */
   previewBody: boolean;
 }
@@ -421,17 +424,18 @@ function normalizeShellOutput(output: string): string {
 }
 
 function getToolHeaderName(toolName: string): string {
-  return toolName === "readImage" ? "read image" : toolName;
+  return toolName.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase();
 }
 
 function getToolHeaderColor(toolName: string, theme: Theme) {
   switch (toolName) {
     case "shell":
+    case "readImage":
+    case "todoWrite":
+    case "todoRead":
       return theme.accentText;
     case "edit":
       return theme.secondaryAccentText;
-    case "readImage":
-      return theme.accentText;
     default:
       return theme.secondaryAccentText ?? theme.toolText;
   }
@@ -684,6 +688,48 @@ function renderToolLines(
   return lines.map((line) => renderToolLine(line, theme));
 }
 
+function getTodoMarker(todo: TodoItem): "[ ]" | "[~]" | "[x]" {
+  switch (todo.status) {
+    case "in_progress":
+      return "[~]";
+    case "completed":
+      return "[x]";
+    default:
+      return "[ ]";
+  }
+}
+
+function getTodoColor(todo: TodoItem, theme: Theme): Theme["toolText"] {
+  switch (todo.status) {
+    case "in_progress":
+      return theme.accentText;
+    case "completed":
+      return theme.diffAdded;
+    default:
+      return theme.toolText;
+  }
+}
+
+function renderTodoChecklist(todos: readonly TodoItem[], theme: Theme): Node {
+  if (todos.length === 0) {
+    return Text("No todo items.", {
+      fgColor: theme.mutedText,
+      italic: true,
+      wrap: "word",
+    });
+  }
+
+  return VStack(
+    {},
+    todos.map((todo) =>
+      Text(`${getTodoMarker(todo)} ${todo.content}`, {
+        fgColor: getTodoColor(todo, theme),
+        wrap: "word",
+      }),
+    ),
+  );
+}
+
 function measureToolNodesHeight(lines: readonly Node[], width: number): number {
   if (lines.length === 0) {
     return 0;
@@ -778,6 +824,10 @@ function renderToolBody(
   spec: ToolBlockSpec,
   opts: Pick<ConversationRenderOpts, "previewWidth" | "theme" | "verbose">,
 ): { body: Node | null; summary?: ToolRenderLine } {
+  if (spec.bodyNode) {
+    return { body: spec.bodyNode };
+  }
+
   if (spec.highlightedBody) {
     return renderToolBodyFromNodes(
       getHighlightedBodyLines(
@@ -956,6 +1006,31 @@ function buildEditToolResultSpec(
   };
 }
 
+function buildTodoToolResultSpec(
+  toolName: string,
+  content: ToolResultMessage["content"],
+  isError: boolean,
+  theme: Theme,
+): ToolBlockSpec {
+  if (isError) {
+    return {
+      toolName,
+      direction: "<-",
+      bodyLines: splitToolTextLines(getToolContentText(content), "error"),
+      previewBody: false,
+    };
+  }
+
+  const todos = parseTodoSnapshot(getToolContentText(content)) ?? [];
+  return {
+    toolName,
+    direction: "<-",
+    bodyLines: [],
+    bodyNode: renderTodoChecklist(todos, theme),
+    previewBody: false,
+  };
+}
+
 function buildReadImageToolResultSpec(
   args: Record<string, unknown>,
   content: ToolResultMessage["content"],
@@ -1008,6 +1083,12 @@ function renderToolResultContent(
       opts,
     );
   }
+  if (toolName === "todoWrite" || toolName === "todoRead") {
+    return renderToolBlock(
+      buildTodoToolResultSpec(toolName, content, isError, opts.theme),
+      opts,
+    );
+  }
   if (toolName === "readImage") {
     return renderToolBlock(
       buildReadImageToolResultSpec(args, content, isError),
@@ -1045,8 +1126,26 @@ export function renderToolResult(
   return renderToolResultContent(toolName, args, content, isError, opts);
 }
 
+function renderUiTodoMessage(
+  msg: Extract<UiMessage, { kind: "todo" }>,
+  theme: Theme,
+): Node {
+  return VStack({ padding: { x: 1 } }, [
+    Text("todo", {
+      fgColor: theme.secondaryAccentText ?? theme.toolText,
+      bold: true,
+      wrap: "word",
+    }),
+    renderTodoChecklist(msg.todos, theme),
+  ]);
+}
+
 /** Render an internal UI message in the conversation log. */
 function renderUiMessage(msg: UiMessage, theme: Theme): Node {
+  if (msg.kind === "todo") {
+    return renderUiTodoMessage(msg, theme);
+  }
+
   return VStack({ padding: { x: 1 } }, [
     Text(msg.content, {
       fgColor: theme.mutedText,

@@ -355,6 +355,12 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain(
       "- Shell: zsh. Use `command -v <name>` to check what is available to you; do not assume environment support.",
     );
+    expect(prompt).toContain(
+      "Use `todoWrite` proactively for multi-step or non-trivial tasks.",
+    );
+    expect(prompt).toContain(
+      "Use `todoRead` when you need to inspect the current list before updating it",
+    );
   });
 
   test("appends AGENTS.md content, skills, and plugin suffixes after the core prompt in order", () => {

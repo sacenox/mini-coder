@@ -7,9 +7,11 @@ The spec.md and code are the sources of truth, not this file, don't assume anyth
 
 ## Open items
 
+- [ ] headless mode with --json should only output completed messages and not delta messages.
+
 ## Forge comparison follow-ups (high-value gaps, highest priority first)
 
-- [ ] Add first-class todo tools plus prompt/UI integration so the agent can track and complete work explicitly instead of relying only on a `/tmp` file (`src/tools.ts`, `src/agent.ts`, `src/prompt.ts`, `src/ui/conversation.ts`)
+- [x] Add first-class todo tools plus prompt/UI integration so the agent can track and complete work explicitly instead of relying only on a `/tmp` file (`src/tools.ts`, `src/agent.ts`, `src/prompt.ts`, `src/ui/conversation.ts`)
 - [ ] Add loop safeguards: retry policy, tool-failure/request budgets, and doom-loop detection/reminders (`src/agent.ts`, `src/submit.ts`, `src/prompt.ts`)
 - [ ] Add dedicated read/search tools so the model relies less on `shell` for code discovery (`src/tools.ts`, `src/prompt.ts`, `src/ui/conversation.ts`)
 - [ ] Add first-class delegation/subagent support instead of relying on shell-level `mc -p` delegation (`src/agent.ts`, `src/tools.ts`, `src/prompt.ts`, `src/headless.ts`)
@@ -24,7 +26,7 @@ The spec.md and code are the sources of truth, not this file, don't assume anyth
 - [ ] `/session` can switch sessions mid-run (`ui/commands.ts`, `ui/agent.ts`)
 - [ ] `shell` results are flattened into one text blob (`src/tools.ts`, `src/ui/conversation.ts`)
 - [ ] Steering meesages are implemented wrong, they appear in the UI at the end of the turn loop. Not at the next loop interation boundary... NOT CONFIRMED NEEDS DEBUGGING
-- [ ] Custom XML parsing and frontmatter parsing are still in use (`skills.ts`, `prompt.ts`)
+- [ ] Skills aren't xml safe and we should use a frontmatter parsing library (`skills.ts`, `prompt.ts`)
 
 ## Plugin related (documented only, no plugin-related work is planned right now)
 

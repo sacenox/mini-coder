@@ -24,6 +24,7 @@ export const COMMANDS = [
   "undo",
   "reasoning",
   "verbose",
+  "todo",
   "login",
   "logout",
   "help",

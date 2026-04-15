@@ -1321,6 +1321,70 @@ describe("ui/conversation", () => {
     expect(text).not.toContain("error 17");
   });
 
+  test("renderToolResult for todoWrite shows the full checklist even when verbose is off", async () => {
+    const snapshot = JSON.stringify({
+      todos: [
+        { content: "Review prompt wording", status: "completed" },
+        { content: "Implement todo tools", status: "in_progress" },
+        { content: "Add /todo command", status: "pending" },
+        { content: "Run the full verification suite", status: "pending" },
+      ],
+    });
+
+    const text = await renderVisibleText(
+      renderToolResult("todoWrite", {}, snapshot, false, RENDER_OPTS),
+      PREVIEW_WIDTH,
+      24,
+    );
+
+    expect(text).toContain("todo write <-");
+    expect(text).toContain("[x] Review prompt wording");
+    expect(text).toContain("[~] Implement todo tools");
+    expect(text).toContain("[ ] Add /todo command");
+    expect(text.join(" ")).toContain("[ ] Run the full verification suite");
+    expect(text.some((line) => line.startsWith("And "))).toBe(false);
+  });
+
+  test("buildConversationLogNodes renders UI todo messages with the shared checklist block", async () => {
+    const state = {
+      messages: [
+        {
+          role: "ui" as const,
+          kind: "todo" as const,
+          todos: [
+            { content: "Review prompt wording", status: "completed" as const },
+            { content: "Implement todo tools", status: "in_progress" as const },
+            { content: "Add /todo command", status: "pending" as const },
+          ],
+          timestamp: 1,
+        },
+      ],
+      showReasoning: false,
+      verbose: false,
+      theme: DEFAULT_THEME,
+    };
+
+    const text = await renderVisibleText(
+      VStack(
+        {},
+        buildConversationLogNodes(
+          state,
+          { isStreaming: false, content: [], pendingToolResults: [] },
+          0,
+          PREVIEW_WIDTH,
+        ),
+      ),
+      PREVIEW_WIDTH,
+      24,
+    );
+
+    expect(text).toContain("todo");
+    expect(text).toContain("[x] Review prompt wording");
+    expect(text).toContain("[~] Implement todo tools");
+    expect(text).toContain("[ ] Add /todo command");
+    expect(text.some((line) => line.includes('"todos"'))).toBe(false);
+  });
+
   test("renderToolResult for a generic plugin tool uses the shared result header", () => {
     // Arrange
     const args = { query: "session persistence sqlite turn numbering" };

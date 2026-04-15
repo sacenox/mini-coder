@@ -122,6 +122,7 @@ describe("ui/commands", () => {
         inputValue = value;
       },
       appendInfoMessage: () => {},
+      appendTodoMessage: () => {},
       scrollConversationToBottom: () => {},
       render: () => {},
       reloadPromptContext: async () => {},
@@ -161,6 +162,7 @@ describe("ui/commands", () => {
         inputValue = value;
       },
       appendInfoMessage: () => {},
+      appendTodoMessage: () => {},
       scrollConversationToBottom: () => {},
       render: () => {},
       reloadPromptContext: async () => {},
@@ -206,6 +208,7 @@ describe("ui/commands", () => {
         inputValue = value;
       },
       appendInfoMessage: () => {},
+      appendTodoMessage: () => {},
       scrollConversationToBottom: () => {},
       render: () => {},
       reloadPromptContext: async () => {},
@@ -244,6 +247,7 @@ describe("ui/commands", () => {
       },
       setInputValue: () => {},
       appendInfoMessage: () => {},
+      appendTodoMessage: () => {},
       scrollConversationToBottom: () => {},
       render: () => {},
       reloadPromptContext: async () => {},
@@ -310,6 +314,7 @@ describe("ui/commands", () => {
       },
       setInputValue: () => {},
       appendInfoMessage: () => {},
+      appendTodoMessage: () => {},
       scrollConversationToBottom: () => {
         scrollCalls += 1;
       },
@@ -393,6 +398,7 @@ describe("ui/commands", () => {
       dismissOverlay: () => {},
       setInputValue: () => {},
       appendInfoMessage: () => {},
+      appendTodoMessage: () => {},
       scrollConversationToBottom: () => {},
       render: () => {},
       reloadPromptContext: async () => {},
@@ -415,6 +421,7 @@ describe("ui/commands", () => {
       dismissOverlay: () => {},
       setInputValue: () => {},
       appendInfoMessage: () => {},
+      appendTodoMessage: () => {},
       scrollConversationToBottom: () => {},
       render: () => {},
       reloadPromptContext: async (nextState) => {
@@ -470,6 +477,7 @@ describe("ui/commands", () => {
       dismissOverlay: () => {},
       setInputValue: () => {},
       appendInfoMessage: () => {},
+      appendTodoMessage: () => {},
       scrollConversationToBottom: () => {},
       render: () => {},
       reloadPromptContext: async () => {},
@@ -495,6 +503,7 @@ describe("ui/commands", () => {
       dismissOverlay: () => {},
       setInputValue: () => {},
       appendInfoMessage: () => {},
+      appendTodoMessage: () => {},
       scrollConversationToBottom: () => {},
       render: () => {},
       reloadPromptContext: async () => {},
@@ -511,6 +520,66 @@ describe("ui/commands", () => {
     }
   });
 
+  test("/todo appends the current todo list without creating a session", () => {
+    const state = createTestState();
+    state.messages = [
+      {
+        role: "toolResult",
+        toolCallId: "todo-1",
+        toolName: "todoWrite",
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              todos: [
+                { content: "Review prompt wording", status: "completed" },
+                { content: "Implement todo tools", status: "in_progress" },
+              ],
+            }),
+          },
+        ],
+        isError: false,
+        timestamp: 1,
+      },
+    ];
+    const appended: Array<{
+      todos: Array<{ content: string; status: string }>;
+      sessionId: string | null;
+    }> = [];
+    const controller = createCommandController({
+      openOverlay: () => {},
+      dismissOverlay: () => {},
+      setInputValue: () => {},
+      appendInfoMessage: () => {},
+      appendTodoMessage: (todos, nextState) => {
+        appended.push({
+          todos: todos.map((todo) => ({ ...todo })),
+          sessionId: nextState.session?.id ?? null,
+        });
+      },
+      scrollConversationToBottom: () => {},
+      render: () => {},
+      reloadPromptContext: async () => {},
+      openInBrowser: () => {},
+    });
+
+    try {
+      expect(controller.handleCommand("todo", state)).toBe(true);
+      expect(appended).toEqual([
+        {
+          todos: [
+            { content: "Review prompt wording", status: "completed" },
+            { content: "Implement todo tools", status: "in_progress" },
+          ],
+          sessionId: null,
+        },
+      ]);
+      expect(state.session).toBeNull();
+    } finally {
+      state.db.close();
+    }
+  });
+
   test("applyModelSelection updates the state and persists the default model", () => {
     const faux = registerFauxProvider();
     const state = createTestState();
@@ -520,6 +589,7 @@ describe("ui/commands", () => {
       dismissOverlay: () => {},
       setInputValue: () => {},
       appendInfoMessage: () => {},
+      appendTodoMessage: () => {},
       scrollConversationToBottom: () => {},
       render: () => {},
       reloadPromptContext: async () => {},
@@ -547,6 +617,7 @@ describe("ui/commands", () => {
       dismissOverlay: () => {},
       setInputValue: () => {},
       appendInfoMessage: () => {},
+      appendTodoMessage: () => {},
       scrollConversationToBottom: () => {},
       render: () => {},
       reloadPromptContext: async () => {},

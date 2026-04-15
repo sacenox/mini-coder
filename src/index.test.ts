@@ -12,6 +12,7 @@ import {
   loadOAuthCredentials,
   loadPromptContext,
   reloadPromptContext,
+  runHeadlessCli,
 } from "./index.ts";
 import type { LoadedPlugin } from "./plugins.ts";
 import { openDatabase } from "./session.ts";
@@ -160,6 +161,60 @@ test("bin/mc.ts reports headless command errors without a stack trace", async ()
   expect(result.stderr).toBe(
     "Headless mode does not support slash commands: /help\n",
   );
+});
+
+test("runHeadlessCli uses final-text mode by default in non-TTY environments", async () => {
+  const state = createTestState();
+  const calls: string[] = [];
+
+  const stopReason = await runHeadlessCli(
+    state,
+    { prompt: "fix the tests", json: false },
+    { stdinIsTTY: false, stdoutIsTTY: false },
+    {
+      readStdin: async () => {
+        throw new Error("stdin should not be read when a prompt was provided");
+      },
+      runJson: async () => {
+        calls.push("json");
+        return "stop";
+      },
+      runText: async (_state, rawPrompt) => {
+        calls.push(`text:${rawPrompt}`);
+        return "stop";
+      },
+    },
+  );
+
+  expect(stopReason).toBe("stop");
+  expect(calls).toEqual(["text:fix the tests"]);
+});
+
+test("runHeadlessCli uses NDJSON mode only when --json was requested", async () => {
+  const state = createTestState();
+  const calls: string[] = [];
+
+  const stopReason = await runHeadlessCli(
+    state,
+    { prompt: "fix the tests", json: true },
+    { stdinIsTTY: false, stdoutIsTTY: false },
+    {
+      readStdin: async () => {
+        throw new Error("stdin should not be read when a prompt was provided");
+      },
+      runJson: async (_state, rawPrompt) => {
+        calls.push(`json:${rawPrompt}`);
+        return "stop";
+      },
+      runText: async () => {
+        calls.push("text");
+        return "stop";
+      },
+    },
+  );
+
+  expect(stopReason).toBe("stop");
+  expect(calls).toEqual(["json:fix the tests"]);
 });
 
 test("didOAuthCredentialsChange compares refreshed credentials structurally", () => {

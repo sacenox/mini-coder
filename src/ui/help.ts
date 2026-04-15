@@ -36,6 +36,7 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   undo: "Undo last turn",
   reasoning: "Toggle thinking display",
   verbose: "Toggle verbose tool rendering",
+  todo: "Show the current todo list",
   login: "OAuth login",
   logout: "OAuth logout",
   help: "Show help",

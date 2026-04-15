@@ -16,6 +16,7 @@ import type {
   ToolResultMessage,
   UserMessage,
 } from "@mariozechner/pi-ai";
+import type { TodoItem } from "./tools.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -94,8 +95,8 @@ interface AppendPromptHistoryOpts {
   sessionId?: string;
 }
 
-/** A persisted UI-only message shown in the conversation log. */
-export interface UiMessage {
+/** A persisted UI-only info message shown in the conversation log. */
+export interface UiInfoMessage {
   /** Identifies this as an internal UI message. */
   role: "ui";
   /** UI message category for rendering and future behavior. */
@@ -105,6 +106,21 @@ export interface UiMessage {
   /** Unix timestamp in milliseconds. */
   timestamp: number;
 }
+
+/** A persisted UI-only todo snapshot shown in the conversation log. */
+export interface UiTodoMessage {
+  /** Identifies this as an internal UI message. */
+  role: "ui";
+  /** UI message category for rendering and future behavior. */
+  kind: "todo";
+  /** Todo snapshot rendered in the conversation pane. */
+  todos: TodoItem[];
+  /** Unix timestamp in milliseconds. */
+  timestamp: number;
+}
+
+/** A persisted UI-only message shown in the conversation log. */
+export type UiMessage = UiInfoMessage | UiTodoMessage;
 
 /** Any message persisted in session history. */
 export type PersistedMessage = Message | UiMessage;
@@ -491,10 +507,27 @@ function isUiMessageRecord(value: unknown): value is UiMessage {
     return false;
   }
 
+  const timestamp = readFiniteNumber(record, "timestamp");
+  if (timestamp === null) {
+    return false;
+  }
+
+  if (record.kind === "info") {
+    return typeof record.content === "string";
+  }
+
   return (
-    record.kind === "info" &&
-    typeof record.content === "string" &&
-    readFiniteNumber(record, "timestamp") !== null
+    record.kind === "todo" &&
+    Array.isArray(record.todos) &&
+    record.todos.every(
+      (todo) =>
+        typeof todo === "object" &&
+        todo !== null &&
+        typeof (todo as { content?: unknown }).content === "string" &&
+        ((todo as { status?: unknown }).status === "pending" ||
+          (todo as { status?: unknown }).status === "in_progress" ||
+          (todo as { status?: unknown }).status === "completed"),
+    )
   );
 }
 
@@ -593,16 +626,31 @@ export function truncateSessions(
 // ---------------------------------------------------------------------------
 
 /**
- * Create a persisted UI message.
+ * Create a persisted UI info message.
  *
  * @param content - Display text shown in the conversation log.
- * @returns A new {@link UiMessage}.
+ * @returns A new {@link UiInfoMessage}.
  */
-export function createUiMessage(content: string): UiMessage {
+export function createUiMessage(content: string): UiInfoMessage {
   return {
     role: "ui",
     kind: "info",
     content,
+    timestamp: Date.now(),
+  };
+}
+
+/**
+ * Create a persisted UI todo snapshot message.
+ *
+ * @param todos - Todo snapshot rendered in the conversation log.
+ * @returns A new {@link UiTodoMessage}.
+ */
+export function createUiTodoMessage(todos: readonly TodoItem[]): UiTodoMessage {
+  return {
+    role: "ui",
+    kind: "todo",
+    todos: todos.map((todo) => ({ ...todo })),
     timestamp: Date.now(),
   };
 }

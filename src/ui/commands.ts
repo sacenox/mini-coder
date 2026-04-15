@@ -29,6 +29,7 @@ import {
   undoLastTurn,
 } from "../session.ts";
 import { updateSettings } from "../settings.ts";
+import { getTodoItems } from "../tools.ts";
 import { buildHelpText, COMMAND_DESCRIPTIONS } from "./help.ts";
 import { type ActiveOverlay, OVERLAY_MAX_VISIBLE } from "./overlay.ts";
 import { abbreviatePath } from "./status.ts";
@@ -51,6 +52,11 @@ interface UiCommandRuntime {
   setInputValue: (value: string) => void;
   /** Append a UI-only info message to the conversation log. */
   appendInfoMessage: (text: string, state: AppState) => void;
+  /** Append a UI-only todo snapshot to the conversation log. */
+  appendTodoMessage: (
+    todos: ReturnType<typeof getTodoItems>,
+    state: AppState,
+  ) => void;
   /** Re-enable stick-to-bottom behavior for the conversation log. */
   scrollConversationToBottom: () => void;
   /** Trigger a UI re-render. */
@@ -580,6 +586,10 @@ export function createCommandController(
     runtime.appendInfoMessage(buildHelpText(state), state);
   };
 
+  const handleTodoCommand = (state: AppState): void => {
+    runtime.appendTodoMessage(getTodoItems(state.messages), state);
+  };
+
   const handleCommand = (command: string, state: AppState): boolean => {
     switch (command) {
       case "model":
@@ -621,6 +631,9 @@ export function createCommandController(
         return true;
       case "verbose":
         handleVerboseCommand(state);
+        return true;
+      case "todo":
+        handleTodoCommand(state);
         return true;
       case "help":
         handleHelpCommand(state);

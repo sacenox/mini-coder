@@ -163,6 +163,17 @@ describe("headless", () => {
     expect(listPromptHistory(state.db, 1)).toEqual([]);
   });
 
+  test("runHeadlessPrompt rejects /todo before creating a session", async () => {
+    const state = createTestState();
+
+    await expect(runHeadlessPrompt(state, "/todo")).rejects.toThrow(
+      "Headless mode does not support slash commands: /todo",
+    );
+
+    expect(state.session).toBeNull();
+    expect(listPromptHistory(state.db, 1)).toEqual([]);
+  });
+
   test("runHeadlessPrompt streams tool execution events for tool-use turns", async () => {
     faux.setResponses([
       fauxAssistantMessage(

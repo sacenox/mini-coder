@@ -1,5 +1,6 @@
 /**
- * Built-in tool implementations: `edit`, `shell`, and `readImage`.
+ * Built-in tool implementations: `edit`, `shell`, `todoWrite`, `todoRead`,
+ * and `readImage`.
  *
  * Each tool is exposed as a pure-ish execute function that takes typed
  * arguments and a working directory, returning a result object. The pi-ai
@@ -11,7 +12,13 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, extname, isAbsolute, join } from "node:path";
-import type { ImageContent, TextContent, Tool } from "@mariozechner/pi-ai";
+import type {
+  ImageContent,
+  Message,
+  TextContent,
+  Tool,
+  ToolResultMessage,
+} from "@mariozechner/pi-ai";
 import { Type } from "@mariozechner/pi-ai";
 import type { ToolUpdateCallback } from "./agent.ts";
 
@@ -35,6 +42,191 @@ export interface ToolExecResult {
 /** Convenience: build a text-only {@link ToolExecResult}. */
 function textResult(text: string, isError: boolean): ToolExecResult {
   return { content: [{ type: "text", text }], isError };
+}
+
+/** Persisted todo status values shown to the user and stored in snapshots. */
+export type TodoStatus = "pending" | "in_progress" | "completed";
+
+/** Todo status values accepted by `todoWrite`. */
+export type TodoWriteStatus = TodoStatus | "cancelled";
+
+/** A single persisted todo item. */
+export interface TodoItem {
+  /** Task description shown in the checklist. */
+  content: string;
+  /** Current persisted task status. */
+  status: TodoStatus;
+}
+
+interface TodoWriteInputItem {
+  /** Task description used as the matching key. */
+  content: string;
+  /** Requested next status for the task. */
+  status: TodoWriteStatus;
+}
+
+/** Arguments for the `todoWrite` tool. */
+export interface TodoWriteArgs {
+  /** Todo items to create, update, or remove. */
+  todos: TodoWriteInputItem[];
+}
+
+const MAX_TODO_CONTENT_LENGTH = 1_000;
+
+type TodoHistoryMessage = Message | { role: "ui" };
+
+function isTodoStatus(value: unknown): value is TodoStatus {
+  return (
+    value === "pending" || value === "in_progress" || value === "completed"
+  );
+}
+
+function isTodoWriteStatus(value: unknown): value is TodoWriteStatus {
+  return value === "cancelled" || isTodoStatus(value);
+}
+
+function cloneTodoItems(todos: readonly TodoItem[]): TodoItem[] {
+  return todos.map((todo) => ({ ...todo }));
+}
+
+function getToolResultText(content: ToolResultMessage["content"]): string {
+  return content
+    .filter((entry): entry is TextContent => entry.type === "text")
+    .map((entry) => entry.text)
+    .join("\n");
+}
+
+/** Serialize a full todo snapshot for storage in a tool result. */
+export function formatTodoSnapshot(todos: readonly TodoItem[]): string {
+  return JSON.stringify({ todos: cloneTodoItems(todos) }, null, 2);
+}
+
+/** Parse a serialized todo snapshot from tool-result text. */
+export function parseTodoSnapshot(text: string): TodoItem[] | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text) as unknown;
+  } catch {
+    return null;
+  }
+
+  if (
+    typeof parsed !== "object" ||
+    parsed === null ||
+    !Array.isArray((parsed as { todos?: unknown }).todos)
+  ) {
+    return null;
+  }
+
+  const todos = (parsed as { todos: unknown[] }).todos;
+  if (
+    !todos.every((todo) => {
+      return (
+        typeof todo === "object" &&
+        todo !== null &&
+        typeof (todo as { content?: unknown }).content === "string" &&
+        isTodoStatus((todo as { status?: unknown }).status)
+      );
+    })
+  ) {
+    return null;
+  }
+
+  return todos.map((todo) => ({
+    content: (todo as { content: string }).content,
+    status: (todo as { status: TodoStatus }).status,
+  }));
+}
+
+function getTodoSnapshotFromToolResult(
+  message: ToolResultMessage,
+): TodoItem[] | null {
+  if (message.isError) {
+    return null;
+  }
+  if (message.toolName !== "todoWrite" && message.toolName !== "todoRead") {
+    return null;
+  }
+  return parseTodoSnapshot(getToolResultText(message.content));
+}
+
+/** Return the current todo list derived from persisted message history. */
+export function getTodoItems(
+  messages: readonly TodoHistoryMessage[],
+): TodoItem[] {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (!message || message.role !== "toolResult") {
+      continue;
+    }
+
+    const snapshot = getTodoSnapshotFromToolResult(message);
+    if (snapshot) {
+      return snapshot;
+    }
+  }
+
+  return [];
+}
+
+function validateTodoContent(content: string): string | null {
+  if (content.trim().length === 0) {
+    return "Todo content cannot be empty";
+  }
+  if (content.length > MAX_TODO_CONTENT_LENGTH) {
+    return `Todo content exceeds maximum length of ${MAX_TODO_CONTENT_LENGTH} characters`;
+  }
+  return null;
+}
+
+/** Apply incremental todo changes and return the new full snapshot. */
+export function executeTodoWrite(
+  args: TodoWriteArgs,
+  messages: readonly TodoHistoryMessage[],
+): ToolExecResult {
+  const nextTodos = cloneTodoItems(getTodoItems(messages));
+
+  for (const todo of args.todos) {
+    const validationError = validateTodoContent(todo.content);
+    if (validationError) {
+      return textResult(validationError, true);
+    }
+    if (!isTodoWriteStatus(todo.status)) {
+      return textResult(`Invalid todo status: ${String(todo.status)}`, true);
+    }
+
+    if (todo.status === "cancelled") {
+      const index = nextTodos.findIndex(
+        (existingTodo) => existingTodo.content === todo.content,
+      );
+      if (index !== -1) {
+        nextTodos.splice(index, 1);
+      }
+      continue;
+    }
+
+    const existingTodo = nextTodos.find(
+      (candidate) => candidate.content === todo.content,
+    );
+    if (existingTodo) {
+      existingTodo.status = todo.status;
+      continue;
+    }
+
+    nextTodos.push({
+      content: todo.content,
+      status: todo.status,
+    });
+  }
+
+  return textResult(formatTodoSnapshot(nextTodos), false);
+}
+
+/** Return the current full todo snapshot without mutating it. */
+export function executeTodoRead(
+  messages: readonly TodoHistoryMessage[],
+): ToolExecResult {
+  return textResult(formatTodoSnapshot(getTodoItems(messages)), false);
 }
 
 function detectLineEnding(content: string): "\n" | "\r\n" | null {
@@ -1328,6 +1520,53 @@ export const editTool: Tool = {
       description: "Replacement text (or full content for new files)",
     }),
   }),
+};
+
+/** pi-ai tool definition for `todoWrite`. */
+export const todoWriteTool: Tool = {
+  name: "todoWrite",
+  description:
+    "Use this tool to create and manage a structured task list for your current coding session. " +
+    "This helps you track progress, organize complex tasks, and keep the user informed. " +
+    "Only send the items that changed; unchanged items stay as they are. " +
+    "Each item must include `content` and `status`, where `status` is one of `pending`, `in_progress`, `completed`, or `cancelled`. " +
+    "Use `cancelled` to remove an item from the list. " +
+    "Mark tasks `in_progress` before starting them and `completed` immediately after verification succeeds.",
+  parameters: Type.Object({
+    todos: Type.Array(
+      Type.Object({
+        content: Type.String({
+          description: "Task description used as the matching key",
+        }),
+        status: Type.Union(
+          [
+            Type.Literal("pending"),
+            Type.Literal("in_progress"),
+            Type.Literal("completed"),
+            Type.Literal("cancelled"),
+          ],
+          {
+            description:
+              "Task status. Use `cancelled` to remove the item entirely.",
+          },
+        ),
+      }),
+      {
+        description:
+          "List of todo items to create, update, or remove. Only send the items that changed.",
+      },
+    ),
+  }),
+};
+
+/** pi-ai tool definition for `todoRead`. */
+export const todoReadTool: Tool = {
+  name: "todoRead",
+  description:
+    "Retrieves the current todo list for this coding session. " +
+    "Use this tool before updating todos when you need to inspect the current list, or when the user asks for the current plan or progress. " +
+    "If no todos exist yet, it returns an empty list.",
+  parameters: Type.Object({}),
 };
 
 /** pi-ai tool definition for `shell`. */

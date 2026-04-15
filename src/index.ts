@@ -25,9 +25,11 @@ import { getEnvApiKey, getModels, getProviders } from "@mariozechner/pi-ai";
 import { getOAuthApiKey, getOAuthProviders } from "@mariozechner/pi-ai/oauth";
 import type { ToolHandler } from "./agent.ts";
 import {
+  type CliOptions,
   parseCliArgs,
   resolveHeadlessPrompt,
   shouldUseHeadlessMode,
+  type TtyState,
 } from "./cli.ts";
 import { getErrorMessage } from "./errors.ts";
 import { type GitState, getGitState } from "./git.ts";
@@ -71,8 +73,12 @@ import {
   executeEdit,
   executeReadImage,
   executeShell,
+  executeTodoRead,
+  executeTodoWrite,
   readImageTool,
   shellTool,
+  todoReadTool,
+  todoWriteTool,
 } from "./tools.ts";
 import { resolveAppVersionLabel } from "./version.ts";
 
@@ -382,11 +388,28 @@ const BUILTIN_HANDLERS: Record<string, ToolHandler> = {
 function buildTools(
   model: Model<string>,
   plugins: LoadedPlugin[],
+  messages: AppState["messages"],
 ): { tools: Tool[]; toolHandlers: Map<string, ToolHandler> } {
-  const tools: Tool[] = [editTool, shellTool];
+  const tools: Tool[] = [editTool, shellTool, todoWriteTool, todoReadTool];
   const toolHandlers = new Map<string, ToolHandler>([
     [editTool.name, BUILTIN_HANDLERS.edit!],
     [shellTool.name, BUILTIN_HANDLERS.shell!],
+    [
+      todoWriteTool.name,
+      (args) =>
+        executeTodoWrite(
+          {
+            todos: Array.isArray(args.todos)
+              ? (args.todos as Array<{
+                  content: string;
+                  status: "pending" | "in_progress" | "completed" | "cancelled";
+                }>)
+              : [],
+          },
+          messages,
+        ),
+    ],
+    [todoReadTool.name, () => executeTodoRead(messages)],
   ]);
 
   // Conditionally register readImage for vision-capable models
@@ -696,7 +719,7 @@ export function buildToolList(state: AppState): {
   toolHandlers: Map<string, ToolHandler>;
 } {
   if (!state.model) return { tools: [], toolHandlers: new Map() };
-  return buildTools(state.model, state.plugins);
+  return buildTools(state.model, state.plugins, state.messages);
 }
 
 /**
@@ -764,6 +787,47 @@ export {
 };
 
 // ---------------------------------------------------------------------------
+// Headless CLI
+// ---------------------------------------------------------------------------
+
+type HeadlessCliStopReason = "stop" | "length" | "error" | "aborted";
+
+/**
+ * Run one headless CLI prompt using the output mode selected by the parsed CLI flags.
+ *
+ * Non-TTY detection only decides whether headless mode should run at all.
+ * Once headless mode is selected, `--json` is the only switch that chooses
+ * NDJSON streaming versus final-text output.
+ *
+ * @param state - Initialized application state for the run.
+ * @param cli - Parsed CLI options.
+ * @param tty - Current TTY availability.
+ * @param deps - Injected I/O and runner callbacks.
+ * @returns The terminal stop reason for the headless run.
+ */
+export async function runHeadlessCli(
+  state: AppState,
+  cli: CliOptions,
+  tty: TtyState,
+  deps: {
+    readStdin: () => Promise<string>;
+    runJson: (
+      state: AppState,
+      rawPrompt: string,
+    ) => Promise<HeadlessCliStopReason>;
+    runText: (
+      state: AppState,
+      rawPrompt: string,
+    ) => Promise<HeadlessCliStopReason>;
+  },
+): Promise<HeadlessCliStopReason> {
+  const rawPrompt = await resolveHeadlessPrompt(cli, tty, deps.readStdin);
+  return cli.json
+    ? deps.runJson(state, rawPrompt)
+    : deps.runText(state, rawPrompt);
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -785,14 +849,17 @@ export async function main(): Promise<void> {
 
   if (shouldUseHeadlessMode(cli, tty)) {
     try {
-      const rawPrompt = await resolveHeadlessPrompt(cli, tty, async () => {
-        return Bun.stdin.text();
+      const stopReason = await runHeadlessCli(state, cli, tty, {
+        readStdin: async () => Bun.stdin.text(),
+        runJson: async (headlessState, rawPrompt) => {
+          const { runHeadlessPrompt } = await import("./headless.ts");
+          return runHeadlessPrompt(headlessState, rawPrompt);
+        },
+        runText: async (headlessState, rawPrompt) => {
+          const { runHeadlessPromptText } = await import("./headless.ts");
+          return runHeadlessPromptText(headlessState, rawPrompt);
+        },
       });
-      const { runHeadlessPrompt, runHeadlessPromptText } =
-        await import("./headless.ts");
-      const stopReason = cli.json
-        ? await runHeadlessPrompt(state, rawPrompt)
-        : await runHeadlessPromptText(state, rawPrompt);
       if (stopReason === "aborted") {
         process.exitCode = 130;
       } else if (stopReason === "error") {

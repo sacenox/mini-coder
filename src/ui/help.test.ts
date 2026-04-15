@@ -22,6 +22,7 @@ describe("ui/help", () => {
     expect(text).toContain(
       "/verbose  Toggle verbose tool rendering (currently off)",
     );
+    expect(text).toContain("/todo  Show the current todo list");
   });
 
   test("buildHelpText describes the current Escape behavior", () => {

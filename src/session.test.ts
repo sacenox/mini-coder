@@ -17,6 +17,7 @@ import {
   computeStats,
   createSession,
   createUiMessage,
+  createUiTodoMessage,
   deleteSession,
   filterModelMessages,
   forkSession,
@@ -81,6 +82,13 @@ function makeToolResult(toolCallId: string, text: string): ToolResultMessage {
 
 function makeUiMessage(text: string) {
   return createUiMessage(text);
+}
+
+function makeUiTodoMessage() {
+  return createUiTodoMessage([
+    { content: "Review prompt wording", status: "completed" },
+    { content: "Implement todo tools", status: "in_progress" },
+  ]);
 }
 
 function loadSessionOrThrow(db: ReturnType<typeof openDatabase>, id: string) {
@@ -755,15 +763,30 @@ describe("cumulative stats", () => {
 
   test("filterModelMessages excludes UI messages", () => {
     const ui = makeUiMessage("Help output");
+    const todoUi = makeUiTodoMessage();
     const user = makeUser("hello");
     const assistant = makeAssistant("reply");
-    const messages = [ui, user, assistant];
+    const messages = [ui, todoUi, user, assistant];
 
     const filtered = filterModelMessages(messages);
 
     expect(filtered).toHaveLength(2);
     expect(filtered[0]).toEqual(user);
     expect(filtered[1]).toEqual(assistant);
+  });
+
+  test("loadMessages round-trips UI todo messages", () => {
+    const db = openDatabase(":memory:");
+    const session = createSession(db, { cwd: "/tmp/project" });
+    const todoUi = makeUiTodoMessage();
+
+    try {
+      appendMessage(db, session.id, todoUi);
+
+      expect(loadMessages(db, session.id)).toEqual([todoUi]);
+    } finally {
+      db.close();
+    }
   });
 
   test("computeContextTokens uses the latest valid assistant usage as the anchor", () => {
