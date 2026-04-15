@@ -10,7 +10,7 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import type {
   KnownProvider,
@@ -652,6 +652,22 @@ export async function init(): Promise<AppState> {
   };
 }
 
+/** Resolve the shell label shown in the system prompt. */
+function resolvePromptShell(): string {
+  return basename(process.env.SHELL || "/bin/sh");
+}
+
+/** Resolve the normalized OS label shown in the system prompt. */
+function resolvePromptOs(): "linux" | "mac" | "docker" {
+  if (process.platform === "darwin") {
+    return "mac";
+  }
+  if (existsSync("/.dockerenv") || existsSync("/run/.containerenv")) {
+    return "docker";
+  }
+  return "linux";
+}
+
 /**
  * Build the system prompt for the current state.
  *
@@ -661,7 +677,12 @@ export async function init(): Promise<AppState> {
 export function buildPrompt(state: AppState): string {
   return buildSystemPrompt({
     cwd: state.cwd,
-    date: new Date().toISOString().slice(0, 10),
+    modelLabel: state.model
+      ? `${state.model.provider}/${state.model.id}`
+      : "unknown",
+    os: resolvePromptOs(),
+    shell: resolvePromptShell(),
+    supportsImages: state.model?.input.includes("image") ?? false,
     git: state.git,
     agentsMd: state.agentsMd,
     skills: state.skills,

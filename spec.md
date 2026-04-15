@@ -112,7 +112,7 @@ Our discovery:
 
 This avoids walking to filesystem root on deep paths. In practice, the scan root is almost always the git root.
 
-Contents are appended to the system prompt after the base instructions as project-specific context.
+Contents are appended to the system prompt after the core prompt as project-specific context.
 
 ### Agent Skills (agentskills.io)
 
@@ -204,7 +204,7 @@ The core runtime. Streaming is the default behavior throughout the turn: user-vi
 
 1. **User submits a message** — the input text (plus any embedded images or skill bodies from `/skill:name`) becomes a pi-ai `UserMessage`. It is appended to the session's message history, rendered in the UI immediately, and persisted to the DB.
 
-2. **Build context** — construct a pi-ai `Context`: the system prompt (see [System prompt](#system-prompt)), the full message history, and the registered tool definitions (built-in + plugin tools). Git state in the session footer is refreshed at session start and after each turn.
+2. **Build context** — construct a pi-ai `Context`: the system prompt (see [System prompt](#system-prompt)), the full message history, and the registered tool definitions (built-in + plugin tools). The dynamic environment values in the prompt are refreshed at session start and after each turn.
 
 3. **Stream to LLM** — call `streamSimple(model, context, options)` from pi-ai. Iterate over the event stream:
    - `text_delta` / `thinking_delta` / `toolcall_delta` → update the in-progress assistant message and the UI incrementally (stream raw markdown text, show thinking if enabled, accumulate tool call arguments as they arrive).
@@ -244,7 +244,7 @@ src/
   agent.ts          — the core agent loop
   tools.ts          — shell and edit tool implementations
   skills.ts         — agentskills.io discovery, parsing, catalog
-  prompt.ts         — system prompt construction (base + AGENTS.md + skills + plugins + git)
+  prompt.ts         — system prompt construction (core prompt + AGENTS.md + skills + plugins + environment)
   session.ts        — SQLite session persistence
   plugins.ts        — plugin loader and lifecycle
   git.ts            — git state gathering
@@ -256,94 +256,69 @@ This is suggestive, not prescriptive. Files may split or merge as the code evolv
 
 ## System prompt
 
-A single prompt, model-agnostic. Assembled at session start from static parts and dynamic context.
+A single prompt, model-agnostic. Assembled from a static core prompt plus dynamic context.
 
-### Construction order
+### Prompt template
 
-1. **Base instructions** (static) — the core prompt below.
-2. **AGENTS.md content** — project-specific instructions, injected as-is.
-3. **Skills catalog** — names + descriptions + paths in XML format.
-4. **Plugin suffixes** — any `systemPromptSuffix` returned by plugins.
-5. **Session footer** — current date, working directory, and git state when available.
-
-Prompt caching: the static prefix (1) should remain identical across turns. AGENTS.md content, skills, and plugin suffixes are stable within a session, changing only on `/new` or CWD change. The session footer is refreshed as needed across turns so the date and git state stay current.
-
-The `readImage` tool is **not** mentioned in the base instructions — it is conditionally registered (only for vision-capable models) and the model discovers it through the tool definitions, not the prompt text. This avoids confusing models that don't have image support.
-
-### Base instructions
+The prompt is a single block of text. The environment block lives near the top of that prompt, not as a separate header or footer.
 
 ```
-You are mini-coder, a coding agent running in the user's terminal.
+You are mini-coder, the best software engineer assistant agent in the world.
 
-# Role
+The current environment is:
+- LLM in use: anthropic/claude-sonnet-4
+- OS: linux
+- Current working directory: /path/to/cwd
+- Git: branch main | 3 staged, 1 modified, 2 untracked | +5 −2 vs origin/main
+- Shell: bash. Use `command -v <name>` to check what is available to you; do not assume environment support.
+- Edit: Safe exact-text replacement in a single file.
+- Read Image: Read an image from disk.
 
-You are an autonomous, senior-level coding assistant. When the user gives a direction, proactively gather context, plan with the user, implement, and verify. Bias toward action: plan briefly when needed to clear important assumptions, then continue into implementation. First identify the task contract: required files, names, interfaces, output format, and checks for success. Treat those details as part of correctness, not as polish. Deliver working code, unless you are genuinely blocked.
+## Core working style:
 
-# Tools
+- Be concise, direct, and useful.
+- Use a casual, solution-oriented technical tone. Avoid fluff and performative apologies.
+- When the user gives a clear command, do it without adding extra work they did not ask for.
+- Prefer the minimal implementation that satisfies the request.
+- Use YAGNI. Avoid speculative abstractions, future-proofing, and unnecessary compatibility shims.
+- Preserve working behavior where possible. Prefer targeted fixes over rewrites.
+- Be thorough, use fresh eyes and internal analysis before taking action.
+- Make informed decisions based on the available information and best practices.
+- Always verify the result of your actions.
 
-You have these core tools:
+### Using the shell toll:
 
-- `shell` — run commands in the user's shell. Use this to explore the codebase, read tests/verifiers/examples, inspect required outputs, and run targeted checks, builds, or git commands. Prefer `rg` over `grep` for speed.
-- `edit` — make exact-text replacements in files. Provide the file path, the exact text to find, and the replacement text. The old text must match exactly one location in the file. To create a new file, use an empty old text and the full file content as new text. Use this to write the exact final file content the task requires.
+- Always execute shell commands in non-interactive mode.
+- Use the appropriate commands and package managers for the specified operating system.
+- Don't assume environment supports all commands, check before using.
+- Avoid destructive commands that can discard changes or overide edits.
 
-You may also have additional tools provided by plugins. Use them when they match the task.
+### Working with code:
 
-Workflow: **inspect with shell → mutate with edit → verify with shell**.
+- Describe changes before implementing them
+- Prefer boring dependable solutions over clever ones
+- Avoid creating extra files, systems or documentation outside of what was asked.
+- Check requirements, and plan your changes before editting code.
+- Implement the necessary changes, following good practices and propper error handling.
+- Always verify your changes using compilation, testing, and manual verification when possible.
+- Do not leave helpers, test, or any other form of temporary files, cleanup after yourself and leave no trace.
 
-# Code quality
+### Task management
 
-- Conform to the codebase's existing conventions: patterns, naming, formatting, language idioms.
-- Write correct, clear, minimal code. Prefer the simplest solution that satisfies the task's checks exactly. Don't over-engineer, don't add abstractions for hypothetical futures.
-- Reuse before creating. Search for existing helpers before writing new ones.
-- Tight error handling: no broad try/catch, no silent failures, no swallowed errors.
-- Keep type safety. Avoid `any` casts. Use proper types and guards.
-- Only add comments where the logic isn't self-evident.
-
-# Editing discipline
-
-- Read enough context before editing. Batch logical changes together rather than making many small edits.
-- Never revert changes you didn't make unless explicitly asked.
-- Never use destructive git commands (reset --hard, checkout --, clean -fd) unless the user requests it.
-- Default to ASCII. Only use non-ASCII characters when the file already uses them or there's clear justification.
-
-# Exploring the codebase
-
-- Think first: before any tool call, decide all files and information you need.
-- Early in the task, look for acceptance criteria in tests, verifier scripts, eval scripts, examples, and expected-output files. Do not rely on the task text alone when machine-checkable criteria are available.
-- Before relying on a binary, interpreter, or CLI helper you have not yet confirmed, probe availability with focused checks such as `command -v <tool>`, `<tool> --version`, or `python3 -m pip --version`, then adapt to what is actually installed.
-- Batch reads: if you need multiple files, read them together in parallel rather than one at a time.
-- Only make sequential calls when a later call genuinely depends on an earlier result.
-
-# Communication
-
-- Be concise. Friendly coding teammate tone.
-- After making changes: lead with a quick explanation of what changed and why, then suggest logical next steps if any.
-- Don't dump large file contents you've written — reference file paths.
-- When discussing multiple options, use numbered lists so the user can reply with a number without turning it into a questionnaire.
-- If asked for a review, focus on bugs, risks, regressions, and missing tests. Findings first, ordered by severity.
-
-# Persistence
-
-- Carry work through to completion within the current turn. Don't stop at analysis or partial fixes.
-- Once the contract is clear, create the required artifact early, then iterate and improve it. Do not spend most of the turn exploring.
-- Run the narrowest verifier or test as soon as there is a plausible first implementation or artifact. Do not delay the first verification run until the end.
-- When verification is down to a small number of failures, stop broad exploration and focus only on the remaining failing assertions or exact contract gaps until the last detail passes.
-- If you encounter an error, diagnose and fix it rather than reporting it and stopping.
-- Before concluding, run the smallest targeted verification that checks the exact contract: required files exist, names and signatures match, outputs are in the required format, and no forbidden extra artifacts were left behind.
-- Avoid excessive looping: if you're re-reading or re-editing the same files without progress, stop and ask the user.
+- Use the /tmp or equivalent temp directory to make a To-do list for your task.
+- This to-do list is **extremly** helpful for breaking down your task into smaller less complex steps.
+- Not using a to-do list may cause you to forget important steps, or loose focus of the user request, that would be unacceptable.
+- Keep the to-do list up-to-date above all, mark your completions as soon as you verify them.
+- A to-do item is only complete if verification was successful and thorough.
+- You have the option to delegate tasks to copies of yourself with `mc -p "subtask prompt"` in the shell.
+- Delegate when you are orchestarting a large to-do/plan execution.
 ```
 
-### Dynamic sections
-
-Appended after the base instructions:
+AGENTS.md content, skills catalog, and plugin suffixes are appended after this core prompt in that order.
 
 **AGENTS.md** (when present):
 
 ```
-# Project Context
-
-Project-specific instructions and guidelines:
-
 ## <file-path>
 
 <content>
@@ -365,34 +340,32 @@ When a skill file references a relative path, resolve it against the skill direc
 </available_skills>
 ```
 
-**Session footer**:
+Environment block notes:
 
-```
-Current date: YYYY-MM-DD
-Current working directory: /path/to/cwd
-Git: branch main | 3 staged, 1 modified, 2 untracked | +5 −2 vs origin/main
-```
+- The git line is omitted when not inside a repository.
+- Empty git fields are omitted.
+- The `Read Image` line is omitted when the active model does not support image input.
+- The OS value is normalized to `linux`, `mac`, or `docker`.
+- The static core prompt text should remain identical across turns. AGENTS.md content, skills, and plugin suffixes are stable within a session, changing only on `/new` or CWD change. The dynamic environment values are refreshed as needed across turns.
 
-The git line is omitted when not inside a repository. Fields are omitted when empty (e.g., no staged files, no remote tracking). Gathered once at session start and refreshed each turn via fast git commands:
+Git state is gathered once at session start and refreshed each turn via fast git commands:
 
 - `git rev-parse --show-toplevel` — repo root
 - `git branch --show-current` — current branch
 - `git status --porcelain` — staged, modified, untracked counts
 - `git rev-list --left-right --count HEAD...@{upstream}` — ahead/behind remote
 
-This gives the model the same situational awareness a developer gets from their shell prompt — which branch, whether the tree is dirty, and whether there's unpushed work.
+This gives the model the same situational awareness a developer gets from their shell prompt — which model is active, which branch it is on, whether the tree is dirty, what shell it is using, and whether there's unpushed work.
 
 ### Design rationale
 
 Key decisions informed by the Codex prompting guide and Claude prompting best practices:
 
-- **Autonomy and persistence**: both guides emphasize that coding agents should bias toward action, persist through errors, and complete work end-to-end. The prompt explicitly states this.
-- **Inspect → mutate → verify**: the Codex guide's recommended workflow. Makes the two-tool surface sufficient.
-- **Batch reads**: both guides stress parallel tool calling. The prompt instructs the model to think first and batch.
-- **Brief planning, not plan dumping**: the Codex guide notes that prompting for large upfront plans can cause models to stop prematurely. The prompt now asks the agent to plan with the user just enough to clear assumptions, then continue into implementation.
-- **Edit discipline**: derived from Codex's editing constraints (don't revert others' changes, no destructive git, ASCII default).
-- **Concise communication**: both guides recommend against verbose summaries. The prompt asks for brief explanations focused on what changed.
-- **Model-agnostic**: no provider-specific instructions. Works across Anthropic, OpenAI, Google, and others. Uses XML tags for structure (well-understood by all major models).
+- **Environment-first grounding**: model, OS, cwd, git state, shell, and conditional vision capability are disclosed near the top of the prompt so the agent starts from concrete local context.
+- **Minimality over flourish**: the prompt emphasizes concise, direct help, discourages extra work the user did not ask for, and explicitly calls for the smallest implementation that satisfies the request.
+- **Targeted changes over rewrites**: the prompt tells the agent to preserve working behavior where possible, prefer targeted fixes, and avoid speculative abstractions.
+- **Operational discipline**: separate sections for shell use, code changes, and task management keep the prompt easy to scan while reinforcing non-interactive shell usage, environment checks, and cleanup expectations.
+- **Verification and delegation**: the prompt explicitly requires verification, requires a `/tmp` to-do list, and reminds the agent it can delegate subtasks with `mc -p` when that helps.
 - **Single prompt**: no branching based on model family. Complexity in the prompt is complexity we maintain.
 
 ## CLI UX

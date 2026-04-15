@@ -328,63 +328,12 @@ describe("formatGitLine", () => {
 // ---------------------------------------------------------------------------
 
 describe("buildSystemPrompt", () => {
-  test("includes base instructions", () => {
+  test("includes optional git and readImage environment lines when available", () => {
     const prompt = buildSystemPrompt({
       cwd: "/home/user/project",
-      date: "2026-04-05",
-    });
-
-    expect(prompt).toContain("You are mini-coder");
-    expect(prompt).toContain("# Role");
-    expect(prompt).toContain("# Tools");
-    expect(prompt).toContain("# Code quality");
-    expect(prompt).toContain("# Editing discipline");
-    expect(prompt).toContain("# Communication");
-    expect(prompt).toContain("# Persistence");
-  });
-
-  test("includes contract, verification, and communication guidance", () => {
-    const prompt = buildSystemPrompt({
-      cwd: "/home/user/project",
-      date: "2026-04-05",
-    });
-
-    expect(prompt).toContain("First identify the task contract");
-    expect(prompt).toContain(
-      "look for acceptance criteria in tests, verifier scripts, eval scripts, examples, and expected-output files",
-    );
-    expect(prompt).toContain(
-      "probe availability with focused checks such as `command -v <tool>`, `<tool> --version`, or `python3 -m pip --version`",
-    );
-    expect(prompt).toContain("create the required artifact early");
-    expect(prompt).toContain(
-      "Run the narrowest verifier or test as soon as there is a plausible first implementation or artifact",
-    );
-    expect(prompt).toContain(
-      "When verification is down to a small number of failures, stop broad exploration and focus only on the remaining failing assertions or exact contract gaps until the last detail passes",
-    );
-    expect(prompt).toContain(
-      "When discussing multiple options, use numbered lists so the user can reply with a number without turning it into a questionnaire.",
-    );
-    expect(prompt).toContain(
-      "run the smallest targeted verification that checks the exact contract",
-    );
-  });
-
-  test("includes session footer with date and cwd", () => {
-    const prompt = buildSystemPrompt({
-      cwd: "/home/user/project",
-      date: "2026-04-05",
-    });
-
-    expect(prompt).toContain("Current date: 2026-04-05");
-    expect(prompt).toContain("Current working directory: /home/user/project");
-  });
-
-  test("includes git line when git state provided", () => {
-    const prompt = buildSystemPrompt({
-      cwd: "/home/user/project",
-      date: "2026-04-05",
+      modelLabel: "anthropic/claude-sonnet-4",
+      os: "docker",
+      shell: "zsh",
       git: {
         root: "/home/user/project",
         branch: "main",
@@ -395,88 +344,20 @@ describe("buildSystemPrompt", () => {
         ahead: 5,
         behind: 2,
       },
+      supportsImages: true,
     });
 
-    expect(prompt).toContain("Git: branch main");
+    expect(prompt).toContain(
+      "- Git: branch main | 3 staged, 1 modified, 2 untracked | +5 −2 vs origin/main",
+    );
+    expect(prompt).toContain("- Read Image: Read an image from disk.");
+    expect(prompt).toContain("- OS: docker");
+    expect(prompt).toContain(
+      "- Shell: zsh. Use `command -v <name>` to check what is available to you; do not assume environment support.",
+    );
   });
 
-  test("omits git line when git state is null", () => {
-    const prompt = buildSystemPrompt({
-      cwd: "/tmp/no-repo",
-      date: "2026-04-05",
-      git: null,
-    });
-
-    expect(prompt).not.toContain("Git:");
-  });
-
-  test("includes AGENTS.md content when provided", () => {
-    const prompt = buildSystemPrompt({
-      cwd: "/project",
-      date: "2026-04-05",
-      agentsMd: [
-        {
-          path: "/project/AGENTS.md",
-          content: "Always use TypeScript strict mode.",
-        },
-      ],
-    });
-
-    expect(prompt).toContain("# Project Context");
-    expect(prompt).toContain("## /project/AGENTS.md");
-    expect(prompt).toContain("Always use TypeScript strict mode.");
-  });
-
-  test("includes multiple AGENTS.md files in order", () => {
-    const prompt = buildSystemPrompt({
-      cwd: "/project/src",
-      date: "2026-04-05",
-      agentsMd: [
-        { path: "/project/AGENTS.md", content: "Root rules" },
-        { path: "/project/src/AGENTS.md", content: "Src rules" },
-      ],
-    });
-
-    const rootIdx = prompt.indexOf("Root rules");
-    const srcIdx = prompt.indexOf("Src rules");
-    expect(rootIdx).toBeGreaterThan(-1);
-    expect(srcIdx).toBeGreaterThan(rootIdx);
-  });
-
-  test("includes skill catalog when skills provided", () => {
-    const skills: Skill[] = [
-      {
-        name: "deploy",
-        description: "Deploy the app.",
-        path: "/project/.agents/skills/deploy/SKILL.md",
-      },
-    ];
-
-    const prompt = buildSystemPrompt({
-      cwd: "/project",
-      date: "2026-04-05",
-      skills,
-    });
-
-    expect(prompt).toContain("<available_skills>");
-    expect(prompt).toContain("<name>deploy</name>");
-  });
-
-  test("includes plugin suffixes when provided", () => {
-    const prompt = buildSystemPrompt({
-      cwd: "/project",
-      date: "2026-04-05",
-      pluginSuffixes: [
-        "MCP server connected: github",
-        "Custom tool: jira-query",
-      ],
-    });
-
-    expect(prompt).toContain("MCP server connected: github");
-    expect(prompt).toContain("Custom tool: jira-query");
-  });
-
-  test("assembly order: base → agents.md → skills → plugins → footer", () => {
+  test("appends AGENTS.md content, skills, and plugin suffixes after the core prompt in order", () => {
     const skills: Skill[] = [
       {
         name: "test",
@@ -487,42 +368,22 @@ describe("buildSystemPrompt", () => {
 
     const prompt = buildSystemPrompt({
       cwd: "/project",
-      date: "2026-04-05",
+      modelLabel: "anthropic/claude-sonnet-4",
+      os: "linux",
+      shell: "bash",
       agentsMd: [{ path: "/project/AGENTS.md", content: "Project rules" }],
       skills,
       pluginSuffixes: ["Plugin context here"],
-      git: {
-        root: "/project",
-        branch: "main",
-        upstream: null,
-        staged: 0,
-        modified: 0,
-        untracked: 0,
-        ahead: 0,
-        behind: 0,
-      },
     });
 
-    // Verify ordering
-    const baseIdx = prompt.indexOf("You are mini-coder");
+    const coreIdx = prompt.indexOf("You are mini-coder");
     const agentsIdx = prompt.indexOf("Project rules");
     const skillsIdx = prompt.indexOf("<available_skills>");
     const pluginIdx = prompt.indexOf("Plugin context here");
-    const footerIdx = prompt.indexOf("Current date:");
 
-    expect(baseIdx).toBeGreaterThan(-1);
-    expect(agentsIdx).toBeGreaterThan(baseIdx);
+    expect(coreIdx).toBe(0);
+    expect(agentsIdx).toBeGreaterThan(coreIdx);
     expect(skillsIdx).toBeGreaterThan(agentsIdx);
     expect(pluginIdx).toBeGreaterThan(skillsIdx);
-    expect(footerIdx).toBeGreaterThan(pluginIdx);
-  });
-
-  test("does not mention readImage in base instructions", () => {
-    const prompt = buildSystemPrompt({
-      cwd: "/project",
-      date: "2026-04-05",
-    });
-
-    expect(prompt).not.toContain("readImage");
   });
 });
