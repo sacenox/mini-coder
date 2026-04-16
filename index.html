@@ -628,7 +628,8 @@ $ printf '%s\n' 'fix the failing tests' | mc</code></pre>
             <strong>Completed NDJSON output.</strong> With <code>--json</code>,
             stdout carries completed assistant and tool-result messages plus
             <code>done</code>, <code>error</code>, or <code>aborted</code>
-            outcomes. Streaming deltas are omitted.
+            outcomes. Queued <code>user_message</code> events may also appear.
+            Streaming deltas are omitted.
           </li>
           <li>
             <strong>Normal session persistence.</strong> Headless runs still
