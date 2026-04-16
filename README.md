@@ -103,7 +103,7 @@ $ printf '%s\n' 'fix the failing tests' | mc
 - Starts when `-p/--prompt` is provided or when stdin or stdout is not a TTY.
 - If stdout is redirected but stdin is still interactive, pass `-p`; headless mode will not fall back to an interactive prompt.
 - Uses the same parser as the TUI for plain text, `/skill:name`, and standalone image paths.
-- With `--json`, writes NDJSON events for completed assistant/tool-result messages plus `done` / `error` / `aborted` outcomes; streaming deltas are omitted.
+- With `--json`, writes NDJSON events for completed assistant/tool-result messages plus `done` / `error` / `aborted` outcomes; queued `user_message` events may also appear. Streaming deltas are omitted.
 - Headless runs still persist like normal sessions and show up in `/session` history for that working directory.
 - Interactive slash commands such as `/model`, `/session`, and `/help` are not available in headless mode.
 
