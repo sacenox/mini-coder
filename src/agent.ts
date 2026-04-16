@@ -623,6 +623,10 @@ function getTodoReminderSignature(
   );
 }
 
+function wrapSystemReminder(content: string): string {
+  return `<system_reminder>\n${content}\n</system_reminder>`;
+}
+
 function createTodoReminderMessage(
   messages: readonly Message[],
   remindedTodoSignatures: Set<string>,
@@ -651,7 +655,7 @@ function createTodoReminderMessage(
 
   return {
     role: "user",
-    content: lines.join("\n"),
+    content: wrapSystemReminder(lines.join("\n")),
     timestamp: Date.now(),
   };
 }

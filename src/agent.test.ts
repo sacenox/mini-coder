@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
   AssistantMessage,
+  Context,
   Message,
   Model,
   Tool,
@@ -1594,6 +1595,101 @@ describe("agent loop", () => {
     expect(lastMessage.content).toEqual([
       { type: "text", text: "I still need to finish the pending work." },
     ]);
+  });
+
+  test("wraps injected todo reminders in a system_reminder block", async () => {
+    const api = "todo-reminder-tag-test";
+    const sourceId = "todo-reminder-tag-test-source";
+    const model: Model<string> = {
+      id: "todo-reminder-tag-model",
+      name: "Todo Reminder Tag Model",
+      api,
+      provider: "test",
+      baseUrl: "http://localhost:0",
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 128000,
+      maxTokens: 4096,
+    };
+    const requestMessages: Message[][] = [];
+    let callCount = 0;
+
+    const buildProviderStream = (context: Context) => {
+      requestMessages.push(structuredClone(context.messages));
+      const stream = createAssistantMessageEventStream();
+      const finalMessage = fauxAssistantMessage(
+        callCount === 0 ? "All done." : "I still need to keep working.",
+      );
+      callCount += 1;
+
+      queueMicrotask(() => {
+        stream.push({
+          type: "done",
+          reason: "stop",
+          message: finalMessage,
+        });
+        stream.end(finalMessage);
+      });
+
+      return stream;
+    };
+
+    registerApiProvider(
+      {
+        api,
+        stream: (_model, context) => buildProviderStream(context),
+        streamSimple: (_model, context) => buildProviderStream(context),
+      },
+      sourceId,
+    );
+
+    try {
+      const session = createSession(db, { cwd: tmp });
+      const userMsg = makeUser("finish the task");
+      const turn = appendMessage(db, session.id, userMsg);
+      const messages: Message[] = [
+        makeTodoSnapshotMessage([
+          { content: "Run the test suite", status: "pending" },
+          { content: "Summarize the verified changes", status: "in_progress" },
+        ]),
+        userMsg,
+      ];
+
+      const result = await runAgentLoop({
+        db,
+        sessionId: session.id,
+        turn,
+        model,
+        systemPrompt: "Test",
+        tools: builtinToolDefs(),
+        toolHandlers: builtinToolHandlers(messages),
+        messages,
+        cwd: tmp,
+      });
+
+      expect(result.stopReason).toBe("stop");
+      expect(requestMessages).toHaveLength(2);
+      const reminder = requestMessages[1]?.at(-1);
+      if (!reminder || reminder.role !== "user") {
+        throw new Error("Expected the injected reminder to be a user message");
+      }
+      if (typeof reminder.content !== "string") {
+        throw new Error("Expected the injected reminder content to be text");
+      }
+
+      expect(reminder.content).toStartWith("<system_reminder>\n");
+      expect(reminder.content).toEndWith("\n</system_reminder>");
+      expect(reminder.content).toContain(
+        "You have pending todo items that must be completed before finishing the task:",
+      );
+      expect(reminder.content).toContain("- [PENDING] Run the test suite");
+      expect(reminder.content).toContain(
+        "- [IN_PROGRESS] Summarize the verified changes",
+      );
+    } finally {
+      unregisterApiProviders(sourceId);
+    }
   });
 
   test("does not inject duplicate todo reminders for the same pending set", async () => {
