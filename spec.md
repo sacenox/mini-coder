@@ -61,13 +61,14 @@ Four built-in tools, plus a read-only image tool. Plugins may add more (see [Plu
 
 ### `shell`
 
-Runs a command in the user's shell. Returns stdout, stderr, and exit code. Use it to explore the codebase, read tests/verifiers/examples, inspect required outputs, and run targeted checks, builds, or git commands.
+Runs a command in the user's shell. Returns stdout, stderr, and exit code. Use it to explore the codebase, read tests/verifiers/examples, inspect required outputs, and run targeted checks, builds, or git commands. Commands mutate the real working directory, so verification outputs should go to temporary paths or be cleaned up before finishing.
 
 Implementation details:
 
 - Large outputs are truncated as a safety guard against context explosion from bad or overly broad commands (for example, accidentally reading a huge file, binary, or unbounded command output). This guard applies to both very tall output (many lines) and very wide output (a few extremely long lines), and is not related to the user-configured verbose setting.
 - The truncation threshold is configurable, tuned to keep useful output while staying well within context limits. This tool-level truncation is intentionally narrow in scope: it protects the model context from pathological output, not as a general-purpose presentation layer for every output-shaping concern.
 - Commands run via `$SHELL -c "<command>"` (falling back to `/bin/sh` if `$SHELL` is unset) with the CWD set to the session's working directory.
+- Verification commands that produce build artifacts should prefer temporary output paths or clean up generated files before the agent finishes.
 - Before execution, the harness may apply a small set of silent, lossless compatibility normalizations for common model-authored shell mistakes when the intended command is unambiguous (for example, moving a heredoc trailer's `|`, `&&`, or `>` continuation back onto the heredoc start line, or rewriting `printf '--- ...'` to `printf -- '--- ...'` when the format string begins with `-`).
 - Compatibility normalization is best-effort and intentionally narrow. If a rewrite is ambiguous or the normalization step itself fails, the raw command is executed unchanged.
 - Timeout: no default timeout. The user can interrupt via `Escape`.
@@ -331,6 +332,7 @@ The current environment is:
 - Check requirements, and plan your changes before editting code.
 - Implement the necessary changes, following good practices and propper error handling.
 - Always verify your changes using compilation, testing, and manual verification when possible.
+- When verifying with build or test commands, avoid leaving generated binaries or scratch artifacts in the requested output location; use temporary paths or remove them before finishing.
 - Do not leave helpers, test, or any other form of temporary files, cleanup after yourself and leave no trace.
 
 ### Task management
@@ -694,6 +696,8 @@ Representative entry shapes:
 ```
 
 While the agent is working, the top divider (above the input area) animates with a scanning pulse — a bright and colored (be creative) segment sweeping across the dimmed divider line. The animation starts when a turn begins and stops when the turn ends (done, error, or aborted). No per-activity state tracking.
+
+mini-coder also updates the terminal title. While idle, the title is `mc` when there is no conversational text yet; otherwise it is `mc - <tail preview>`, where `<tail preview>` is the last five words of the most recent non-UI user or assistant text message, with whitespace collapsed to a single line and `...` prefixed when the preview was truncated. While a turn is active, the title switches to a stable-width glow-scanner animation (for example `mc - [=o---]`, `mc - [-=o--]`, `mc - [--=o-]`) so the title bar does not shift horizontally between frames, and it switches back to the idle title when the turn ends. After suspend/resume, mini-coder re-applies the current title on the first resumed render so shell-owned titles do not stick.
 
 #### Divider sketches
 

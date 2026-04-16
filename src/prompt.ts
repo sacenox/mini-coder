@@ -246,6 +246,7 @@ function buildCorePrompt(opts: BuildSystemPromptOpts): string {
     "- Check requirements, and plan your changes before editing code.",
     "- Implement the necessary changes, following good practices and proper error handling.",
     "- Always verify your changes using compilation, testing, and manual verification when possible.",
+    "- When verifying with build or test commands, avoid leaving generated binaries or scratch artifacts in the requested output location; use temporary paths or remove them before finishing.",
     "- Do not leave helpers, tests, or any other form of temporary files; clean up after yourself and leave no trace.",
     "- Ensure you match the requested output exactly. This applies to file names, directory structure, number of files, output formats, and all other details.",
     '- "Polish" is not optional; it counts just as much as solving the task.',

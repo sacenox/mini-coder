@@ -64,6 +64,23 @@ const DIVIDER_FRAME_MS = 60;
 /** Width of the bright pulse segment in the animated divider. */
 const PULSE_WIDTH = 5;
 
+/** Number of trailing words shown in the idle terminal-title preview. */
+const TERMINAL_TITLE_WORD_COUNT = 5;
+
+/** Divider ticks spent on each animated terminal-title scanner frame. */
+const TERMINAL_TITLE_TICKS_PER_FRAME = 4;
+
+/** Frames used for the active terminal-title glow-scanner animation. */
+const TERMINAL_TITLE_FRAMES = [
+  "[=o---]",
+  "[-=o--]",
+  "[--=o-]",
+  "[---=o]",
+  "[--o=-]",
+  "[-o=--]",
+  "[o=---]",
+] as const;
+
 /** Maximum number of committed messages rendered before older history is chunked. */
 const CONVERSATION_CHUNK_MESSAGES = 50;
 
@@ -109,6 +126,15 @@ let dividerTimer: ReturnType<typeof setInterval> | null = null;
 /** Whether stdin was already in raw mode before the TUI initialized. */
 let stdinWasRaw = false;
 
+/** Latest application state associated with the active terminal UI. */
+let titleState: AppState | null = null;
+
+/** Whether a cel viewport has rendered for the current UI session. */
+let titleViewportActive = false;
+
+/** Last terminal title written during the current UI session. */
+let lastTerminalTitle: string | null = null;
+
 // ---------------------------------------------------------------------------
 // Overlay state
 // ---------------------------------------------------------------------------
@@ -150,6 +176,148 @@ export function resetUiState(): void {
   resetConversationRenderCache();
   activeOverlay = null;
   stdinWasRaw = false;
+  titleState = null;
+  titleViewportActive = false;
+  lastTerminalTitle = null;
+}
+
+// ---------------------------------------------------------------------------
+// Terminal title
+// ---------------------------------------------------------------------------
+
+function collapseTerminalTitleText(text: string): string | null {
+  const collapsed = text.replace(/\s+/g, " ").trim();
+  return collapsed.length > 0 ? collapsed : null;
+}
+
+function getUserTerminalTitleText(
+  content: Extract<AppState["messages"][number], { role: "user" }>["content"],
+): string | null {
+  if (typeof content === "string") {
+    return collapseTerminalTitleText(content);
+  }
+
+  const text = content
+    .filter(
+      (block): block is Extract<(typeof content)[number], { type: "text" }> => {
+        return block.type === "text";
+      },
+    )
+    .map((block) => block.text)
+    .join(" ");
+
+  return collapseTerminalTitleText(text);
+}
+
+function getAssistantTerminalTitleText(
+  content: Extract<
+    AppState["messages"][number],
+    { role: "assistant" }
+  >["content"],
+): string | null {
+  const text = content
+    .filter(
+      (
+        block,
+      ): block is Extract<
+        Extract<
+          AppState["messages"][number],
+          { role: "assistant" }
+        >["content"][number],
+        { type: "text" }
+      > => {
+        return block.type === "text";
+      },
+    )
+    .map((block) => block.text)
+    .join(" ");
+
+  return collapseTerminalTitleText(text);
+}
+
+function truncateTerminalTitleTail(text: string): string {
+  const words = text.split(" ");
+  if (words.length <= TERMINAL_TITLE_WORD_COUNT) {
+    return text;
+  }
+  return `...${words.slice(-TERMINAL_TITLE_WORD_COUNT).join(" ")}`;
+}
+
+function buildIdleTerminalTitle(state: Pick<AppState, "messages">): string {
+  for (let index = state.messages.length - 1; index >= 0; index -= 1) {
+    const message = state.messages[index];
+    if (!message) {
+      continue;
+    }
+
+    let text: string | null = null;
+    switch (message.role) {
+      case "user":
+        text = getUserTerminalTitleText(message.content);
+        break;
+      case "assistant":
+        text = getAssistantTerminalTitleText(message.content);
+        break;
+      case "toolResult":
+      case "ui":
+        break;
+    }
+
+    if (text) {
+      return `mc - ${truncateTerminalTitleTail(text)}`;
+    }
+  }
+
+  return "mc";
+}
+
+/**
+ * Build the current terminal title from UI state.
+ *
+ * Idle titles show a short tail preview from the latest conversational text
+ * message. Active turns show a stable-width glow scanner.
+ *
+ * @param state - Application state needed to derive the title.
+ * @param animationTick - Divider animation tick used to pick the scanner frame.
+ * @returns The terminal title text to write via cel-tui.
+ */
+export function buildTerminalTitle(
+  state: Pick<AppState, "messages" | "running">,
+  animationTick = dividerTick,
+): string {
+  if (!state.running) {
+    return buildIdleTerminalTitle(state);
+  }
+
+  const frameIndex =
+    Math.floor(animationTick / TERMINAL_TITLE_TICKS_PER_FRAME) %
+    TERMINAL_TITLE_FRAMES.length;
+  return `mc - ${TERMINAL_TITLE_FRAMES[frameIndex]}`;
+}
+
+function syncTerminalTitle(
+  state: Pick<AppState, "messages" | "running"> | null,
+): void {
+  if (!state || !titleViewportActive) {
+    return;
+  }
+
+  const title = buildTerminalTitle(state);
+  if (title === lastTerminalTitle) {
+    return;
+  }
+
+  cel.setTitle(title);
+  lastTerminalTitle = title;
+}
+
+function invalidateTerminalTitleCache(): void {
+  lastTerminalTitle = null;
+}
+
+function requestRender(): void {
+  syncTerminalTitle(titleState);
+  cel.render();
 }
 
 // ---------------------------------------------------------------------------
@@ -162,7 +330,7 @@ function startDividerAnimation(): void {
   dividerTick = 0;
   dividerTimer = setInterval(() => {
     dividerTick++;
-    cel.render();
+    requestRender();
   }, DIVIDER_FRAME_MS);
 }
 
@@ -286,14 +454,14 @@ function prependConversationChunk(state: AppState, width: number): void {
 function openOverlay(overlay: ActiveOverlay): void {
   activeOverlay = overlay;
   inputFocused = false;
-  cel.render();
+  requestRender();
 }
 
 /** Dismiss the active overlay and return focus to the input. */
 function dismissOverlay(): void {
   activeOverlay = null;
   inputFocused = true;
-  cel.render();
+  requestRender();
 }
 
 function openPathAutocompleteOverlay(state: AppState): void {
@@ -331,7 +499,7 @@ function handleTabKeyPress(state: AppState): void {
   const completedInput = autocompleteInputPath(inputValue, state.cwd);
   if (completedInput) {
     inputValue = completedInput;
-    cel.render();
+    requestRender();
     return;
   }
 
@@ -366,18 +534,20 @@ export function renderActiveOverlay(state: AppState): Node | null {
  * @returns Stable callbacks for the controlled TextInput.
  */
 export function createInputController(state: AppState): InputController {
+  titleState = state;
+
   return {
     onChange: (value) => {
       inputValue = value;
-      cel.render();
+      requestRender();
     },
     onFocus: () => {
       inputFocused = true;
-      cel.render();
+      requestRender();
     },
     onBlur: () => {
       inputFocused = false;
-      cel.render();
+      requestRender();
     },
     onKeyPress: (key) => {
       if (key === "enter") {
@@ -385,13 +555,13 @@ export function createInputController(state: AppState): InputController {
 
         if (isQuitInput(raw)) {
           inputValue = "";
-          cel.render();
+          requestRender();
           requestGracefulExit(state);
           return false;
         }
 
         inputValue = "";
-        cel.render();
+        requestRender();
         handleInput(raw, state);
         return false;
       }
@@ -479,7 +649,7 @@ function appendUiMessage(
   }
   state.messages.push(message);
   scrollConversationToBottom();
-  cel.render();
+  requestRender();
 }
 
 /**
@@ -521,9 +691,7 @@ const commandController = createCommandController({
   appendInfoMessage,
   appendTodoMessage,
   scrollConversationToBottom,
-  render: () => {
-    cel.render();
-  },
+  render: requestRender,
   reloadPromptContext,
   openInBrowser,
 });
@@ -537,9 +705,7 @@ const agentController = createUiAgentController({
   appendInfoMessage,
   handleCommand: (command, state) =>
     commandController.handleCommand(command, state),
-  render: () => {
-    cel.render();
-  },
+  render: requestRender,
   scrollConversationToBottom,
   startDividerAnimation,
   stopDividerAnimation,
@@ -547,6 +713,7 @@ const agentController = createUiAgentController({
 
 /** Route raw user input through parseInput and dispatch accordingly. */
 export function handleInput(raw: string, state: AppState): void {
+  titleState = state;
   agentController.handleInput(raw, state);
 }
 
@@ -618,6 +785,7 @@ export function suspendToBackground(
   stop();
   onResume(() => {
     clearInterval(keepAlive);
+    invalidateTerminalTitleCache();
     resumeUi();
   });
 
@@ -657,7 +825,7 @@ function renderConversationLog(state: AppState, width: number): Node {
           prependConversationChunk(state, width);
         }
 
-        cel.render();
+        requestRender();
       },
     },
     buildConversationLog(state, width),
@@ -681,6 +849,12 @@ export function renderBaseLayout(
   inputController: InputController,
   onSuspend?: () => void,
 ): Node {
+  titleState = state;
+  titleViewportActive = true;
+  if (lastTerminalTitle === null) {
+    syncTerminalTitle(state);
+  }
+
   return VStack(
     {
       height: "100%",
@@ -736,6 +910,7 @@ export function renderBaseLayout(
 export function startUI(state: AppState): void {
   resetUiState();
   stdinWasRaw = process.stdin.isRaw || false;
+  titleState = state;
   const terminal = new ProcessTerminal();
   const inputController = createInputController(state);
   cel.init(terminal);
@@ -749,7 +924,7 @@ export function startUI(state: AppState): void {
         if (state.running) {
           startDividerAnimation();
         }
-        cel.render();
+        requestRender();
       });
     });
     const overlay = renderActiveOverlay(state);
@@ -759,6 +934,7 @@ export function startUI(state: AppState): void {
     }
     return base;
   });
+  syncTerminalTitle(state);
 
   if (state.running) {
     startDividerAnimation();

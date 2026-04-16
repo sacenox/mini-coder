@@ -33,6 +33,5 @@ The spec.md and code are the sources of truth, not this file, don't assume anyth
 
 ## Future ideas
 
-- [ ] Terminal title should show activity/session info and stay in sync with the divider animation
 - [ ] Divider theme plugin — customizable divider animations (scanning pulse, breathing, flowing dots, wave)
 - [ ] Backward-compatibility and migration policy for 1.0 (session/app data versioning, explicit migration strategy)

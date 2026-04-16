@@ -888,6 +888,9 @@ describe("tool definitions", () => {
     expect(shellTool.description).toContain("read tests/verifiers/examples");
     expect(shellTool.description).toContain("inspect required outputs");
     expect(shellTool.description).toContain("targeted checks");
+    expect(shellTool.description).toContain(
+      "direct verification outputs to temporary paths or clean them up before finishing",
+    );
   });
 
   test("edit description emphasizes exact required file content", () => {

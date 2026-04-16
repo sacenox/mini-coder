@@ -39,6 +39,7 @@ import {
 } from "./ui/conversation.ts";
 import {
   buildConversationLog,
+  buildTerminalTitle,
   createInputController,
   handleInput,
   type InputController,
@@ -156,6 +157,32 @@ function createDeferred<T = void>() {
   });
   return { promise, resolve, reject };
 }
+
+// biome-ignore lint/complexity/useRegexLiterals: using RegExp here avoids control-character regex diagnostics.
+const TITLE_SEQUENCE_RE = new RegExp(
+  String.raw`\x1b\][02];([^\x07\x1b]*)(?:\x07|\x1b\\)`,
+  "g",
+);
+
+function extractTitlePayloads(output: string): string[] {
+  return Array.from(output.matchAll(TITLE_SEQUENCE_RE), (match) => {
+    const payload = match[1];
+    if (payload === undefined) {
+      throw new Error("Missing terminal title payload");
+    }
+    return payload;
+  });
+}
+
+const ACTIVE_TITLE_FRAMES = [
+  "mc - [=o---]",
+  "mc - [-=o--]",
+  "mc - [--=o-]",
+  "mc - [---=o]",
+  "mc - [--o=-]",
+  "mc - [-o=--]",
+  "mc - [o=---]",
+] as const;
 
 async function waitForCelRender(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 10));
@@ -363,6 +390,178 @@ describe("ui rendering", () => {
       },
     ]);
     expect(unrefCalled).toBe(true);
+  });
+
+  test("buildTerminalTitle falls back to mc when idle and no conversational text exists", () => {
+    const state = createTestState();
+
+    try {
+      state.messages = [createUiMessage("Status only")];
+
+      expect(buildTerminalTitle(state)).toBe("mc");
+    } finally {
+      state.db.close();
+    }
+  });
+
+  test("buildTerminalTitle ignores UI and tool results and uses the latest conversational text tail", () => {
+    const state = createTestState();
+
+    try {
+      state.messages = [
+        createUiMessage("Ignored status"),
+        {
+          role: "user",
+          content: "alpha\nbeta   gamma delta epsilon zeta",
+          timestamp: 1,
+        },
+        {
+          role: "toolResult",
+          toolCallId: "tool-1",
+          toolName: "shell",
+          isError: false,
+          content: [{ type: "text", text: "tool output should be ignored" }],
+          timestamp: 2,
+        },
+      ];
+
+      expect(buildTerminalTitle(state)).toBe(
+        "mc - ...beta gamma delta epsilon zeta",
+      );
+    } finally {
+      state.db.close();
+    }
+  });
+
+  test("buildTerminalTitle shows a stable-width glow scanner while a turn is running", () => {
+    const state = createTestState();
+    state.running = true;
+
+    try {
+      expect(buildTerminalTitle(state, 0)).toBe(ACTIVE_TITLE_FRAMES[0]);
+      expect(buildTerminalTitle(state, 4)).toBe(ACTIVE_TITLE_FRAMES[1]);
+      expect(buildTerminalTitle(state, 8)).toBe(ACTIVE_TITLE_FRAMES[2]);
+      expect(buildTerminalTitle(state, 12)).toBe(ACTIVE_TITLE_FRAMES[3]);
+      expect(buildTerminalTitle(state, 16)).toBe(ACTIVE_TITLE_FRAMES[4]);
+      expect(buildTerminalTitle(state, 20)).toBe(ACTIVE_TITLE_FRAMES[5]);
+      expect(buildTerminalTitle(state, 24)).toBe(ACTIVE_TITLE_FRAMES[6]);
+      expect(buildTerminalTitle(state, 28)).toBe(ACTIVE_TITLE_FRAMES[0]);
+    } finally {
+      state.db.close();
+    }
+  });
+
+  test("terminal title animates during a turn and restores the latest assistant tail when done", async () => {
+    const api = "ui-terminal-title-test";
+    const sourceId = "ui-terminal-title-test-source";
+    const model: Model<string> = {
+      id: "ui-terminal-title-model",
+      name: "UI Terminal Title Model",
+      api,
+      provider: "test",
+      baseUrl: "http://localhost:0",
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 128000,
+      maxTokens: 4096,
+    };
+    const finishStream = createDeferred<void>();
+
+    const buildProviderStream = () => {
+      const stream = createAssistantMessageEventStream();
+      const partial: AssistantMessage = {
+        role: "assistant",
+        content: [fauxText("one two three four five six")],
+        api,
+        provider: model.provider,
+        model: model.id,
+        usage: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 0,
+          cost: {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            total: 0,
+          },
+        },
+        stopReason: "stop",
+        timestamp: Date.now(),
+      };
+      const finalMessage: AssistantMessage = { ...partial };
+
+      queueMicrotask(() => {
+        stream.push({
+          type: "text_delta",
+          contentIndex: 0,
+          delta: "one two three four five six",
+          partial,
+        });
+        void finishStream.promise.then(() => {
+          stream.push({
+            type: "done",
+            reason: "stop",
+            message: finalMessage,
+          });
+          stream.end(finalMessage);
+        });
+      });
+
+      return stream;
+    };
+
+    registerApiProvider(
+      {
+        api,
+        stream: (_model, _context, _options) => buildProviderStream(),
+        streamSimple: (_model, _context, _options) => buildProviderStream(),
+      },
+      sourceId,
+    );
+
+    const state = createTestState();
+    const terminal = new MockTerminal(80, 20);
+    state.cwd = process.cwd();
+    state.canonicalCwd = process.cwd();
+    state.model = model;
+
+    try {
+      const controller = createInputController(state);
+      startUiViewport(state, terminal, controller);
+      await waitForCelRender();
+      terminal.clearOutput();
+
+      handleInput("show me the title", state);
+
+      await waitFor(() => {
+        const titles = extractTitlePayloads(terminal.output);
+        return (
+          state.running &&
+          titles.some((title) =>
+            ACTIVE_TITLE_FRAMES.some((frame) => frame === title),
+          )
+        );
+      });
+
+      finishStream.resolve();
+
+      await waitFor(
+        () =>
+          extractTitlePayloads(terminal.output).at(-1) ===
+          "mc - ...two three four five six",
+      );
+    } finally {
+      finishStream.resolve();
+      await stopRunningTurn(state);
+      cel.stop();
+      unregisterApiProviders(sourceId);
+      state.db.close();
+    }
   });
 
   test("committing a streamed response preserves hidden reasoning placeholder order", async () => {
@@ -2402,5 +2601,57 @@ describe("ui rendering", () => {
     expect(calls).toEqual(["stop", "onResume", "suspend"]);
     resumeHandler();
     expect(calls).toEqual(["stop", "onResume", "suspend", "resume"]);
+  });
+
+  test("suspendToBackground invalidates the title cache so the title is re-sent after resume", async () => {
+    const state = createTestState();
+    const terminal = new MockTerminal(80, 20);
+    let resumeHandler = (): void => {
+      throw new Error(
+        "Expected suspendToBackground to register a resume handler",
+      );
+    };
+    state.messages = [
+      {
+        role: "user",
+        content: "resume keeps the mini coder title",
+        timestamp: 1,
+      },
+    ];
+
+    try {
+      const controller = createInputController(state);
+      startUiViewport(state, terminal, controller);
+      await waitForCelRender();
+
+      expect(extractTitlePayloads(terminal.output)).toContain(
+        "mc - ...keeps the mini coder title",
+      );
+
+      terminal.clearOutput();
+
+      suspendToBackground(
+        () => {
+          controller.onBlur();
+        },
+        {
+          stop: () => {},
+          onResume: (handler: () => void) => {
+            resumeHandler = handler;
+          },
+          suspend: () => {},
+        },
+      );
+
+      resumeHandler();
+      await waitForCelRender();
+
+      expect(extractTitlePayloads(terminal.output)).toContain(
+        "mc - ...keeps the mini coder title",
+      );
+    } finally {
+      cel.stop();
+      state.db.close();
+    }
   });
 });

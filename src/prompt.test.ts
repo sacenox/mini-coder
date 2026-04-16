@@ -361,6 +361,9 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain(
       "Use `todoRead` when you need to inspect the current list before updating it",
     );
+    expect(prompt).toContain(
+      "When verifying with build or test commands, avoid leaving generated binaries or scratch artifacts in the requested output location; use temporary paths or remove them before finishing.",
+    );
   });
 
   test("appends AGENTS.md content, skills, and plugin suffixes after the core prompt in order", () => {

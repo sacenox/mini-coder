@@ -1574,7 +1574,8 @@ export const shellTool: Tool = {
   name: "shell",
   description:
     "Run a command in the user's shell. Returns stdout, stderr, and exit code. " +
-    "Use this to explore the codebase, read tests/verifiers/examples, inspect required outputs, and run targeted checks, builds, or git commands.",
+    "Use this to explore the codebase, read tests/verifiers/examples, inspect required outputs, and run targeted checks, builds, or git commands. " +
+    "Commands mutate the real working directory, so direct verification outputs to temporary paths or clean them up before finishing.",
   parameters: Type.Object({
     command: Type.String({ description: "The shell command to execute" }),
   }),
