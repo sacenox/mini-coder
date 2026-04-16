@@ -1372,6 +1372,57 @@ describe("ui/conversation", () => {
     expect(text.some((line) => line.startsWith("And "))).toBe(false);
   });
 
+  test("buildConversationLogNodes syntax-highlights markdown-formatted UI info messages", async () => {
+    const theme = {
+      ...DEFAULT_THEME,
+      accentText: "color14",
+      secondaryAccentText: "color09",
+      diffAdded: "color10",
+    } satisfies typeof DEFAULT_THEME;
+    const state = {
+      messages: [
+        {
+          role: "ui" as const,
+          kind: "info" as const,
+          format: "markdown" as const,
+          content: "# Help\n\n## Commands\n\n- `/model` — Select a model",
+          timestamp: 1,
+        },
+      ],
+      showReasoning: false,
+      verbose: false,
+      theme,
+    };
+
+    const rows = await renderBufferRows(
+      VStack(
+        {},
+        buildConversationLogNodes(
+          state,
+          { isStreaming: false, content: [], pendingToolResults: [] },
+          0,
+          PREVIEW_WIDTH,
+        ),
+      ),
+      PREVIEW_WIDTH,
+      24,
+    );
+    const headingRow = rows.find((row) => row.text.includes("# Help"));
+    const bulletRow = rows.find((row) => row.text.includes("- `/model`"));
+
+    expect(headingRow).toBeDefined();
+    expect(bulletRow).toBeDefined();
+    expect(headingRow?.fgColors[headingRow.text.indexOf("#")]).toBe(
+      theme.accentText ?? null,
+    );
+    expect(bulletRow?.fgColors[bulletRow.text.indexOf("-")]).toBe(
+      theme.secondaryAccentText ?? null,
+    );
+    expect(bulletRow?.fgColors[bulletRow.text.indexOf("`")]).toBe(
+      theme.diffAdded ?? null,
+    );
+  });
+
   test("buildConversationLogNodes renders UI todo messages with the shared checklist block", async () => {
     const state = {
       messages: [

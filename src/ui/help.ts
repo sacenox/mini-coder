@@ -47,7 +47,7 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
  *
  * @param command - Command name.
  * @param state - Help-relevant application state.
- * @returns Human-readable command description.
+ * @returns Markdown-ready command description.
  */
 function getHelpCommandDescription(
   command: (typeof COMMANDS)[number],
@@ -55,72 +55,86 @@ function getHelpCommandDescription(
 ): string {
   const description = COMMAND_DESCRIPTIONS[command] ?? "";
   if (command === "reasoning") {
-    return `${description} (currently ${state.showReasoning ? "on" : "off"})`;
+    return `${description} _(currently ${state.showReasoning ? "on" : "off"})_`;
   }
   if (command === "verbose") {
-    return `${description} (currently ${state.verbose ? "on" : "off"})`;
+    return `${description} _(currently ${state.verbose ? "on" : "off"})_`;
   }
   return description;
+}
+
+function formatInlineCode(text: string): string {
+  return `\`${text}\``;
+}
+
+function formatInlineCodeList(items: readonly string[]): string {
+  return items.map((item) => formatInlineCode(item)).join(", ");
 }
 
 /**
  * Build the `/help` text shown in the conversation log.
  *
  * @param state - Help-relevant application state.
- * @returns Multi-line help text for display.
+ * @returns Multi-line markdown help text for display.
  */
 export function buildHelpText(state: HelpRenderState): string {
-  const lines: string[] = [];
+  const lines: string[] = ["# Help", "", "## Commands", ""];
 
-  lines.push("Commands:");
   for (const command of COMMANDS) {
-    lines.push(`  /${command}  ${getHelpCommandDescription(command, state)}`);
+    lines.push(
+      `- ${formatInlineCode(`/${command}`)} — ${getHelpCommandDescription(command, state)}`,
+    );
   }
 
   const providerNames = Array.from(state.providers.keys());
-  lines.push("");
-  lines.push("Note:");
   lines.push(
-    "  Escape closes the current overlay and returns focus to the input.",
-  );
-  lines.push("  With no overlay open, Escape interrupts the current turn.");
-  lines.push("  Otherwise Escape does nothing.");
-
-  lines.push("");
-  lines.push(
+    "",
+    "## Keyboard",
+    "",
+    "- `Enter` submits the current draft.",
+    "- `Shift+Enter` inserts a newline.",
+    "- `Tab` opens command autocomplete when the draft starts with `/`.",
+    "- Otherwise, `Tab` autocompletes file paths and can open a path picker when there are multiple matches.",
+    "- `Ctrl+R` opens global input history search.",
+    "- `Escape` closes the current overlay and returns focus to the input.",
+    "- With no overlay open, `Escape` interrupts the current turn.",
+    "- Otherwise, `Escape` does nothing.",
+    "- `Ctrl+C` exits gracefully.",
+    "- `Ctrl+D` exits when the input is empty.",
+    "- `Ctrl+Z` suspends the app to the background.",
+    "",
+    "## Current state",
+    "",
     providerNames.length > 0
-      ? `Providers: ${providerNames.join(", ")}`
-      : "Providers: none (use /login)",
-  );
-
-  lines.push(
+      ? `- Providers: ${formatInlineCodeList(providerNames)}`
+      : "- Providers: none — use `/login`",
     state.model
-      ? `Model: ${state.model.provider}/${state.model.id}`
-      : "Model: none (use /model)",
+      ? `- Model: ${formatInlineCode(`${state.model.provider}/${state.model.id}`)}`
+      : "- Model: none — use `/model`",
   );
 
   if (state.agentsMd.length > 0) {
-    lines.push("");
-    lines.push("AGENTS.md files:");
+    lines.push("", "## Loaded `AGENTS.md` files", "");
     for (const agentFile of state.agentsMd) {
-      lines.push(`  ${abbreviatePath(agentFile.path)}`);
+      lines.push(`- ${formatInlineCode(abbreviatePath(agentFile.path))}`);
     }
   }
 
   if (state.skills.length > 0) {
-    lines.push("");
-    lines.push("Skills:");
+    lines.push("", "## Skills", "");
     for (const skill of state.skills) {
-      const description = skill.description ? `  ${skill.description}` : "";
-      lines.push(`  ${skill.name}${description}`);
+      lines.push(
+        skill.description
+          ? `- ${formatInlineCode(skill.name)} — ${skill.description}`
+          : `- ${formatInlineCode(skill.name)}`,
+      );
     }
   }
 
   if (state.plugins.length > 0) {
-    lines.push("");
-    lines.push("Plugins:");
+    lines.push("", "## Plugins", "");
     for (const plugin of state.plugins) {
-      lines.push(`  ${plugin.entry.name}`);
+      lines.push(`- ${formatInlineCode(plugin.entry.name)}`);
     }
   }
 

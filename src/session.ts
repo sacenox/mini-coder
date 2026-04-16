@@ -95,6 +95,9 @@ interface AppendPromptHistoryOpts {
   sessionId?: string;
 }
 
+/** Rich-text format hints supported by persisted UI info messages. */
+export type UiInfoFormat = "markdown";
+
 /** A persisted UI-only info message shown in the conversation log. */
 export interface UiInfoMessage {
   /** Identifies this as an internal UI message. */
@@ -103,6 +106,8 @@ export interface UiInfoMessage {
   kind: "info";
   /** Display text shown in the conversation log. */
   content: string;
+  /** Optional rich-text format hint for the content. */
+  format?: UiInfoFormat;
   /** Unix timestamp in milliseconds. */
   timestamp: number;
 }
@@ -513,7 +518,10 @@ function isUiMessageRecord(value: unknown): value is UiMessage {
   }
 
   if (record.kind === "info") {
-    return typeof record.content === "string";
+    return (
+      typeof record.content === "string" &&
+      (record.format === undefined || record.format === "markdown")
+    );
   }
 
   return (
@@ -629,13 +637,18 @@ export function truncateSessions(
  * Create a persisted UI info message.
  *
  * @param content - Display text shown in the conversation log.
+ * @param format - Optional rich-text format hint for the content.
  * @returns A new {@link UiInfoMessage}.
  */
-export function createUiMessage(content: string): UiInfoMessage {
+export function createUiMessage(
+  content: string,
+  format?: UiInfoFormat,
+): UiInfoMessage {
   return {
     role: "ui",
     kind: "info",
     content,
+    ...(format ? { format } : {}),
     timestamp: Date.now(),
   };
 }

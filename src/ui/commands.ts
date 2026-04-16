@@ -26,6 +26,7 @@ import {
   listSessions,
   loadMessages,
   type SessionListEntry,
+  type UiInfoFormat,
   undoLastTurn,
 } from "../session.ts";
 import { updateSettings } from "../settings.ts";
@@ -51,7 +52,11 @@ interface UiCommandRuntime {
   /** Update the current input draft. */
   setInputValue: (value: string) => void;
   /** Append a UI-only info message to the conversation log. */
-  appendInfoMessage: (text: string, state: AppState) => void;
+  appendInfoMessage: (
+    text: string,
+    state: AppState,
+    format?: UiInfoFormat,
+  ) => void;
   /** Append a UI-only todo snapshot to the conversation log. */
   appendTodoMessage: (
     todos: ReturnType<typeof getTodoItems>,
@@ -583,7 +588,7 @@ export function createCommandController(
   };
 
   const handleHelpCommand = (state: AppState): void => {
-    runtime.appendInfoMessage(buildHelpText(state), state);
+    runtime.appendInfoMessage(buildHelpText(state), state, "markdown");
   };
 
   const handleTodoCommand = (state: AppState): void => {

@@ -17,7 +17,6 @@ import { extname, isAbsolute, join } from "node:path";
 
 /** All recognized slash commands. */
 export const COMMANDS = [
-  "model",
   "session",
   "new",
   "fork",
@@ -28,6 +27,7 @@ export const COMMANDS = [
   "login",
   "logout",
   "help",
+  "model",
   "effort",
 ] as const;
 

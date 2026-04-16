@@ -3,7 +3,7 @@ import { DEFAULT_SHOW_REASONING } from "../settings.ts";
 import { buildHelpText, type HelpRenderState } from "./help.ts";
 
 describe("ui/help", () => {
-  test("buildHelpText includes current reasoning and verbose state", () => {
+  test("buildHelpText formats commands as markdown list items with current state", () => {
     const helpState: HelpRenderState = {
       providers: new Map(),
       model: null,
@@ -16,16 +16,18 @@ describe("ui/help", () => {
 
     const text = buildHelpText(helpState);
 
+    expect(text).toContain("# Help");
+    expect(text).toContain("## Commands");
     expect(text).toContain(
-      `/reasoning  Toggle thinking display (currently ${DEFAULT_SHOW_REASONING ? "on" : "off"})`,
+      `- \`/reasoning\` — Toggle thinking display _(currently ${DEFAULT_SHOW_REASONING ? "on" : "off"})_`,
     );
     expect(text).toContain(
-      "/verbose  Toggle verbose tool rendering (currently off)",
+      "- `/verbose` — Toggle verbose tool rendering _(currently off)_",
     );
-    expect(text).toContain("/todo  Show the current todo list");
+    expect(text).toContain("- `/todo` — Show the current todo list");
   });
 
-  test("buildHelpText describes the current Escape behavior", () => {
+  test("buildHelpText lists the supported keyboard shortcuts in markdown", () => {
     const helpState: HelpRenderState = {
       providers: new Map(),
       model: null,
@@ -38,13 +40,26 @@ describe("ui/help", () => {
 
     const text = buildHelpText(helpState);
 
+    expect(text).toContain("## Keyboard");
+    expect(text).toContain("- `Enter` submits the current draft.");
+    expect(text).toContain("- `Shift+Enter` inserts a newline.");
     expect(text).toContain(
-      "Escape closes the current overlay and returns focus to the input",
+      "- `Tab` opens command autocomplete when the draft starts with `/`.",
     );
     expect(text).toContain(
-      "With no overlay open, Escape interrupts the current turn",
+      "- Otherwise, `Tab` autocompletes file paths and can open a path picker when there are multiple matches.",
     );
-    expect(text).toContain("Otherwise Escape does nothing");
+    expect(text).toContain("- `Ctrl+R` opens global input history search.");
+    expect(text).toContain(
+      "- `Escape` closes the current overlay and returns focus to the input.",
+    );
+    expect(text).toContain(
+      "- With no overlay open, `Escape` interrupts the current turn.",
+    );
+    expect(text).toContain("- Otherwise, `Escape` does nothing.");
+    expect(text).toContain("- `Ctrl+C` exits gracefully.");
+    expect(text).toContain("- `Ctrl+D` exits when the input is empty.");
+    expect(text).toContain("- `Ctrl+Z` suspends the app to the background.");
     expect(text).not.toContain("Escape blurs the input first");
   });
 });

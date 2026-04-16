@@ -26,6 +26,7 @@ import {
   appendMessage,
   createUiMessage,
   createUiTodoMessage,
+  type UiInfoFormat,
 } from "./session.ts";
 import type { Theme } from "./theme.ts";
 import {
@@ -660,9 +661,14 @@ function appendUiMessage(
  *
  * @param text - Display text to append.
  * @param state - Application state.
+ * @param format - Optional rich-text format hint for the content.
  */
-function appendInfoMessage(text: string, state: AppState): void {
-  appendUiMessage(createUiMessage(text), state);
+function appendInfoMessage(
+  text: string,
+  state: AppState,
+  format?: UiInfoFormat,
+): void {
+  appendUiMessage(createUiMessage(text, format), state);
 }
 
 /**

@@ -733,7 +733,8 @@ describe("ui rendering", () => {
       expect(countSessions(state)).toBe(0);
       expect(state.messages).toHaveLength(1);
       expect(state.messages[0]?.role).toBe("ui");
-      expect(logText.some((line) => line.includes("Commands:"))).toBe(true);
+      expect(logText.some((line) => line.includes("# Help"))).toBe(true);
+      expect(logText.some((line) => line.includes("## Commands"))).toBe(true);
     } finally {
       state.db.close();
     }

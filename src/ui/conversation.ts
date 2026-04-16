@@ -1161,14 +1161,28 @@ function renderUiTodoMessage(
 }
 
 /** Render an internal UI message in the conversation log. */
-function renderUiMessage(msg: UiMessage, theme: Theme): Node {
+function renderUiMessage(
+  msg: UiMessage,
+  opts: Pick<ConversationRenderOpts, "previewWidth" | "theme">,
+): Node {
   if (msg.kind === "todo") {
-    return renderUiTodoMessage(msg, theme);
+    return renderUiTodoMessage(msg, opts.theme);
+  }
+
+  if (msg.format === "markdown") {
+    const markdown = renderMarkdownTextBlock(
+      msg.content,
+      opts.theme,
+      opts.previewWidth,
+    );
+    if (markdown) {
+      return markdown;
+    }
   }
 
   return VStack({ padding: { x: 1 } }, [
     Text(msg.content, {
-      fgColor: theme.mutedText,
+      fgColor: opts.theme.mutedText,
       italic: true,
       wrap: "word",
     }),
@@ -1231,7 +1245,7 @@ function renderConversationMessage(
   theme: Theme,
 ): Node | null {
   if (message.role === "ui") {
-    return renderUiMessage(message, theme);
+    return renderUiMessage(message, renderOpts);
   }
   if (message.role === "user") {
     return renderUserMessage(message, theme);

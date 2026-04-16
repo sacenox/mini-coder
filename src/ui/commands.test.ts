@@ -520,6 +520,44 @@ describe("ui/commands", () => {
     }
   });
 
+  test("/help appends markdown help without creating a session", () => {
+    const state = createTestState();
+    const appended: Array<{
+      text: string;
+      format: string | undefined;
+      sessionId: string | null;
+    }> = [];
+    const controller = createCommandController({
+      openOverlay: () => {},
+      dismissOverlay: () => {},
+      setInputValue: () => {},
+      appendInfoMessage: (text, nextState, format) => {
+        appended.push({
+          text,
+          format,
+          sessionId: nextState.session?.id ?? null,
+        });
+      },
+      appendTodoMessage: () => {},
+      scrollConversationToBottom: () => {},
+      render: () => {},
+      reloadPromptContext: async () => {},
+      openInBrowser: () => {},
+    });
+
+    try {
+      expect(controller.handleCommand("help", state)).toBe(true);
+      expect(appended).toHaveLength(1);
+      expect(appended[0]?.text).toContain("# Help");
+      expect(appended[0]?.text).toContain("## Commands");
+      expect(appended[0]?.format).toBe("markdown");
+      expect(appended[0]?.sessionId).toBeNull();
+      expect(state.session).toBeNull();
+    } finally {
+      state.db.close();
+    }
+  });
+
   test("/todo appends the current todo list without creating a session", () => {
     const state = createTestState();
     state.messages = [

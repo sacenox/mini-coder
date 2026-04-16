@@ -317,6 +317,18 @@ describe("message persistence and turn numbering", () => {
     db.close();
   });
 
+  test("loadMessages round-trips markdown-formatted UI info messages", () => {
+    const db = openDatabase(":memory:");
+    const session = createSession(db, { cwd: "/tmp/test" });
+    const uiMessage = createUiMessage("# Help", "markdown");
+
+    appendMessage(db, session.id, uiMessage);
+
+    const msgs = loadMessages(db, session.id);
+    expect(msgs).toEqual([uiMessage]);
+    db.close();
+  });
+
   test("loadMessages skips invalid persisted rows and keeps valid messages", () => {
     const db = openDatabase(":memory:");
     const session = createSession(db, { cwd: "/tmp/test" });
