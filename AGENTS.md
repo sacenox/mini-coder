@@ -2,7 +2,6 @@
 
 - This repo expects agents to use the `programming-practices` skill at all times.
 - **Spec-driven development**: `spec.md` is the source of truth for behavior and design. Read it before changing code. Do not deviate without discussion.
-- **TDD**: write tests first, then implement.
 - Use Conventional Commits formatting for commit messages.
 - Before committing code changes, review the diff with the user and get approval for the commit.
 
@@ -95,7 +94,8 @@
 - Before 1.0, prefer correct/simple semantics over speculative compatibility shims, but call out intentional breaking changes.
 - TUI changes need real terminal validation in `tmux`; passing tests is not enough.
 - Stay within the agreed TODO scope. Do not pull in adjacent items without discussion.
-- Don't write tests that call real git commands
+- Don't write tests that call real git commands.
+- Don't add brittle tests that pin incidental wording, formatting, colors, layout, or other implementation-shaped output unless that exact output is the actual contract.
 
 ## Testing strategy
 

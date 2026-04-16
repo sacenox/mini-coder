@@ -244,7 +244,7 @@ The core runtime. Streaming is the default behavior throughout the turn: user-vi
    - After all tool results are appended, if queued steering messages exist go to step 6; otherwise loop back to step 2 (re-stream with the updated context).
 
 5. **Todo reminders** — when the assistant tries to stop while incomplete todo items still exist:
-   - Inject a model-visible reminder listing the current `pending` and `in_progress` items, then loop back to step 2.
+   - Inject a model-visible reminder listing the current `pending` and `in_progress` items as a synthetic user message whose content is wrapped in `<system_reminder>...</system_reminder>`, then loop back to step 2.
    - Reminders are ephemeral: they are included in model context for the follow-up request but are not rendered in the conversation pane and are not persisted to the session DB.
    - If the exact same incomplete-todo set was already reminded during the current run, do not inject a duplicate reminder. In that case the turn ends normally instead of looping forever.
 
