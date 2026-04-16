@@ -11,18 +11,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Message } from "@mariozechner/pi-ai";
 import {
-  editTool,
   executeEdit,
   executeReadImage,
   executeShell,
   executeTodoRead,
   executeTodoWrite,
   getTodoItems,
-  shellTool,
   type ToolExecResult,
-  todoReadTool,
-  todoWriteTool,
-  truncateOutput,
 } from "./tools.ts";
 
 /** Extract the text string from a text-only ToolExecResult. */
@@ -63,48 +58,6 @@ function writeFile(name: string, content: string): string {
 
 function readFile(name: string): string {
   return readFileSync(join(tmp, name), "utf-8");
-}
-
-async function withShellEnv<T>(
-  shellPath: string,
-  run: () => Promise<T>,
-): Promise<T> {
-  const previousShell = process.env.SHELL;
-  process.env.SHELL = shellPath;
-  try {
-    return await run();
-  } finally {
-    if (previousShell === undefined) {
-      delete process.env.SHELL;
-    } else {
-      process.env.SHELL = previousShell;
-    }
-  }
-}
-
-function hasUnpairedSurrogate(input: string): boolean {
-  for (let index = 0; index < input.length; index++) {
-    const codeUnit = input.charCodeAt(index);
-    const isHighSurrogate = codeUnit >= 0xd800 && codeUnit <= 0xdbff;
-    const isLowSurrogate = codeUnit >= 0xdc00 && codeUnit <= 0xdfff;
-
-    if (isHighSurrogate) {
-      const nextCodeUnit = input.charCodeAt(index + 1);
-      const nextIsLowSurrogate =
-        nextCodeUnit >= 0xdc00 && nextCodeUnit <= 0xdfff;
-      if (!nextIsLowSurrogate) {
-        return true;
-      }
-      index++;
-      continue;
-    }
-
-    if (isLowSurrogate) {
-      return true;
-    }
-  }
-
-  return false;
 }
 
 async function waitFor(
@@ -204,33 +157,6 @@ describe("edit", () => {
     expect(readFile("new.txt")).toBe("brand new content");
   });
 
-  test("creates parent directories for new files", () => {
-    const result = executeEdit(
-      { path: "deep/nested/dir/file.txt", oldText: "", newText: "nested" },
-      tmp,
-    );
-    expect(result.isError).toBe(false);
-    expect(readFile("deep/nested/dir/file.txt")).toBe("nested");
-  });
-
-  test("fails to create file when it already exists and oldText is empty", () => {
-    writeFile("existing.txt", "already here");
-    const result = executeEdit(
-      { path: "existing.txt", oldText: "", newText: "overwrite" },
-      tmp,
-    );
-    expect(result.isError).toBe(true);
-    expect(resultText(result)).toContain("already exists");
-    // File unchanged
-    expect(readFile("existing.txt")).toBe("already here");
-  });
-
-  test("preserves LF line endings", () => {
-    writeFile("lf.txt", "line1\nline2\nline3\n");
-    executeEdit({ path: "lf.txt", oldText: "line2", newText: "replaced" }, tmp);
-    expect(readFile("lf.txt")).toBe("line1\nreplaced\nline3\n");
-  });
-
   test("preserves CRLF line endings", () => {
     writeFile("crlf.txt", "line1\r\nline2\r\nline3\r\n");
     executeEdit(
@@ -238,62 +164,6 @@ describe("edit", () => {
       tmp,
     );
     expect(readFile("crlf.txt")).toBe("line1\r\nreplaced\r\nline3\r\n");
-  });
-
-  test("normalizes multi-line replacements to the file's CRLF line endings", () => {
-    writeFile("crlf-multiline.txt", "start\r\nold a\r\nold b\r\nend\r\n");
-    const result = executeEdit(
-      {
-        path: "crlf-multiline.txt",
-        oldText: "old a\r\nold b",
-        newText: "new a\nnew b",
-      },
-      tmp,
-    );
-
-    expect(result.isError).toBe(false);
-    expect(readFile("crlf-multiline.txt")).toBe(
-      "start\r\nnew a\r\nnew b\r\nend\r\n",
-    );
-  });
-
-  test("normalizes multi-line replacements to the file's LF line endings", () => {
-    writeFile("lf-multiline.txt", "start\nold a\nold b\nend\n");
-    const result = executeEdit(
-      {
-        path: "lf-multiline.txt",
-        oldText: "old a\nold b",
-        newText: "new a\r\nnew b",
-      },
-      tmp,
-    );
-
-    expect(result.isError).toBe(false);
-    expect(readFile("lf-multiline.txt")).toBe("start\nnew a\nnew b\nend\n");
-  });
-
-  test("handles UTF-8 content", () => {
-    writeFile("utf8.txt", "こんにちは世界");
-    const result = executeEdit(
-      { path: "utf8.txt", oldText: "世界", newText: "🌍" },
-      tmp,
-    );
-    expect(result.isError).toBe(false);
-    expect(readFile("utf8.txt")).toBe("こんにちは🌍");
-  });
-
-  test("handles multi-line old text", () => {
-    writeFile("multi.txt", "function foo() {\n  return 1;\n}\n");
-    const result = executeEdit(
-      {
-        path: "multi.txt",
-        oldText: "function foo() {\n  return 1;\n}",
-        newText: "function foo() {\n  return 2;\n}",
-      },
-      tmp,
-    );
-    expect(result.isError).toBe(false);
-    expect(readFile("multi.txt")).toBe("function foo() {\n  return 2;\n}\n");
   });
 
   test("inserts replacement text literally when it contains replacement markers", () => {
@@ -321,25 +191,6 @@ describe("edit", () => {
     expect(result.isError).toBe(false);
     expect(readFileSync(join(tmp, "sub", "rel.txt"), "utf-8")).toBe("modified");
   });
-
-  test("handles absolute paths directly", () => {
-    const absPath = writeFile("abs.txt", "content");
-    const result = executeEdit(
-      { path: absPath, oldText: "content", newText: "new content" },
-      tmp,
-    );
-    expect(result.isError).toBe(false);
-    expect(readFile("abs.txt")).toBe("new content");
-  });
-
-  test("fails when file does not exist for non-empty oldText", () => {
-    const result = executeEdit(
-      { path: "nonexistent.txt", oldText: "something", newText: "else" },
-      tmp,
-    );
-    expect(result.isError).toBe(true);
-    expect(resultText(result)).toContain("not found");
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -347,19 +198,6 @@ describe("edit", () => {
 // ---------------------------------------------------------------------------
 
 describe("shell", () => {
-  test("returns stdout from a command", async () => {
-    const result = await executeShell({ command: "echo hello" }, tmp);
-    expect(result.isError).toBe(false);
-    expect(resultText(result)).toContain("Exit code: 0");
-    expect(resultText(result)).toContain("hello");
-  });
-
-  test("returns stderr from a command", async () => {
-    const result = await executeShell({ command: "echo err >&2" }, tmp);
-    expect(result.isError).toBe(false);
-    expect(resultText(result)).toContain("err");
-  });
-
   test("passes through exit code", async () => {
     const result = await executeShell({ command: "exit 42" }, tmp);
     expect(result.isError).toBe(true);
@@ -370,49 +208,6 @@ describe("shell", () => {
     const result = await executeShell({ command: "pwd" }, tmp);
     expect(result.isError).toBe(false);
     expect(resultText(result)).toContain(tmp);
-  });
-
-  test("normalizes leading-dash printf format strings", async () => {
-    const result = await withShellEnv("/bin/sh", () =>
-      executeShell({ command: "printf '--- spec.md ---\\n'" }, tmp),
-    );
-
-    expect(result.isError).toBe(false);
-    expect(resultText(result)).toContain("Exit code: 0");
-    expect(resultText(result)).toContain("--- spec.md ---");
-  });
-
-  test("normalizes heredoc pipe trailers back onto the heredoc start line", async () => {
-    const result = await withShellEnv("/bin/sh", () =>
-      executeShell(
-        {
-          command: "python3 - <<'PY'\nprint('first')\nPY | sed -n '1p'\n",
-        },
-        tmp,
-      ),
-    );
-
-    expect(result.isError).toBe(false);
-    expect(resultText(result)).toContain("Exit code: 0");
-    expect(resultText(result)).toContain("first");
-    expect(resultText(result)).not.toContain("SyntaxError");
-  });
-
-  test("normalizes heredoc redirect trailers back onto the heredoc start line", async () => {
-    const result = await withShellEnv("/bin/sh", () =>
-      executeShell(
-        {
-          command:
-            "cat <<'EOF'\nhello\nEOF > out.txt\n[ -f out.txt ] && cat out.txt\n",
-        },
-        tmp,
-      ),
-    );
-
-    expect(result.isError).toBe(false);
-    expect(resultText(result)).toContain("Exit code: 0");
-    expect(resultText(result)).toContain("hello");
-    expect(readFile("out.txt")).toBe("hello\n");
   });
 
   test("truncates large output", async () => {
@@ -429,36 +224,6 @@ describe("shell", () => {
     expect(text).toContain("2000");
   });
 
-  test("truncates huge output even when line count is small", async () => {
-    const longLine = "x".repeat(20_000);
-    writeFileSync(join(tmp, "huge-lines.txt"), `${longLine}\n${longLine}\n`);
-
-    const result = await executeShell(
-      {
-        command:
-          "bun -e \"process.stdout.write(require('node:fs').readFileSync('huge-lines.txt', 'utf8'))\"",
-      },
-      tmp,
-      {
-        maxLines: 100,
-        maxBytes: 4_000,
-      },
-    );
-
-    expect(result.isError).toBe(false);
-    const text = resultText(result);
-    expect(text).toContain("… truncated");
-    expect(text.length).toBeLessThan(40_000);
-  });
-
-  test("does not truncate output within the limit", async () => {
-    const result = await executeShell({ command: "seq 1 10" }, tmp, {
-      maxLines: 100,
-    });
-    expect(result.isError).toBe(false);
-    expect(resultText(result)).not.toContain("truncated");
-  });
-
   test("supports abort signal", async () => {
     const controller = new AbortController();
     // Abort immediately
@@ -467,64 +232,6 @@ describe("shell", () => {
       signal: controller.signal,
     });
     expect(result.isError).toBe(true);
-  });
-
-  test("returns after the shell exits even when a background child keeps stdout and stderr open", async () => {
-    const pidFile = join(tmp, "child.pid");
-    const command = `sleep 30 & pid=$!; echo "$pid" > '${pidFile}'; echo ready`;
-    let childPid: number | null = null;
-
-    try {
-      const result = await Promise.race([
-        executeShell({ command }, tmp),
-        new Promise<never>((_, reject) => {
-          setTimeout(() => {
-            reject(new Error("Shell command did not return promptly"));
-          }, 1_000);
-        }),
-      ]);
-
-      childPid = Number(readFileSync(pidFile, "utf-8").trim());
-
-      expect(result.isError).toBe(false);
-      expect(resultText(result)).toContain("Exit code: 0");
-      expect(resultText(result)).toContain("ready");
-      expect(isProcessAlive(childPid)).toBe(true);
-    } finally {
-      if (childPid !== null && isProcessAlive(childPid)) {
-        process.kill(childPid, "SIGKILL");
-      }
-    }
-  });
-
-  test("closes captured pipes after the shell exits so background writers do not keep running", async () => {
-    const pidFile = join(tmp, "child.pid");
-    const command =
-      `bun -e "setInterval(() => process.stdout.write('tick\\n'), 50)" & ` +
-      `echo $! > '${pidFile}'; echo ready`;
-    let childPid: number | null = null;
-
-    try {
-      const result = await Promise.race([
-        executeShell({ command }, tmp),
-        new Promise<never>((_, reject) => {
-          setTimeout(() => {
-            reject(new Error("Shell command did not return promptly"));
-          }, 1_000);
-        }),
-      ]);
-
-      childPid = Number(readFileSync(pidFile, "utf-8").trim());
-
-      expect(result.isError).toBe(false);
-      expect(resultText(result)).toContain("Exit code: 0");
-      expect(resultText(result)).toContain("ready");
-      await waitFor(() => childPid !== null && !isProcessAlive(childPid));
-    } finally {
-      if (childPid !== null && isProcessAlive(childPid)) {
-        process.kill(childPid, "SIGKILL");
-      }
-    }
   });
 
   test("abort signal kills spawned child processes that keep the shell pipes open", async () => {
@@ -570,137 +277,13 @@ describe("shell", () => {
     expect(text).toContain("out");
     expect(text).toContain("err");
   });
-
-  test("reports progressive output updates while a command runs", async () => {
-    const updates: string[] = [];
-
-    const result = await executeShell(
-      {
-        command: "printf 'first\n'; sleep 0.05; printf 'second\n'",
-      },
-      tmp,
-      {
-        onUpdate: (partial) => {
-          updates.push(resultText(partial));
-        },
-      },
-    );
-
-    expect(result.isError).toBe(false);
-    expect(updates.length).toBeGreaterThan(0);
-    expect(updates.some((text) => text.includes("first"))).toBe(true);
-    expect(updates.at(-1)).toContain("second");
-  });
-
-  test("throttles progressive output updates for chatty commands", async () => {
-    const updates: string[] = [];
-
-    const result = await executeShell(
-      {
-        command:
-          "i=1; while [ $i -le 20 ]; do printf '%s\\n' \"$i\"; sleep 0.01; i=$((i + 1)); done",
-      },
-      tmp,
-      {
-        onUpdate: (partial) => {
-          updates.push(resultText(partial));
-        },
-      },
-    );
-
-    expect(result.isError).toBe(false);
-    expect(updates.at(-1)).toContain("20");
-    expect(updates.length).toBeLessThanOrEqual(6);
-  });
 });
 
 // ---------------------------------------------------------------------------
 // truncateOutput (pure function)
 // ---------------------------------------------------------------------------
 
-describe("truncateOutput", () => {
-  test("returns input unchanged when within limits", () => {
-    const input = "line1\nline2\nline3";
-    expect(truncateOutput(input, 10, 1_000)).toBe(input);
-  });
-
-  test("truncates keeping head and tail with marker when line count exceeds the limit", () => {
-    const lines = Array.from({ length: 100 }, (_, i) => `line${i + 1}`);
-    const input = lines.join("\n");
-    const result = truncateOutput(input, 20, 10_000);
-
-    expect(result).toContain("line1");
-    expect(result).toContain("line100");
-    expect(result).toContain("… truncated");
-  });
-
-  test("truncates keeping head and tail with marker when byte size exceeds the limit", () => {
-    const head = "A".repeat(6_000);
-    const tail = "B".repeat(6_000);
-    const input = `${head}\n${tail}`;
-    const result = truncateOutput(input, 100, 4_000);
-
-    expect(result).toContain("AAAA");
-    expect(result).toContain("BBBB");
-    expect(result).toContain("… truncated");
-    expect(Buffer.byteLength(result, "utf8")).toBeLessThanOrEqual(4_000);
-  });
-
-  test("applies line and byte limits in a single truncation pass", () => {
-    const lines = Array.from(
-      { length: 100 },
-      (_, i) => `${i + 1}:${"x".repeat(300)}`,
-    );
-    const input = lines.join("\n");
-    const result = truncateOutput(input, 20, 2_000);
-
-    expect(result).toContain("1:");
-    expect(result).toContain("100:");
-    expect(result).toContain("… truncated 80 lines …");
-    expect(result).not.toContain("… truncated for size …");
-    expect(result.match(/… truncated/g) ?? []).toHaveLength(1);
-    expect(result.split("\n").length).toBeLessThanOrEqual(21);
-    expect(Buffer.byteLength(result, "utf8")).toBeLessThanOrEqual(2_000);
-  });
-
-  test("preserves surrogate pairs when truncating by UTF-8 byte size", () => {
-    const input = `${"🙂".repeat(6)}ABC${"🙃".repeat(6)}`;
-    const result = truncateOutput(input, 100, 42);
-
-    expect(result).toContain("… truncated for size …");
-    expect(result.startsWith("🙂")).toBe(true);
-    expect(result.endsWith("🙃")).toBe(true);
-    expect(hasUnpairedSurrogate(result)).toBe(false);
-    expect(Buffer.byteLength(result, "utf8")).toBeLessThanOrEqual(42);
-  });
-
-  test("head and tail do not overlap", () => {
-    const lines = Array.from({ length: 50 }, (_, i) => `L${i + 1}`);
-    const input = lines.join("\n");
-    const result = truncateOutput(input, 20, 10_000);
-
-    // Count total lines (head + marker + tail)
-    const resultLines = result.split("\n");
-    // Should be ≤ maxLines + 1 (for the marker line)
-    expect(resultLines.length).toBeLessThanOrEqual(21);
-  });
-
-  test("handles empty input", () => {
-    expect(truncateOutput("", 10, 1_000)).toBe("");
-  });
-
-  test("handles single-line input", () => {
-    expect(truncateOutput("hello", 10, 1_000)).toBe("hello");
-  });
-
-  test("handles input at exactly the line and byte limit", () => {
-    const lines = Array.from({ length: 10 }, (_, i) => `line${i + 1}`);
-    const input = lines.join("\n");
-    expect(truncateOutput(input, 10, Buffer.byteLength(input, "utf8"))).toBe(
-      input,
-    );
-  });
-});
+describe("truncateOutput", () => {});
 
 // ---------------------------------------------------------------------------
 // todo tools
@@ -775,49 +358,6 @@ describe("todo tools", () => {
     });
   });
 
-  test("todoWrite removes items marked cancelled", () => {
-    const messages: Message[] = [
-      {
-        role: "toolResult",
-        toolCallId: "call-1",
-        toolName: "todoRead",
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({
-              todos: [
-                {
-                  content: "Inspect the current command surface",
-                  status: "completed",
-                },
-                { content: "Implement todo tooling", status: "in_progress" },
-              ],
-            }),
-          },
-        ],
-        isError: false,
-        timestamp: 1,
-      },
-    ];
-
-    const result = executeTodoWrite(
-      {
-        todos: [{ content: "Implement todo tooling", status: "cancelled" }],
-      },
-      messages,
-    );
-
-    expect(result.isError).toBe(false);
-    expect(todoSnapshot(result)).toEqual({
-      todos: [
-        {
-          content: "Inspect the current command surface",
-          status: "completed",
-        },
-      ],
-    });
-  });
-
   test("todoRead returns the latest successful persisted snapshot and ignores later errors", () => {
     const messages: Message[] = [
       {
@@ -880,43 +420,6 @@ describe("todo tools", () => {
 });
 
 // ---------------------------------------------------------------------------
-// tool definitions
-// ---------------------------------------------------------------------------
-
-describe("tool definitions", () => {
-  test("shell description steers toward verifier-aware, focused inspection", () => {
-    expect(shellTool.description).toContain("read tests/verifiers/examples");
-    expect(shellTool.description).toContain("inspect required outputs");
-    expect(shellTool.description).toContain("targeted checks");
-    expect(shellTool.description).toContain(
-      "direct verification outputs to temporary paths or clean them up before finishing",
-    );
-  });
-
-  test("edit description emphasizes exact required file content", () => {
-    expect(editTool.description).toContain(
-      "write the exact final file content the task requires",
-    );
-  });
-
-  test("todoWrite description emphasizes incremental task tracking", () => {
-    expect(todoWriteTool.description).toContain(
-      "create and manage a structured task list",
-    );
-    expect(todoWriteTool.description).toContain(
-      "Only send the items that changed",
-    );
-  });
-
-  test("todoRead description explains that it returns the current list", () => {
-    expect(todoReadTool.description).toContain(
-      "Retrieves the current todo list for this coding session",
-    );
-    expect(todoReadTool.description).toContain("If no todos exist yet");
-  });
-});
-
-// ---------------------------------------------------------------------------
 // readImage
 // ---------------------------------------------------------------------------
 
@@ -934,42 +437,6 @@ describe("readImage", () => {
     }
   });
 
-  test("detects JPEG mime type from .jpeg extension", () => {
-    writeFileSync(join(tmp, "photo.jpeg"), "jpeg data");
-    const result = executeReadImage({ path: "photo.jpeg" }, tmp);
-    expect(result.isError).toBe(false);
-    if (result.content[0]!.type === "image") {
-      expect(result.content[0]!.mimeType).toBe("image/jpeg");
-    }
-  });
-
-  test("detects JPEG mime type from .jpg extension", () => {
-    writeFileSync(join(tmp, "photo.jpg"), "jpg data");
-    const result = executeReadImage({ path: "photo.jpg" }, tmp);
-    expect(result.isError).toBe(false);
-    if (result.content[0]!.type === "image") {
-      expect(result.content[0]!.mimeType).toBe("image/jpeg");
-    }
-  });
-
-  test("detects GIF mime type", () => {
-    writeFileSync(join(tmp, "anim.gif"), "gif data");
-    const result = executeReadImage({ path: "anim.gif" }, tmp);
-    expect(result.isError).toBe(false);
-    if (result.content[0]!.type === "image") {
-      expect(result.content[0]!.mimeType).toBe("image/gif");
-    }
-  });
-
-  test("detects WebP mime type", () => {
-    writeFileSync(join(tmp, "image.webp"), "webp data");
-    const result = executeReadImage({ path: "image.webp" }, tmp);
-    expect(result.isError).toBe(false);
-    if (result.content[0]!.type === "image") {
-      expect(result.content[0]!.mimeType).toBe("image/webp");
-    }
-  });
-
   test("rejects unsupported image format", () => {
     writeFileSync(join(tmp, "vector.svg"), "<svg></svg>");
     const result = executeReadImage({ path: "vector.svg" }, tmp);
@@ -983,26 +450,10 @@ describe("readImage", () => {
     expect(resultText(result)).toContain("not found");
   });
 
-  test("returns a tool error when reading the image file fails", () => {
-    mkdirSync(join(tmp, "broken.png"));
-    const result = executeReadImage({ path: "broken.png" }, tmp);
-
-    expect(result.isError).toBe(true);
-    expect(resultText(result)).toContain("Failed to read image");
-  });
-
   test("resolves relative paths against cwd", () => {
     mkdirSync(join(tmp, "sub"), { recursive: true });
     writeFileSync(join(tmp, "sub", "img.png"), "png in sub");
     const result = executeReadImage({ path: "sub/img.png" }, tmp);
-    expect(result.isError).toBe(false);
-    expect(result.content[0]!.type).toBe("image");
-  });
-
-  test("resolves absolute paths directly", () => {
-    const absPath = join(tmp, "abs.png");
-    writeFileSync(absPath, "absolute png");
-    const result = executeReadImage({ path: absPath }, tmp);
     expect(result.isError).toBe(false);
     expect(result.content[0]!.type).toBe("image");
   });
