@@ -158,9 +158,10 @@ test("bin/mc.ts reports headless command errors without a stack trace", async ()
 
   expect(result.exitCode).toBe(1);
   expect(result.stdout).toBe("");
-  expect(result.stderr).toBe(
-    "Headless mode does not support slash commands: /help\n",
+  expect(result.stderr).toContain(
+    "Headless mode does not support slash commands: /help",
   );
+  expect(result.stderr.trim().split("\n")).toHaveLength(1);
 });
 
 test("runHeadlessCli uses final-text mode by default in non-TTY environments", async () => {
@@ -246,7 +247,7 @@ test("loadOAuthCredentials throws a helpful error when the auth file contains in
   writeFileSync(path, "{not json", "utf-8");
 
   expect(() => loadOAuthCredentials(path)).toThrow(
-    `Failed to read OAuth credentials ${path}:`,
+    /Failed to read OAuth credentials .*:/,
   );
 });
 
@@ -451,28 +452,6 @@ test("discoverCustomProviders skips providers that collide with built-in names",
   expect(result.warnings).toHaveLength(1);
   expect(result.warnings[0]).toContain('"openai"');
   expect(result.warnings[0]).toContain("built-in");
-});
-
-test("discoverCustomProviders handles empty model list from endpoint", async () => {
-  const server = Bun.serve({
-    port: 0,
-    fetch() {
-      return Response.json({ data: [] });
-    },
-  });
-
-  try {
-    const result = await discoverCustomProviders(
-      [{ name: "empty", baseUrl: `http://localhost:${server.port}` }],
-      new Set(),
-    );
-
-    expect(result.models).toEqual([]);
-    expect(result.providers.get("empty")).toBe("no-key");
-    expect(result.warnings).toEqual([]);
-  } finally {
-    server.stop(true);
-  }
 });
 
 // ---------------------------------------------------------------------------

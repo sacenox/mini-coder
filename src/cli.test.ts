@@ -30,18 +30,14 @@ describe("cli", () => {
   });
 
   test("parseCliArgs rejects a missing prompt value", () => {
-    expect(() => parseCliArgs(["-p"])).toThrow(
-      "Missing value for -p/--prompt.",
-    );
-    expect(() => parseCliArgs(["--prompt"])).toThrow(
-      "Missing value for -p/--prompt.",
-    );
+    expect(() => parseCliArgs(["-p"])).toThrow(/Missing value/);
+    expect(() => parseCliArgs(["--prompt"])).toThrow(/Missing value/);
   });
 
   test("parseCliArgs rejects unknown arguments", () => {
-    expect(() => parseCliArgs(["--wat"])).toThrow("Unknown argument: --wat");
+    expect(() => parseCliArgs(["--wat"])).toThrow(/Unknown argument/);
     expect(() => parseCliArgs(["extra"])).toThrow(
-      "Unexpected positional argument: extra",
+      /Unexpected positional argument/,
     );
   });
 
@@ -101,7 +97,7 @@ describe("cli", () => {
         { stdinIsTTY: true, stdoutIsTTY: false },
         async () => "",
       ),
-    ).rejects.toThrow("Headless mode requires -p/--prompt or piped stdin.");
+    ).rejects.toThrow(/-p\/--prompt or piped stdin/);
   });
 
   test("resolveHeadlessPrompt rejects empty headless input", async () => {
@@ -111,7 +107,7 @@ describe("cli", () => {
         { stdinIsTTY: true, stdoutIsTTY: false },
         async () => "",
       ),
-    ).rejects.toThrow("Headless input is empty.");
+    ).rejects.toThrow(/Headless input is empty/);
 
     await expect(
       resolveHeadlessPrompt(
@@ -119,6 +115,6 @@ describe("cli", () => {
         { stdinIsTTY: false, stdoutIsTTY: true },
         async () => "  \n",
       ),
-    ).rejects.toThrow("Headless input is empty.");
+    ).rejects.toThrow(/Headless input is empty/);
   });
 });

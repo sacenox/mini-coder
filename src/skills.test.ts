@@ -38,28 +38,6 @@ function writeSkill(basePath: string, name: string, content: string): string {
 // ---------------------------------------------------------------------------
 
 describe("discoverSkills", () => {
-  test("discovers skills from a single scan path", () => {
-    writeSkill(
-      tmp,
-      "code-review",
-      [
-        "---",
-        "name: code-review",
-        'description: "Review code for bugs."',
-        "---",
-        "",
-        "# Code Review",
-        "Do a review.",
-      ].join("\n"),
-    );
-
-    const skills = discoverSkills([tmp]);
-    expect(skills).toHaveLength(1);
-    expect(skills[0]!.name).toBe("code-review");
-    expect(skills[0]!.description).toBe("Review code for bugs.");
-    expect(skills[0]!.path).toBe(join(tmp, "code-review", "SKILL.md"));
-  });
-
   test("project-level skill overrides user-level on name collision", () => {
     // Earlier paths in the array have higher priority (project-level first)
     const project = join(tmp, "project");

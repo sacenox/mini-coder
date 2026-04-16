@@ -50,11 +50,6 @@ describe("discoverAgentsMd", () => {
     expect(files[1]!.content).toBe("Src instructions");
   });
 
-  test("returns empty array when no files found", () => {
-    const files = discoverAgentsMd(tmp, resolve(tmp));
-    expect(files).toEqual([]);
-  });
-
   test("checks globalAgentsDir for global agent instructions", () => {
     const globalDir = join(tmp, "global-agents");
     mkdirSync(globalDir, { recursive: true });

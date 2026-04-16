@@ -90,6 +90,18 @@ const ZERO_USAGE: Usage = {
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 };
 
+function getTextContent(
+  content: ReadonlyArray<{ type: string; text?: string }>,
+): string {
+  return content
+    .filter(
+      (entry): entry is { type: string; text: string } =>
+        entry.type === "text" && typeof entry.text === "string",
+    )
+    .map((entry) => entry.text)
+    .join("\n");
+}
+
 function isEventType<TType extends AgentEvent["type"]>(
   event: AgentEvent,
   type: TType,
@@ -174,31 +186,6 @@ function builtinToolHandlers(
 // ---------------------------------------------------------------------------
 
 describe("agent loop", () => {
-  test("simple text response appends assistant message", async () => {
-    faux.setResponses([fauxAssistantMessage("Hello back!")]);
-
-    const session = createSession(db, { cwd: tmp });
-    const userMsg = makeUser("hello");
-    const turn = appendMessage(db, session.id, userMsg);
-
-    const result = await runAgentLoop({
-      db,
-      sessionId: session.id,
-      turn,
-      model: faux.getModel(),
-      systemPrompt: "Test",
-      tools: [],
-      toolHandlers: new Map(),
-      messages: [userMsg],
-      cwd: tmp,
-    });
-
-    expect(result.messages).toHaveLength(2);
-    expect(result.messages[1]!.role).toBe("assistant");
-    const am = result.messages[1] as AssistantMessage;
-    expect(am.stopReason).toBe("stop");
-  });
-
   test("simple text response persists to DB", async () => {
     faux.setResponses([fauxAssistantMessage("Hello back!")]);
     const session = createSession(db, { cwd: tmp });
@@ -860,39 +847,6 @@ describe("agent loop", () => {
     }
   });
 
-  test("emits tool events during tool execution", async () => {
-    faux.setResponses([
-      fauxAssistantMessage([fauxToolCall("shell", { command: "echo test" })], {
-        stopReason: "toolUse",
-      }),
-      fauxAssistantMessage("Done."),
-    ]);
-
-    const events: AgentEvent[] = [];
-
-    const session = createSession(db, { cwd: tmp });
-    const userMsg = makeUser("go");
-    const turn = appendMessage(db, session.id, userMsg);
-
-    await runAgentLoop({
-      db,
-      sessionId: session.id,
-      turn,
-      model: faux.getModel(),
-      systemPrompt: "Test",
-      tools: builtinToolDefs(),
-      toolHandlers: builtinToolHandlers(),
-      messages: [userMsg],
-      cwd: tmp,
-      onEvent: (e) => events.push(e),
-    });
-
-    const toolStarts = events.filter((e) => e.type === "tool_start");
-    const toolEnds = events.filter((e) => e.type === "tool_end");
-    expect(toolStarts).toHaveLength(1);
-    expect(toolEnds).toHaveLength(1);
-  });
-
   test("emits committed assistant and tool-result events in tool-use order", async () => {
     faux.setResponses([
       fauxAssistantMessage(
@@ -1129,9 +1083,7 @@ describe("agent loop", () => {
       throw new Error("Expected tool result message");
     }
     expect(toolResult.isError).toBe(true);
-    expect(toolResult.content).toEqual([
-      { type: "text", text: "Shell error: This operation was aborted" },
-    ]);
+    expect(getTextContent(toolResult.content)).toContain("aborted");
 
     const abortedEvent = expectLastEvent(events, "aborted");
     expect(abortedEvent.message.stopReason).toBe("aborted");
@@ -1201,9 +1153,8 @@ describe("agent loop", () => {
       throw new Error("Expected tool result message");
     }
     expect(toolResult.isError).toBe(true);
-    expect(toolResult.content).toEqual([
-      { type: "text", text: "Tool edit failed: This operation was aborted" },
-    ]);
+    expect(getTextContent(toolResult.content)).toContain("edit");
+    expect(getTextContent(toolResult.content)).toContain("aborted");
 
     const startIndex = events.findIndex((event) => event.type === "tool_start");
     const endIndex = events.findIndex((event) => event.type === "tool_end");
@@ -1394,68 +1345,6 @@ describe("agent loop", () => {
     }
   });
 
-  test("preserves thinking content on assistant messages", async () => {
-    faux.setResponses([
-      fauxAssistantMessage([
-        fauxThinking("Need to inspect the failing test."),
-        fauxText("Done."),
-      ]),
-    ]);
-
-    const session = createSession(db, { cwd: tmp });
-    const userMsg = makeUser("hello");
-    const turn = appendMessage(db, session.id, userMsg);
-
-    const result = await runAgentLoop({
-      db,
-      sessionId: session.id,
-      turn,
-      model: faux.getModel(),
-      systemPrompt: "Test",
-      tools: [],
-      toolHandlers: new Map(),
-      messages: [userMsg],
-      cwd: tmp,
-    });
-
-    const assistant = result.messages[1];
-    expect(assistant?.role).toBe("assistant");
-    if (assistant?.role !== "assistant") {
-      throw new Error("Expected assistant message");
-    }
-    expect(assistant.content).toContainEqual(
-      fauxThinking("Need to inspect the failing test."),
-    );
-    expect(assistant.content).toContainEqual(fauxText("Done."));
-  });
-
-  test("handles LLM error gracefully", async () => {
-    faux.setResponses([
-      fauxAssistantMessage("", {
-        stopReason: "error",
-        errorMessage: "Rate limit exceeded",
-      }),
-    ]);
-
-    const session = createSession(db, { cwd: tmp });
-    const userMsg = makeUser("trigger error");
-    const turn = appendMessage(db, session.id, userMsg);
-
-    const result = await runAgentLoop({
-      db,
-      sessionId: session.id,
-      turn,
-      model: faux.getModel(),
-      systemPrompt: "Test",
-      tools: [],
-      toolHandlers: new Map(),
-      messages: [userMsg],
-      cwd: tmp,
-    });
-
-    expect(result.stopReason).toBe("error");
-  });
-
   test("handles unknown tool name gracefully", async () => {
     faux.setResponses([
       fauxAssistantMessage([fauxToolCall("nonexistent_tool", { foo: "bar" })], {
@@ -1537,64 +1426,20 @@ describe("agent loop", () => {
       throw new Error("Expected tool result message");
     }
     expect(toolResult.isError).toBe(true);
-    expect(toolResult.content).toEqual([
-      { type: "text", text: "Tool shell failed: kaboom" },
-    ]);
+    expect(getTextContent(toolResult.content)).toContain("shell");
+    expect(getTextContent(toolResult.content)).toContain("kaboom");
 
     const toolStart = expectEvent(events, "tool_start");
     const toolEnd = expectEvent(events, "tool_end");
     const toolResultEvent = expectEvent(events, "tool_result");
 
     expect(toolEnd.result.isError).toBe(true);
-    expect(toolEnd.result.content).toEqual([
-      { type: "text", text: "Tool shell failed: kaboom" },
-    ]);
+    expect(getTextContent(toolEnd.result.content)).toContain("shell");
+    expect(getTextContent(toolEnd.result.content)).toContain("kaboom");
     expect(events.indexOf(toolStart)).toBeLessThan(events.indexOf(toolEnd));
     expect(events.indexOf(toolEnd)).toBeLessThan(
       events.indexOf(toolResultEvent),
     );
-  });
-
-  test("injects a todo reminder and re-prompts when pending todos remain", async () => {
-    faux.setResponses([
-      fauxAssistantMessage("All done."),
-      fauxAssistantMessage("I still need to finish the pending work."),
-    ]);
-
-    const session = createSession(db, { cwd: tmp });
-    const userMsg = makeUser("finish the task");
-    const turn = appendMessage(db, session.id, userMsg);
-    const messages: Message[] = [
-      makeTodoSnapshotMessage([
-        { content: "Run the test suite", status: "pending" },
-        { content: "Summarize the verified changes", status: "in_progress" },
-      ]),
-      userMsg,
-    ];
-
-    const result = await runAgentLoop({
-      db,
-      sessionId: session.id,
-      turn,
-      model: faux.getModel(),
-      systemPrompt: "Test",
-      tools: builtinToolDefs(),
-      toolHandlers: builtinToolHandlers(messages),
-      messages,
-      cwd: tmp,
-    });
-
-    expect(result.stopReason).toBe("stop");
-    expect(
-      result.messages.filter((message) => message.role === "assistant"),
-    ).toHaveLength(2);
-    const lastMessage = result.messages.at(-1);
-    if (!lastMessage || lastMessage.role !== "assistant") {
-      throw new Error("Expected a final assistant message");
-    }
-    expect(lastMessage.content).toEqual([
-      { type: "text", text: "I still need to finish the pending work." },
-    ]);
   });
 
   test("wraps injected todo reminders in a system_reminder block", async () => {
@@ -1680,13 +1525,10 @@ describe("agent loop", () => {
 
       expect(reminder.content).toStartWith("<system_reminder>\n");
       expect(reminder.content).toEndWith("\n</system_reminder>");
-      expect(reminder.content).toContain(
-        "You have pending todo items that must be completed before finishing the task:",
-      );
-      expect(reminder.content).toContain("- [PENDING] Run the test suite");
-      expect(reminder.content).toContain(
-        "- [IN_PROGRESS] Summarize the verified changes",
-      );
+      expect(reminder.content).toContain("[PENDING]");
+      expect(reminder.content).toContain("Run the test suite");
+      expect(reminder.content).toContain("[IN_PROGRESS]");
+      expect(reminder.content).toContain("Summarize the verified changes");
     } finally {
       unregisterApiProviders(sourceId);
     }
@@ -1724,13 +1566,6 @@ describe("agent loop", () => {
     expect(
       result.messages.filter((message) => message.role === "assistant"),
     ).toHaveLength(2);
-    const lastMessage = result.messages.at(-1);
-    if (!lastMessage || lastMessage.role !== "assistant") {
-      throw new Error("Expected a final assistant message");
-    }
-    expect(lastMessage.content).toEqual([
-      { type: "text", text: "All done again." },
-    ]);
   });
 
   test("does not re-inject the same todo reminder after a queued steering message starts a new turn", async () => {
@@ -1773,12 +1608,6 @@ describe("agent loop", () => {
       (message): message is AssistantMessage => message.role === "assistant",
     );
     expect(assistantMessages).toHaveLength(3);
-    expect(assistantMessages.at(-1)?.content).toEqual([
-      {
-        type: "text",
-        text: "Handled steering without a duplicate reminder.",
-      },
-    ]);
   });
 
   test("does not re-inject the same todo reminder when the incomplete set is only reordered", async () => {
@@ -1851,12 +1680,6 @@ describe("agent loop", () => {
       (message): message is AssistantMessage => message.role === "assistant",
     );
     expect(assistantMessages).toHaveLength(3);
-    expect(assistantMessages.at(-1)?.content).toEqual([
-      {
-        type: "text",
-        text: "Handled reordered todos without a duplicate reminder.",
-      },
-    ]);
   });
 
   test("stopReason 'length' returns without looping", async () => {

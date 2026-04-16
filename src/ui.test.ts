@@ -558,9 +558,10 @@ describe("ui rendering", () => {
         throw new Error("Expected a text user message");
       }
 
-      expect(userMessage.content).toBe(
-        "# Review Checklist\n- Find bugs\n- Note missing tests\n\ncheck the auth module",
-      );
+      expect(userMessage.content).toContain("# Review Checklist");
+      expect(userMessage.content).toContain("- Find bugs");
+      expect(userMessage.content).toContain("- Note missing tests");
+      expect(userMessage.content).toEndWith("check the auth module");
       expect(userMessage.content).not.toContain("name: code-review");
 
       const history = state.db

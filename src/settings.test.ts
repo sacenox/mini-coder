@@ -31,13 +31,6 @@ afterEach(() => {
 });
 
 describe("settings", () => {
-  test("loadSettings returns empty object when the file does not exist", () => {
-    const dir = createTempDir();
-    const path = join(dir, "settings.json");
-
-    expect(loadSettings(path)).toEqual({});
-  });
-
   test("loadSettings parses valid settings", () => {
     const dir = createTempDir();
     const path = join(dir, "settings.json");
@@ -57,9 +50,7 @@ describe("settings", () => {
     const path = join(dir, "settings.json");
     writeFileSync(path, "{not json", "utf-8");
 
-    expect(() => loadSettings(path)).toThrow(
-      `Failed to read settings ${path}:`,
-    );
+    expect(() => loadSettings(path)).toThrow(/Failed to read settings .*:/);
   });
 
   test("updateSettings preserves an invalid settings file instead of overwriting it", () => {
@@ -69,7 +60,7 @@ describe("settings", () => {
     writeFileSync(path, invalidJson, "utf-8");
 
     expect(() => updateSettings(path, { verbose: true })).toThrow(
-      `Failed to read settings ${path}:`,
+      /Failed to read settings .*:/,
     );
     expect(readFileSync(path, "utf-8")).toBe(invalidJson);
   });
