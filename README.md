@@ -123,6 +123,17 @@ bun run format
 bun run typecheck
 ```
 
+## Also makes LLMs smarter
+
+LLMs famously tell you to walk 50 meters to the car wash — forgetting the car needs to be there too. Not on our watch.
+
+<table align="center">
+  <tr>
+    <td><img src="assets/mc-claude-smart.png" alt="Claude correctly answering the car wash question" width="400" /></td>
+    <td><img src="assets/mc-gpt-smart.png" alt="GPT correctly answering the car wash question" width="400" /></td>
+  </tr>
+</table>
+
 ## License
 
 MIT
