@@ -19,17 +19,18 @@ import type { AppState } from "../index.ts";
 import { getAvailableModels, saveOAuthCredentials } from "../index.ts";
 import { COMMANDS } from "../input.ts";
 import {
-  computeContextTokens,
-  computeStats,
+  clearConversationState,
   forkSession,
   listPromptHistory,
   listSessions,
   loadMessages,
+  replaceConversationState,
   type SessionListEntry,
   type UiInfoFormat,
   undoLastTurn,
 } from "../session.ts";
 import { updateSettings } from "../settings.ts";
+import { collapseWhitespace, truncateText } from "../text.ts";
 import { getTodoItems } from "../tools.ts";
 import { buildHelpText, COMMAND_DESCRIPTIONS } from "./help.ts";
 import { type ActiveOverlay, OVERLAY_MAX_VISIBLE } from "./overlay.ts";
@@ -142,33 +143,13 @@ export function formatRelativeDate(date: Date, now = new Date()): string {
  * @returns A single-line preview string.
  */
 export function formatPromptHistoryPreview(text: string): string {
-  return text.replace(/\s+/g, " ").trim();
+  return collapseWhitespace(text);
 }
 
 const HISTORY_PREVIEW_MAX_CHARS = 32;
 const HISTORY_CWD_MAX_CHARS = 18;
 const SESSION_PREVIEW_MAX_CHARS = 27;
 const SESSION_MODEL_MAX_CHARS = 17;
-
-function truncateTrailingText(text: string, maxChars: number): string {
-  if (text.length <= maxChars) {
-    return text;
-  }
-  if (maxChars <= 1) {
-    return "…";
-  }
-  return `${text.slice(0, maxChars - 1)}…`;
-}
-
-function truncateLeadingText(text: string, maxChars: number): string {
-  if (text.length <= maxChars) {
-    return text;
-  }
-  if (maxChars <= 1) {
-    return "…";
-  }
-  return `…${text.slice(text.length - (maxChars - 1))}`;
-}
 
 /**
  * Format a prompt-history row for the Select overlay.
@@ -183,13 +164,14 @@ export function formatPromptHistoryLabel(
   cwd: string,
   date: string,
 ): string {
-  const preview = truncateTrailingText(
+  const preview = truncateText(
     formatPromptHistoryPreview(text),
     HISTORY_PREVIEW_MAX_CHARS,
   );
-  const displayCwd = truncateLeadingText(
+  const displayCwd = truncateText(
     abbreviatePath(cwd),
     HISTORY_CWD_MAX_CHARS,
+    "start",
   );
   return `${preview}  ·  ${displayCwd}  ·  ${date}`;
 }
@@ -207,11 +189,11 @@ export function formatSessionLabel(
   date: string,
   isCurrent: boolean,
 ): string {
-  const preview = truncateTrailingText(
+  const preview = truncateText(
     session.firstUserPreview ?? "No messages yet",
     SESSION_PREVIEW_MAX_CHARS,
   );
-  const model = truncateTrailingText(
+  const model = truncateText(
     session.model ?? "no model",
     SESSION_MODEL_MAX_CHARS,
   );
@@ -397,9 +379,7 @@ export function createCommandController(
           const picked = sessions.find((session) => session.id === sessionId);
           if (picked) {
             state.session = picked;
-            state.messages = loadMessages(state.db, picked.id);
-            state.stats = computeStats(state.messages);
-            state.contextTokens = computeContextTokens(state.messages);
+            replaceConversationState(state, loadMessages(state.db, picked.id));
             runtime.scrollConversationToBottom();
           }
         }
@@ -413,9 +393,7 @@ export function createCommandController(
       return;
     }
     state.session = null;
-    state.messages = [];
-    state.stats = { totalInput: 0, totalOutput: 0, totalCost: 0 };
-    state.contextTokens = 0;
+    clearConversationState(state);
     await runtime.reloadPromptContext(state);
     runtime.scrollConversationToBottom();
     runtime.render();
@@ -427,9 +405,7 @@ export function createCommandController(
     }
     const forked = forkSession(state.db, state.session.id);
     state.session = forked;
-    state.messages = loadMessages(state.db, forked.id);
-    state.stats = computeStats(state.messages);
-    state.contextTokens = computeContextTokens(state.messages);
+    replaceConversationState(state, loadMessages(state.db, forked.id));
     runtime.appendInfoMessage("Forked session.", state);
   };
 
@@ -447,9 +423,7 @@ export function createCommandController(
     }
     const removed = undoLastTurn(state.db, state.session.id);
     if (removed) {
-      state.messages = loadMessages(state.db, state.session.id);
-      state.stats = computeStats(state.messages);
-      state.contextTokens = computeContextTokens(state.messages);
+      replaceConversationState(state, loadMessages(state.db, state.session.id));
       runtime.scrollConversationToBottom();
       runtime.render();
     }

@@ -5,6 +5,15 @@ Don't keep completed items bloating the file, remove them before committing.
 Keep the file structured and minimal.
 The spec.md and code are the sources of truth, not this file, don't assume anything because it's documented here.
 
+## Implementation-pattern cleanup plan
+
+- [x] Extract narrow shared helpers for repeated text-shaping/state-reset logic instead of copy-modify variants (`src/session.ts`, `src/ui.ts`, `src/ui/commands.ts`, `src/ui/status.ts`)
+- [x] Reduce weakly-typed tool wiring by moving built-in tool argument validation/coercion to typed boundaries instead of `Record<string, unknown>` casts in dispatch (`src/index.ts`, `src/tools.ts`, `src/agent.ts`)
+- [x] Move session-state reload/reset sequences behind focused helpers so command flows stop manually reassigning `messages`/`stats`/`contextTokens` in multiple places (`src/index.ts`, `src/ui/commands.ts`, `src/submit.ts`)
+- [x] Replace module-global UI streaming/runtime state with explicit controller/runtime state objects where practical, starting with the streaming agent tail and related render/reset hooks (`src/ui.ts`, `src/ui/agent.ts`, `src/ui/conversation.ts`)
+- [x] Split oversized mixed-concern modules along existing seams without changing behavior: shell command normalization/capture helpers, persisted-message parsing helpers, and UI runtime helpers (`src/tools.ts`, `src/session.ts`, `src/ui.ts`)
+- [x] Verify the cleanup with targeted tests first, then full repo checks, and only mark this section complete after diff review (`src/*.test.ts`, `src/ui/*.test.ts`)
+
 ## Forge comparison follow-ups (high-value gaps, highest priority first)
 
 - [x] Add first-class todo tools plus prompt/UI integration so the agent can track and complete work explicitly instead of relying only on a `/tmp` file (`src/tools.ts`, `src/agent.ts`, `src/prompt.ts`, `src/ui/conversation.ts`)

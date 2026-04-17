@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 import type { Model } from "@mariozechner/pi-ai";
 import {
   type AppState,
+  buildToolList,
   didOAuthCredentialsChange,
   discoverCustomProviders,
   getAvailableModels,
@@ -452,6 +453,51 @@ test("discoverCustomProviders skips providers that collide with built-in names",
   expect(result.warnings).toHaveLength(1);
   expect(result.warnings[0]).toContain('"openai"');
   expect(result.warnings[0]).toContain("built-in");
+});
+
+// ---------------------------------------------------------------------------
+// buildToolList
+// ---------------------------------------------------------------------------
+
+test("buildToolList uses validated built-in handlers and gates readImage by model input", () => {
+  const state = createTestState();
+  try {
+    const model: Model<string> = {
+      id: "test-model",
+      name: "test-model",
+      api: "openai-completions",
+      provider: "test-provider",
+      baseUrl: "http://localhost:1234/v1",
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 8192,
+      maxTokens: 4096,
+    };
+    state.model = model;
+
+    const textOnlyTools = buildToolList(state);
+
+    expect(textOnlyTools.tools.map((tool) => tool.name)).toEqual([
+      "edit",
+      "shell",
+      "todoWrite",
+      "todoRead",
+    ]);
+    expect(textOnlyTools.toolHandlers.has("readImage")).toBe(false);
+    expect(() =>
+      textOnlyTools.toolHandlers.get("todoWrite")!({}, state.cwd),
+    ).toThrow(/Validation failed for tool "todoWrite"/);
+
+    state.model = { ...model, input: ["text", "image"] };
+
+    const visionTools = buildToolList(state);
+
+    expect(visionTools.tools.map((tool) => tool.name)).toContain("readImage");
+    expect(visionTools.toolHandlers.has("readImage")).toBe(true);
+  } finally {
+    state.db.close();
+  }
 });
 
 // ---------------------------------------------------------------------------

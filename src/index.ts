@@ -50,8 +50,7 @@ import {
 } from "./prompt.ts";
 import {
   appendMessage,
-  computeContextTokens,
-  computeStats,
+  createConversationSnapshot,
   createSession,
   filterModelMessages,
   type loadMessages,
@@ -69,14 +68,14 @@ import {
 import { discoverSkills, type Skill } from "./skills.ts";
 import { DEFAULT_THEME, mergeThemes, type Theme } from "./theme.ts";
 import {
+  createTodoReadToolHandler,
+  createTodoWriteToolHandler,
   editTool,
-  executeEdit,
-  executeReadImage,
-  executeShell,
-  executeTodoRead,
-  executeTodoWrite,
+  editToolHandler,
   readImageTool,
+  readImageToolHandler,
   shellTool,
+  shellToolHandler,
   todoReadTool,
   todoWriteTool,
 } from "./tools.ts";
@@ -359,26 +358,6 @@ function selectModel(
 // Tool wiring
 // ---------------------------------------------------------------------------
 
-/** Built-in tool handlers keyed by tool name. */
-const BUILTIN_HANDLERS: Record<string, ToolHandler> = {
-  edit: (args, cwd) =>
-    executeEdit(
-      {
-        path: args.path as string,
-        oldText: args.oldText as string,
-        newText: args.newText as string,
-      },
-      cwd,
-    ),
-  shell: (args, cwd, signal, onUpdate) =>
-    executeShell({ command: args.command as string }, cwd, {
-      ...(signal ? { signal } : {}),
-      ...(onUpdate ? { onUpdate } : {}),
-    }),
-  readImage: (args, cwd) =>
-    executeReadImage({ path: args.path as string }, cwd),
-};
-
 /**
  * Build tool definitions and handler map for the current model.
  *
@@ -392,30 +371,16 @@ function buildTools(
 ): { tools: Tool[]; toolHandlers: Map<string, ToolHandler> } {
   const tools: Tool[] = [editTool, shellTool, todoWriteTool, todoReadTool];
   const toolHandlers = new Map<string, ToolHandler>([
-    [editTool.name, BUILTIN_HANDLERS.edit!],
-    [shellTool.name, BUILTIN_HANDLERS.shell!],
-    [
-      todoWriteTool.name,
-      (args) =>
-        executeTodoWrite(
-          {
-            todos: Array.isArray(args.todos)
-              ? (args.todos as Array<{
-                  content: string;
-                  status: "pending" | "in_progress" | "completed" | "cancelled";
-                }>)
-              : [],
-          },
-          messages,
-        ),
-    ],
-    [todoReadTool.name, () => executeTodoRead(messages)],
+    [editTool.name, editToolHandler],
+    [shellTool.name, shellToolHandler],
+    [todoWriteTool.name, createTodoWriteToolHandler(messages)],
+    [todoReadTool.name, createTodoReadToolHandler(messages)],
   ]);
 
   // Conditionally register readImage for vision-capable models
   if (model.input.includes("image")) {
     tools.push(readImageTool);
-    toolHandlers.set(readImageTool.name, BUILTIN_HANDLERS.readImage!);
+    toolHandlers.set(readImageTool.name, readImageToolHandler);
   }
 
   // Add plugin tools
@@ -635,21 +600,22 @@ export async function init(): Promise<AppState> {
   // Open database. Sessions are created lazily on the first user message.
   const db = openDatabase(DB_PATH);
   const effort = startup.effort;
-  const messages: ReturnType<typeof loadMessages> = [];
-  const stats = computeStats(messages);
-  const contextTokens = computeContextTokens(messages);
-  const promptContext = await loadPromptContext(filterModelMessages(messages), {
-    cwd,
-  });
+  const conversation = createConversationSnapshot();
+  const promptContext = await loadPromptContext(
+    filterModelMessages(conversation.messages),
+    {
+      cwd,
+    },
+  );
 
   return {
     db,
     session: null,
     model,
     effort,
-    messages,
-    stats,
-    contextTokens,
+    messages: conversation.messages,
+    stats: conversation.stats,
+    contextTokens: conversation.contextTokens,
     agentsMd: promptContext.agentsMd,
     skills: promptContext.skills,
     plugins: promptContext.plugins,

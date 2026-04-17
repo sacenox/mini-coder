@@ -10,13 +10,28 @@
  */
 
 import { Database } from "bun:sqlite";
-import type {
-  AssistantMessage,
-  Message,
-  ToolResultMessage,
-  UserMessage,
-} from "@mariozechner/pi-ai";
+import type { AssistantMessage, Message } from "@mariozechner/pi-ai";
+import {
+  getAssistantUsage,
+  isUiMessage,
+  type PersistedMessage,
+  parsePersistedMessage,
+  readFirstUserPreview,
+  type UiInfoFormat,
+  type UiInfoMessage,
+  type UiMessage,
+  type UiTodoMessage,
+} from "./session-message.ts";
 import type { TodoItem } from "./tools.ts";
+
+export type {
+  PersistedMessage,
+  UiInfoFormat,
+  UiInfoMessage,
+  UiMessage,
+  UiTodoMessage,
+};
+export { getAssistantUsage };
 
 // ---------------------------------------------------------------------------
 // Types
@@ -95,41 +110,6 @@ interface AppendPromptHistoryOpts {
   sessionId?: string;
 }
 
-/** Rich-text format hints supported by persisted UI info messages. */
-export type UiInfoFormat = "markdown";
-
-/** A persisted UI-only info message shown in the conversation log. */
-export interface UiInfoMessage {
-  /** Identifies this as an internal UI message. */
-  role: "ui";
-  /** UI message category for rendering and future behavior. */
-  kind: "info";
-  /** Display text shown in the conversation log. */
-  content: string;
-  /** Optional rich-text format hint for the content. */
-  format?: UiInfoFormat;
-  /** Unix timestamp in milliseconds. */
-  timestamp: number;
-}
-
-/** A persisted UI-only todo snapshot shown in the conversation log. */
-export interface UiTodoMessage {
-  /** Identifies this as an internal UI message. */
-  role: "ui";
-  /** UI message category for rendering and future behavior. */
-  kind: "todo";
-  /** Todo snapshot rendered in the conversation pane. */
-  todos: TodoItem[];
-  /** Unix timestamp in milliseconds. */
-  timestamp: number;
-}
-
-/** A persisted UI-only message shown in the conversation log. */
-export type UiMessage = UiInfoMessage | UiTodoMessage;
-
-/** Any message persisted in session history. */
-export type PersistedMessage = Message | UiMessage;
-
 /** Options for creating a new session. */
 interface CreateSessionOpts {
   /** Working directory to scope the session to. */
@@ -165,21 +145,6 @@ type MaxTurnRow = { max_turn: number | null };
 
 /** Row shape for `SELECT data` queries. */
 type DataRow = { data: string };
-
-const EMPTY_ASSISTANT_USAGE: AssistantMessage["usage"] = {
-  input: 0,
-  output: 0,
-  cacheRead: 0,
-  cacheWrite: 0,
-  totalTokens: 0,
-  cost: {
-    input: 0,
-    output: 0,
-    cacheRead: 0,
-    cacheWrite: 0,
-    total: 0,
-  },
-};
 
 const SQLITE_BUSY_TIMEOUT_MS = 1_000;
 
@@ -338,240 +303,6 @@ export function getSession(db: Database, id: string): Session | null {
   };
 }
 
-/** Collapse preview text into a single readable line. */
-function collapsePreviewText(text: string): string | null {
-  const collapsed = text.replace(/\s+/g, " ").trim();
-  return collapsed.length > 0 ? collapsed : null;
-}
-
-function getMultipartUserPreview(
-  content: Extract<Message, { role: "user" }>["content"],
-): string | null {
-  if (typeof content === "string") {
-    return collapsePreviewText(content);
-  }
-
-  const text = content
-    .filter(
-      (block): block is Extract<(typeof content)[number], { type: "text" }> => {
-        return block.type === "text";
-      },
-    )
-    .map((block) => block.text)
-    .join(" ");
-
-  return collapsePreviewText(text);
-}
-
-function isTextContentBlock(
-  value: unknown,
-): value is { type: "text"; text: string } {
-  const record = toRecord(value);
-  return record?.type === "text" && typeof record.text === "string";
-}
-
-function isImageContentBlock(
-  value: unknown,
-): value is { type: "image"; data: string; mimeType: string } {
-  const record = toRecord(value);
-  return (
-    record?.type === "image" &&
-    typeof record.data === "string" &&
-    typeof record.mimeType === "string"
-  );
-}
-
-function isThinkingContentBlock(
-  value: unknown,
-): value is Extract<AssistantMessage["content"][number], { type: "thinking" }> {
-  const record = toRecord(value);
-  return record?.type === "thinking" && typeof record.thinking === "string";
-}
-
-function isToolCallContentBlock(
-  value: unknown,
-): value is Extract<AssistantMessage["content"][number], { type: "toolCall" }> {
-  const record = toRecord(value);
-  return (
-    record?.type === "toolCall" &&
-    typeof record.id === "string" &&
-    typeof record.name === "string" &&
-    toRecord(record.arguments) !== null
-  );
-}
-
-function isAssistantUsage(value: unknown): value is AssistantMessage["usage"] {
-  const usageRecord = toRecord(value);
-  const costRecord = toRecord(usageRecord?.cost);
-  return (
-    usageRecord !== null &&
-    costRecord !== null &&
-    readFiniteNumber(usageRecord, "input") !== null &&
-    readFiniteNumber(usageRecord, "output") !== null &&
-    readFiniteNumber(usageRecord, "cacheRead") !== null &&
-    readFiniteNumber(usageRecord, "cacheWrite") !== null &&
-    readFiniteNumber(usageRecord, "totalTokens") !== null &&
-    readFiniteNumber(costRecord, "input") !== null &&
-    readFiniteNumber(costRecord, "output") !== null &&
-    readFiniteNumber(costRecord, "cacheRead") !== null &&
-    readFiniteNumber(costRecord, "cacheWrite") !== null &&
-    readFiniteNumber(costRecord, "total") !== null
-  );
-}
-
-function isStopReason(value: unknown): value is AssistantMessage["stopReason"] {
-  return (
-    value === "stop" ||
-    value === "length" ||
-    value === "toolUse" ||
-    value === "error" ||
-    value === "aborted"
-  );
-}
-
-function isUserMessageRecord(value: unknown): value is UserMessage {
-  const record = toRecord(value);
-  if (!record || record.role !== "user") {
-    return false;
-  }
-
-  return (
-    readFiniteNumber(record, "timestamp") !== null &&
-    (typeof record.content === "string" ||
-      (Array.isArray(record.content) &&
-        record.content.every(
-          (block) => isTextContentBlock(block) || isImageContentBlock(block),
-        )))
-  );
-}
-
-function parseAssistantMessageRecord(value: unknown): AssistantMessage | null {
-  const record = toRecord(value);
-  if (!record || record.role !== "assistant") {
-    return null;
-  }
-
-  const timestamp = readFiniteNumber(record, "timestamp");
-  if (
-    !Array.isArray(record.content) ||
-    !record.content.every(
-      (block) =>
-        isTextContentBlock(block) ||
-        isThinkingContentBlock(block) ||
-        isToolCallContentBlock(block),
-    ) ||
-    typeof record.api !== "string" ||
-    typeof record.provider !== "string" ||
-    typeof record.model !== "string" ||
-    !isStopReason(record.stopReason) ||
-    (record.errorMessage !== undefined &&
-      typeof record.errorMessage !== "string") ||
-    timestamp === null
-  ) {
-    return null;
-  }
-
-  return {
-    role: "assistant",
-    content: record.content,
-    api: record.api,
-    provider: record.provider,
-    model: record.model,
-    usage: isAssistantUsage(record.usage)
-      ? record.usage
-      : structuredClone(EMPTY_ASSISTANT_USAGE),
-    stopReason: record.stopReason,
-    ...(typeof record.errorMessage === "string"
-      ? { errorMessage: record.errorMessage }
-      : {}),
-    timestamp,
-  };
-}
-
-function isToolResultMessageRecord(value: unknown): value is ToolResultMessage {
-  const record = toRecord(value);
-  if (!record || record.role !== "toolResult") {
-    return false;
-  }
-
-  return (
-    typeof record.toolCallId === "string" &&
-    typeof record.toolName === "string" &&
-    typeof record.isError === "boolean" &&
-    Array.isArray(record.content) &&
-    record.content.every(
-      (block) => isTextContentBlock(block) || isImageContentBlock(block),
-    ) &&
-    readFiniteNumber(record, "timestamp") !== null
-  );
-}
-
-function isUiMessageRecord(value: unknown): value is UiMessage {
-  const record = toRecord(value);
-  if (!record || record.role !== "ui") {
-    return false;
-  }
-
-  const timestamp = readFiniteNumber(record, "timestamp");
-  if (timestamp === null) {
-    return false;
-  }
-
-  if (record.kind === "info") {
-    return (
-      typeof record.content === "string" &&
-      (record.format === undefined || record.format === "markdown")
-    );
-  }
-
-  return (
-    record.kind === "todo" &&
-    Array.isArray(record.todos) &&
-    record.todos.every(
-      (todo) =>
-        typeof todo === "object" &&
-        todo !== null &&
-        typeof (todo as { content?: unknown }).content === "string" &&
-        ((todo as { status?: unknown }).status === "pending" ||
-          (todo as { status?: unknown }).status === "in_progress" ||
-          (todo as { status?: unknown }).status === "completed"),
-    )
-  );
-}
-
-function parsePersistedMessage(data: string): PersistedMessage | null {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(data) as unknown;
-  } catch {
-    return null;
-  }
-
-  if (
-    isUserMessageRecord(parsed) ||
-    isToolResultMessageRecord(parsed) ||
-    isUiMessageRecord(parsed)
-  ) {
-    return parsed;
-  }
-
-  return parseAssistantMessageRecord(parsed);
-}
-
-/** Read the first-user preview cached by the session-list query. */
-function readFirstUserPreview(messageData: string | null): string | null {
-  if (!messageData) {
-    return null;
-  }
-
-  const message = parsePersistedMessage(messageData);
-  if (!message || message.role !== "user") {
-    return null;
-  }
-
-  return getMultipartUserPreview(message.content);
-}
-
 /**
  * List sessions for a working directory, most recently updated first.
  *
@@ -669,16 +400,6 @@ export function createUiTodoMessage(todos: readonly TodoItem[]): UiTodoMessage {
 }
 
 /**
- * Check whether a persisted message is a UI-only message.
- *
- * @param message - Message to inspect.
- * @returns `true` when the message is a {@link UiMessage}.
- */
-function isUiMessage(message: PersistedMessage): message is UiMessage {
-  return message.role === "ui";
-}
-
-/**
  * Filter persisted session history down to model-visible pi-ai messages.
  *
  * @param messages - Persisted session history.
@@ -690,87 +411,6 @@ export function filterModelMessages(
   return messages.filter(
     (message): message is Message => !isUiMessage(message),
   );
-}
-
-function toRecord(value: unknown): Record<string, unknown> | null {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
-function readFiniteNumber(
-  record: Record<string, unknown>,
-  key: string,
-): number | null {
-  const value = record[key];
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-/**
- * Return an assistant message's usage when the persisted shape is valid.
- *
- * Session rows are treated as untrusted at runtime because older builds or
- * external tooling may have stored assistant messages without a `usage`
- * payload. Invalid or missing usage is ignored instead of crashing session
- * loading or stats calculations.
- *
- * @param message - Message to inspect.
- * @returns The assistant usage payload, or `null` when it is missing/invalid.
- */
-export function getAssistantUsage(
-  message: PersistedMessage | Message,
-): AssistantMessage["usage"] | null {
-  if (message.role !== "assistant") {
-    return null;
-  }
-
-  const messageRecord = toRecord(message);
-  const usageRecord = toRecord(messageRecord?.usage);
-  const costRecord = toRecord(usageRecord?.cost);
-  if (!usageRecord || !costRecord) {
-    return null;
-  }
-
-  const input = readFiniteNumber(usageRecord, "input");
-  const output = readFiniteNumber(usageRecord, "output");
-  const cacheRead = readFiniteNumber(usageRecord, "cacheRead");
-  const cacheWrite = readFiniteNumber(usageRecord, "cacheWrite");
-  const totalTokens = readFiniteNumber(usageRecord, "totalTokens");
-  const costInput = readFiniteNumber(costRecord, "input");
-  const costOutput = readFiniteNumber(costRecord, "output");
-  const costCacheRead = readFiniteNumber(costRecord, "cacheRead");
-  const costCacheWrite = readFiniteNumber(costRecord, "cacheWrite");
-  const costTotal = readFiniteNumber(costRecord, "total");
-
-  if (
-    input === null ||
-    output === null ||
-    cacheRead === null ||
-    cacheWrite === null ||
-    totalTokens === null ||
-    costInput === null ||
-    costOutput === null ||
-    costCacheRead === null ||
-    costCacheWrite === null ||
-    costTotal === null
-  ) {
-    return null;
-  }
-
-  return {
-    input,
-    output,
-    cacheRead,
-    cacheWrite,
-    totalTokens,
-    cost: {
-      input: costInput,
-      output: costOutput,
-      cacheRead: costCacheRead,
-      cacheWrite: costCacheWrite,
-      total: costTotal,
-    },
-  };
 }
 
 function runInImmediateTransaction<T>(db: Database, callback: () => T): T {
@@ -1081,17 +721,6 @@ export function forkSession(db: Database, sourceId: string): Session {
 // ---------------------------------------------------------------------------
 
 /**
- * Compute cumulative token and cost statistics from a message history.
- *
- * Iterates over the messages, summing `usage` fields from assistant messages
- * only (user and tool-result messages do not carry usage data). This is
- * designed to be called once on session load, with the result maintained
- * in-memory via a running accumulator during the session.
- *
- * @param messages - The full persisted message history for a session.
- * @returns Aggregated {@link SessionStats}.
- */
-/**
  * Add one persisted message's assistant usage to cumulative session stats.
  *
  * Non-assistant messages and assistant messages without valid `usage` are
@@ -1117,14 +746,25 @@ export function addMessageToStats(
   };
 }
 
-export function computeStats(
-  messages: readonly PersistedMessage[],
-): SessionStats {
-  let stats: SessionStats = {
+/** Create a zeroed cumulative session-stats object. */
+export function createEmptySessionStats(): SessionStats {
+  return {
     totalInput: 0,
     totalOutput: 0,
     totalCost: 0,
   };
+}
+
+/**
+ * Compute cumulative token and cost statistics from a message history.
+ *
+ * @param messages - Full persisted session history.
+ * @returns Aggregated cumulative session stats.
+ */
+export function computeStats(
+  messages: readonly PersistedMessage[],
+): SessionStats {
+  let stats = createEmptySessionStats();
 
   for (const message of messages) {
     stats = addMessageToStats(stats, message);
@@ -1281,4 +921,70 @@ export function computeContextTokens(
   }
 
   return contextTokens;
+}
+
+interface MutableConversationState {
+  messages: PersistedMessage[];
+  stats: SessionStats;
+  contextTokens: number;
+}
+
+/**
+ * Derive the in-memory conversation snapshot for a persisted message history.
+ *
+ * @param messages - Persisted messages to expose in memory.
+ * @returns Message history plus derived stats and context-token estimate.
+ */
+export function createConversationSnapshot(messages: PersistedMessage[] = []): {
+  messages: PersistedMessage[];
+  stats: SessionStats;
+  contextTokens: number;
+} {
+  return {
+    messages,
+    stats: computeStats(messages),
+    contextTokens: computeContextTokens(messages),
+  };
+}
+
+/**
+ * Replace the current in-memory conversation state from a message history.
+ *
+ * @param state - Mutable conversation state.
+ * @param messages - Replacement persisted message history.
+ */
+export function replaceConversationState<T extends MutableConversationState>(
+  state: T,
+  messages: PersistedMessage[],
+): void {
+  const snapshot = createConversationSnapshot(messages);
+  state.messages = snapshot.messages;
+  state.stats = snapshot.stats;
+  state.contextTokens = snapshot.contextTokens;
+}
+
+/**
+ * Clear the current in-memory conversation state.
+ *
+ * @param state - Mutable conversation state.
+ */
+export function clearConversationState<T extends MutableConversationState>(
+  state: T,
+): void {
+  replaceConversationState(state, []);
+}
+
+/**
+ * Append one persisted message to the in-memory conversation state.
+ *
+ * @param state - Mutable conversation state.
+ * @param message - Message to append.
+ */
+export function appendConversationMessage<T extends MutableConversationState>(
+  state: T,
+  message: PersistedMessage,
+): void {
+  state.messages.push(message);
+  state.stats = addMessageToStats(state.stats, message);
+  state.contextTokens = addMessageToContextTokens(state.contextTokens, message);
 }

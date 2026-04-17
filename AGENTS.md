@@ -90,6 +90,7 @@
 - UI/info messages may live in the persisted log and in `state.messages`, but they must stay marked as UI-only (`role: "ui"`, `turn = NULL`) and always be filtered out of model context.
 - Prompt context has explicit reload boundaries: AGENTS.md content, discovered skills, and plugin prompt suffixes are stable within a session and should refresh only at boundaries like `/new` or CWD change.
 - Tool safety truncation and UI `/verbose` preview are separate layers. Do not conflate them.
+- Avoid accretive growth. When a file starts absorbing unrelated behavior, split it at a real seam instead of appending more helpers. Prefer explicit state ownership over module globals, shared helpers over copy-modify text/state logic, and typed boundaries over `Record<string, unknown>` plus downstream casts.
 - The plugin API is still in spec-alignment cleanup. Current repo reality is `tools` plus `toolHandlers`; treat that as temporary, not settled design.
 - Before 1.0, prefer correct/simple semantics over speculative compatibility shims, but call out intentional breaking changes.
 - TUI changes need real terminal validation in `tmux`; passing tests is not enough.

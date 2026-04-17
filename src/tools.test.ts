@@ -11,12 +11,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Message } from "@mariozechner/pi-ai";
 import {
+  createTodoWriteToolHandler,
+  editToolHandler,
   executeEdit,
   executeReadImage,
   executeShell,
   executeTodoRead,
   executeTodoWrite,
   getTodoItems,
+  readImageToolHandler,
+  shellToolHandler,
   type ToolExecResult,
 } from "./tools.ts";
 
@@ -272,6 +276,41 @@ describe("shell", () => {
     const text = resultText(result);
     expect(text).toContain("out");
     expect(text).toContain("err");
+  });
+});
+
+describe("built-in tool handlers", () => {
+  test("edit handler validates required arguments before execution", () => {
+    const args: Record<string, unknown> = { oldText: "", newText: "x" };
+
+    expect(() => editToolHandler(args, tmp)).toThrow(
+      /Validation failed for tool "edit"/,
+    );
+  });
+
+  test("shell handler validates required arguments before execution", () => {
+    const args: Record<string, unknown> = {};
+
+    expect(() => shellToolHandler(args, tmp)).toThrow(
+      /Validation failed for tool "shell"/,
+    );
+  });
+
+  test("todoWrite handler validates argument shape before execution", () => {
+    const handler = createTodoWriteToolHandler([]);
+    const args: Record<string, unknown> = {};
+
+    expect(() => handler(args, tmp)).toThrow(
+      /Validation failed for tool "todoWrite"/,
+    );
+  });
+
+  test("readImage handler validates required arguments before execution", () => {
+    const args: Record<string, unknown> = {};
+
+    expect(() => readImageToolHandler(args, tmp)).toThrow(
+      /Validation failed for tool "readImage"/,
+    );
   });
 });
 

@@ -1,10 +1,11 @@
 /**
  * Input parsing, message submission, and streaming agent-event handling for the terminal UI.
  *
- * This module owns the transient streaming render state for the in-progress
- * assistant response. Persistent session and message state remain on
- * {@link AppState}; transient UI concerns are exposed through runtime hooks so
- * `ui.ts` can stay a small orchestrator.
+ * This module builds the controller used by `ui.ts`. Each controller owns its
+ * own transient streaming render state for the in-progress assistant response.
+ * Persistent session and message state remain on {@link AppState}; transient UI
+ * concerns are exposed through runtime hooks so `ui.ts` can stay a small
+ * orchestrator.
  *
  * @module
  */
@@ -25,14 +26,14 @@ import type {
 
 export { isEmptyUserContent, stripSkillFrontmatter } from "../submit.ts";
 
-/** Streaming assistant content for the current response. */
-let streamingContent: AssistantMessage["content"] = [];
-
-/** Whether a response is currently streaming. */
-let isStreaming = false;
-
-/** Tool results collected during the current streaming turn. */
-let pendingToolResults: PendingToolResult[] = [];
+interface UiAgentRuntimeState {
+  /** Whether a response is currently streaming. */
+  isStreaming: boolean;
+  /** Streaming assistant content for the current response. */
+  content: AssistantMessage["content"];
+  /** Tool results collected during the current streaming turn. */
+  pendingToolResults: PendingToolResult[];
+}
 
 /** Hooks implemented by `ui.ts` to bridge controller logic with runtime UI state. */
 interface UiAgentRuntime {
@@ -54,30 +55,10 @@ interface UiAgentRuntime {
 interface UiAgentController {
   /** Route raw user input through parseInput and dispatch accordingly. */
   handleInput: (raw: string, state: AppState) => void;
-}
-
-/**
- * Reset the transient streaming UI state owned by this module.
- *
- * Used by `resetUiState()` and tests to keep state isolated.
- */
-export function resetUiAgentState(): void {
-  streamingContent = [];
-  isStreaming = false;
-  pendingToolResults = [];
-}
-
-/**
- * Read the current streaming tail state for conversation rendering.
- *
- * @returns The in-progress assistant content and pending tool results.
- */
-export function getStreamingConversationState(): StreamingConversationState {
-  return {
-    isStreaming,
-    content: streamingContent,
-    pendingToolResults,
-  };
+  /** Read the current streaming tail state for conversation rendering. */
+  getStreamingConversationState: () => StreamingConversationState;
+  /** Reset the transient streaming state owned by this controller. */
+  reset: () => void;
 }
 
 /**
@@ -89,6 +70,80 @@ export function getStreamingConversationState(): StreamingConversationState {
 export function createUiAgentController(
   runtime: UiAgentRuntime,
 ): UiAgentController {
+  const streamingState: UiAgentRuntimeState = {
+    isStreaming: false,
+    content: [],
+    pendingToolResults: [],
+  };
+
+  const resetStreamingState = (): void => {
+    streamingState.isStreaming = false;
+    streamingState.content = [];
+    streamingState.pendingToolResults = [];
+  };
+
+  const handleAgentEvent = (event: AgentEvent, _state: AppState): void => {
+    switch (event.type) {
+      case "text_delta":
+      case "thinking_delta":
+      case "toolcall_start":
+      case "toolcall_delta":
+      case "toolcall_end":
+        streamingState.content = event.content;
+        runtime.render();
+        break;
+
+      case "user_message":
+        runtime.scrollConversationToBottom();
+        runtime.render();
+        break;
+
+      case "assistant_message":
+        streamingState.content = [];
+        runtime.render();
+        break;
+
+      case "tool_start":
+        break;
+
+      case "tool_delta":
+      case "tool_end": {
+        const pending = streamingState.pendingToolResults.find(
+          (toolResult) => toolResult.toolCallId === event.toolCallId,
+        );
+        if (pending) {
+          pending.toolName = event.name;
+          pending.content = event.result.content;
+          pending.isError = event.result.isError;
+        } else {
+          streamingState.pendingToolResults.push({
+            toolCallId: event.toolCallId,
+            toolName: event.name,
+            content: event.result.content,
+            isError: event.result.isError,
+          });
+        }
+        runtime.render();
+        break;
+      }
+
+      case "tool_result":
+        streamingState.pendingToolResults =
+          streamingState.pendingToolResults.filter(
+            (toolResult) => toolResult.toolCallId !== event.message.toolCallId,
+          );
+        runtime.render();
+        break;
+
+      case "done":
+      case "error":
+      case "aborted":
+        resetStreamingState();
+        runtime.render();
+        break;
+    }
+  };
+
   const submitMessageAsync = (rawInput: string, state: AppState): void => {
     const resolved = resolveRawInput(rawInput, state);
 
@@ -123,15 +178,14 @@ export function createUiAgentController(
         runtime.render();
       },
       onTurnStart: () => {
-        isStreaming = true;
-        streamingContent = [];
-        pendingToolResults = [];
+        resetStreamingState();
+        streamingState.isStreaming = true;
         runtime.startDividerAnimation();
         runtime.render();
       },
       onEvent: (event, currentState) => handleAgentEvent(event, currentState),
       onTurnEnd: () => {
-        resetUiAgentState();
+        resetStreamingState();
         runtime.stopDividerAnimation();
         runtime.render();
       },
@@ -152,70 +206,11 @@ export function createUiAgentController(
     state.activeTurnPromise = submitPromise;
   };
 
-  const handleAgentEvent = (event: AgentEvent, _state: AppState): void => {
-    switch (event.type) {
-      case "text_delta":
-      case "thinking_delta":
-      case "toolcall_start":
-      case "toolcall_delta":
-      case "toolcall_end":
-        streamingContent = event.content;
-        runtime.render();
-        break;
-
-      case "user_message":
-        runtime.scrollConversationToBottom();
-        runtime.render();
-        break;
-
-      case "assistant_message":
-        streamingContent = [];
-        runtime.render();
-        break;
-
-      case "tool_start":
-        break;
-
-      case "tool_delta":
-      case "tool_end": {
-        const pending = pendingToolResults.find(
-          (toolResult) => toolResult.toolCallId === event.toolCallId,
-        );
-        if (pending) {
-          pending.toolName = event.name;
-          pending.content = event.result.content;
-          pending.isError = event.result.isError;
-        } else {
-          pendingToolResults.push({
-            toolCallId: event.toolCallId,
-            toolName: event.name,
-            content: event.result.content,
-            isError: event.result.isError,
-          });
-        }
-        runtime.render();
-        break;
-      }
-
-      case "tool_result":
-        pendingToolResults = pendingToolResults.filter(
-          (toolResult) => toolResult.toolCallId !== event.message.toolCallId,
-        );
-        runtime.render();
-        break;
-
-      case "done":
-      case "error":
-      case "aborted":
-        resetUiAgentState();
-        runtime.render();
-        break;
-    }
+  return {
+    handleInput: (raw, state) => {
+      submitMessageAsync(raw, state);
+    },
+    getStreamingConversationState: () => streamingState,
+    reset: resetStreamingState,
   };
-
-  const handleInput = (raw: string, state: AppState): void => {
-    submitMessageAsync(raw, state);
-  };
-
-  return { handleInput };
 }

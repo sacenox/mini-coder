@@ -22,18 +22,9 @@ import {
 import type { Node } from "@cel-tui/types";
 import type { AppState } from "./index.ts";
 import { reloadPromptContext, shutdown } from "./index.ts";
-import {
-  appendMessage,
-  createUiMessage,
-  createUiTodoMessage,
-  type UiInfoFormat,
-} from "./session.ts";
+import { collapseWhitespaceToNull, joinTextBlocks } from "./text.ts";
 import type { Theme } from "./theme.ts";
-import {
-  createUiAgentController,
-  getStreamingConversationState,
-  resetUiAgentState,
-} from "./ui/agent.ts";
+import { createUiAgentController } from "./ui/agent.ts";
 import { createCommandController } from "./ui/commands.ts";
 import {
   buildConversationLogNodes,
@@ -51,6 +42,7 @@ import {
   OVERLAY_MAX_VISIBLE,
   renderOverlay,
 } from "./ui/overlay.ts";
+import { createUiRuntimeHelpers } from "./ui/runtime.ts";
 import { renderStatusBar } from "./ui/status.ts";
 
 export type { InputController } from "./ui/input.ts";
@@ -173,7 +165,7 @@ export function resetUiState(): void {
   inputFocused = true;
   dividerTick = 0;
   stopDividerAnimation();
-  resetUiAgentState();
+  agentController.reset();
   resetConversationRenderCache();
   activeOverlay = null;
   stdinWasRaw = false;
@@ -186,28 +178,14 @@ export function resetUiState(): void {
 // Terminal title
 // ---------------------------------------------------------------------------
 
-function collapseTerminalTitleText(text: string): string | null {
-  const collapsed = text.replace(/\s+/g, " ").trim();
-  return collapsed.length > 0 ? collapsed : null;
-}
-
 function getUserTerminalTitleText(
   content: Extract<AppState["messages"][number], { role: "user" }>["content"],
 ): string | null {
   if (typeof content === "string") {
-    return collapseTerminalTitleText(content);
+    return collapseWhitespaceToNull(content);
   }
 
-  const text = content
-    .filter(
-      (block): block is Extract<(typeof content)[number], { type: "text" }> => {
-        return block.type === "text";
-      },
-    )
-    .map((block) => block.text)
-    .join(" ");
-
-  return collapseTerminalTitleText(text);
+  return collapseWhitespaceToNull(joinTextBlocks(content));
 }
 
 function getAssistantTerminalTitleText(
@@ -216,24 +194,7 @@ function getAssistantTerminalTitleText(
     { role: "assistant" }
   >["content"],
 ): string | null {
-  const text = content
-    .filter(
-      (
-        block,
-      ): block is Extract<
-        Extract<
-          AppState["messages"][number],
-          { role: "assistant" }
-        >["content"][number],
-        { type: "text" }
-      > => {
-        return block.type === "text";
-      },
-    )
-    .map((block) => block.text)
-    .join(" ");
-
-  return collapseTerminalTitleText(text);
+  return collapseWhitespaceToNull(joinTextBlocks(content));
 }
 
 function truncateTerminalTitleTail(text: string): string {
@@ -412,7 +373,7 @@ export function buildConversationLog(
 ): Node[] {
   return buildConversationLogNodes(
     state,
-    getStreamingConversationState(),
+    agentController.getStreamingConversationState(),
     getVisibleConversationStart(state.messages.length),
     width,
   );
@@ -428,7 +389,7 @@ function measureConversationHeight(
       { gap: CONVERSATION_GAP },
       buildConversationLogNodes(
         state,
-        getStreamingConversationState(),
+        agentController.getStreamingConversationState(),
         startIndex,
         width,
       ),
@@ -641,51 +602,10 @@ function scrollConversationToBottom(): void {
   stickToBottom = true;
 }
 
-function appendUiMessage(
-  message: AppState["messages"][number],
-  state: AppState,
-): void {
-  if (state.session) {
-    appendMessage(state.db, state.session.id, message);
-  }
-  state.messages.push(message);
-  scrollConversationToBottom();
-  requestRender();
-}
-
-/**
- * Append a UI-only info message to the conversation log.
- *
- * When no persisted session exists yet, the message stays in memory and is
- * backfilled if the user later starts a session by sending a message.
- *
- * @param text - Display text to append.
- * @param state - Application state.
- * @param format - Optional rich-text format hint for the content.
- */
-function appendInfoMessage(
-  text: string,
-  state: AppState,
-  format?: UiInfoFormat,
-): void {
-  appendUiMessage(createUiMessage(text, format), state);
-}
-
-/**
- * Append a UI-only todo snapshot to the conversation log.
- *
- * When no persisted session exists yet, the message stays in memory and is
- * backfilled if the user later starts a session by sending a message.
- *
- * @param todos - Todo snapshot to append.
- * @param state - Application state.
- */
-function appendTodoMessage(
-  todos: Parameters<typeof createUiTodoMessage>[0],
-  state: AppState,
-): void {
-  appendUiMessage(createUiTodoMessage(todos), state);
-}
+const uiRuntimeHelpers = createUiRuntimeHelpers({
+  render: requestRender,
+  scrollConversationToBottom,
+});
 
 /** Command controller bound to the module-scoped UI runtime hooks. */
 const commandController = createCommandController({
@@ -694,8 +614,8 @@ const commandController = createCommandController({
   setInputValue: (value) => {
     inputValue = value;
   },
-  appendInfoMessage,
-  appendTodoMessage,
+  appendInfoMessage: uiRuntimeHelpers.appendInfoMessage,
+  appendTodoMessage: uiRuntimeHelpers.appendTodoMessage,
   scrollConversationToBottom,
   render: requestRender,
   reloadPromptContext,
@@ -708,7 +628,7 @@ const commandController = createCommandController({
 
 /** Agent controller bound to the module-scoped UI runtime hooks. */
 const agentController = createUiAgentController({
-  appendInfoMessage,
+  appendInfoMessage: uiRuntimeHelpers.appendInfoMessage,
   handleCommand: (command, state) =>
     commandController.handleCommand(command, state),
   render: requestRender,
@@ -948,6 +868,6 @@ export function startUI(state: AppState): void {
 
   // Show warnings from custom provider discovery
   for (const warning of state.startupWarnings) {
-    appendInfoMessage(warning, state);
+    uiRuntimeHelpers.appendInfoMessage(warning, state);
   }
 }

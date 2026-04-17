@@ -11,10 +11,13 @@ import type {
 import {
   addMessageToContextTokens,
   addMessageToStats,
+  appendConversationMessage,
   appendMessage,
   appendPromptHistory,
+  clearConversationState,
   computeContextTokens,
   computeStats,
+  createConversationSnapshot,
   createSession,
   createUiMessage,
   createUiTodoMessage,
@@ -26,6 +29,7 @@ import {
   listSessions,
   loadMessages,
   openDatabase,
+  replaceConversationState,
   truncatePromptHistory,
   truncateSessions,
   undoLastTurn,
@@ -706,6 +710,69 @@ describe("cumulative stats", () => {
     expect(stats.totalInput).toBe(0);
     expect(stats.totalOutput).toBe(0);
     expect(stats.totalCost).toBe(0);
+  });
+
+  test("createConversationSnapshot and replaceConversationState derive state from history", () => {
+    const messages = [
+      makeUser("hello"),
+      makeAssistant("reply", {
+        input: 120,
+        output: 60,
+        totalTokens: 180,
+        cost: {
+          input: 0.001,
+          output: 0.002,
+          cacheRead: 0,
+          cacheWrite: 0,
+          total: 0.003,
+        },
+      }),
+      makeUiMessage("ignored in model context"),
+    ];
+    const snapshot = createConversationSnapshot(messages);
+    const state = createConversationSnapshot();
+
+    expect(snapshot.messages).toBe(messages);
+    expect(snapshot.stats).toEqual(computeStats(messages));
+    expect(snapshot.contextTokens).toBe(computeContextTokens(messages));
+
+    replaceConversationState(state, messages);
+
+    expect(state).toEqual(snapshot);
+  });
+
+  test("appendConversationMessage and clearConversationState keep derived state in sync", () => {
+    const user = makeUser("hello world");
+    const assistant = makeAssistant("done", {
+      input: 150,
+      output: 25,
+      totalTokens: 175,
+      cost: {
+        input: 0.001,
+        output: 0.001,
+        cacheRead: 0,
+        cacheWrite: 0,
+        total: 0.002,
+      },
+    });
+    const ui = makeUiMessage("note");
+    const state = createConversationSnapshot();
+
+    appendConversationMessage(state, user);
+    appendConversationMessage(state, assistant);
+    appendConversationMessage(state, ui);
+
+    expect(state.messages).toEqual([user, assistant, ui]);
+    expect(state.stats).toEqual(computeStats(state.messages));
+    expect(state.contextTokens).toBe(computeContextTokens(state.messages));
+
+    clearConversationState(state);
+
+    expect(state).toEqual({
+      messages: [],
+      stats: { totalInput: 0, totalOutput: 0, totalCost: 0 },
+      contextTokens: 0,
+    });
   });
 
   test("filterModelMessages excludes UI messages", () => {
