@@ -85,26 +85,9 @@ PYTHONPATH=$PWD/terminal-bench \
   terminal-bench/mini_coder_local_agent.py
 ```
 
-## Current benchmark context
+## Examples
 
-Latest full leaderboard-style run kept for inspection:
-
-- `terminal-bench/jobs/leaderboard-2026-04-10__16-06-57`
-- score: about **67.4%**
-- pattern: many failures were near misses; the biggest buckets were exact-contract misses and runs that explored too long before writing the required artifact
-
-## Fast consistency loop
-
-Recommended fast feedback trial: `polyglot-rust-c`
-
-Why this one:
-
-- it already flipped on the same published build in `leaderboard-2026-04-13__15-33-42`
-- attempt `polyglot-rust-c__4P9q8rd` failed in about **398s** because it left an extra `/app/polyglot/main` artifact
-- attempt `polyglot-rust-c__4sRQDtD` passed in about **494s**
-- that makes it a decent exact-contract consistency check without paying for a full leaderboard run
-
-I looked at `break-filter-js-from-html` too because it is faster, but that flip is confounded by safety/refusal behavior. For measuring coding changes, `polyglot-rust-c` is the cleaner signal.
+### Fast consistency loop
 
 Run the consistency check as 4 attempts and treat the result as `passes/4`:
 
@@ -135,9 +118,3 @@ PYTHONPATH=$PWD/terminal-bench harbor run -y \
   --n-concurrent 1 \
   --max-retries 0
 ```
-
-Guidance:
-
-- use this loop before full leaderboard runs
-- compare changes by the `passes/4` consistency signal, not a single attempt
-- keep concurrency at `1` here to avoid rate-limit noise
