@@ -45,7 +45,3 @@ The spec and code are the sources of truth; this file is just the verified backl
 - [ ] Keep `Plugin AgentContext.messages` current or narrow the contract so it is not stale (`src/index.ts`, `src/plugins.ts`, `spec.md`)
 - [ ] Support package-name and config-relative plugin imports (`src/plugins.ts`)
 - [ ] Prefix plugin tool rendering with `plugin/tool` in the log when available (`src/index.ts`, `src/ui/conversation.ts`)
-
-## Benchmark harness debt
-
-- [ ] Make the Harbor mini-coder wrappers use headless JSON mode (`mc --json -p ...`) instead of final-text mode mislabeled as NDJSON (`terminal-bench/mini_coder_agent.py`, `terminal-bench/mini_coder_local_agent.py`)
