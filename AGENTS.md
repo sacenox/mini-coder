@@ -7,16 +7,9 @@
 
 ## Session bootstrap
 
-- Read `spec.md`, then `TODO.md`, then inspect `git status --short` / `git diff`.
-- Treat `TODO.md` as the current verified work queue. For spec-alignment work, confirm the mismatch in code before editing.
+- Check `PROGRESS.md` to check if there are any ongoing tasks.
 - For audits, treat open `TODO.md` items as already-known issues and focus findings on new gaps unless the user asks to re-check known debt.
 - Keep `TODO.md` minimal and current; remove completed items instead of accumulating history.
-
-## Planning and design mode
-
-- In planning, debugging, and research sessions, optimize for the correct design first. Do not let patch size, dirty-tree caution, or implementation anxiety distort the recommendation.
-- Minimal diffs are a delivery concern, not a design goal. If the current architecture is wrong, say so plainly and propose the proper refactor.
-- When implementation starts, prefer the correct refactor over a band-aid. Use tactical workarounds only when the user explicitly asks for them or hard constraints make the proper fix impractical.
 
 ## Code map
 
@@ -40,7 +33,7 @@
 - All exports need JSDoc; interface fields get single-line JSDoc. See `session.ts` for the pattern.
 - Dependency references:
   - pi-ai: `~/src/pi-mono/packages/ai/` (`src/types.ts`, `src/stream.ts`, `src/utils/oauth/`, `src/providers/faux.ts`)
-  - cel-tui: `~/src/cel-tui/` (`~/src/cel-tui/spec.md`, `examples/chat.ts`, `packages/components/src/markdown.ts`)
+  - cel-tui: `~/src/cel-tui/` (`~/src/cel-tui/spec.md`, `examples/chat.ts`)
 
 ## Release process
 
@@ -82,6 +75,7 @@
 
 - No inline `import` calls, duplicated helpers, dead code, or speculative abstractions.
 - Performance matters. Prefer fast paths.
+- Don't over-optimize, let the problems reveal themselves first.
 - Study dependency examples, types, and tsconfig before integrating them. Match their patterns instead of fighting them.
 - Use dependency-defined types, not weaker substitutes. Do not hide type/config mismatches with casts or ignores.
 - For UI work, verify both light/dark terminal legibility and let the layout engine size things.
@@ -103,13 +97,3 @@
 - Stay within the agreed TODO scope. Do not pull in adjacent items without discussion.
 - Don't write tests that call real git commands.
 - Don't add brittle tests that pin incidental wording, formatting, colors, layout, or other implementation-shaped output unless that exact output is the actual contract.
-
-## Testing strategy
-
-- Test boundaries, not dependencies. Use real Bun/git/sqlite/pi-ai faux behavior. No mocks or stubs.
-- `tools.ts`: edit exact-match/create/path/newline preservation; shell exit/abort/truncation/cwd; readImage mime/errors/path handling.
-- `session.ts`: CRUD, turn numbering, undo/fork, truncation, prompt history, cumulative stats.
-- `prompt.ts` / `skills.ts`: prompt assembly order, AGENTS.md ordering/scan-root behavior, skill discovery/catalog, conditional `readImage` omission.
-- `agent.ts`: faux-provider end-to-end loop tests for tool execution, ordering, interrupts, and errors.
-- UI tests live in `src/ui*.test.ts` plus focused `src/ui/*.ts` module tests; TUI rendering/input changes still need manual terminal validation.
-- `input.ts` and `theme.ts`: command/skill/image priority, theme completeness, merge semantics.
