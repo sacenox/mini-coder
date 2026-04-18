@@ -145,6 +145,41 @@ describe("headless", () => {
     );
   });
 
+  test("runHeadlessPrompt waits for async NDJSON writers before returning", async () => {
+    faux.setResponses([fauxAssistantMessage("Done.")]);
+    const state = createTestState();
+    const lines: string[] = [];
+
+    const stopReason = await runHeadlessPrompt(state, "fix the tests", {
+      writeLine: async (line) => {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        lines.push(line);
+      },
+    });
+
+    expect(stopReason).toBe("stop");
+    expect(parseEventLines(lines).map((event) => event.type)).toEqual([
+      "assistant_message",
+      "done",
+    ]);
+  });
+
+  test("runHeadlessPromptText waits for async writers before returning", async () => {
+    faux.setResponses([fauxAssistantMessage("Done.")]);
+    const state = createTestState();
+    let output = "";
+
+    const stopReason = await runHeadlessPromptText(state, "reply once", {
+      writeText: async (text) => {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        output += text;
+      },
+    });
+
+    expect(stopReason).toBe("stop");
+    expect(output).toBe("Done.");
+  });
+
   test("runHeadlessPrompt rejects slash commands before creating a session", async () => {
     const state = createTestState();
     const lines: string[] = [];

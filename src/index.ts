@@ -72,8 +72,12 @@ import {
   createTodoWriteToolHandler,
   editTool,
   editToolHandler,
+  grepTool,
+  grepToolHandler,
   readImageTool,
   readImageToolHandler,
+  readTool,
+  readToolHandler,
   shellTool,
   shellToolHandler,
   todoReadTool,
@@ -369,10 +373,19 @@ function buildTools(
   plugins: LoadedPlugin[],
   messages: AppState["messages"],
 ): { tools: Tool[]; toolHandlers: Map<string, ToolHandler> } {
-  const tools: Tool[] = [editTool, shellTool, todoWriteTool, todoReadTool];
+  const tools: Tool[] = [
+    shellTool,
+    readTool,
+    grepTool,
+    editTool,
+    todoWriteTool,
+    todoReadTool,
+  ];
   const toolHandlers = new Map<string, ToolHandler>([
-    [editTool.name, editToolHandler],
     [shellTool.name, shellToolHandler],
+    [readTool.name, readToolHandler],
+    [grepTool.name, grepToolHandler],
+    [editTool.name, editToolHandler],
     [todoWriteTool.name, createTodoWriteToolHandler(messages)],
     [todoReadTool.name, createTodoReadToolHandler(messages)],
   ]);

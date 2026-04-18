@@ -27,6 +27,7 @@ import { DEFAULT_SHOW_REASONING, DEFAULT_VERBOSE } from "./settings.ts";
 import { DEFAULT_THEME } from "./theme.ts";
 import {
   createInputController,
+  createRenderScheduler,
   handleInput,
   type InputController,
   renderActiveOverlay,
@@ -189,6 +190,40 @@ function isProcessAlive(pid: number): boolean {
     return false;
   }
 }
+
+describe("ui render scheduling", () => {
+  test("coalesces repeated stream-priority requests into a single render", async () => {
+    let renderCount = 0;
+    const scheduler = createRenderScheduler({
+      render: () => {
+        renderCount += 1;
+      },
+    });
+
+    scheduler.requestRender("stream");
+    scheduler.requestRender("stream");
+    scheduler.requestRender("animation");
+
+    expect(renderCount).toBe(0);
+    await waitFor(() => renderCount === 1);
+    expect(renderCount).toBe(1);
+  });
+
+  test("upgrades a pending stream render to normal priority", async () => {
+    let renderCount = 0;
+    const scheduler = createRenderScheduler({
+      render: () => {
+        renderCount += 1;
+      },
+    });
+
+    scheduler.requestRender("stream");
+    scheduler.requestRender("normal");
+
+    await Promise.resolve();
+    expect(renderCount).toBe(1);
+  });
+});
 
 describe("ui rendering", () => {
   test("first user message creates the session lazily", async () => {

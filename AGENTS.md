@@ -12,6 +12,12 @@
 - For audits, treat open `TODO.md` items as already-known issues and focus findings on new gaps unless the user asks to re-check known debt.
 - Keep `TODO.md` minimal and current; remove completed items instead of accumulating history.
 
+## Planning and design mode
+
+- In planning, debugging, and research sessions, optimize for the correct design first. Do not let patch size, dirty-tree caution, or implementation anxiety distort the recommendation.
+- Minimal diffs are a delivery concern, not a design goal. If the current architecture is wrong, say so plainly and propose the proper refactor.
+- When implementation starts, prefer the correct refactor over a band-aid. Use tactical workarounds only when the user explicitly asks for them or hard constraints make the proper fix impractical.
+
 ## Code map
 
 - `src/index.ts` — startup, providers, settings, AGENTS.md/skills/plugins loading, theme assembly, shared app state.

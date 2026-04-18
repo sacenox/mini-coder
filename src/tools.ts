@@ -1,9 +1,9 @@
 /**
- * Built-in tool implementations: `edit`, `todoWrite`, `todoRead`, and
- * `readImage`.
+ * Built-in tool implementations: `shell`, `read`, `grep`, `edit`, `todoWrite`,
+ * `todoRead`, and `readImage`.
  *
- * The shell tool lives in `tool-shell.ts` and is re-exported here so the rest
- * of the codebase can keep a single built-in-tools import surface.
+ * Shell, read, and grep live in dedicated modules and are re-exported here so
+ * the rest of the codebase can keep a single built-in-tools import surface.
  *
  * Each tool is exposed as a pure-ish execute function that takes typed
  * arguments and a working directory, returning a result object. The pi-ai
@@ -33,6 +33,30 @@ import {
 } from "./tool-common.ts";
 
 export type { ToolExecResult } from "./tool-common.ts";
+export {
+  DEFAULT_GREP_LIMIT,
+  executeGrep,
+  type GrepArgs,
+  type GrepOpts,
+  type GrepResult,
+  type GrepResultFile,
+  type GrepResultLine,
+  grepTool,
+  grepToolHandler,
+  parseGrepResult,
+} from "./tool-grep.ts";
+export {
+  DEFAULT_READ_LIMIT,
+  executeRead,
+  formatReadContinuationHint,
+  parseReadContinuationHint,
+  parseReadResult,
+  type ReadArgs,
+  type ReadContinuationHint,
+  type ReadOpts,
+  readTool,
+  readToolHandler,
+} from "./tool-read.ts";
 export {
   executeShell,
   type ShellArgs,

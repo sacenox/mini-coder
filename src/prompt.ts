@@ -210,6 +210,8 @@ function buildCorePrompt(opts: BuildSystemPromptOpts): string {
 
   lines.push(
     `- Shell: ${opts.shell}. Use \`command -v <name>\` to check what is available to you; do not assume environment support.`,
+    "- Read: Read a text file from disk with offset/limit support.",
+    "- Grep: Search file contents with ripgrep-style options and structured results.",
     "- Edit: Safe exact-text replacement in a single file.",
   );
 
@@ -237,6 +239,12 @@ function buildCorePrompt(opts: BuildSystemPromptOpts): string {
     "- Use the appropriate commands and package managers for the specified operating system.",
     "- Don't assume the environment supports all commands; check before using them.",
     "- Avoid destructive commands that can discard changes or override edits.",
+    "",
+    "### Choosing tools:",
+    "",
+    "- Prefer `read` for reading file contents instead of `cat`, `sed`, `head`, or `tail`.",
+    "- Prefer `grep` for content search instead of raw `grep` / `rg`.",
+    "- Use shell `ls` and `fd` for lightweight exploration when you just need to inspect directories or discover candidate files.",
     "",
     "### Working with code:",
     "",

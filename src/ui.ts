@@ -42,7 +42,7 @@ import {
   OVERLAY_MAX_VISIBLE,
   renderOverlay,
 } from "./ui/overlay.ts";
-import { createUiRuntimeHelpers } from "./ui/runtime.ts";
+import { createUiRuntimeHelpers, type UiRenderPriority } from "./ui/runtime.ts";
 import { renderStatusBar } from "./ui/status.ts";
 
 export type { InputController } from "./ui/input.ts";
@@ -76,6 +76,12 @@ const TERMINAL_TITLE_FRAMES = [
 
 /** Maximum number of committed messages rendered before older history is chunked. */
 const CONVERSATION_CHUNK_MESSAGES = 50;
+
+/** Minimum delay between coalesced streaming renders. */
+const STREAM_RENDER_MIN_INTERVAL_MS = 33;
+
+/** Minimum delay between low-priority divider animation renders. */
+const ANIMATION_RENDER_MIN_INTERVAL_MS = DIVIDER_FRAME_MS;
 
 /** Centralized interactive quit rules for keypresses and submitted input. */
 const QUIT_RULES: Readonly<{
@@ -165,6 +171,7 @@ export function resetUiState(): void {
   inputFocused = true;
   dividerTick = 0;
   stopDividerAnimation();
+  renderScheduler.reset();
   agentController.reset();
   resetConversationRenderCache();
   activeOverlay = null;
@@ -277,9 +284,168 @@ function invalidateTerminalTitleCache(): void {
   lastTerminalTitle = null;
 }
 
-function requestRender(): void {
-  syncTerminalTitle(titleState);
-  cel.render();
+interface RenderSchedulerRuntime {
+  /** Render-time clock used for throttling in tests and production. */
+  now?: () => number;
+  /** Microtask queue used for coalescing normal-priority flushes. */
+  queueMicrotask?: (callback: () => void) => void;
+  /** Timer primitive used for deferred stream/animation flushes. */
+  setTimeout?: typeof setTimeout;
+  /** Timer cancellation primitive paired with `setTimeout`. */
+  clearTimeout?: typeof clearTimeout;
+  /** Optional hook to sync the terminal title before rendering. */
+  syncTitle?: () => void;
+  /** cel render primitive invoked for each scheduled flush. */
+  render: () => void;
+}
+
+interface RenderScheduler {
+  /** Schedule a render with the given priority. */
+  requestRender: (priority?: UiRenderPriority) => void;
+  /** Cancel any pending render work and reset throttling state. */
+  reset: () => void;
+}
+
+function getRenderPriorityRank(priority: UiRenderPriority): number {
+  switch (priority) {
+    case "immediate":
+      return 3;
+    case "normal":
+      return 2;
+    case "stream":
+      return 1;
+    case "animation":
+      return 0;
+  }
+}
+
+function getRenderMinInterval(priority: UiRenderPriority): number {
+  switch (priority) {
+    case "stream":
+      return STREAM_RENDER_MIN_INTERVAL_MS;
+    case "animation":
+      return ANIMATION_RENDER_MIN_INTERVAL_MS;
+    default:
+      return 0;
+  }
+}
+
+function chooseHigherRenderPriority(
+  left: UiRenderPriority | null,
+  right: UiRenderPriority,
+): UiRenderPriority {
+  if (!left) {
+    return right;
+  }
+  return getRenderPriorityRank(left) >= getRenderPriorityRank(right)
+    ? left
+    : right;
+}
+
+/**
+ * Create the coalescing render scheduler used by the terminal UI.
+ *
+ * @param runtime - Render/timer hooks for production code and focused tests.
+ * @returns A scheduler that coalesces repeated render requests by priority.
+ */
+export function createRenderScheduler(
+  runtime: RenderSchedulerRuntime,
+): RenderScheduler {
+  let pendingPriority: UiRenderPriority | null = null;
+  let microtaskQueued = false;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let lastRenderTime = 0;
+
+  const now = (): number => runtime.now?.() ?? Date.now();
+  const enqueueMicrotask = runtime.queueMicrotask ?? queueMicrotask;
+  const startTimer = runtime.setTimeout ?? setTimeout;
+  const stopTimer = runtime.clearTimeout ?? clearTimeout;
+
+  const clearRenderTimer = (): void => {
+    if (timer) {
+      stopTimer(timer);
+      timer = null;
+    }
+  };
+
+  const flushRender = (): void => {
+    pendingPriority = null;
+    microtaskQueued = false;
+    clearRenderTimer();
+    runtime.syncTitle?.();
+    runtime.render();
+    lastRenderTime = now();
+  };
+
+  const schedulePendingRender = (): void => {
+    if (!pendingPriority) {
+      return;
+    }
+
+    if (pendingPriority === "immediate") {
+      flushRender();
+      return;
+    }
+
+    if (pendingPriority === "normal") {
+      clearRenderTimer();
+      if (microtaskQueued) {
+        return;
+      }
+      microtaskQueued = true;
+      enqueueMicrotask(() => {
+        microtaskQueued = false;
+        if (!pendingPriority) {
+          return;
+        }
+        flushRender();
+      });
+      return;
+    }
+
+    if (microtaskQueued) {
+      return;
+    }
+
+    const delay = Math.max(
+      0,
+      lastRenderTime + getRenderMinInterval(pendingPriority) - now(),
+    );
+    clearRenderTimer();
+    timer = startTimer(() => {
+      timer = null;
+      if (!pendingPriority) {
+        return;
+      }
+      flushRender();
+    }, delay);
+  };
+
+  return {
+    requestRender: (priority = "normal") => {
+      pendingPriority = chooseHigherRenderPriority(pendingPriority, priority);
+      schedulePendingRender();
+    },
+    reset: () => {
+      pendingPriority = null;
+      microtaskQueued = false;
+      clearRenderTimer();
+      lastRenderTime = 0;
+    },
+  };
+}
+
+const renderScheduler = createRenderScheduler({
+  render: () => {
+    cel.render();
+  },
+  syncTitle: () => {
+    syncTerminalTitle(titleState);
+  },
+});
+
+function requestRender(priority: UiRenderPriority = "normal"): void {
+  renderScheduler.requestRender(priority);
 }
 
 // ---------------------------------------------------------------------------
@@ -292,7 +458,7 @@ function startDividerAnimation(): void {
   dividerTick = 0;
   dividerTimer = setInterval(() => {
     dividerTick++;
-    requestRender();
+    requestRender("animation");
   }, DIVIDER_FRAME_MS);
 }
 
@@ -416,14 +582,12 @@ function prependConversationChunk(state: AppState, width: number): void {
 function openOverlay(overlay: ActiveOverlay): void {
   activeOverlay = overlay;
   inputFocused = false;
-  requestRender();
 }
 
 /** Dismiss the active overlay and return focus to the input. */
 function dismissOverlay(): void {
   activeOverlay = null;
   inputFocused = true;
-  requestRender();
 }
 
 function openPathAutocompleteOverlay(state: AppState): void {
@@ -461,7 +625,6 @@ function handleTabKeyPress(state: AppState): void {
   const completedInput = autocompleteInputPath(inputValue, state.cwd);
   if (completedInput) {
     inputValue = completedInput;
-    requestRender();
     return;
   }
 
@@ -500,16 +663,16 @@ export function createInputController(state: AppState): InputController {
 
   return {
     onChange: (value) => {
+      if (inputValue === value) {
+        return;
+      }
       inputValue = value;
-      requestRender();
     },
     onFocus: () => {
       inputFocused = true;
-      requestRender();
     },
     onBlur: () => {
       inputFocused = false;
-      requestRender();
     },
     onKeyPress: (key) => {
       if (key === "enter") {
@@ -517,13 +680,11 @@ export function createInputController(state: AppState): InputController {
 
         if (isQuitInput(raw)) {
           inputValue = "";
-          requestRender();
           requestGracefulExit(state);
           return false;
         }
 
         inputValue = "";
-        requestRender();
         handleInput(raw, state);
         return false;
       }
@@ -603,7 +764,7 @@ function scrollConversationToBottom(): void {
 }
 
 const uiRuntimeHelpers = createUiRuntimeHelpers({
-  render: requestRender,
+  requestRender,
   scrollConversationToBottom,
 });
 
@@ -612,12 +773,15 @@ const commandController = createCommandController({
   openOverlay,
   dismissOverlay,
   setInputValue: (value) => {
+    if (inputValue === value) {
+      return;
+    }
     inputValue = value;
   },
   appendInfoMessage: uiRuntimeHelpers.appendInfoMessage,
   appendTodoMessage: uiRuntimeHelpers.appendTodoMessage,
   scrollConversationToBottom,
-  render: requestRender,
+  requestRender,
   reloadPromptContext,
   openInBrowser,
 });
@@ -631,7 +795,7 @@ const agentController = createUiAgentController({
   appendInfoMessage: uiRuntimeHelpers.appendInfoMessage,
   handleCommand: (command, state) =>
     commandController.handleCommand(command, state),
-  render: requestRender,
+  requestRender,
   scrollConversationToBottom,
   startDividerAnimation,
   stopDividerAnimation,
@@ -750,8 +914,6 @@ function renderConversationLog(state: AppState, width: number): Node {
         if (!stickToBottom && offset === 0 && visibleConversationStart > 0) {
           prependConversationChunk(state, width);
         }
-
-        requestRender();
       },
     },
     buildConversationLog(state, width),
@@ -850,7 +1012,7 @@ export function startUI(state: AppState): void {
         if (state.running) {
           startDividerAnimation();
         }
-        requestRender();
+        requestRender("immediate");
       });
     });
     const overlay = renderActiveOverlay(state);

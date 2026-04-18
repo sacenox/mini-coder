@@ -8,6 +8,15 @@
  * @module
  */
 
+import { homedir } from "node:os";
+import {
+  basename,
+  extname,
+  isAbsolute,
+  join,
+  normalize,
+  relative,
+} from "node:path";
 import {
   SyntaxHighlight,
   type SyntaxHighlightTheme,
@@ -22,8 +31,15 @@ import type {
 } from "@mariozechner/pi-ai";
 import type { AppState } from "../index.ts";
 import type { UiMessage } from "../session.ts";
+import { readBoolean, readFiniteNumber, readString } from "../shared.ts";
 import type { Theme } from "../theme.ts";
-import { parseTodoSnapshot, type TodoItem } from "../tools.ts";
+import {
+  parseGrepResult,
+  parseReadContinuationHint,
+  parseReadResult,
+  parseTodoSnapshot,
+  type TodoItem,
+} from "../tools.ts";
 import { APP_NAME, DEV_VERSION_LABEL } from "../version.ts";
 
 /** Single blank-line gap used between conversation-level blocks. */
@@ -34,9 +50,6 @@ const UI_TOOL_PREVIEW_ROWS = 8;
 
 /** Default width used when preview measurements do not receive one explicitly. */
 const DEFAULT_TOOL_PREVIEW_WIDTH = 80;
-
-/** Horizontal columns consumed by assistant-markdown padding. */
-const MARKDOWN_BLOCK_CHROME_WIDTH = 2;
 
 /** Horizontal columns consumed by tool-block padding and the left border. */
 const TOOL_BLOCK_CHROME_WIDTH = 4;
@@ -81,6 +94,8 @@ interface ConversationRenderOpts {
   verbose: boolean;
   /** Active UI theme. */
   theme: Theme;
+  /** Session working directory used for path display. */
+  cwd?: string;
   /** Available terminal width for width-aware tool previews. */
   previewWidth?: number;
 }
@@ -107,7 +122,7 @@ type ConversationMessage = AppState["messages"][number];
 
 type ConversationLogState = Pick<
   AppState,
-  "messages" | "showReasoning" | "verbose" | "theme"
+  "messages" | "showReasoning" | "verbose" | "theme" | "cwd"
 > & {
   versionLabel?: AppState["versionLabel"];
 };
@@ -130,6 +145,7 @@ interface ConversationRenderCache {
   showReasoning: boolean;
   verbose: boolean;
   previewWidth: number;
+  cwd: string | null;
   theme: Theme | null;
   nodes: Node[];
 }
@@ -140,12 +156,13 @@ type ToolRenderLineKind =
   | "command"
   | "path"
   | "text"
+  | "context"
   | "diffAdded"
   | "diffRemoved"
   | "summary"
   | "error";
 
-type SyntaxThemeVariant = "markdown" | "shell";
+type SyntaxThemeVariant = "markdown" | "code" | "shell";
 
 interface HighlightedBodySpec {
   /** Full raw source content to syntax-highlight. */
@@ -161,12 +178,16 @@ interface ToolBlockSpec {
   toolName: string;
   /** Direction shown in the header pill. */
   direction: ToolRenderDirection;
+  /** Optional compact text appended after the header pill. */
+  headerSuffix?: string;
   /** Logical body lines for the tool block. */
   bodyLines: readonly ToolRenderLine[];
   /** Optional syntax-highlighted body rendered from the full unsplit source. */
   highlightedBody?: HighlightedBodySpec;
   /** Optional custom body node rendered as-is. */
   bodyNode?: Node;
+  /** Optional footer lines rendered after the body. */
+  footerLines?: readonly ToolRenderLine[];
   /** Whether `/verbose` preview rules apply to the body. */
   previewBody: boolean;
 }
@@ -197,6 +218,7 @@ const conversationRenderCache: ConversationRenderCache = {
   showReasoning: false,
   verbose: false,
   previewWidth: DEFAULT_TOOL_PREVIEW_WIDTH,
+  cwd: null,
   theme: null,
   nodes: EMPTY_RENDER_NODES,
 };
@@ -212,6 +234,7 @@ export function resetConversationRenderCache(): void {
   conversationRenderCache.showReasoning = false;
   conversationRenderCache.verbose = false;
   conversationRenderCache.previewWidth = DEFAULT_TOOL_PREVIEW_WIDTH;
+  conversationRenderCache.cwd = null;
   conversationRenderCache.theme = null;
   conversationRenderCache.nodes = EMPTY_RENDER_NODES;
 }
@@ -232,29 +255,24 @@ function renderUserMessage(msg: UserMessage, theme: Theme): Node {
 }
 
 /** Render a syntax-highlighted raw markdown block. */
-function renderMarkdownTextBlock(
-  content: string,
-  theme: Theme,
-  previewWidth?: number,
-): Node | null {
+function renderMarkdownTextBlock(content: string, theme: Theme): Node | null {
   if (content === "") {
     return null;
   }
 
-  const children = getHighlightedBodyLines(
+  const highlighted = getHighlightedBodyNode(
     {
       text: content,
       language: "markdown",
       themeVariant: "markdown",
     },
     theme,
-    getMarkdownBodyWidth(previewWidth),
   );
-  if (children.length === 0) {
+  if (!highlighted) {
     return null;
   }
 
-  return HStack({ padding: { x: 1 } }, [VStack({ flex: 1 }, children)]);
+  return HStack({ padding: { x: 1 } }, [VStack({ flex: 1 }, [highlighted])]);
 }
 
 function getAssistantErrorMessage(
@@ -324,7 +342,7 @@ function renderAssistantContentBlock(
   opts: ConversationRenderOpts,
 ): Node | null {
   if (block.type === "text" && block.text) {
-    return renderMarkdownTextBlock(block.text, opts.theme, opts.previewWidth);
+    return renderMarkdownTextBlock(block.text, opts.theme);
   }
   if (block.type === "thinking" && block.thinking) {
     return renderThinkingBlock(block.thinking, opts);
@@ -377,19 +395,8 @@ function getPreviewWidth(previewWidth?: number): number {
   return Math.max(1, Math.floor(previewWidth!));
 }
 
-function getMarkdownBodyWidth(previewWidth?: number): number {
-  return Math.max(
-    1,
-    getPreviewWidth(previewWidth) - MARKDOWN_BLOCK_CHROME_WIDTH,
-  );
-}
-
 function getToolBodyWidth(previewWidth?: number): number {
   return Math.max(1, getPreviewWidth(previewWidth) - TOOL_BLOCK_CHROME_WIDTH);
-}
-
-function getHighlightWrapChunkSize(bodyWidth: number): number {
-  return Math.max(1, Math.min(HIGHLIGHT_WRAP_MAX_CHUNK_GRAPHEMES, bodyWidth));
 }
 
 /** Split multi-line tool text into logical render lines. */
@@ -409,10 +416,133 @@ function splitToolTextLines(
   return lines.map((line) => ({ kind, text: line }));
 }
 
+function normalizeDisplayLineEndings(text: string): string {
+  return text.replace(/\r\n/g, "\n");
+}
+
 /** Read a string argument from a tool-call argument map. */
 function getToolArgString(args: Record<string, unknown>, key: string): string {
-  const value = args[key];
-  return typeof value === "string" ? value : "";
+  return readString(args, key) ?? "";
+}
+
+const HOME_DIR = homedir();
+
+function resolveToolPath(path: string, cwd?: string): string {
+  if (path === "") {
+    return "";
+  }
+  if (!cwd || isAbsolute(path)) {
+    return path;
+  }
+  return join(cwd, path);
+}
+
+function abbreviateHomePath(path: string): string {
+  if (path === HOME_DIR) {
+    return "~";
+  }
+  if (path.startsWith(`${HOME_DIR}/`)) {
+    return `~/${path.slice(HOME_DIR.length + 1)}`;
+  }
+  return path;
+}
+
+function normalizeDisplayPath(path: string): string {
+  if (path === "") {
+    return path;
+  }
+  return normalize(path).replace(/\\/g, "/");
+}
+
+function formatResolvedToolPath(path: string, cwd?: string): string {
+  const resolved = resolveToolPath(path, cwd);
+  if (resolved === "") {
+    return path;
+  }
+  return abbreviateHomePath(normalizeDisplayPath(resolved));
+}
+
+function formatRelativeToolPath(path: string, cwd?: string): string {
+  const resolved = resolveToolPath(path, cwd);
+  if (resolved === "" || !cwd || !isAbsolute(resolved)) {
+    return normalizeDisplayPath(path);
+  }
+
+  const relativePath = relative(cwd, resolved);
+  if (relativePath === "") {
+    return ".";
+  }
+  if (relativePath.startsWith("..")) {
+    return formatResolvedToolPath(resolved);
+  }
+  return normalizeDisplayPath(relativePath);
+}
+
+function getReadLanguageCandidates(path: string): string[] {
+  const fileName = basename(path).toLowerCase();
+  const extension = extname(fileName).toLowerCase();
+
+  switch (extension) {
+    case ".ts":
+      return ["typescript"];
+    case ".tsx":
+      return ["tsx", "typescript"];
+    case ".js":
+    case ".mjs":
+    case ".cjs":
+      return ["javascript"];
+    case ".jsx":
+      return ["jsx", "javascript"];
+    case ".json":
+      return ["json"];
+    case ".md":
+      return ["markdown"];
+    case ".yml":
+    case ".yaml":
+      return ["yaml"];
+    case ".toml":
+      return ["toml"];
+    case ".sh":
+    case ".bash":
+      return ["bash"];
+    case ".css":
+      return ["css"];
+    case ".html":
+    case ".htm":
+      return ["html"];
+    case ".xml":
+      return ["xml"];
+    case ".py":
+      return ["python"];
+    case ".rs":
+      return ["rust"];
+    case ".go":
+      return ["go"];
+    case ".java":
+      return ["java"];
+    case ".c":
+      return ["c"];
+    case ".h":
+      return ["c"];
+    case ".cpp":
+    case ".cc":
+    case ".cxx":
+    case ".hpp":
+      return ["cpp"];
+    default:
+      break;
+  }
+
+  if (fileName === "dockerfile") {
+    return ["dockerfile"];
+  }
+  if (fileName === "makefile") {
+    return ["makefile"];
+  }
+  if (fileName === "agents.md" || fileName === "readme.md") {
+    return ["markdown"];
+  }
+  return [];
 }
 
 function formatTodoWriteCallSummary(args: Record<string, unknown>): string {
@@ -436,6 +566,8 @@ function getToolHeaderName(toolName: string): string {
 function getToolHeaderColor(toolName: string, theme: Theme) {
   switch (toolName) {
     case "shell":
+    case "read":
+    case "grep":
     case "readImage":
     case "todoWrite":
     case "todoRead":
@@ -452,15 +584,12 @@ type SyntaxThemeTokenColor = NonNullable<
   SyntaxThemeRegistration["tokenColors"]
 >[number];
 
-const graphemeSegmenter = new Intl.Segmenter(undefined, {
-  granularity: "grapheme",
-});
-const HIGHLIGHT_WRAP_MAX_CHUNK_GRAPHEMES = 32;
 const syntaxThemeCache: Record<
   SyntaxThemeVariant,
   WeakMap<Theme, SyntaxThemeRegistration>
 > = {
   markdown: new WeakMap(),
+  code: new WeakMap(),
   shell: new WeakMap(),
 };
 
@@ -492,55 +621,49 @@ function pushShellSyntaxTokenColors(
   tokenColors: SyntaxThemeTokenColor[],
   theme: Theme,
 ): void {
-  pushSyntaxTokenColor(tokenColors, "comment", theme.mutedText);
   pushSyntaxTokenColor(
     tokenColors,
-    ["keyword", "storage"],
+    ["comment", "quote", "doctag"],
+    theme.mutedText,
+    "italic",
+  );
+  pushSyntaxTokenColor(
+    tokenColors,
+    ["keyword", "operator"],
     theme.secondaryAccentText,
   );
   pushSyntaxTokenColor(
     tokenColors,
-    [
-      "entity.name.function",
-      "function",
-      "meta.function-call",
-      "support.function",
-      "title",
-    ],
+    ["function_", "function", "title"],
     theme.accentText,
   );
   pushSyntaxTokenColor(
     tokenColors,
-    [
-      "built_in",
-      "class",
-      "entity.name.type",
-      "entity.other.inherited-class",
-      "support.class",
-      "support.type",
-      "type",
-    ],
+    ["built_in", "class_", "class", "inherited__", "type"],
     theme.accentText,
   );
   pushSyntaxTokenColor(
     tokenColors,
-    ["constant.language", "constant.numeric", "literal", "symbol"],
+    ["escape", "literal", "number", "symbol"],
     theme.secondaryAccentText ?? theme.accentText,
   );
-  pushSyntaxTokenColor(
-    tokenColors,
-    ["markup.inline", "string"],
-    theme.diffAdded,
-  );
+  pushSyntaxTokenColor(tokenColors, ["code", "string"], theme.diffAdded);
   pushSyntaxTokenColor(tokenColors, "regexp", theme.diffRemoved);
   pushSyntaxTokenColor(
     tokenColors,
-    ["attr", "attribute", "entity.other.attribute-name", "property"],
+    ["attr", "attribute", "params", "property", "selector-attr"],
     theme.accentText,
   );
   pushSyntaxTokenColor(
     tokenColors,
-    ["entity.name.tag", "name", "tag"],
+    [
+      "name",
+      "tag",
+      "selector-class",
+      "selector-id",
+      "selector-pseudo",
+      "selector-tag",
+    ],
     theme.accentText,
   );
 }
@@ -574,10 +697,10 @@ function getSyntaxTheme(
   }
 
   const tokenColors: SyntaxThemeTokenColor[] = [];
-  if (variant === "shell") {
-    pushShellSyntaxTokenColors(tokenColors, theme);
-  } else {
+  if (variant === "markdown") {
     pushMarkdownSyntaxTokenColors(tokenColors, theme);
+  } else {
+    pushShellSyntaxTokenColors(tokenColors, theme);
   }
 
   const syntaxTheme: SyntaxThemeRegistration = {
@@ -587,76 +710,21 @@ function getSyntaxTheme(
   return syntaxTheme;
 }
 
-function splitHighlightedTextNode(
-  node: Extract<Node, { type: "text" }>,
-  chunkSize: number,
-): Node[] {
-  if (node.content === "") {
-    return [Text("", node.props)];
-  }
-
-  const parts = node.content.match(/\s+|\S+/gu);
-  if (!parts) {
-    return [Text(node.content, node.props)];
-  }
-
-  const children: Node[] = [];
-  for (const part of parts) {
-    if (/^\s+$/u.test(part)) {
-      children.push(Text(part, node.props));
-      continue;
-    }
-
-    let chunk = "";
-    let chunkGraphemes = 0;
-    for (const { segment } of graphemeSegmenter.segment(part)) {
-      chunk += segment;
-      chunkGraphemes += 1;
-
-      if (chunkGraphemes === chunkSize) {
-        children.push(Text(chunk, node.props));
-        chunk = "";
-        chunkGraphemes = 0;
-      }
-    }
-
-    if (chunk !== "") {
-      children.push(Text(chunk, node.props));
-    }
-  }
-
-  return children;
-}
-
-function normalizeHighlightedLine(line: Node, bodyWidth: number): Node {
-  if (line.type !== "hstack") {
-    return line;
-  }
-
-  const chunkSize = getHighlightWrapChunkSize(bodyWidth);
-  const children = line.children.flatMap((child) => {
-    return child.type === "text"
-      ? splitHighlightedTextNode(child, chunkSize)
-      : [child];
-  });
-  return HStack(line.props, children);
-}
-
-function getHighlightedBodyLines(
+function getHighlightedBodyNode(
   spec: HighlightedBodySpec,
   theme: Theme,
-  bodyWidth: number,
-): Node[] {
+): Node | null {
   if (spec.text === "") {
-    return [];
+    return null;
   }
 
-  const highlighted = SyntaxHighlight(spec.text, spec.language, {
-    theme: getSyntaxTheme(theme, spec.themeVariant),
-  });
-  return highlighted.children.map((line) =>
-    normalizeHighlightedLine(line, bodyWidth),
-  );
+  try {
+    return SyntaxHighlight(spec.text, spec.language, {
+      theme: getSyntaxTheme(theme, spec.themeVariant),
+    });
+  } catch {
+    return null;
+  }
 }
 
 /** Render a single styled text node for a tool line. */
@@ -673,6 +741,11 @@ function renderToolLine(line: ToolRenderLine, theme: Theme): Node {
       return Text(line.text, { fgColor: theme.diffAdded, wrap: "word" });
     case "diffRemoved":
       return Text(line.text, { fgColor: theme.diffRemoved, wrap: "word" });
+    case "context":
+      return Text(line.text, {
+        fgColor: theme.mutedText,
+        wrap: "word",
+      });
     case "summary":
       return Text(line.text, {
         fgColor: theme.toolText,
@@ -682,7 +755,10 @@ function renderToolLine(line: ToolRenderLine, theme: Theme): Node {
     case "error":
       return Text(line.text, { fgColor: theme.error, wrap: "word" });
     case "text":
-      return Text(line.text, { wrap: "word" });
+      return Text(line.text, {
+        fgColor: theme.toolText,
+        wrap: "word",
+      });
   }
 }
 
@@ -781,6 +857,23 @@ function renderToolHeaderPill(
   ]);
 }
 
+function renderToolHeaderRow(spec: ToolBlockSpec, theme: Theme): Node {
+  const children: Node[] = [
+    renderToolHeaderPill(spec.toolName, spec.direction, theme),
+  ];
+
+  if (spec.headerSuffix) {
+    children.push(
+      Text(` ${spec.headerSuffix}`, {
+        fgColor: theme.toolText,
+        wrap: "word",
+      }),
+    );
+  }
+
+  return HStack({}, children);
+}
+
 function renderToolBodyFromNodes(
   lines: readonly Node[],
   previewBody: boolean,
@@ -826,6 +919,50 @@ function renderToolBodyFromNodes(
   };
 }
 
+function renderToolBodyFromHighlightedNode(
+  highlighted: Node,
+  previewBody: boolean,
+  opts: Pick<ConversationRenderOpts, "previewWidth" | "theme" | "verbose">,
+): { body: Node | null; summary?: ToolRenderLine } {
+  if (opts.verbose || !previewBody) {
+    return { body: highlighted };
+  }
+
+  const bodyWidth = getToolBodyWidth(opts.previewWidth);
+  const totalHeight = measureToolNodeHeight(highlighted, bodyWidth);
+  if (totalHeight <= UI_TOOL_PREVIEW_ROWS || highlighted.type !== "vstack") {
+    return { body: highlighted };
+  }
+
+  const visibleLineCount = countVisibleTailNodes(
+    highlighted.children,
+    bodyWidth,
+    UI_TOOL_PREVIEW_ROWS,
+  );
+  const previewLines = highlighted.children.slice(-visibleLineCount);
+  const hiddenLineCount = Math.max(
+    0,
+    highlighted.children.length - visibleLineCount,
+  );
+
+  return {
+    body: VStack(
+      {
+        height: UI_TOOL_PREVIEW_ROWS,
+        justifyContent: "end",
+      },
+      [...previewLines],
+    ),
+    summary:
+      hiddenLineCount > 0
+        ? {
+            kind: "summary",
+            text: `And ${hiddenLineCount} lines more`,
+          }
+        : undefined,
+  };
+}
+
 function renderToolBody(
   spec: ToolBlockSpec,
   opts: Pick<ConversationRenderOpts, "previewWidth" | "theme" | "verbose">,
@@ -835,15 +972,17 @@ function renderToolBody(
   }
 
   if (spec.highlightedBody) {
-    return renderToolBodyFromNodes(
-      getHighlightedBodyLines(
-        spec.highlightedBody,
-        opts.theme,
-        getToolBodyWidth(opts.previewWidth),
-      ),
-      spec.previewBody,
-      opts,
+    const highlighted = getHighlightedBodyNode(
+      spec.highlightedBody,
+      opts.theme,
     );
+    if (highlighted) {
+      return renderToolBodyFromHighlightedNode(
+        highlighted,
+        spec.previewBody,
+        opts,
+      );
+    }
   }
 
   return renderToolBodyFromNodes(
@@ -859,11 +998,7 @@ function renderToolBlock(
   opts: Pick<ConversationRenderOpts, "previewWidth" | "theme" | "verbose">,
 ): Node {
   const body = renderToolBody(spec, opts);
-  const children: Node[] = [
-    HStack({}, [
-      renderToolHeaderPill(spec.toolName, spec.direction, opts.theme),
-    ]),
-  ];
+  const children: Node[] = [renderToolHeaderRow(spec, opts.theme)];
 
   if (body.body) {
     children.push(body.body);
@@ -871,18 +1006,41 @@ function renderToolBlock(
   if (body.summary) {
     children.push(renderToolLine(body.summary, opts.theme));
   }
+  if (spec.footerLines) {
+    children.push(...renderToolLines(spec.footerLines, opts.theme));
+  }
 
   return HStack({ padding: { x: 1 } }, [
     Text("│ ", { fgColor: opts.theme.toolBorder }),
-    VStack({ flex: 1, fgColor: opts.theme.toolText }, children),
+    VStack({ flex: 1 }, children),
   ]);
 }
 
-function getToolContentText(content: ToolResultMessage["content"]): string {
+function getToolTextBlocks(content: ToolResultMessage["content"]): string[] {
   return content
     .filter((entry): entry is TextContent => entry.type === "text")
-    .map((entry) => entry.text)
-    .join("\n");
+    .map((entry) => entry.text);
+}
+
+function getToolContentText(content: ToolResultMessage["content"]): string {
+  return getToolTextBlocks(content).join("\n");
+}
+
+function parseReadToolContent(
+  content: ToolResultMessage["content"],
+): ReturnType<typeof parseReadResult> {
+  const textBlocks = getToolTextBlocks(content);
+  if (textBlocks.length > 1) {
+    const continuation = parseReadContinuationHint(textBlocks.at(-1) ?? "");
+    if (continuation) {
+      return {
+        body: textBlocks.slice(0, -1).join("\n"),
+        continuation,
+      };
+    }
+  }
+
+  return parseReadResult(textBlocks.join("\n"));
 }
 
 function buildShellToolCallSpec(args: Record<string, unknown>): ToolBlockSpec {
@@ -899,6 +1057,70 @@ function buildShellToolCallSpec(args: Record<string, unknown>): ToolBlockSpec {
             language: "bash",
             themeVariant: "shell",
           },
+    previewBody: true,
+  };
+}
+
+function buildReadToolCallSpec(args: Record<string, unknown>): ToolBlockSpec {
+  const lines: ToolRenderLine[] = [];
+  const filePath = getToolArgString(args, "path");
+  const offset = readFiniteNumber(args, "offset");
+  const limit = readFiniteNumber(args, "limit");
+
+  if (filePath) {
+    lines.push({ kind: "path", text: filePath });
+  }
+  if (offset !== null) {
+    lines.push({ kind: "text", text: `offset: ${offset}` });
+  }
+  if (limit !== null) {
+    lines.push({ kind: "text", text: `limit: ${limit}` });
+  }
+
+  return {
+    toolName: "read",
+    direction: "->",
+    bodyLines: lines,
+    previewBody: true,
+  };
+}
+
+function buildGrepToolCallSpec(args: Record<string, unknown>): ToolBlockSpec {
+  const lines: ToolRenderLine[] = [];
+  const pattern = getToolArgString(args, "pattern");
+  const path = getToolArgString(args, "path");
+  const glob = getToolArgString(args, "glob");
+  const context = readFiniteNumber(args, "context");
+  const limit = readFiniteNumber(args, "limit");
+  const ignoreCase = readBoolean(args, "ignoreCase");
+  const literal = readBoolean(args, "literal");
+
+  if (pattern) {
+    lines.push({ kind: "command", text: pattern });
+  }
+  if (path) {
+    lines.push({ kind: "text", text: `path: ${path}` });
+  }
+  if (glob) {
+    lines.push({ kind: "text", text: `glob: ${glob}` });
+  }
+  if (ignoreCase) {
+    lines.push({ kind: "text", text: "ignoreCase: true" });
+  }
+  if (literal) {
+    lines.push({ kind: "text", text: "literal: true" });
+  }
+  if (context !== null) {
+    lines.push({ kind: "text", text: `context: ${context}` });
+  }
+  if (limit !== null) {
+    lines.push({ kind: "text", text: `limit: ${limit}` });
+  }
+
+  return {
+    toolName: "grep",
+    direction: "->",
+    bodyLines: lines,
     previewBody: true,
   };
 }
@@ -967,6 +1189,12 @@ function buildToolCallSpec(
   if (toolName === "shell") {
     return buildShellToolCallSpec(args);
   }
+  if (toolName === "read") {
+    return buildReadToolCallSpec(args);
+  }
+  if (toolName === "grep") {
+    return buildGrepToolCallSpec(args);
+  }
   if (toolName === "edit") {
     return buildEditToolCallSpec(args);
   }
@@ -999,6 +1227,109 @@ function buildShellToolResultSpec(
       normalizeShellOutput(getToolContentText(content)),
       "text",
     ),
+    previewBody: true,
+  };
+}
+
+function buildReadToolResultSpec(
+  args: Record<string, unknown>,
+  content: ToolResultMessage["content"],
+  isError: boolean,
+  cwd?: string,
+): ToolBlockSpec {
+  const filePath = getToolArgString(args, "path");
+  const resolvedPath = formatResolvedToolPath(filePath, cwd);
+  const resultText = getToolContentText(content);
+
+  if (isError) {
+    return {
+      toolName: "read",
+      direction: "<-",
+      ...(resolvedPath ? { headerSuffix: resolvedPath } : {}),
+      bodyLines: splitToolTextLines(
+        normalizeDisplayLineEndings(resultText),
+        "error",
+      ),
+      previewBody: true,
+    };
+  }
+
+  const parsed = parseReadToolContent(content);
+  const bodyText = parsed.body;
+  const displayBodyText = normalizeDisplayLineEndings(bodyText);
+  const language = getReadLanguageCandidates(resolveToolPath(filePath, cwd))[0];
+  return {
+    toolName: "read",
+    direction: "<-",
+    ...(resolvedPath ? { headerSuffix: resolvedPath } : {}),
+    bodyLines:
+      displayBodyText === ""
+        ? [{ kind: "summary", text: "Empty file." }]
+        : splitToolTextLines(displayBodyText, "text"),
+    ...(bodyText !== "" && language
+      ? {
+          highlightedBody: {
+            text: bodyText,
+            language,
+            themeVariant: "code" as const,
+          },
+        }
+      : {}),
+    previewBody: true,
+  };
+}
+
+function buildGrepToolResultSpec(
+  content: ToolResultMessage["content"],
+  isError: boolean,
+  cwd?: string,
+): ToolBlockSpec {
+  const resultText = getToolContentText(content);
+  if (isError) {
+    return {
+      toolName: "grep",
+      direction: "<-",
+      bodyLines: splitToolTextLines(resultText, "error"),
+      previewBody: true,
+    };
+  }
+
+  const result = parseGrepResult(resultText);
+  if (!result) {
+    return {
+      toolName: "grep",
+      direction: "<-",
+      bodyLines: splitToolTextLines(resultText, "text"),
+      previewBody: true,
+    };
+  }
+
+  const lines: ToolRenderLine[] = [];
+  for (const file of result.files) {
+    lines.push({
+      kind: "path",
+      text: formatRelativeToolPath(file.path, cwd),
+    });
+    for (const line of file.lines) {
+      const text = line.text.replace(/\r?\n$/, "");
+      lines.push({
+        kind: line.kind === "context" ? "context" : "text",
+        text: `  ${line.lineNumber}: ${text}`,
+      });
+    }
+  }
+
+  if (lines.length === 0) {
+    lines.push({ kind: "summary", text: "No matches found." });
+  }
+
+  return {
+    toolName: "grep",
+    direction: "<-",
+    bodyLines: lines,
+    ...(result.hint
+      ? { footerLines: [{ kind: "summary", text: result.hint }] }
+      : {}),
     previewBody: true,
   };
 }
@@ -1092,10 +1423,25 @@ function renderToolResultContent(
   args: Record<string, unknown>,
   content: ToolResultMessage["content"],
   isError: boolean,
-  opts: Pick<ConversationRenderOpts, "previewWidth" | "verbose" | "theme">,
+  opts: Pick<
+    ConversationRenderOpts,
+    "previewWidth" | "verbose" | "theme" | "cwd"
+  >,
 ): Node {
   if (toolName === "shell") {
     return renderToolBlock(buildShellToolResultSpec(content), opts);
+  }
+  if (toolName === "read") {
+    return renderToolBlock(
+      buildReadToolResultSpec(args, content, isError, opts.cwd),
+      opts,
+    );
+  }
+  if (toolName === "grep") {
+    return renderToolBlock(
+      buildGrepToolResultSpec(content, isError, opts.cwd),
+      opts,
+    );
   }
   if (toolName === "edit") {
     return renderToolBlock(
@@ -1170,11 +1516,7 @@ function renderUiMessage(
   }
 
   if (msg.format === "markdown") {
-    const markdown = renderMarkdownTextBlock(
-      msg.content,
-      opts.theme,
-      opts.previewWidth,
-    );
+    const markdown = renderMarkdownTextBlock(msg.content, opts.theme);
     if (markdown) {
       return markdown;
     }
@@ -1296,6 +1638,7 @@ function canReuseCommittedConversationCache(
     conversationRenderCache.showReasoning === state.showReasoning &&
     conversationRenderCache.verbose === state.verbose &&
     conversationRenderCache.previewWidth === previewWidth &&
+    conversationRenderCache.cwd === state.cwd &&
     conversationRenderCache.theme === state.theme &&
     conversationRenderCache.count <= state.messages.length
   );
@@ -1316,6 +1659,7 @@ function cacheCommittedConversation(
     conversationRenderCache.showReasoning = state.showReasoning;
     conversationRenderCache.verbose = state.verbose;
     conversationRenderCache.previewWidth = previewWidth;
+    conversationRenderCache.cwd = state.cwd;
     conversationRenderCache.theme = state.theme;
     conversationRenderCache.nodes = [];
   }
@@ -1366,6 +1710,7 @@ export function buildConversationLogNodes(
     showReasoning: state.showReasoning,
     verbose: state.verbose,
     theme: state.theme,
+    cwd: state.cwd,
     previewWidth,
   };
 

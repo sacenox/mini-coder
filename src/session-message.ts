@@ -10,6 +10,12 @@ import type {
   ToolResultMessage,
   UserMessage,
 } from "@mariozechner/pi-ai";
+import {
+  readBoolean,
+  readFiniteNumber,
+  readString,
+  toRecord,
+} from "./shared.ts";
 import { collapseWhitespaceToNull, joinTextBlocks } from "./text.ts";
 import type { TodoItem } from "./tools.ts";
 
@@ -73,25 +79,15 @@ function getMultipartUserPreview(
   return collapseWhitespaceToNull(joinTextBlocks(content));
 }
 
-function toRecord(value: unknown): Record<string, unknown> | null {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
-function readFiniteNumber(
-  record: Record<string, unknown>,
-  key: string,
-): number | null {
-  const value = record[key];
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
 function isTextContentBlock(
   value: unknown,
 ): value is { type: "text"; text: string } {
   const record = toRecord(value);
-  return record?.type === "text" && typeof record.text === "string";
+  return (
+    record !== null &&
+    record.type === "text" &&
+    readString(record, "text") !== null
+  );
 }
 
 function isImageContentBlock(
@@ -99,9 +95,10 @@ function isImageContentBlock(
 ): value is { type: "image"; data: string; mimeType: string } {
   const record = toRecord(value);
   return (
-    record?.type === "image" &&
-    typeof record.data === "string" &&
-    typeof record.mimeType === "string"
+    record !== null &&
+    record.type === "image" &&
+    readString(record, "data") !== null &&
+    readString(record, "mimeType") !== null
   );
 }
 
@@ -109,7 +106,11 @@ function isThinkingContentBlock(
   value: unknown,
 ): value is Extract<AssistantMessage["content"][number], { type: "thinking" }> {
   const record = toRecord(value);
-  return record?.type === "thinking" && typeof record.thinking === "string";
+  return (
+    record !== null &&
+    record.type === "thinking" &&
+    readString(record, "thinking") !== null
+  );
 }
 
 function isToolCallContentBlock(
@@ -117,9 +118,10 @@ function isToolCallContentBlock(
 ): value is Extract<AssistantMessage["content"][number], { type: "toolCall" }> {
   const record = toRecord(value);
   return (
-    record?.type === "toolCall" &&
-    typeof record.id === "string" &&
-    typeof record.name === "string" &&
+    record !== null &&
+    record.type === "toolCall" &&
+    readString(record, "id") !== null &&
+    readString(record, "name") !== null &&
     toRecord(record.arguments) !== null
   );
 }
@@ -176,6 +178,10 @@ function parseAssistantMessageRecord(value: unknown): AssistantMessage | null {
   }
 
   const timestamp = readFiniteNumber(record, "timestamp");
+  const api = readString(record, "api");
+  const provider = readString(record, "provider");
+  const model = readString(record, "model");
+  const errorMessage = readString(record, "errorMessage");
   if (
     !Array.isArray(record.content) ||
     !record.content.every(
@@ -184,12 +190,11 @@ function parseAssistantMessageRecord(value: unknown): AssistantMessage | null {
         isThinkingContentBlock(block) ||
         isToolCallContentBlock(block),
     ) ||
-    typeof record.api !== "string" ||
-    typeof record.provider !== "string" ||
-    typeof record.model !== "string" ||
+    api === null ||
+    provider === null ||
+    model === null ||
     !isStopReason(record.stopReason) ||
-    (record.errorMessage !== undefined &&
-      typeof record.errorMessage !== "string") ||
+    (record.errorMessage !== undefined && errorMessage === null) ||
     timestamp === null
   ) {
     return null;
@@ -198,16 +203,14 @@ function parseAssistantMessageRecord(value: unknown): AssistantMessage | null {
   return {
     role: "assistant",
     content: record.content,
-    api: record.api,
-    provider: record.provider,
-    model: record.model,
+    api,
+    provider,
+    model,
     usage: isAssistantUsage(record.usage)
       ? record.usage
       : structuredClone(EMPTY_ASSISTANT_USAGE),
     stopReason: record.stopReason,
-    ...(typeof record.errorMessage === "string"
-      ? { errorMessage: record.errorMessage }
-      : {}),
+    ...(errorMessage !== null ? { errorMessage } : {}),
     timestamp,
   };
 }
@@ -219,9 +222,9 @@ function isToolResultMessageRecord(value: unknown): value is ToolResultMessage {
   }
 
   return (
-    typeof record.toolCallId === "string" &&
-    typeof record.toolName === "string" &&
-    typeof record.isError === "boolean" &&
+    readString(record, "toolCallId") !== null &&
+    readString(record, "toolName") !== null &&
+    readBoolean(record, "isError") !== null &&
     Array.isArray(record.content) &&
     record.content.every(
       (block) => isTextContentBlock(block) || isImageContentBlock(block),

@@ -11,6 +11,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { ThinkingLevel } from "@mariozechner/pi-ai";
 import { getErrorMessage } from "./errors.ts";
+import { readBoolean, readString, toRecord } from "./shared.ts";
 
 /** A user-configured OpenAI-compatible provider endpoint. */
 export interface CustomProvider {
@@ -164,24 +165,27 @@ export function resolveStartupSettings(
  * @returns Sanitized settings.
  */
 function sanitizeSettings(value: unknown): UserSettings {
-  if (value == null || typeof value !== "object" || Array.isArray(value)) {
+  const candidate = toRecord(value);
+  if (!candidate) {
     return {};
   }
 
-  const candidate = value as Record<string, unknown>;
   const settings: UserSettings = {};
+  const defaultModel = readString(candidate, "defaultModel");
+  const showReasoning = readBoolean(candidate, "showReasoning");
+  const verbose = readBoolean(candidate, "verbose");
 
-  if (typeof candidate.defaultModel === "string") {
-    settings.defaultModel = candidate.defaultModel;
+  if (defaultModel !== null) {
+    settings.defaultModel = defaultModel;
   }
   if (isThinkingLevel(candidate.defaultEffort)) {
     settings.defaultEffort = candidate.defaultEffort;
   }
-  if (typeof candidate.showReasoning === "boolean") {
-    settings.showReasoning = candidate.showReasoning;
+  if (showReasoning !== null) {
+    settings.showReasoning = showReasoning;
   }
-  if (typeof candidate.verbose === "boolean") {
-    settings.verbose = candidate.verbose;
+  if (verbose !== null) {
+    settings.verbose = verbose;
   }
 
   const customProviders = sanitizeCustomProviders(candidate.customProviders);
@@ -194,22 +198,22 @@ function sanitizeSettings(value: unknown): UserSettings {
 
 /** Try to parse a single custom provider entry, returning null on failure. */
 function parseCustomProvider(item: unknown): CustomProvider | null {
-  if (item == null || typeof item !== "object" || Array.isArray(item)) {
+  const candidate = toRecord(item);
+  if (!candidate) {
     return null;
   }
 
-  const candidate = item as Record<string, unknown>;
-  const name = typeof candidate.name === "string" ? candidate.name.trim() : "";
-  const baseUrl =
-    typeof candidate.baseUrl === "string" ? candidate.baseUrl.trim() : "";
+  const name = readString(candidate, "name")?.trim() ?? "";
+  const baseUrl = readString(candidate, "baseUrl")?.trim() ?? "";
 
   if (!name || !baseUrl) {
     return null;
   }
 
   const entry: CustomProvider = { name, baseUrl };
-  if (typeof candidate.apiKey === "string") {
-    entry.apiKey = candidate.apiKey;
+  const apiKey = readString(candidate, "apiKey");
+  if (apiKey !== null) {
+    entry.apiKey = apiKey;
   }
   return entry;
 }

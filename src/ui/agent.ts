@@ -23,6 +23,7 @@ import type {
   PendingToolResult,
   StreamingConversationState,
 } from "./conversation.ts";
+import type { UiRenderPriority } from "./runtime.ts";
 
 export { isEmptyUserContent, stripSkillFrontmatter } from "../submit.ts";
 
@@ -41,8 +42,8 @@ interface UiAgentRuntime {
   appendInfoMessage: (text: string, state: AppState) => void;
   /** Dispatch a parsed slash command. */
   handleCommand: (command: string, state: AppState) => boolean;
-  /** Trigger a UI render. */
-  render: () => void;
+  /** Schedule a UI render. */
+  requestRender: (priority?: UiRenderPriority) => void;
   /** Re-enable stick-to-bottom behavior for the conversation log. */
   scrollConversationToBottom: () => void;
   /** Start the active-turn divider animation. */
@@ -76,72 +77,165 @@ export function createUiAgentController(
     pendingToolResults: [],
   };
 
-  const resetStreamingState = (): void => {
+  const resetStreamingState = (): boolean => {
+    const changed =
+      streamingState.isStreaming ||
+      streamingState.content.length > 0 ||
+      streamingState.pendingToolResults.length > 0;
     streamingState.isStreaming = false;
     streamingState.content = [];
     streamingState.pendingToolResults = [];
+    return changed;
   };
 
-  const handleAgentEvent = (event: AgentEvent, _state: AppState): void => {
-    switch (event.type) {
-      case "text_delta":
-      case "thinking_delta":
-      case "toolcall_start":
-      case "toolcall_delta":
-      case "toolcall_end":
-        streamingState.content = event.content;
-        runtime.render();
-        break;
+  const clearStreamingContent = (): boolean => {
+    if (streamingState.content.length === 0) {
+      return false;
+    }
+    streamingState.content = [];
+    return true;
+  };
 
+  const setStreamingContent = (
+    content: AssistantMessage["content"],
+  ): boolean => {
+    if (streamingState.content === content) {
+      return false;
+    }
+    streamingState.content = content;
+    return true;
+  };
+
+  const upsertPendingToolResult = (
+    event: Extract<AgentEvent, { type: "tool_delta" | "tool_end" }>,
+  ): boolean => {
+    const pending = streamingState.pendingToolResults.find(
+      (toolResult) => toolResult.toolCallId === event.toolCallId,
+    );
+    if (pending) {
+      if (
+        pending.toolName === event.name &&
+        pending.content === event.result.content &&
+        pending.isError === event.result.isError
+      ) {
+        return false;
+      }
+      pending.toolName = event.name;
+      pending.content = event.result.content;
+      pending.isError = event.result.isError;
+      return true;
+    }
+
+    streamingState.pendingToolResults.push({
+      toolCallId: event.toolCallId,
+      toolName: event.name,
+      content: event.result.content,
+      isError: event.result.isError,
+    });
+    return true;
+  };
+
+  const removePendingToolResult = (toolCallId: string): boolean => {
+    const nextPendingToolResults = streamingState.pendingToolResults.filter(
+      (toolResult) => toolResult.toolCallId !== toolCallId,
+    );
+    if (
+      nextPendingToolResults.length === streamingState.pendingToolResults.length
+    ) {
+      return false;
+    }
+    streamingState.pendingToolResults = nextPendingToolResults;
+    return true;
+  };
+
+  const isStreamingContentEvent = (
+    event: AgentEvent,
+  ): event is Extract<
+    AgentEvent,
+    {
+      type:
+        | "text_delta"
+        | "thinking_delta"
+        | "toolcall_start"
+        | "toolcall_delta"
+        | "toolcall_end";
+    }
+  > => {
+    return (
+      event.type === "text_delta" ||
+      event.type === "thinking_delta" ||
+      event.type === "toolcall_start" ||
+      event.type === "toolcall_delta" ||
+      event.type === "toolcall_end"
+    );
+  };
+
+  const isPendingToolProgressEvent = (
+    event: AgentEvent,
+  ): event is Extract<AgentEvent, { type: "tool_delta" | "tool_end" }> => {
+    return event.type === "tool_delta" || event.type === "tool_end";
+  };
+
+  const handleCommittedAgentEvent = (
+    event: Exclude<
+      AgentEvent,
+      | Extract<
+          AgentEvent,
+          {
+            type:
+              | "text_delta"
+              | "thinking_delta"
+              | "toolcall_start"
+              | "toolcall_delta"
+              | "toolcall_end";
+          }
+        >
+      | Extract<AgentEvent, { type: "tool_delta" | "tool_end" }>
+    >,
+  ): void => {
+    switch (event.type) {
       case "user_message":
         runtime.scrollConversationToBottom();
-        runtime.render();
-        break;
-
+        runtime.requestRender("normal");
+        return;
       case "assistant_message":
-        streamingState.content = [];
-        runtime.render();
-        break;
-
-      case "tool_start":
-        break;
-
-      case "tool_delta":
-      case "tool_end": {
-        const pending = streamingState.pendingToolResults.find(
-          (toolResult) => toolResult.toolCallId === event.toolCallId,
-        );
-        if (pending) {
-          pending.toolName = event.name;
-          pending.content = event.result.content;
-          pending.isError = event.result.isError;
-        } else {
-          streamingState.pendingToolResults.push({
-            toolCallId: event.toolCallId,
-            toolName: event.name,
-            content: event.result.content,
-            isError: event.result.isError,
-          });
+        if (clearStreamingContent()) {
+          runtime.requestRender("normal");
         }
-        runtime.render();
-        break;
-      }
-
+        return;
       case "tool_result":
-        streamingState.pendingToolResults =
-          streamingState.pendingToolResults.filter(
-            (toolResult) => toolResult.toolCallId !== event.message.toolCallId,
-          );
-        runtime.render();
-        break;
-
+        if (removePendingToolResult(event.message.toolCallId)) {
+          runtime.requestRender("normal");
+        }
+        return;
       case "done":
       case "error":
       case "aborted":
-        resetStreamingState();
-        runtime.render();
-        break;
+        if (resetStreamingState()) {
+          runtime.requestRender("normal");
+        }
+        return;
+      case "tool_start":
+        return;
     }
+  };
+
+  const handleAgentEvent = (event: AgentEvent, _state: AppState): void => {
+    if (isStreamingContentEvent(event)) {
+      if (setStreamingContent(event.content)) {
+        runtime.requestRender("stream");
+      }
+      return;
+    }
+
+    if (isPendingToolProgressEvent(event)) {
+      if (upsertPendingToolResult(event)) {
+        runtime.requestRender("stream");
+      }
+      return;
+    }
+
+    handleCommittedAgentEvent(event);
   };
 
   const submitMessageAsync = (rawInput: string, state: AppState): void => {
@@ -175,19 +269,19 @@ export function createUiAgentController(
     submitPromise = submitResolvedInput(rawInput, resolved.content, state, {
       onUserMessage: () => {
         runtime.scrollConversationToBottom();
-        runtime.render();
+        runtime.requestRender("normal");
       },
       onTurnStart: () => {
         resetStreamingState();
         streamingState.isStreaming = true;
         runtime.startDividerAnimation();
-        runtime.render();
+        runtime.requestRender("normal");
       },
       onEvent: (event, currentState) => handleAgentEvent(event, currentState),
       onTurnEnd: () => {
         resetStreamingState();
         runtime.stopDividerAnimation();
-        runtime.render();
+        runtime.requestRender("normal");
       },
     })
       .then(() => undefined)

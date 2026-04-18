@@ -479,8 +479,10 @@ test("buildToolList uses validated built-in handlers and gates readImage by mode
     const textOnlyTools = buildToolList(state);
 
     expect(textOnlyTools.tools.map((tool) => tool.name)).toEqual([
-      "edit",
       "shell",
+      "read",
+      "grep",
+      "edit",
       "todoWrite",
       "todoRead",
     ]);

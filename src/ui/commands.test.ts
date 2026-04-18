@@ -90,6 +90,7 @@ describe("ui/commands", () => {
     const state = createTestState();
     const runtimeState = { overlay: null as ActiveOverlay | null };
     let scrollCalls = 0;
+    let renderCalls = 0;
     const controller = createCommandController({
       openOverlay: (nextOverlay) => {
         runtimeState.overlay = nextOverlay;
@@ -103,7 +104,9 @@ describe("ui/commands", () => {
       scrollConversationToBottom: () => {
         scrollCalls += 1;
       },
-      render: () => {},
+      requestRender: () => {
+        renderCalls += 1;
+      },
       reloadPromptContext: async () => {},
       openInBrowser: () => {},
     });
@@ -158,6 +161,7 @@ describe("ui/commands", () => {
 
       expect(runtimeState.overlay).toBeNull();
       expect(scrollCalls).toBe(1);
+      expect(renderCalls).toBe(1);
       expect(state.session?.id).toBe(session.id);
       expect(state.messages.map((message) => message.role)).toEqual([
         "user",
@@ -185,7 +189,7 @@ describe("ui/commands", () => {
       appendInfoMessage: () => {},
       appendTodoMessage: () => {},
       scrollConversationToBottom: () => {},
-      render: () => {},
+      requestRender: () => {},
       reloadPromptContext: async (nextState) => {
         reloadCount++;
         nextState.agentsMd = [
@@ -241,7 +245,7 @@ describe("ui/commands", () => {
       appendInfoMessage: () => {},
       appendTodoMessage: () => {},
       scrollConversationToBottom: () => {},
-      render: () => {},
+      requestRender: () => {},
       reloadPromptContext: async () => {},
       openInBrowser: () => {},
     });
@@ -267,7 +271,7 @@ describe("ui/commands", () => {
       appendInfoMessage: () => {},
       appendTodoMessage: () => {},
       scrollConversationToBottom: () => {},
-      render: () => {},
+      requestRender: () => {},
       reloadPromptContext: async () => {},
       openInBrowser: () => {},
     });
@@ -302,7 +306,7 @@ describe("ui/commands", () => {
       },
       appendTodoMessage: () => {},
       scrollConversationToBottom: () => {},
-      render: () => {},
+      requestRender: () => {},
       reloadPromptContext: async () => {},
       openInBrowser: () => {},
     });
@@ -357,7 +361,7 @@ describe("ui/commands", () => {
         });
       },
       scrollConversationToBottom: () => {},
-      render: () => {},
+      requestRender: () => {},
       reloadPromptContext: async () => {},
       openInBrowser: () => {},
     });
@@ -390,7 +394,7 @@ describe("ui/commands", () => {
       appendInfoMessage: () => {},
       appendTodoMessage: () => {},
       scrollConversationToBottom: () => {},
-      render: () => {},
+      requestRender: () => {},
       reloadPromptContext: async () => {},
       openInBrowser: () => {},
     });
@@ -418,7 +422,7 @@ describe("ui/commands", () => {
       appendInfoMessage: () => {},
       appendTodoMessage: () => {},
       scrollConversationToBottom: () => {},
-      render: () => {},
+      requestRender: () => {},
       reloadPromptContext: async () => {},
       openInBrowser: () => {},
     });

@@ -14,21 +14,32 @@ import {
   createTodoWriteToolHandler,
   editToolHandler,
   executeEdit,
+  executeGrep,
+  executeRead,
   executeReadImage,
   executeShell,
   executeTodoRead,
   executeTodoWrite,
   getTodoItems,
+  grepToolHandler,
+  parseGrepResult,
+  parseReadResult,
   readImageToolHandler,
+  readToolHandler,
   shellToolHandler,
   type ToolExecResult,
 } from "./tools.ts";
 
-/** Extract the text string from a text-only ToolExecResult. */
+/** Extract the combined text string from a text-only ToolExecResult. */
 function resultText(r: ToolExecResult): string {
-  const block = r.content[0];
-  if (!block || block.type !== "text") throw new Error("Expected text content");
-  return block.text;
+  const blocks = r.content.filter(
+    (
+      block,
+    ): block is Extract<ToolExecResult["content"][number], { type: "text" }> =>
+      block.type === "text",
+  );
+  if (blocks.length === 0) throw new Error("Expected text content");
+  return blocks.map((block) => block.text).join("\n\n");
 }
 
 function todoSnapshot(r: ToolExecResult) {
@@ -194,6 +205,265 @@ describe("edit", () => {
 });
 
 // ---------------------------------------------------------------------------
+// read
+// ---------------------------------------------------------------------------
+
+describe("read", () => {
+  test("returns a bounded line slice with a continuation hint", async () => {
+    writeFile("a.txt", "line 1\nline 2\nline 3\n");
+
+    const result = await executeRead({ path: "a.txt", limit: 2 }, tmp);
+
+    expect(result.isError).toBe(false);
+    const parsed = parseReadResult(resultText(result));
+    expect(parsed.body).toBe("line 1\nline 2\n");
+    expect(parsed.continuation).toEqual({ offset: 2, limit: 2 });
+  });
+
+  test("supports offset windows", async () => {
+    writeFile("a.txt", "line 1\nline 2\nline 3\n");
+
+    const result = await executeRead(
+      { path: "a.txt", offset: 1, limit: 1 },
+      tmp,
+    );
+
+    expect(result.isError).toBe(false);
+    const parsed = parseReadResult(resultText(result));
+    expect(parsed.body).toBe("line 2\n");
+    expect(parsed.continuation).toEqual({ offset: 2, limit: 1 });
+  });
+
+  test("streams progressive prefix updates while reading larger slices", async () => {
+    writeFile(
+      "stream.txt",
+      `${Array.from({ length: 120 }, (_, index) => `line ${index + 1}`).join(
+        "\n",
+      )}\n`,
+    );
+    const updates: string[] = [];
+
+    const result = await executeRead({ path: "stream.txt", limit: 100 }, tmp, {
+      onUpdate: (partial) => {
+        updates.push(resultText(partial));
+      },
+    });
+
+    expect(result.isError).toBe(false);
+    expect(updates.length).toBeGreaterThan(1);
+    expect(updates[0]).toContain("line 1");
+    expect(updates[0]).not.toContain("line 100");
+    expect(updates.at(-1)).not.toContain("line 100");
+    expect((updates.at(-1) ?? "").length).toBeGreaterThan(
+      updates[0]?.length ?? 0,
+    );
+    for (let index = 1; index < updates.length; index += 1) {
+      expect(updates[index]?.startsWith(updates[index - 1] ?? "")).toBe(true);
+    }
+  });
+
+  test("keeps literal continuation-looking text in the file body", async () => {
+    writeFile(
+      "hint.txt",
+      "alpha\n\n[use offset=99 limit=10 to continue]\nomega\n",
+    );
+
+    const result = await executeRead({ path: "hint.txt", limit: 3 }, tmp);
+    const textBlocks = result.content.filter(
+      (
+        block,
+      ): block is Extract<
+        ToolExecResult["content"][number],
+        { type: "text" }
+      > => block.type === "text",
+    );
+
+    expect(result.isError).toBe(false);
+    expect(textBlocks).toEqual([
+      {
+        type: "text",
+        text: "alpha\n\n[use offset=99 limit=10 to continue]\n",
+      },
+      {
+        type: "text",
+        text: "[use offset=3 limit=3 to continue]",
+      },
+    ]);
+  });
+
+  test("rejects offsets beyond the available line range", async () => {
+    writeFile("a.txt", "line 1\nline 2\n");
+
+    const result = await executeRead(
+      { path: "a.txt", offset: 2, limit: 1 },
+      tmp,
+    );
+
+    expect(result.isError).toBe(true);
+    expect(resultText(result)).toContain("out of range");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// grep
+// ---------------------------------------------------------------------------
+
+describe("grep", () => {
+  test("returns structured grouped matches with context lines", async () => {
+    writeFile("a.ts", "before\nneedle one\nafter\n");
+    writeFile("b.ts", "alpha\nNEEDLE two\nomega\n");
+
+    const result = await executeGrep(
+      {
+        pattern: "needle",
+        glob: "*.ts",
+        ignoreCase: true,
+        context: 1,
+      },
+      tmp,
+    );
+
+    expect(result.isError).toBe(false);
+    const parsed = parseGrepResult(resultText(result));
+    if (!parsed) {
+      throw new Error("Expected a structured grep result");
+    }
+
+    expect(parsed.truncated).toBe(false);
+    expect(parsed.files.map((file) => file.path)).toEqual(["a.ts", "b.ts"]);
+    expect(parsed.files[0]?.lines).toEqual([
+      { kind: "context", lineNumber: 1, text: "before\n" },
+      { kind: "match", lineNumber: 2, text: "needle one\n" },
+      { kind: "context", lineNumber: 3, text: "after\n" },
+    ]);
+    expect(parsed.files[1]?.lines[1]).toEqual({
+      kind: "match",
+      lineNumber: 2,
+      text: "NEEDLE two\n",
+    });
+  });
+
+  test("returns an empty structured result when nothing matches", async () => {
+    writeFile("a.ts", "before\nafter\n");
+
+    const result = await executeGrep({ pattern: "needle", glob: "*.ts" }, tmp);
+
+    expect(result.isError).toBe(false);
+    expect(parseGrepResult(resultText(result))).toEqual({
+      limit: 50,
+      truncated: false,
+      files: [],
+    });
+  });
+
+  test("marks results as truncated when the match limit is reached", async () => {
+    writeFile("a.ts", "needle one\nneedle two\nneedle three\n");
+
+    const result = await executeGrep(
+      { pattern: "needle", path: "a.ts", limit: 2 },
+      tmp,
+    );
+
+    expect(result.isError).toBe(false);
+    const parsed = parseGrepResult(resultText(result));
+    if (!parsed) {
+      throw new Error("Expected a structured grep result");
+    }
+
+    expect(parsed.truncated).toBe(true);
+    expect(parsed.hint).toContain("Results truncated");
+    expect(
+      parsed.files[0]?.lines.filter((line) => line.kind === "match"),
+    ).toHaveLength(2);
+  });
+
+  test("does not include leading context for later excluded matches after hitting the limit", async () => {
+    writeFile(
+      "a.ts",
+      "needle one\nafter one\nspacer\nbefore two\nneedle two\nafter two\n",
+    );
+
+    const result = await executeGrep(
+      { pattern: "needle", path: "a.ts", context: 1, limit: 1 },
+      tmp,
+    );
+
+    expect(result.isError).toBe(false);
+    const parsed = parseGrepResult(resultText(result));
+    if (!parsed) {
+      throw new Error("Expected a structured grep result");
+    }
+
+    expect(parsed.truncated).toBe(true);
+    expect(parsed.files[0]?.lines).toEqual([
+      { kind: "match", lineNumber: 1, text: "needle one\n" },
+      { kind: "context", lineNumber: 2, text: "after one\n" },
+    ]);
+  });
+
+  test("does not include context from later excluded matches in other files after hitting the limit", async () => {
+    writeFile("aa.txt", "needle\n");
+    writeFile("ab.txt", "before\nneedle\n");
+
+    const result = await executeGrep(
+      { pattern: "needle", glob: "*.txt", context: 1, limit: 1 },
+      tmp,
+    );
+
+    expect(result.isError).toBe(false);
+    const parsed = parseGrepResult(resultText(result));
+    if (!parsed) {
+      throw new Error("Expected a structured grep result");
+    }
+
+    expect(parsed.truncated).toBe(true);
+    expect(parsed.files).toEqual([
+      {
+        path: "aa.txt",
+        lines: [{ kind: "match", lineNumber: 1, text: "needle\n" }],
+      },
+    ]);
+  });
+
+  test("counts multiple submatches on the same line toward the match limit", async () => {
+    writeFile("a.ts", "needle needle\nafter\n");
+
+    const result = await executeGrep(
+      { pattern: "needle", path: "a.ts", context: 1, limit: 1 },
+      tmp,
+    );
+
+    expect(result.isError).toBe(false);
+    const parsed = parseGrepResult(resultText(result));
+    if (!parsed) {
+      throw new Error("Expected a structured grep result");
+    }
+
+    expect(parsed.truncated).toBe(true);
+    expect(parsed.files[0]?.lines).toEqual([
+      { kind: "match", lineNumber: 1, text: "needle needle\n" },
+      { kind: "context", lineNumber: 2, text: "after\n" },
+    ]);
+  });
+
+  test("returns a tool error instead of throwing when rg is unavailable", async () => {
+    const originalPath = process.env.PATH;
+    process.env.PATH = tmp;
+
+    try {
+      const result = await executeGrep({ pattern: "needle", path: "." }, tmp);
+
+      expect(result.isError).toBe(true);
+      expect(resultText(result)).toContain(
+        'Executable not found in $PATH: "rg"',
+      );
+    } finally {
+      process.env.PATH = originalPath;
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // shell
 // ---------------------------------------------------------------------------
 
@@ -302,6 +572,22 @@ describe("built-in tool handlers", () => {
 
     expect(() => handler(args, tmp)).toThrow(
       /Validation failed for tool "todoWrite"/,
+    );
+  });
+
+  test("read handler validates required arguments before execution", () => {
+    const args: Record<string, unknown> = {};
+
+    expect(() => readToolHandler(args, tmp)).toThrow(
+      /Validation failed for tool "read"/,
+    );
+  });
+
+  test("grep handler validates required arguments before execution", () => {
+    const args: Record<string, unknown> = {};
+
+    expect(() => grepToolHandler(args, tmp)).toThrow(
+      /Validation failed for tool "grep"/,
     );
   });
 

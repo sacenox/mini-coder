@@ -34,6 +34,7 @@ import { collapseWhitespace, truncateText } from "../text.ts";
 import { getTodoItems } from "../tools.ts";
 import { buildHelpText, COMMAND_DESCRIPTIONS } from "./help.ts";
 import { type ActiveOverlay, OVERLAY_MAX_VISIBLE } from "./overlay.ts";
+import type { UiRenderPriority } from "./runtime.ts";
 import { abbreviatePath } from "./status.ts";
 
 /** Effort levels available for selection. */
@@ -46,9 +47,9 @@ const EFFORT_LEVELS: { label: string; value: ThinkingLevel }[] = [
 
 /** Runtime hooks injected from the stateful UI module. */
 interface UiCommandRuntime {
-  /** Open an overlay and trigger a re-render. */
+  /** Open an overlay. */
   openOverlay: (overlay: ActiveOverlay) => void;
-  /** Dismiss the active overlay and trigger a re-render. */
+  /** Dismiss the active overlay. */
   dismissOverlay: () => void;
   /** Update the current input draft. */
   setInputValue: (value: string) => void;
@@ -65,8 +66,8 @@ interface UiCommandRuntime {
   ) => void;
   /** Re-enable stick-to-bottom behavior for the conversation log. */
   scrollConversationToBottom: () => void;
-  /** Trigger a UI re-render. */
-  render: () => void;
+  /** Schedule a UI re-render. */
+  requestRender: (priority?: UiRenderPriority) => void;
   /** Reload prompt/session context at a boundary like `/new`. */
   reloadPromptContext: (state: AppState) => Promise<void>;
   /** Open a URL in the user's default browser. */
@@ -384,6 +385,7 @@ export function createCommandController(
           }
         }
         runtime.dismissOverlay();
+        runtime.requestRender("normal");
       },
     );
   };
@@ -396,7 +398,7 @@ export function createCommandController(
     clearConversationState(state);
     await runtime.reloadPromptContext(state);
     runtime.scrollConversationToBottom();
-    runtime.render();
+    runtime.requestRender("normal");
   };
 
   const handleForkCommand = (state: AppState): void => {
@@ -425,7 +427,7 @@ export function createCommandController(
     if (removed) {
       replaceConversationState(state, loadMessages(state.db, state.session.id));
       runtime.scrollConversationToBottom();
-      runtime.render();
+      runtime.requestRender("normal");
     }
   };
 
@@ -434,7 +436,6 @@ export function createCommandController(
     state.settings = updateSettings(state.settingsPath, {
       showReasoning: state.showReasoning,
     });
-    runtime.render();
   };
 
   const handleVerboseCommand = (state: AppState): void => {
@@ -442,7 +443,6 @@ export function createCommandController(
     state.settings = updateSettings(state.settingsPath, {
       verbose: state.verbose,
     });
-    runtime.render();
   };
 
   const performLogin = async (

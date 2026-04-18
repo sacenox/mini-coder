@@ -136,7 +136,7 @@ class MiniCoderAgent(BaseInstalledAgent):
             environment,
             command=(
                 'export PATH="$HOME/.bun/bin:$PATH"; '
-                f"mc -p {escaped_instruction} </dev/null "
+                f"mc --json -p {escaped_instruction} </dev/null "
                 f">{shlex.quote(ndjson_path)} "
                 f"2>{shlex.quote(stderr_path)}"
             ),

@@ -15,9 +15,12 @@ import {
 } from "../session.ts";
 import type { TodoItem } from "../tools.ts";
 
+/** Render scheduling priorities used by the terminal UI. */
+export type UiRenderPriority = "immediate" | "normal" | "stream" | "animation";
+
 interface UiRuntimeHooks {
-  /** Trigger a UI render. */
-  render: () => void;
+  /** Schedule a UI render. */
+  requestRender: (priority?: UiRenderPriority) => void;
   /** Re-enable stick-to-bottom behavior for the conversation log. */
   scrollConversationToBottom: () => void;
 }
@@ -43,7 +46,7 @@ function appendUiMessage(
   }
   appendConversationMessage(state, message);
   runtime.scrollConversationToBottom();
-  runtime.render();
+  runtime.requestRender("normal");
 }
 
 /**

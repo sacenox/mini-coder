@@ -22,32 +22,64 @@ type HeadlessStopReason = "stop" | "length" | "error" | "aborted";
 /** Options for a headless NDJSON run. */
 export interface HeadlessRunOptions {
   /** Optional line writer for completed NDJSON event output. */
-  writeLine?: (line: string) => void;
+  writeLine?: (line: string) => void | Promise<void>;
 }
 
 /** Options for a headless final-text run. */
 export interface HeadlessTextRunOptions {
   /** Optional writer for the final assistant text output. */
-  writeText?: (text: string) => void;
+  writeText?: (text: string) => void | Promise<void>;
 }
 
 interface HeadlessOutputController {
-  /** Write text to stdout with broken-pipe handling. */
+  /** Queue text for stdout with broken-pipe handling. */
   write(text: string): void;
   /** Attach SIGINT/stdout error handlers for the active run. */
   attach(): void;
   /** Remove SIGINT/stdout error handlers after the run. */
   detach(): void;
-  /** Resolve the final stop reason, converting broken pipes into quiet shutdowns. */
-  finalize(stopReason: HeadlessStopReason): HeadlessStopReason;
+  /** Wait for queued writes and resolve the final stop reason. */
+  finalize(stopReason: HeadlessStopReason): Promise<HeadlessStopReason>;
 }
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function defaultWrite(text: string): void {
-  process.stdout.write(text);
+function defaultWrite(text: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+
+    const cleanup = (): void => {
+      process.stdout.off("error", handleError);
+    };
+
+    const settle = (callback: () => void): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      callback();
+    };
+
+    const handleError = (error: unknown): void => {
+      settle(() => {
+        reject(error);
+      });
+    };
+
+    process.stdout.on("error", handleError);
+    try {
+      process.stdout.write(text, () => {
+        settle(resolve);
+      });
+    } catch (error) {
+      settle(() => {
+        reject(error);
+      });
+    }
+  });
 }
 
 function isBrokenPipeError(error: unknown): boolean {
@@ -126,10 +158,11 @@ function shouldWriteHeadlessJsonEvent(event: AgentEvent): boolean {
 
 function createHeadlessOutputController(
   state: AppState,
-  writeImpl: (text: string) => void,
+  writeImpl: (text: string) => void | Promise<void>,
 ): HeadlessOutputController {
   let brokenPipe = false;
   let outputError: unknown = null;
+  let pendingWrite = Promise.resolve();
   const sigintHandler = createSigintHandler(state);
 
   const stopForBrokenPipe = (): void => {
@@ -140,30 +173,37 @@ function createHeadlessOutputController(
     state.abortController?.abort();
   };
 
-  const stdoutErrorHandler = (error: unknown): void => {
+  const failOutput = (error: unknown): void => {
     if (isBrokenPipeError(error)) {
       stopForBrokenPipe();
       return;
     }
 
-    outputError = error;
+    outputError = outputError ?? error;
     state.abortController?.abort();
+  };
+
+  const stdoutErrorHandler = (error: unknown): void => {
+    failOutput(error);
   };
 
   return {
     write(text) {
-      if (brokenPipe) {
+      if (brokenPipe || outputError) {
         return;
       }
 
-      try {
-        writeImpl(text);
-      } catch (error) {
-        if (!isBrokenPipeError(error)) {
-          throw error;
+      pendingWrite = pendingWrite.then(async () => {
+        if (brokenPipe || outputError) {
+          return;
         }
-        stopForBrokenPipe();
-      }
+
+        try {
+          await writeImpl(text);
+        } catch (error) {
+          failOutput(error);
+        }
+      });
     },
     attach() {
       process.stdout.on("error", stdoutErrorHandler);
@@ -173,7 +213,8 @@ function createHeadlessOutputController(
       process.stdout.off("error", stdoutErrorHandler);
       process.off("SIGINT", sigintHandler);
     },
-    finalize(stopReason) {
+    async finalize(stopReason) {
+      await pendingWrite;
       if (outputError) {
         throw outputError;
       }
@@ -222,7 +263,7 @@ export async function runHeadlessPrompt(
       state,
       hooks,
     );
-    return output.finalize(stopReason);
+    return await output.finalize(stopReason);
   } finally {
     output.detach();
   }
@@ -271,7 +312,7 @@ export async function runHeadlessPromptText(
     if (finalText.length > 0) {
       output.write(finalText);
     }
-    return output.finalize(stopReason);
+    return await output.finalize(stopReason);
   } finally {
     output.detach();
   }
