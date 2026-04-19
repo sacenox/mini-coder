@@ -164,6 +164,72 @@ describe("ui/conversation", () => {
     expect(lines.join("\n")).not.toContain('"command"');
   });
 
+  test("MCP tool-call previews honor verbose mode", () => {
+    const args = {
+      query: "routing",
+      section: "guides",
+      limit: 10,
+      offset: 0,
+      filter1: "alpha",
+      filter2: "beta",
+      filter3: "gamma",
+      filter4: "delta",
+      filter5: "epsilon",
+      filter6: "zeta",
+      filter7: "eta",
+      filter8: "theta",
+    };
+
+    const compactLines = collectRenderedLines(
+      renderAssistantMessage(
+        {
+          content: [
+            {
+              type: "toolCall",
+              id: "call-mcp",
+              name: "docs__search",
+              arguments: args,
+            },
+          ],
+        },
+        {
+          showReasoning: true,
+          verbose: false,
+          theme: DEFAULT_THEME,
+          cwd: "/tmp/project",
+          previewWidth: 80,
+        },
+      ),
+    );
+    const verboseLines = collectRenderedLines(
+      renderAssistantMessage(
+        {
+          content: [
+            {
+              type: "toolCall",
+              id: "call-mcp",
+              name: "docs__search",
+              arguments: args,
+            },
+          ],
+        },
+        {
+          showReasoning: true,
+          verbose: true,
+          theme: DEFAULT_THEME,
+          cwd: "/tmp/project",
+          previewWidth: 80,
+        },
+      ),
+    );
+
+    expect(compactLines).toContain("│ docs__search ->");
+    expect(compactLines.some((line) => line.includes("And "))).toBe(true);
+    expect(compactLines.join("\n")).not.toContain('"query": "routing"');
+    expect(verboseLines.join("\n")).toContain('"query": "routing"');
+    expect(compactLines.length).toBeLessThan(verboseLines.length);
+  });
+
   test("shell tool results render structured stdout/stderr details without stderr labels or error styling", () => {
     const stdout = Array.from(
       { length: 12 },
@@ -425,5 +491,38 @@ describe("ui/conversation", () => {
     expect(lines).toContain("│   858:   spec: ToolBlockSpec,");
     expect(lines.join("\n")).not.toContain('"files"');
     expect(lines.join("\n")).not.toContain('"kind"');
+  });
+
+  test("MCP tool results honor verbose mode", () => {
+    const output = Array.from(
+      { length: 14 },
+      (_, index) => `result ${index + 1}`,
+    ).join("\n");
+
+    const compactLines = collectRenderedLines(
+      renderToolResult("docs__search", { query: "routing" }, output, false, {
+        showReasoning: true,
+        verbose: false,
+        theme: DEFAULT_THEME,
+        cwd: "/tmp/project",
+        previewWidth: 80,
+      }),
+    );
+    const verboseLines = collectRenderedLines(
+      renderToolResult("docs__search", { query: "routing" }, output, false, {
+        showReasoning: true,
+        verbose: true,
+        theme: DEFAULT_THEME,
+        cwd: "/tmp/project",
+        previewWidth: 80,
+      }),
+    );
+
+    expect(compactLines).toContain("│ docs__search <-");
+    expect(compactLines).toContain("│ result 14");
+    expect(compactLines).toContain("│ And 6 lines more");
+    expect(compactLines).not.toContain("│ result 1");
+    expect(verboseLines).toContain("│ result 1");
+    expect(compactLines.length).toBeLessThan(verboseLines.length);
   });
 });

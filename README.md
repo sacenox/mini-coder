@@ -62,21 +62,21 @@ Six built-in tools, plus a conditional read-only image tool and any configured M
 
 ## Commands
 
-| Command      | Description                                                                                            |
-| ------------ | ------------------------------------------------------------------------------------------------------ |
-| `/model`     | Switch models and save the choice as the global default.                                               |
-| `/session`   | Open the session picker for the current working directory.                                             |
-| `/new`       | Start a fresh session and reset the running token and cost totals.                                     |
-| `/fork`      | Fork the current chat into a new session, keep the original, and add a UI-only `Forked session.` note. |
-| `/undo`      | Remove the last conversational turn without touching filesystem changes.                               |
-| `/reasoning` | Show or hide model thinking. The setting is saved and restored on launch.                              |
-| `/verbose`   | Expand shell output plus edit previews and edit errors in the conversation log.                        |
-| `/mcp`       | Open the MCP server picker and toggle configured servers on or off for future turns.                   |
-| `/todo`      | Show the current session todo list in the conversation log as a UI-only checklist block.               |
-| `/login`     | Sign in with a supported OAuth provider.                                                               |
-| `/logout`    | Remove saved OAuth credentials for a logged-in provider.                                               |
-| `/effort`    | Choose low, medium, high, or xhigh reasoning effort.                                                   |
-| `/help`      | Show commands, current toggles, loaded AGENTS.md files, skills, and MCP servers with on/off state.     |
+| Command      | Description                                                                                                                                       |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/model`     | Switch models and save the choice as the global default.                                                                                          |
+| `/session`   | Open the session picker for the current working directory.                                                                                        |
+| `/new`       | Start a fresh session and reset the running token and cost totals.                                                                                |
+| `/fork`      | Fork the current chat into a new session, keep the original, and add a UI-only `Forked session.` note.                                            |
+| `/undo`      | Remove the last conversational turn without touching filesystem changes.                                                                          |
+| `/reasoning` | Show or hide model thinking. The setting is saved and restored on launch.                                                                         |
+| `/verbose`   | Toggle compact vs full rendering for verbose-aware tool previews/results, including shell, read, grep, edit previews/errors, and MCP tool blocks. |
+| `/mcp`       | Open the MCP server picker and toggle configured servers on or off for future turns.                                                              |
+| `/todo`      | Show the current session todo list in the conversation log as a UI-only checklist block.                                                          |
+| `/login`     | Sign in with a supported OAuth provider.                                                                                                          |
+| `/logout`    | Remove saved OAuth credentials for a logged-in provider.                                                                                          |
+| `/effort`    | Choose low, medium, high, or xhigh reasoning effort.                                                                                              |
+| `/help`      | Show commands, current toggles, loaded AGENTS.md files, skills, and MCP servers with on/off state.                                                |
 
 ## Key bindings
 

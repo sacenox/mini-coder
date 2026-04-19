@@ -1063,6 +1063,10 @@ function buildReadImageToolCallSpec(
   };
 }
 
+function isMcpToolName(toolName: string): boolean {
+  return toolName.includes("__");
+}
+
 function buildGenericToolCallSpec(
   toolName: string,
   args: Record<string, unknown>,
@@ -1072,7 +1076,7 @@ function buildGenericToolCallSpec(
     toolName,
     direction: "->",
     bodyLines: text && text !== "{}" ? splitToolTextLines(text, "text") : [],
-    previewBody: false,
+    previewBody: isMcpToolName(toolName),
   };
 }
 
@@ -1310,7 +1314,7 @@ function buildGenericToolResultSpec(
     toolName,
     direction: "<-",
     bodyLines: splitToolTextLines(output, isError ? "error" : "text"),
-    previewBody: false,
+    previewBody: isMcpToolName(toolName),
   };
 }
 
