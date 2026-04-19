@@ -7,6 +7,11 @@ The spec and code are the sources of truth; this file is just the verified backl
 
 ## Open issues:
 
+- [ ] `/skill:name` is not in help text. It also doesn't appear in the `/` auto complete. It should appear and when selected or userd without `:name` it opens an select overlay with the skills list for the user to select it. Populates the input with the selected skill command: User selects `ui-design` skill, hits enter, the prompt reads `/skill:ui-design` and doesn't submit.
+- [ ] Preserve the current slash-command draft when opening command autocomplete instead of clearing the input (`src/ui.ts`, `src/ui/commands.ts`)
+
+# Defered issues:
+
 ## Theme config plan
 
 - [ ] Extend the existing `settings.json` schema/loader with `theme` overrides and merge them into the active UI theme (`src/settings.ts`, `src/theme.ts`, `src/index.ts`, `spec.md`)
@@ -15,8 +20,6 @@ The spec and code are the sources of truth; this file is just the verified backl
 ## Verified UX / behavior debt
 
 - [ ] Prevent `/session` from switching sessions mid-run (`src/ui/commands.ts`, `src/ui/agent.ts`)
-- [ ] Preserve the current slash-command draft when opening command autocomplete instead of clearing the input (`src/ui.ts`, `src/ui/commands.ts`)
-- [ ] Persist `/mcp` enabled/disabled state across app restarts (`src/settings.ts`, `src/index.ts`, `src/ui/commands.ts`, `spec.md`)
 
 ## Product backlog
 

@@ -234,7 +234,7 @@ export async function discoverMcpServers(
       servers.push({
         name: entry.name,
         url: entry.url,
-        enabled: true,
+        enabled: entry.enabled,
         tools,
         toolHandlers,
         close: () => transport.close(),

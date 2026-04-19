@@ -11,7 +11,7 @@ import {
   loadMessages,
   openDatabase,
 } from "../session.ts";
-import { loadSettings } from "../settings.ts";
+import { loadSettings, saveSettings } from "../settings.ts";
 import { DEFAULT_THEME } from "../theme.ts";
 import { createCommandController } from "./commands.ts";
 import type { ActiveOverlay } from "./overlay.ts";
@@ -397,6 +397,22 @@ describe("ui/commands", () => {
         close: async () => {},
       },
     ];
+    state.settings = saveSettings(state.settingsPath, {
+      mcp: {
+        servers: [
+          {
+            name: "docs",
+            url: "http://docs.test/mcp",
+            enabled: true,
+          },
+          {
+            name: "down",
+            url: "http://down.test/mcp",
+            enabled: false,
+          },
+        ],
+      },
+    });
     const runtimeState = { overlay: null as ActiveOverlay | null };
     const appended: Array<{
       text: string;
@@ -431,6 +447,36 @@ describe("ui/commands", () => {
 
       expect(runtimeState.overlay).toBeNull();
       expect(state.mcpServers[0]?.enabled).toBe(false);
+      expect(state.settings.mcp).toEqual({
+        servers: [
+          {
+            name: "docs",
+            url: "http://docs.test/mcp",
+            enabled: false,
+          },
+          {
+            name: "down",
+            url: "http://down.test/mcp",
+            enabled: false,
+          },
+        ],
+      });
+      expect(loadSettings(state.settingsPath)).toEqual({
+        mcp: {
+          servers: [
+            {
+              name: "docs",
+              url: "http://docs.test/mcp",
+              enabled: false,
+            },
+            {
+              name: "down",
+              url: "http://down.test/mcp",
+              enabled: false,
+            },
+          ],
+        },
+      });
       expect(appended).toEqual([
         {
           text: 'Disabled MCP server "docs" (-2 tools).',
@@ -446,6 +492,22 @@ describe("ui/commands", () => {
       renderSelect(secondOverlay).props.onKeyPress?.("enter");
 
       expect(state.mcpServers[0]?.enabled).toBe(true);
+      expect(loadSettings(state.settingsPath)).toEqual({
+        mcp: {
+          servers: [
+            {
+              name: "docs",
+              url: "http://docs.test/mcp",
+              enabled: true,
+            },
+            {
+              name: "down",
+              url: "http://down.test/mcp",
+              enabled: false,
+            },
+          ],
+        },
+      });
       expect(appended[1]).toEqual({
         text: 'Enabled MCP server "docs" (+2 tools).',
         sessionId: null,

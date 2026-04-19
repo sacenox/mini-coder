@@ -230,6 +230,33 @@ function formatMcpToggleMessage(
   return `${action} MCP server "${server.name}" (${delta} ${toolSuffix}).`;
 }
 
+function persistMcpServerSettings(
+  state: AppState,
+  server: AppState["mcpServers"][number],
+): void {
+  const currentServers = state.settings.mcp?.servers ?? [];
+  let found = false;
+  const servers = currentServers.map((entry) => {
+    if (entry.name !== server.name) {
+      return entry;
+    }
+    found = true;
+    return { ...entry, enabled: server.enabled };
+  });
+
+  if (!found) {
+    servers.push({
+      name: server.name,
+      url: server.url,
+      enabled: server.enabled,
+    });
+  }
+
+  state.settings = updateSettings(state.settingsPath, {
+    mcp: { servers },
+  });
+}
+
 /**
  * Create the UI command controller bound to the current UI runtime hooks.
  *
@@ -497,6 +524,7 @@ export function createCommandController(
         runtime.dismissOverlay();
         if (server) {
           server.enabled = !server.enabled;
+          persistMcpServerSettings(state, server);
           runtime.appendInfoMessage(formatMcpToggleMessage(server), state);
         }
       },

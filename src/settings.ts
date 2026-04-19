@@ -2,7 +2,7 @@
  * User settings persistence and startup resolution.
  *
  * Stores global defaults such as model, effort, reasoning visibility,
- * verbose tool output, custom providers, and MCP server endpoints in a JSON
+ * verbose tool output, custom providers, and MCP server settings in a JSON
  * file under the app data directory.
  *
  * @module
@@ -30,6 +30,8 @@ export interface McpServerConfig {
   name: string;
   /** Absolute Streamable HTTP MCP endpoint URL. */
   url: string;
+  /** Whether the server should start enabled. */
+  enabled: boolean;
 }
 
 /** MCP-related user settings. */
@@ -324,12 +326,13 @@ function parseMcpServer(item: unknown): McpServerConfig | null {
 
   const name = readString(candidate, "name")?.trim() ?? "";
   const url = readString(candidate, "url")?.trim() ?? "";
+  const enabled = readBoolean(candidate, "enabled") ?? true;
 
   if (!name || !url || !MCP_SERVER_NAME_PATTERN.test(name)) {
     return null;
   }
 
-  return { name, url };
+  return { name, url, enabled };
 }
 
 /**

@@ -299,7 +299,11 @@ describe("settings", () => {
         mcp: {
           servers: [
             { name: "docs", url: "http://127.0.0.1:8787/mcp" },
-            { name: "github_tools", url: "https://example.com/mcp" },
+            {
+              name: "github_tools",
+              url: "https://example.com/mcp",
+              enabled: false,
+            },
           ],
         },
       }),
@@ -309,8 +313,12 @@ describe("settings", () => {
     const settings = loadSettings(path);
     expect(settings.mcp).toEqual({
       servers: [
-        { name: "docs", url: "http://127.0.0.1:8787/mcp" },
-        { name: "github_tools", url: "https://example.com/mcp" },
+        { name: "docs", url: "http://127.0.0.1:8787/mcp", enabled: true },
+        {
+          name: "github_tools",
+          url: "https://example.com/mcp",
+          enabled: false,
+        },
       ],
     });
   });
@@ -324,7 +332,7 @@ describe("settings", () => {
         mcp: {
           servers: [
             { name: "docs", url: "http://127.0.0.1:8787/mcp" },
-            { name: "docs", url: "http://127.0.0.1:8788/mcp" },
+            { name: "docs", url: "http://127.0.0.1:8788/mcp", enabled: false },
             { name: "bad name", url: "http://127.0.0.1:8789/mcp" },
             { name: "", url: "http://127.0.0.1:8790/mcp" },
             { name: "missing-url" },
@@ -338,7 +346,9 @@ describe("settings", () => {
 
     const settings = loadSettings(path);
     expect(settings.mcp).toEqual({
-      servers: [{ name: "docs", url: "http://127.0.0.1:8787/mcp" }],
+      servers: [
+        { name: "docs", url: "http://127.0.0.1:8787/mcp", enabled: true },
+      ],
     });
   });
 
@@ -350,7 +360,13 @@ describe("settings", () => {
       JSON.stringify({
         verbose: false,
         mcp: {
-          servers: [{ name: "docs", url: "http://127.0.0.1:8787/mcp" }],
+          servers: [
+            {
+              name: "docs",
+              url: "http://127.0.0.1:8787/mcp",
+              enabled: false,
+            },
+          ],
         },
       }),
       "utf-8",
@@ -361,7 +377,13 @@ describe("settings", () => {
     expect(updated).toEqual({
       verbose: true,
       mcp: {
-        servers: [{ name: "docs", url: "http://127.0.0.1:8787/mcp" }],
+        servers: [
+          {
+            name: "docs",
+            url: "http://127.0.0.1:8787/mcp",
+            enabled: false,
+          },
+        ],
       },
     });
   });

@@ -140,7 +140,7 @@ test("discoverMcpServers_reachableServer_importsPrefixedToolsAndExecutesCalls", 
 
   const result = await discoverMcpServers(
     {
-      servers: [{ name: "docs", url: "http://docs.test/mcp" }],
+      servers: [{ name: "docs", url: "http://docs.test/mcp", enabled: true }],
     },
     createFakeRuntime({ "http://docs.test/mcp": behavior }),
   );
@@ -200,10 +200,14 @@ test("discoverMcpServers_structuredFallbackResult_formatsStructuredContent", asy
 
   const result = await discoverMcpServers(
     {
-      servers: [{ name: "state", url: "http://state.test/mcp" }],
+      servers: [
+        { name: "state", url: "http://state.test/mcp", enabled: false },
+      ],
     },
     createFakeRuntime({ "http://state.test/mcp": behavior }),
   );
+
+  expect(result.servers[0]?.enabled).toBe(false);
 
   const handler = result.servers[0]?.toolHandlers.get("state__inspect");
   const toolResult = await handler!({}, "/tmp");
@@ -235,9 +239,9 @@ test("discoverMcpServers_invalidOrUnusableServers_skipsThemWithWarningsAndCleanu
   const result = await discoverMcpServers(
     {
       servers: [
-        { name: "bad-url", url: "not-a-url" },
-        { name: "empty", url: "http://empty.test/mcp" },
-        { name: "down", url: "http://down.test/mcp" },
+        { name: "bad-url", url: "not-a-url", enabled: true },
+        { name: "empty", url: "http://empty.test/mcp", enabled: true },
+        { name: "down", url: "http://down.test/mcp", enabled: true },
       ],
     },
     createFakeRuntime({
