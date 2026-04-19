@@ -7,8 +7,7 @@ The spec and code are the sources of truth; this file is just the verified backl
 
 ## Open issues:
 
-- [ ] `/skill:name` is not in help text. It also doesn't appear in the `/` auto complete. It should appear and when selected or userd without `:name` it opens an select overlay with the skills list for the user to select it. Populates the input with the selected skill command: User selects `ui-design` skill, hits enter, the prompt reads `/skill:ui-design` and doesn't submit.
-- [ ] Preserve the current slash-command draft when opening command autocomplete instead of clearing the input (`src/ui.ts`, `src/ui/commands.ts`)
+_None._
 
 # Defered issues:
 

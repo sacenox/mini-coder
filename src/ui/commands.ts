@@ -17,7 +17,7 @@ import { getOAuthProviders } from "@mariozechner/pi-ai/oauth";
 import { getErrorMessage } from "../errors.ts";
 import type { AppState } from "../index.ts";
 import { getAvailableModels, saveOAuthCredentials } from "../index.ts";
-import { COMMANDS } from "../input.ts";
+import { COMMANDS, SKILL_COMMAND } from "../input.ts";
 import { connectMcpServer, disconnectMcpServer } from "../mcp.ts";
 import {
   clearConversationState,
@@ -34,7 +34,12 @@ import { updateSettings } from "../settings.ts";
 import { clearQueuedUserMessages } from "../submit.ts";
 import { collapseWhitespace, truncateText } from "../text.ts";
 import { getTodoItems } from "../tools.ts";
-import { buildHelpText, COMMAND_DESCRIPTIONS } from "./help.ts";
+import {
+  buildHelpText,
+  COMMAND_DESCRIPTIONS,
+  SKILL_REFERENCE_DESCRIPTION,
+  SKILL_REFERENCE_LABEL,
+} from "./help.ts";
 import { type ActiveOverlay, OVERLAY_MAX_VISIBLE } from "./overlay.ts";
 import type { UiRenderPriority } from "./runtime.ts";
 import { abbreviatePath } from "./status.ts";
@@ -230,6 +235,12 @@ interface OverlayItem {
   filterText: string;
 }
 
+function formatSkillLabel(skill: AppState["skills"][number]): string {
+  return skill.description
+    ? `${skill.name}  ·  ${skill.description}`
+    : skill.name;
+}
+
 function formatToolCount(count: number): string {
   return `${count} tool${count === 1 ? "" : "s"}`;
 }
@@ -363,14 +374,39 @@ export function createCommandController(
     runtime.openOverlay({ select, title });
   };
 
-  const showCommandAutocomplete = (state: AppState): void => {
-    const items = COMMANDS.map((command) => ({
-      label: `/${command}  ${COMMAND_DESCRIPTIONS[command] ?? ""}`,
-      value: command,
-      filterText: command,
+  const handleSkillCommand = (state: AppState): void => {
+    const items = state.skills.map((skill) => ({
+      label: formatSkillLabel(skill),
+      value: skill.name,
+      filterText: `${skill.name} ${skill.description ?? ""}`,
     }));
 
-    runtime.setInputValue("");
+    openSelectOverlay(
+      state,
+      "Select a skill",
+      items,
+      "type to filter skills...",
+      (skillName) => {
+        runtime.setInputValue(`/${SKILL_COMMAND}:${skillName}`);
+        runtime.dismissOverlay();
+      },
+    );
+  };
+
+  const showCommandAutocomplete = (state: AppState): void => {
+    const items: OverlayItem[] = [
+      ...COMMANDS.map((command) => ({
+        label: `/${command}  ${COMMAND_DESCRIPTIONS[command] ?? ""}`,
+        value: command,
+        filterText: command,
+      })),
+      {
+        label: `${SKILL_REFERENCE_LABEL}  ${SKILL_REFERENCE_DESCRIPTION}`,
+        value: SKILL_COMMAND,
+        filterText: `${SKILL_COMMAND} ${SKILL_REFERENCE_LABEL}`,
+      },
+    ];
+
     openSelectOverlay(
       state,
       "Commands",
@@ -378,6 +414,12 @@ export function createCommandController(
       "type to filter commands...",
       (value) => {
         runtime.dismissOverlay();
+        if (value === SKILL_COMMAND) {
+          handleSkillCommand(state);
+          return;
+        }
+
+        runtime.setInputValue("");
         handleCommand(value, state);
       },
     );
@@ -773,6 +815,9 @@ export function createCommandController(
         return true;
       case "help":
         handleHelpCommand(state);
+        return true;
+      case SKILL_COMMAND:
+        handleSkillCommand(state);
         return true;
       default:
         return false;

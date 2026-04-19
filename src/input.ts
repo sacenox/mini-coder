@@ -32,8 +32,11 @@ export const COMMANDS = [
   "effort",
 ] as const;
 
+/** Slash helper that opens the interactive skill picker when submitted alone. */
+export const SKILL_COMMAND = "skill" as const;
+
 /** A recognized slash command name. */
-type Command = (typeof COMMANDS)[number];
+type Command = (typeof COMMANDS)[number] | typeof SKILL_COMMAND;
 
 const COMMAND_SET: ReadonlySet<string> = new Set(COMMANDS);
 
@@ -74,6 +77,14 @@ function isCommand(value: string): value is Command {
 }
 
 function parseSlashInput(trimmed: string): ParsedInput | null {
+  if (trimmed === `/${SKILL_COMMAND}`) {
+    return {
+      type: "command",
+      command: SKILL_COMMAND,
+      args: "",
+    };
+  }
+
   const skillMatch = trimmed.match(/^\/skill:(\S+)(?:\s+(.*))?$/s);
   if (skillMatch?.[1]) {
     return {

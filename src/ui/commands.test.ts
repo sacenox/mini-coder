@@ -781,6 +781,10 @@ describe("ui/commands", () => {
       expect(appended).toHaveLength(1);
       expect(appended[0]?.text.length).toBeGreaterThan(0);
       expect(appended[0]?.text).toContain("`/mcp`");
+      expect(appended[0]?.text).toContain("`/skill:name`");
+      expect(appended[0]?.text).toContain(
+        "submit `/skill` to open the skill picker",
+      );
       expect(appended[0]?.text).toContain("`docs` (off)");
       expect(appended[0]?.format).toBe("markdown");
       expect(appended[0]?.sessionId).toBeNull();

@@ -5,7 +5,7 @@
  */
 
 import type { AppState } from "../index.ts";
-import { COMMANDS } from "../input.ts";
+import { COMMANDS, SKILL_COMMAND } from "../input.ts";
 import { abbreviatePath } from "./status.ts";
 
 /** Help text inputs derived from application state. */
@@ -42,6 +42,13 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   logout: "OAuth logout",
   help: "Show help",
 };
+
+/** Slash-skill label shown in `/help` and command autocomplete. */
+export const SKILL_REFERENCE_LABEL = `/${SKILL_COMMAND}:name`;
+
+/** Description for the slash-skill input helper. */
+export const SKILL_REFERENCE_DESCRIPTION =
+  "Insert a discovered skill into the next message";
 
 /**
  * Get the `/help` description for a command, including current state when relevant.
@@ -92,6 +99,9 @@ export function buildHelpText(state: HelpRenderState): string {
       `- ${formatInlineCode(`/${command}`)} — ${getHelpCommandDescription(command, state)}`,
     );
   }
+  lines.push(
+    `- ${formatInlineCode(SKILL_REFERENCE_LABEL)} — ${SKILL_REFERENCE_DESCRIPTION}; submit ${formatInlineCode(`/${SKILL_COMMAND}`)} to open the skill picker.`,
+  );
 
   const providerNames = Array.from(state.providers.keys());
   const mcpServerStates = state.mcpServers.map((server) =>
@@ -103,7 +113,7 @@ export function buildHelpText(state: HelpRenderState): string {
     "",
     "- `Enter` submits the current draft.",
     "- `Shift+Enter` inserts a newline.",
-    "- `Tab` opens command autocomplete when the draft starts with `/`.",
+    "- `Tab` opens command autocomplete when the draft starts with `/`, preserving the current draft.",
     "- Otherwise, `Tab` autocompletes file paths and can open a path picker when there are multiple matches.",
     "- `Ctrl+R` opens global input history search.",
     "- `Escape` closes the current overlay and returns focus to the input.",

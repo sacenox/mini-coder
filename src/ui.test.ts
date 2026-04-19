@@ -878,6 +878,45 @@ describe("ui rendering", () => {
     }
   });
 
+  test("submitting /skill opens the skill picker and fills the draft without submitting", () => {
+    const state = createTestState();
+    const controller = createInputController(state);
+    state.skills = [
+      {
+        name: "ui-design",
+        description: "Design terminal UI changes",
+        path: "/tmp/ui-design/SKILL.md",
+      },
+    ];
+
+    try {
+      controller.onChange("/skill");
+      expect(controller.onKeyPress("enter")).toBe(false);
+
+      const overlay = renderActiveOverlay(state);
+      if (!overlay || overlay.type !== "vstack") {
+        throw new Error("Expected an active skill picker overlay");
+      }
+      expect(
+        collectText(overlay).some((line) => line.includes("ui-design")),
+      ).toBe(true);
+
+      const modal = expectVStack(overlay.children[0]!);
+      const selectNode = expectVStack(modal.children[1]!);
+      selectNode.props.onKeyPress?.("enter");
+
+      const input = expectTextInput(renderInputArea(state.theme, controller));
+      expect(input.props.value).toBe("/skill:ui-design");
+      expect(input.props.focused).toBe(true);
+      expect(renderActiveOverlay(state)).toBeNull();
+      expect(state.messages).toEqual([]);
+      expect(state.session).toBeNull();
+      expect(state.running).toBe(false);
+    } finally {
+      state.db.close();
+    }
+  });
+
   test("/skill:name prepends the selected skill body to the submitted user message", async () => {
     const faux = registerFauxProvider();
     const state = createTestState();
@@ -1294,6 +1333,78 @@ describe("ui rendering", () => {
       await stopRunningTurn(state);
       cel.stop();
       unregisterApiProviders(sourceId);
+      state.db.close();
+    }
+  });
+
+  test("Tab opens command autocomplete without clearing the current slash draft", () => {
+    const state = createTestState();
+
+    try {
+      const controller = createInputController(state);
+      controller.onChange("/mo");
+
+      expect(controller.onKeyPress("tab")).toBe(false);
+
+      const overlay = renderActiveOverlay(state);
+      expect(collectText(overlay).some((line) => line.includes("/model"))).toBe(
+        true,
+      );
+      expect(
+        collectText(overlay).some((line) => line.includes("/skill:name")),
+      ).toBe(true);
+
+      const input = expectTextInput(renderInputArea(state.theme, controller));
+      expect(input.props.value).toBe("/mo");
+      expect(input.props.focused).toBe(false);
+    } finally {
+      state.db.close();
+    }
+  });
+
+  test("selecting /skill:name from command autocomplete opens the skill picker", () => {
+    const state = createTestState();
+    const controller = createInputController(state);
+    state.skills = [
+      {
+        name: "ui-design",
+        description: "Design terminal UI changes",
+        path: "/tmp/ui-design/SKILL.md",
+      },
+    ];
+
+    try {
+      controller.onChange("/s");
+      expect(controller.onKeyPress("tab")).toBe(false);
+
+      const commandOverlay = renderActiveOverlay(state);
+      if (!commandOverlay || commandOverlay.type !== "vstack") {
+        throw new Error("Expected an active command autocomplete overlay");
+      }
+
+      const commandModal = expectVStack(commandOverlay.children[0]!);
+      const commandSelect = expectVStack(commandModal.children[1]!);
+      commandSelect.props.onKeyPress?.("s");
+      commandSelect.props.onKeyPress?.("k");
+      commandSelect.props.onKeyPress?.("enter");
+
+      const skillOverlay = renderActiveOverlay(state);
+      if (!skillOverlay || skillOverlay.type !== "vstack") {
+        throw new Error("Expected an active skill picker overlay");
+      }
+      expect(
+        collectText(skillOverlay).some((line) => line.includes("ui-design")),
+      ).toBe(true);
+
+      const skillModal = expectVStack(skillOverlay.children[0]!);
+      const skillSelect = expectVStack(skillModal.children[1]!);
+      skillSelect.props.onKeyPress?.("enter");
+
+      const input = expectTextInput(renderInputArea(state.theme, controller));
+      expect(input.props.value).toBe("/skill:ui-design");
+      expect(input.props.focused).toBe(true);
+      expect(renderActiveOverlay(state)).toBeNull();
+    } finally {
       state.db.close();
     }
   });

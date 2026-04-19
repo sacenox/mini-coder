@@ -57,26 +57,27 @@ Six built-in tools, plus a conditional read-only image tool and any configured M
 - **Session persistence** — SQLite-backed sessions with undo, fork, resume, and cumulative usage stats. Sessions are scoped to the working directory.
 - **Reasoning and verbosity controls** — toggle thinking visibility and verbose tool rendering on demand. Preferences persist across launches.
 - **[AGENTS.md](https://agents.md) support** — project-specific instructions discovered root-to-leaf, with `~/.agents/` for global instructions.
-- **[Agent Skills](https://agentskills.io)** — skill catalogs exposed in the prompt. `/skill:name` injects a skill body into the next user message.
+- **[Agent Skills](https://agentskills.io)** — skill catalogs exposed in the prompt. `/skill:name` injects a skill body into the next user message, and `/skill` opens a picker that fills in the selected skill reference without submitting.
 - **Settings-driven MCP tools** — connect Streamable HTTP MCP servers from `~/.config/mini-coder/settings.json` and expose their tools directly in the core runtime.
 
 ## Commands
 
-| Command      | Description                                                                                                                                       |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/model`     | Switch models and save the choice as the global default.                                                                                          |
-| `/session`   | Open the session picker for the current working directory.                                                                                        |
-| `/new`       | Start a fresh session and reset the running token and cost totals.                                                                                |
-| `/fork`      | Fork the current chat into a new session, keep the original, and add a UI-only `Forked session.` note.                                            |
-| `/undo`      | Remove the last conversational turn without touching filesystem changes.                                                                          |
-| `/reasoning` | Show or hide model thinking. The setting is saved and restored on launch.                                                                         |
-| `/verbose`   | Toggle compact vs full rendering for verbose-aware tool previews/results, including shell, read, grep, edit previews/errors, and MCP tool blocks. |
-| `/mcp`       | Open the MCP server picker and toggle configured servers on or off for future turns.                                                              |
-| `/todo`      | Show the current session todo list in the conversation log as a UI-only checklist block.                                                          |
-| `/login`     | Sign in with a supported OAuth provider.                                                                                                          |
-| `/logout`    | Remove saved OAuth credentials for a logged-in provider.                                                                                          |
-| `/effort`    | Choose low, medium, high, or xhigh reasoning effort.                                                                                              |
-| `/help`      | Show commands, current toggles, loaded AGENTS.md files, skills, and MCP servers with on/off state.                                                |
+| Command       | Description                                                                                                                                                       |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/model`      | Switch models and save the choice as the global default.                                                                                                          |
+| `/session`    | Open the session picker for the current working directory.                                                                                                        |
+| `/new`        | Start a fresh session and reset the running token and cost totals.                                                                                                |
+| `/fork`       | Fork the current chat into a new session, keep the original, and add a UI-only `Forked session.` note.                                                            |
+| `/undo`       | Remove the last conversational turn without touching filesystem changes.                                                                                          |
+| `/reasoning`  | Show or hide model thinking. The setting is saved and restored on launch.                                                                                         |
+| `/verbose`    | Toggle compact vs full rendering for verbose-aware tool previews/results, including shell, read, grep, edit previews/errors, and MCP tool blocks.                 |
+| `/mcp`        | Open the MCP server picker and toggle configured servers on or off for future turns.                                                                              |
+| `/todo`       | Show the current session todo list in the conversation log as a UI-only checklist block.                                                                          |
+| `/login`      | Sign in with a supported OAuth provider.                                                                                                                          |
+| `/logout`     | Remove saved OAuth credentials for a logged-in provider.                                                                                                          |
+| `/effort`     | Choose low, medium, high, or xhigh reasoning effort.                                                                                                              |
+| `/help`       | Show commands, current toggles, loaded AGENTS.md files, skills, and MCP servers with on/off state.                                                                |
+| `/skill:name` | Insert a discovered skill into the next message. Submit `/skill` or pick `/skill:name` from slash-command autocomplete to choose a skill without auto-submitting. |
 
 ## Key bindings
 
@@ -85,7 +86,7 @@ Six built-in tools, plus a conditional read-only image tool and any configured M
 | `Enter`       | Submit message                                                                                             |
 | `Shift+Enter` | Insert newline                                                                                             |
 | `Escape`      | Dismiss the overlay without changing the draft; otherwise interrupt the running turn; otherwise do nothing |
-| `Tab`         | Autocomplete a path, or open the command picker when the draft starts with `/`                             |
+| `Tab`         | Autocomplete a path, or open the command picker when the draft starts with `/` without clearing the draft  |
 | `Ctrl+R`      | Search global raw input history                                                                            |
 | `Ctrl+C`      | Graceful exit                                                                                              |
 | `Ctrl+D`      | Graceful exit when the input is empty                                                                      |
@@ -108,7 +109,7 @@ $ printf '%s\n' 'fix the failing tests' | mc
 - Without `--json`, keeps stdout script-friendly by writing only the final assistant text there, while lightweight assistant commentary snippets from tool-use turns go to stderr.
 - With `--json`, writes NDJSON events for completed assistant/tool-result messages plus `done` / `error` / `aborted` outcomes; queued `user_message` events may also appear. Streaming deltas are omitted.
 - Headless runs still persist like normal sessions and show up in `/session` history for that working directory.
-- Interactive slash commands such as `/model`, `/session`, `/mcp`, and `/help` are not available in headless mode.
+- Interactive slash commands such as `/skill` without a name, `/model`, `/session`, `/mcp`, and `/help` are not available in headless mode.
 
 ## Settings
 

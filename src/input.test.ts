@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { COMMANDS, parseInput } from "./input.ts";
+import { COMMANDS, parseInput, SKILL_COMMAND } from "./input.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -36,11 +36,26 @@ describe("parseInput — commands", () => {
 // ---------------------------------------------------------------------------
 
 describe("parseInput — skills", () => {
+  test("/skill without a name opens the skill picker command", () => {
+    expect(parseInput("/skill")).toEqual({
+      type: "command",
+      command: SKILL_COMMAND,
+      args: "",
+    });
+  });
+
   test("/skill:name rest extracts skill and user text", () => {
     expect(parseInput("/skill:code-review check the auth module")).toEqual({
       type: "skill",
       skillName: "code-review",
       userText: "check the auth module",
+    });
+  });
+
+  test("/skill still requires :name before trailing text", () => {
+    expect(parseInput("/skill check the auth module")).toEqual({
+      type: "text",
+      text: "/skill check the auth module",
     });
   });
 });
