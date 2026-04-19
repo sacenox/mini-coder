@@ -22,6 +22,8 @@ export interface HelpRenderState {
   showReasoning: AppState["showReasoning"];
   /** Whether verbose tool rendering is enabled in the log. */
   verbose: AppState["verbose"];
+  /** Connected MCP servers discovered at startup. */
+  mcpServers: AppState["mcpServers"];
 }
 
 /** Command descriptions for `/help` and command autocomplete. */
@@ -34,6 +36,7 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   undo: "Undo last turn",
   reasoning: "Toggle thinking display",
   verbose: "Toggle verbose tool rendering",
+  mcp: "Toggle discovered MCP servers",
   todo: "Show the current todo list",
   login: "OAuth login",
   logout: "OAuth logout",
@@ -69,6 +72,12 @@ function formatInlineCodeList(items: readonly string[]): string {
   return items.map((item) => formatInlineCode(item)).join(", ");
 }
 
+function formatMcpServerState(
+  server: HelpRenderState["mcpServers"][number],
+): string {
+  return `${formatInlineCode(server.name)} (${server.enabled ? "on" : "off"})`;
+}
+
 /**
  * Build the `/help` text shown in the conversation log.
  *
@@ -85,6 +94,9 @@ export function buildHelpText(state: HelpRenderState): string {
   }
 
   const providerNames = Array.from(state.providers.keys());
+  const mcpServerStates = state.mcpServers.map((server) =>
+    formatMcpServerState(server),
+  );
   lines.push(
     "",
     "## Keyboard",
@@ -109,6 +121,9 @@ export function buildHelpText(state: HelpRenderState): string {
     state.model
       ? `- Model: ${formatInlineCode(`${state.model.provider}/${state.model.id}`)}`
       : "- Model: none — use `/model`",
+    mcpServerStates.length > 0
+      ? `- MCP servers: ${mcpServerStates.join(", ")}`
+      : "- MCP servers: none — configure them in `settings.json`",
   );
 
   if (state.agentsMd.length > 0) {

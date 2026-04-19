@@ -57,7 +57,7 @@ This replaces: `yoctocolors`, `yoctomarkdown`, `yoctoselect`, and all our custom
 
 ## Tools
 
-Six built-in tools, plus a conditional read-only image tool.
+Six built-in tools, plus a conditional read-only image tool and any tools imported from configured MCP servers.
 
 ### `shell`
 
@@ -144,6 +144,18 @@ Implementation details:
 - Accepts a file path. Supports common formats: PNG, JPEG, GIF, WebP.
 - Returns `ImageContent` in the tool result (pi-ai's `ToolResultMessage.content` supports images natively).
 - Only registered when the current model supports image input. Hidden from models that don't.
+
+### Configured MCP tools
+
+When `settings.json` includes `mcp.servers`, mini-coder connects to each configured Streamable HTTP MCP endpoint at startup and imports its advertised tools.
+
+Implementation details:
+
+- Only MCP **tools** are imported. MCP prompts and resources are not surfaced in the UI yet.
+- Imported tool names are prefixed as `<serverName>__<toolName>` so they stay stable and avoid collisions with built-ins and other servers.
+- Tool input schemas are forwarded from MCP JSON Schema into pi-ai tool definitions.
+- Tool calls execute through the MCP client and preserve text/image output directly. Unsupported MCP content kinds are summarized as text.
+- Empty, unreachable, invalid, or tool-less MCP servers do not block startup; they are skipped with a warning.
 
 ## Community standards
 
@@ -774,11 +786,12 @@ add tests for undo_
 | `/undo`      | Remove the last conversational turn from history: the most recent user message and all assistant/tool messages that followed in that turn. Persisted UI messages are not part of turns and are not removed by `/undo`. Context-only — does not revert filesystem changes.                                                                                                                                                                                                                                              |
 | `/reasoning` | Toggle display of model thinking/reasoning content in the log. The new on/off state is persisted immediately and restored on launch. When no setting exists yet, reasoning defaults to shown.                                                                                                                                                                                                                                                                                                                          |
 | `/verbose`   | Toggle [verbose tool rendering](#verbose-tool-rendering) for shell previews/results, read previews/results, grep previews/results, edit previews, and edit errors. Successful edit results stay compact regardless of this setting. Todo tool results always render in full.                                                                                                                                                                                                                                           |
+| `/mcp`       | Interactive MCP server selector. Lists discovered MCP servers with their current on/off state. Selecting a server toggles it for future turns and appends a UI-only notice with the exact tool delta, for example `Disabled MCP server "docs" (-3 tools).` Discovery and connection still happen only at startup; `/mcp` does not add, remove, or reload servers.                                                                                                                                                      |
 | `/todo`      | Append the current session todo list to the conversation pane as a UI-only checklist block. The message is persisted with the session, excluded from model context, and does not create a session by itself when no session exists yet.                                                                                                                                                                                                                                                                                |
 | `/login`     | Interactive OAuth login. Shows a selector with available OAuth providers and their login status (logged in / not logged in). Selecting a provider starts the browser-based OAuth flow. Uses pi-ai's OAuth registry. Credentials are persisted to the app data directory and used for provider discovery on subsequent launches.                                                                                                                                                                                        |
 | `/logout`    | Interactive OAuth logout. Shows a selector with logged-in OAuth providers. Selecting one clears its saved credentials.                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `/effort`    | Interactive effort selector. Shows the four reasoning levels (`low`, `medium`, `high`, `xhigh`) with the current level highlighted. Updates the status bar immediately, and the selected effort is persisted immediately as the user's global default. The session record's `effort` field is not updated (it reflects the initial choice, like `/model`).                                                                                                                                                             |
-| `/help`      | List available commands, including the current on/off state of `/reasoning` and `/verbose`, plus loaded AGENTS.md files and discovered skills.                                                                                                                                                                                                                                                                                                                                                                         |
+| `/help`      | List available commands, including the current on/off state of `/reasoning`, `/verbose`, and discovered MCP servers, plus loaded AGENTS.md files and discovered skills.                                                                                                                                                                                                                                                                                                                                                |
 
 Commands are discoverable when the input starts with `/`: pressing `Tab` in that state switches from file-path autocomplete to interactive command select/filter.
 
@@ -801,7 +814,7 @@ Prompt source in headless mode:
 - If headless mode was selected because `stdout` is not a TTY but `stdin` is still interactive, startup fails with a clear error unless `-p` was provided. Headless mode does not fall back to an interactive prompt.
 - Empty or whitespace-only headless input is an error.
 
-Input parsing in headless mode reuses the same rules as the interactive input area for plain text, `/skill:name`, and standalone image-file paths. Interactive slash commands such as `/model`, `/session`, `/new`, `/fork`, `/undo`, `/login`, `/logout`, `/effort`, `/todo`, and `/help` are not available in headless mode and should fail clearly rather than attempting to open interactive UI.
+Input parsing in headless mode reuses the same rules as the interactive input area for plain text, `/skill:name`, and standalone image-file paths. Interactive slash commands such as `/model`, `/session`, `/new`, `/fork`, `/undo`, `/login`, `/logout`, `/effort`, `/mcp`, `/todo`, and `/help` are not available in headless mode and should fail clearly rather than attempting to open interactive UI.
 
 ### Headless text output
 
@@ -846,17 +859,22 @@ On launch, mini-coder:
    - Each returned model is added to the launch's available model list as `provider/model`, where `provider` is the configured custom provider name.
    - Invalid entries are dropped while loading settings. Duplicate custom provider names keep the first entry.
    - If an endpoint is unreachable, returns a non-2xx response, or the custom provider name conflicts with an already-available built-in provider, startup continues and a warning is added to the UI log.
-4. Selects the startup model, effort, reasoning visibility, and verbose mode from those settings when available.
+4. Connects user-configured MCP servers from `settings.json`.
+   - Each entry must provide a `name` and Streamable HTTP endpoint `url`.
+   - Invalid entries are dropped while loading settings. Duplicate MCP server names keep the first entry.
+   - Startup imports only MCP tools. Imported names are exposed to the model as `<serverName>__<toolName>`.
+   - If a server URL is invalid, the endpoint is unreachable, or the server exposes no tools, startup continues and a warning is added to the UI log.
+5. Selects the startup model, effort, reasoning visibility, and verbose mode from those settings when available.
    - `defaultModel`: if the saved provider/model is currently available, use it; otherwise fall back to the first available model for this launch.
    - `defaultEffort`: if valid, use it; otherwise fall back to `medium`.
    - `showReasoning`: if present, use it; otherwise fall back to `true`.
    - `verbose`: if present, use it; otherwise fall back to `false`.
-5. Loads AGENTS.md files and skills.
-6. Selects the launch mode:
+6. Loads AGENTS.md files and skills.
+7. Selects the launch mode:
    - Interactive TUI when `stdin` and `stdout` are both TTYs and `-p` was not provided.
    - Headless one-shot mode otherwise.
-7. In interactive mode, renders the UI with an empty conversation log, a minimal `mini-coder` empty-state banner (showing the packaged version when available, otherwise a simple dev label), and the status bar populated.
-8. Starts a new session only when a prompt is actually submitted (no 0-message sessions in the DB).
+8. In interactive mode, renders the UI with an empty conversation log, a minimal `mini-coder` empty-state banner (showing the packaged version when available, otherwise a simple dev label), and the status bar populated.
+9. Starts a new session only when a prompt is actually submitted (no 0-message sessions in the DB).
 
 The empty-state banner is only shown while the conversation log has no messages. In headless mode, stdout is reserved for the final assistant text response by default, with any lightweight non-JSON activity snippets going to stderr, or NDJSON event output when `--json` is used.
 
@@ -877,7 +895,15 @@ mini-coder persists global user defaults in `~/.config/mini-coder/settings.json`
       "name": "lm-studio",
       "baseUrl": "http://127.0.0.1:1234/v1"
     }
-  ]
+  ],
+  "mcp": {
+    "servers": [
+      {
+        "name": "docs",
+        "url": "http://127.0.0.1:8787/mcp"
+      }
+    ]
+  }
 }
 ```
 
@@ -893,6 +919,12 @@ mini-coder persists global user defaults in `~/.config/mini-coder/settings.json`
 - Each `customProviders` entry has a `name`, `baseUrl`, and optional `apiKey`. The `name` becomes the provider prefix shown in model ids such as `lm-studio/qwen3-coder`.
 - Unreachable or invalid custom providers do not block startup; mini-coder skips them and shows a warning in the interactive log.
 - Custom providers are discovered only at startup. There is currently no interactive slash command to add or remove them.
+- `mcp.servers` is an optional array of user-configured Streamable HTTP MCP endpoints.
+- Each `mcp.servers` entry has a `name` and `url`. `name` must be a simple identifier (`A-Z`, `a-z`, `0-9`, `_`, `-`) because it becomes the imported tool prefix, for example `docs__search`.
+- Invalid MCP entries are dropped while loading settings. Unreachable, invalid-URL, or tool-less MCP servers do not block startup; mini-coder skips them and shows a warning in the interactive log.
+- MCP server discovery is startup-only. `/mcp` can toggle already-discovered servers on or off for future turns during the current app run, but there is still no interactive slash command to add, remove, or reload servers.
+- `/mcp` changes only the current in-memory runtime state. It does not persist a setting change.
+- Only MCP tools are imported today; MCP prompts and resources are not surfaced yet.
 
 ## Session persistence
 

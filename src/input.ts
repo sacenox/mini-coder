@@ -23,6 +23,7 @@ export const COMMANDS = [
   "undo",
   "reasoning",
   "verbose",
+  "mcp",
   "todo",
   "login",
   "logout",

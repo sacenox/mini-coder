@@ -213,6 +213,23 @@ interface OverlayItem {
   filterText: string;
 }
 
+function formatToolCount(count: number): string {
+  return `${count} tool${count === 1 ? "" : "s"}`;
+}
+
+function formatMcpServerLabel(server: AppState["mcpServers"][number]): string {
+  return `${server.name}  ·  ${server.enabled ? "on" : "off"}  ·  ${formatToolCount(server.tools.length)}`;
+}
+
+function formatMcpToggleMessage(
+  server: AppState["mcpServers"][number],
+): string {
+  const action = server.enabled ? "Enabled" : "Disabled";
+  const delta = `${server.enabled ? "+" : "-"}${server.tools.length}`;
+  const toolSuffix = server.tools.length === 1 ? "tool" : "tools";
+  return `${action} MCP server "${server.name}" (${delta} ${toolSuffix}).`;
+}
+
 /**
  * Create the UI command controller bound to the current UI runtime hooks.
  *
@@ -457,6 +474,35 @@ export function createCommandController(
     });
   };
 
+  const handleMcpCommand = (state: AppState): void => {
+    if (state.mcpServers.length === 0) {
+      return;
+    }
+
+    const items = state.mcpServers.map((server) => ({
+      label: formatMcpServerLabel(server),
+      value: server.name,
+      filterText: `${server.name} ${server.url} ${server.enabled ? "on" : "off"}`,
+    }));
+
+    openSelectOverlay(
+      state,
+      "Toggle MCP servers",
+      items,
+      "type to filter MCP servers...",
+      (serverName) => {
+        const server = state.mcpServers.find(
+          (entry) => entry.name === serverName,
+        );
+        runtime.dismissOverlay();
+        if (server) {
+          server.enabled = !server.enabled;
+          runtime.appendInfoMessage(formatMcpToggleMessage(server), state);
+        }
+      },
+    );
+  };
+
   const performLogin = async (
     provider: OAuthProviderInterface,
     state: AppState,
@@ -622,6 +668,9 @@ export function createCommandController(
         return true;
       case "verbose":
         handleVerboseCommand(state);
+        return true;
+      case "mcp":
+        handleMcpCommand(state);
         return true;
       case "todo":
         handleTodoCommand(state);

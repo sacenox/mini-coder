@@ -39,7 +39,7 @@ $ mc
 
 ## Tools
 
-Six built-in tools, plus a conditional read-only image tool:
+Six built-in tools, plus a conditional read-only image tool and any configured MCP tools:
 
 - **`shell`** — runs commands in the user's shell. Returns stdout, stderr, and exit code. Large output is truncated to protect model context.
 - **`read`** — reads UTF-8 text files from disk, optionally by line window.
@@ -48,8 +48,7 @@ Six built-in tools, plus a conditional read-only image tool:
 - **`todoWrite`** — creates or updates the session todo list incrementally and returns the full current snapshot.
 - **`todoRead`** — returns the full current session todo list snapshot.
 - **`readImage`** — reads PNG, JPEG, GIF, and WebP files as model input. Only registered when the active model supports images.
-
-Plugins can add more tools, but the core stays intentionally small.
+- **Configured MCP tools** — tools discovered from `settings.json` Streamable HTTP MCP servers. Imported tool names are prefixed with the server name, for example `docs__search`.
 
 ## Features
 
@@ -59,7 +58,7 @@ Plugins can add more tools, but the core stays intentionally small.
 - **Reasoning and verbosity controls** — toggle thinking visibility and verbose tool rendering on demand. Preferences persist across launches.
 - **[AGENTS.md](https://agents.md) support** — project-specific instructions discovered root-to-leaf, with `~/.agents/` for global instructions.
 - **[Agent Skills](https://agentskills.io)** — skill catalogs exposed in the prompt. `/skill:name` injects a skill body into the next user message.
-- **Plugins** — optional tools, integrations, theme overrides, and prompt suffixes without bloating the core.
+- **Settings-driven MCP tools** — connect Streamable HTTP MCP servers from `~/.config/mini-coder/settings.json` and expose their tools directly in the core runtime.
 
 ## Commands
 
@@ -72,11 +71,12 @@ Plugins can add more tools, but the core stays intentionally small.
 | `/undo`      | Remove the last conversational turn without touching filesystem changes.                               |
 | `/reasoning` | Show or hide model thinking. The setting is saved and restored on launch.                              |
 | `/verbose`   | Expand shell output plus edit previews and edit errors in the conversation log.                        |
+| `/mcp`       | Open the MCP server picker and toggle discovered servers on or off for future turns.                   |
 | `/todo`      | Show the current session todo list in the conversation log as a UI-only checklist block.               |
 | `/login`     | Sign in with a supported OAuth provider.                                                               |
 | `/logout`    | Remove saved OAuth credentials for a logged-in provider.                                               |
 | `/effort`    | Choose low, medium, high, or xhigh reasoning effort.                                                   |
-| `/help`      | Show commands, current toggles, loaded AGENTS.md files, skills, and plugins.                           |
+| `/help`      | Show commands, current toggles, loaded AGENTS.md files, skills, and MCP servers with on/off state.     |
 
 ## Key bindings
 
@@ -108,7 +108,35 @@ $ printf '%s\n' 'fix the failing tests' | mc
 - Without `--json`, keeps stdout script-friendly by writing only the final assistant text there, while lightweight assistant commentary snippets from tool-use turns go to stderr.
 - With `--json`, writes NDJSON events for completed assistant/tool-result messages plus `done` / `error` / `aborted` outcomes; queued `user_message` events may also appear. Streaming deltas are omitted.
 - Headless runs still persist like normal sessions and show up in `/session` history for that working directory.
-- Interactive slash commands such as `/model`, `/session`, and `/help` are not available in headless mode.
+- Interactive slash commands such as `/model`, `/session`, `/mcp`, and `/help` are not available in headless mode.
+
+## Settings
+
+Global defaults live in `~/.config/mini-coder/settings.json`.
+
+```json
+{
+  "customProviders": [
+    {
+      "name": "lm-studio",
+      "baseUrl": "http://127.0.0.1:1234/v1"
+    }
+  ],
+  "mcp": {
+    "servers": [
+      {
+        "name": "docs",
+        "url": "http://127.0.0.1:8787/mcp"
+      }
+    ]
+  }
+}
+```
+
+- `mcp.servers` currently supports Streamable HTTP MCP endpoints.
+- Each server `name` becomes the imported tool prefix, so a remote `search` tool appears as `docs__search`.
+- MCP servers are connected at startup; invalid or unreachable ones are skipped with a warning.
+- `/mcp` can temporarily enable or disable discovered MCP servers for future turns during the current app run.
 
 ## Docs
 

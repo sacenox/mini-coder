@@ -1,9 +1,9 @@
 /**
  * Entry point for mini-coder.
  *
- * Discovers available LLM providers, loads prompt context (AGENTS.md,
- * skills, and theme), opens the session database, selects a model, and
- * starts the TUI.
+ * Discovers available LLM providers, connects configured MCP tools,
+ * loads prompt context (AGENTS.md, skills, and theme), opens the session
+ * database, selects a model, and starts the TUI.
  *
  * @module
  */
@@ -32,6 +32,7 @@ import {
 } from "./cli.ts";
 import { getErrorMessage } from "./errors.ts";
 import { type GitState, getGitState } from "./git.ts";
+import { type ConnectedMcpServer, discoverMcpServers } from "./mcp.ts";
 import { canonicalizePath } from "./paths.ts";
 import {
   type AgentsMdFile,
@@ -358,6 +359,7 @@ function selectModel(
 function buildTools(
   model: Model<string>,
   messages: AppState["messages"],
+  mcpServers: readonly ConnectedMcpServer[],
 ): { tools: Tool[]; toolHandlers: Map<string, ToolHandler> } {
   const tools: Tool[] = [
     shellTool,
@@ -375,6 +377,17 @@ function buildTools(
     [todoWriteTool.name, createTodoWriteToolHandler(messages)],
     [todoReadTool.name, createTodoReadToolHandler(messages)],
   ]);
+
+  for (const server of mcpServers) {
+    if (!server.enabled) {
+      continue;
+    }
+
+    tools.push(...server.tools);
+    for (const [name, handler] of server.toolHandlers) {
+      toolHandlers.set(name, handler);
+    }
+  }
 
   // Conditionally register readImage for vision-capable models
   if (model.input.includes("image")) {
@@ -506,9 +519,11 @@ export interface AppState {
   showReasoning: boolean;
   /** Whether to show full (un-truncated) tool output. */
   verbose: boolean;
+  /** Discovered MCP servers, including their current enabled/disabled state. */
+  mcpServers: ConnectedMcpServer[];
   /** Models discovered from custom OpenAI-compatible providers. */
   customModels: Model<string>[];
-  /** Warnings from startup (e.g. unreachable custom providers). */
+  /** Warnings from startup (e.g. unreachable custom providers or MCP servers). */
   startupWarnings: string[];
 }
 
@@ -540,6 +555,8 @@ export async function init(): Promise<AppState> {
   for (const [name, key] of customResult.providers) {
     providers.set(name, key);
   }
+
+  const mcpResult = await discoverMcpServers(settings.mcp);
 
   const builtInModels = listAvailableModels(providers);
   const availableModels = [...builtInModels, ...customResult.models];
@@ -580,8 +597,9 @@ export async function init(): Promise<AppState> {
     queuedUserMessages: [],
     showReasoning: startup.showReasoning,
     verbose: startup.verbose,
+    mcpServers: mcpResult.servers,
     customModels: customResult.models,
-    startupWarnings: customResult.warnings,
+    startupWarnings: [...customResult.warnings, ...mcpResult.warnings],
   };
 }
 
@@ -628,7 +646,7 @@ export function buildToolList(state: AppState): {
   toolHandlers: Map<string, ToolHandler>;
 } {
   if (!state.model) return { tools: [], toolHandlers: new Map() };
-  return buildTools(state.model, state.messages);
+  return buildTools(state.model, state.messages, state.mcpServers);
 }
 
 /**
@@ -677,6 +695,7 @@ export function getAvailableModels(state: AppState): Model<string>[] {
 
 /** Clean up resources on shutdown. */
 export async function shutdown(state: AppState): Promise<void> {
+  await Promise.allSettled(state.mcpServers.map((server) => server.close()));
   state.db.close();
 }
 

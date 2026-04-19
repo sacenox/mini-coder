@@ -2,7 +2,8 @@
  * User settings persistence and startup resolution.
  *
  * Stores global defaults such as model, effort, reasoning visibility,
- * and verbose tool output in a JSON file under the app data directory.
+ * verbose tool output, custom providers, and MCP server endpoints in a JSON
+ * file under the app data directory.
  *
  * @module
  */
@@ -21,6 +22,20 @@ export interface CustomProvider {
   baseUrl: string;
   /** Optional API key. Defaults to "no-key" at discovery time. */
   apiKey?: string;
+}
+
+/** A single configured MCP server endpoint. */
+export interface McpServerConfig {
+  /** Stable server identifier. Used as the imported tool-name prefix. */
+  name: string;
+  /** Absolute Streamable HTTP MCP endpoint URL. */
+  url: string;
+}
+
+/** MCP-related user settings. */
+export interface McpSettings {
+  /** MCP servers to connect to at startup. */
+  servers?: McpServerConfig[];
 }
 
 /** Default reasoning effort when no saved setting exists. */
@@ -44,6 +59,8 @@ export interface UserSettings {
   verbose?: boolean;
   /** Custom OpenAI-compatible provider endpoints. */
   customProviders?: CustomProvider[];
+  /** MCP server connections to import tools from at startup. */
+  mcp?: McpSettings;
 }
 
 /** Resolved startup settings after applying defaults and availability checks. */
@@ -64,6 +81,8 @@ const THINKING_LEVELS = new Set<ThinkingLevel>([
   "high",
   "xhigh",
 ]);
+
+const MCP_SERVER_NAME_PATTERN = /^[A-Za-z0-9_-]+$/;
 
 /**
  * Load and validate user settings from disk.
@@ -226,6 +245,11 @@ function sanitizeSettings(value: unknown): UserSettings {
     settings.customProviders = customProviders;
   }
 
+  const mcp = sanitizeMcpSettings(candidate.mcp);
+  if (mcp) {
+    settings.mcp = mcp;
+  }
+
   return settings;
 }
 
@@ -267,6 +291,63 @@ function sanitizeCustomProviders(value: unknown): CustomProvider[] | undefined {
 
   for (const item of value) {
     const entry = parseCustomProvider(item);
+    if (!entry || seen.has(entry.name)) {
+      continue;
+    }
+    seen.add(entry.name);
+    result.push(entry);
+  }
+
+  return result.length > 0 ? result : undefined;
+}
+
+function sanitizeMcpSettings(value: unknown): McpSettings | undefined {
+  const candidate = toRecord(value);
+  if (!candidate) {
+    return undefined;
+  }
+
+  const servers = sanitizeMcpServers(candidate.servers);
+  if (!servers) {
+    return undefined;
+  }
+
+  return { servers };
+}
+
+/** Try to parse a single MCP server entry, returning null on failure. */
+function parseMcpServer(item: unknown): McpServerConfig | null {
+  const candidate = toRecord(item);
+  if (!candidate) {
+    return null;
+  }
+
+  const name = readString(candidate, "name")?.trim() ?? "";
+  const url = readString(candidate, "url")?.trim() ?? "";
+
+  if (!name || !url || !MCP_SERVER_NAME_PATTERN.test(name)) {
+    return null;
+  }
+
+  return { name, url };
+}
+
+/**
+ * Validate and normalize configured MCP servers.
+ *
+ * Drops entries with missing/invalid names or URLs, and deduplicates by name
+ * (first entry wins).
+ */
+function sanitizeMcpServers(value: unknown): McpServerConfig[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const result: McpServerConfig[] = [];
+  const seen = new Set<string>();
+
+  for (const item of value) {
+    const entry = parseMcpServer(item);
     if (!entry || seen.has(entry.name)) {
       continue;
     }

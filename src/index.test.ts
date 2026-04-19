@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { Model } from "@mariozechner/pi-ai";
+import { type Model, Type } from "@mariozechner/pi-ai";
 import {
   type AppState,
   buildToolList,
@@ -55,6 +55,7 @@ function createTestState(): AppState {
     showReasoning: true,
     verbose: false,
     versionLabel: "dev",
+    mcpServers: [],
     customModels: [],
     startupWarnings: [],
   };
@@ -501,6 +502,122 @@ test("buildToolList uses validated built-in handlers and gates readImage by mode
 
     expect(visionTools.tools.map((tool) => tool.name)).toContain("readImage");
     expect(visionTools.toolHandlers.has("readImage")).toBe(true);
+  } finally {
+    state.db.close();
+  }
+});
+
+test("buildToolList includes connected MCP tools alongside built-ins", async () => {
+  const state = createTestState();
+  try {
+    state.model = {
+      id: "test-model",
+      name: "test-model",
+      api: "openai-completions",
+      provider: "test-provider",
+      baseUrl: "http://localhost:1234/v1",
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 8192,
+      maxTokens: 4096,
+    };
+    state.mcpServers = [
+      {
+        name: "docs",
+        url: "http://docs.test/mcp",
+        enabled: true,
+        tools: [
+          {
+            name: "docs__search",
+            description: "[MCP docs] Search the docs",
+            parameters: Type.Object({
+              query: Type.String(),
+            }),
+          },
+        ],
+        toolHandlers: new Map([
+          [
+            "docs__search",
+            async (args) => ({
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify(args),
+                },
+              ],
+              isError: false,
+            }),
+          ],
+        ]),
+        close: async () => {},
+      },
+    ];
+
+    const toolList = buildToolList(state);
+
+    expect(toolList.tools.map((tool) => tool.name)).toContain("docs__search");
+    const toolResult = await toolList.toolHandlers.get("docs__search")!(
+      { query: "routing" },
+      state.cwd,
+    );
+    expect(toolResult).toEqual({
+      content: [{ type: "text", text: '{"query":"routing"}' }],
+      isError: false,
+    });
+  } finally {
+    state.db.close();
+  }
+});
+
+test("buildToolList excludes disabled MCP servers", () => {
+  const state = createTestState();
+  try {
+    state.model = {
+      id: "test-model",
+      name: "test-model",
+      api: "openai-completions",
+      provider: "test-provider",
+      baseUrl: "http://localhost:1234/v1",
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 8192,
+      maxTokens: 4096,
+    };
+    state.mcpServers = [
+      {
+        name: "docs",
+        url: "http://docs.test/mcp",
+        enabled: false,
+        tools: [
+          {
+            name: "docs__search",
+            description: "[MCP docs] Search the docs",
+            parameters: Type.Object({
+              query: Type.String(),
+            }),
+          },
+        ],
+        toolHandlers: new Map([
+          [
+            "docs__search",
+            async () => ({
+              content: [{ type: "text", text: "ignored" }],
+              isError: false,
+            }),
+          ],
+        ]),
+        close: async () => {},
+      },
+    ];
+
+    const toolList = buildToolList(state);
+
+    expect(toolList.tools.map((tool) => tool.name)).not.toContain(
+      "docs__search",
+    );
+    expect(toolList.toolHandlers.has("docs__search")).toBe(false);
   } finally {
     state.db.close();
   }

@@ -289,4 +289,80 @@ describe("settings", () => {
     const settings = loadSettings(path);
     expect(settings.customProviders).toBeUndefined();
   });
+
+  test("loadSettings parses valid MCP server entries", () => {
+    const dir = createTempDir();
+    const path = join(dir, "settings.json");
+    writeFileSync(
+      path,
+      JSON.stringify({
+        mcp: {
+          servers: [
+            { name: "docs", url: "http://127.0.0.1:8787/mcp" },
+            { name: "github_tools", url: "https://example.com/mcp" },
+          ],
+        },
+      }),
+      "utf-8",
+    );
+
+    const settings = loadSettings(path);
+    expect(settings.mcp).toEqual({
+      servers: [
+        { name: "docs", url: "http://127.0.0.1:8787/mcp" },
+        { name: "github_tools", url: "https://example.com/mcp" },
+      ],
+    });
+  });
+
+  test("loadSettings drops MCP servers with invalid or duplicate names", () => {
+    const dir = createTempDir();
+    const path = join(dir, "settings.json");
+    writeFileSync(
+      path,
+      JSON.stringify({
+        mcp: {
+          servers: [
+            { name: "docs", url: "http://127.0.0.1:8787/mcp" },
+            { name: "docs", url: "http://127.0.0.1:8788/mcp" },
+            { name: "bad name", url: "http://127.0.0.1:8789/mcp" },
+            { name: "", url: "http://127.0.0.1:8790/mcp" },
+            { name: "missing-url" },
+            42,
+            null,
+          ],
+        },
+      }),
+      "utf-8",
+    );
+
+    const settings = loadSettings(path);
+    expect(settings.mcp).toEqual({
+      servers: [{ name: "docs", url: "http://127.0.0.1:8787/mcp" }],
+    });
+  });
+
+  test("updateSettings preserves existing MCP settings when applying another field", () => {
+    const dir = createTempDir();
+    const path = join(dir, "settings.json");
+    writeFileSync(
+      path,
+      JSON.stringify({
+        verbose: false,
+        mcp: {
+          servers: [{ name: "docs", url: "http://127.0.0.1:8787/mcp" }],
+        },
+      }),
+      "utf-8",
+    );
+
+    const updated = updateSettings(path, { verbose: true });
+
+    expect(updated).toEqual({
+      verbose: true,
+      mcp: {
+        servers: [{ name: "docs", url: "http://127.0.0.1:8787/mcp" }],
+      },
+    });
+  });
 });

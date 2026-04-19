@@ -3,8 +3,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ContainerNode } from "@cel-tui/types";
-import { registerFauxProvider } from "@mariozechner/pi-ai";
-import type { AppState } from "../index.ts";
+import { registerFauxProvider, Type } from "@mariozechner/pi-ai";
+import { type AppState, buildToolList } from "../index.ts";
 import {
   computeContextTokens,
   createSession,
@@ -74,6 +74,7 @@ function createTestState(): AppState {
     showReasoning: true,
     verbose: false,
     versionLabel: "dev",
+    mcpServers: [],
     customModels: [],
     startupWarnings: [],
   };
@@ -361,8 +362,114 @@ describe("ui/commands", () => {
     }
   });
 
+  test("/mcp toggles the selected server and appends explicit tool deltas", () => {
+    const state = createTestState();
+    state.model = {
+      id: "test-model",
+      name: "test-model",
+      api: "openai-completions",
+      provider: "test-provider",
+      baseUrl: "http://localhost:1234/v1",
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 8192,
+      maxTokens: 4096,
+    };
+    state.mcpServers = [
+      {
+        name: "docs",
+        url: "http://docs.test/mcp",
+        enabled: true,
+        tools: [
+          {
+            name: "docs__search",
+            description: "[MCP docs] Search the docs",
+            parameters: Type.Object({}),
+          },
+          {
+            name: "docs__fetch",
+            description: "[MCP docs] Fetch a page",
+            parameters: Type.Object({}),
+          },
+        ],
+        toolHandlers: new Map(),
+        close: async () => {},
+      },
+    ];
+    const runtimeState = { overlay: null as ActiveOverlay | null };
+    const appended: Array<{
+      text: string;
+      sessionId: string | null;
+    }> = [];
+    const controller = createCommandController({
+      openOverlay: (nextOverlay) => {
+        runtimeState.overlay = nextOverlay;
+      },
+      dismissOverlay: () => {
+        runtimeState.overlay = null;
+      },
+      setInputValue: () => {},
+      appendInfoMessage: (text, nextState) => {
+        appended.push({ text, sessionId: nextState.session?.id ?? null });
+      },
+      appendTodoMessage: () => {},
+      scrollConversationToBottom: () => {},
+      requestRender: () => {},
+      reloadPromptContext: async () => {},
+      openInBrowser: () => {},
+    });
+
+    try {
+      expect(controller.handleCommand("mcp", state)).toBe(true);
+      const firstOverlay = expectOverlay(runtimeState.overlay);
+      expect(firstOverlay.title).toBe("Toggle MCP servers");
+      expect(buildToolList(state).tools.map((tool) => tool.name)).toContain(
+        "docs__search",
+      );
+      renderSelect(firstOverlay).props.onKeyPress?.("enter");
+
+      expect(runtimeState.overlay).toBeNull();
+      expect(state.mcpServers[0]?.enabled).toBe(false);
+      expect(appended).toEqual([
+        {
+          text: 'Disabled MCP server "docs" (-2 tools).',
+          sessionId: null,
+        },
+      ]);
+      expect(buildToolList(state).tools.map((tool) => tool.name)).not.toContain(
+        "docs__search",
+      );
+
+      expect(controller.handleCommand("mcp", state)).toBe(true);
+      const secondOverlay = expectOverlay(runtimeState.overlay);
+      renderSelect(secondOverlay).props.onKeyPress?.("enter");
+
+      expect(state.mcpServers[0]?.enabled).toBe(true);
+      expect(appended[1]).toEqual({
+        text: 'Enabled MCP server "docs" (+2 tools).',
+        sessionId: null,
+      });
+      expect(buildToolList(state).tools.map((tool) => tool.name)).toContain(
+        "docs__search",
+      );
+    } finally {
+      state.db.close();
+    }
+  });
+
   test("/help appends a markdown info message without creating a session", () => {
     const state = createTestState();
+    state.mcpServers = [
+      {
+        name: "docs",
+        url: "http://docs.test/mcp",
+        enabled: false,
+        tools: [],
+        toolHandlers: new Map(),
+        close: async () => {},
+      },
+    ];
     const appended: Array<{
       text: string;
       format: string | undefined;
@@ -390,6 +497,8 @@ describe("ui/commands", () => {
       expect(controller.handleCommand("help", state)).toBe(true);
       expect(appended).toHaveLength(1);
       expect(appended[0]?.text.length).toBeGreaterThan(0);
+      expect(appended[0]?.text).toContain("`/mcp`");
+      expect(appended[0]?.text).toContain("`docs` (off)");
       expect(appended[0]?.format).toBe("markdown");
       expect(appended[0]?.sessionId).toBeNull();
       expect(state.session).toBeNull();

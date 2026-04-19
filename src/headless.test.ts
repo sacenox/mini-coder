@@ -58,6 +58,7 @@ function createTestState(): AppState {
     showReasoning: true,
     verbose: false,
     versionLabel: "dev",
+    mcpServers: [],
     customModels: [],
     startupWarnings: [],
   };
