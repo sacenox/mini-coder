@@ -30,6 +30,7 @@ import {
   undoLastTurn,
 } from "../session.ts";
 import { updateSettings } from "../settings.ts";
+import { clearQueuedUserMessages } from "../submit.ts";
 import { collapseWhitespace, truncateText } from "../text.ts";
 import { getTodoItems } from "../tools.ts";
 import { buildHelpText, COMMAND_DESCRIPTIONS } from "./help.ts";
@@ -235,6 +236,13 @@ export function createCommandController(
       focused: true,
       highlightColor: state.theme.accentText,
       onSelect,
+      onKeyPress: (key) => {
+        if (key === "escape") {
+          runtime.dismissOverlay();
+          return;
+        }
+        return false;
+      },
       onBlur: runtime.dismissOverlay,
     });
 
@@ -376,6 +384,7 @@ export function createCommandController(
       items,
       "type to filter sessions...",
       (sessionId) => {
+        clearQueuedUserMessages(state);
         if (sessionId !== currentSessionId) {
           const picked = sessions.find((session) => session.id === sessionId);
           if (picked) {
@@ -394,6 +403,7 @@ export function createCommandController(
     if (state.running) {
       return;
     }
+    clearQueuedUserMessages(state);
     state.session = null;
     clearConversationState(state);
     await runtime.reloadPromptContext(state);
@@ -412,6 +422,8 @@ export function createCommandController(
   };
 
   const handleUndoCommand = async (state: AppState): Promise<void> => {
+    clearQueuedUserMessages(state);
+
     if (state.running && state.abortController) {
       state.abortController.abort();
     }

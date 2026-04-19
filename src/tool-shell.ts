@@ -7,6 +7,7 @@
 import type { Static, Tool } from "@mariozechner/pi-ai";
 import { Type } from "@mariozechner/pi-ai";
 import type { ToolHandler, ToolUpdateCallback } from "./agent.ts";
+import { readFiniteNumber, readString, toRecord } from "./shared.ts";
 import {
   detectLineEnding,
   normalizeLineEndings,
@@ -32,6 +33,16 @@ export interface ShellOpts {
   signal?: AbortSignal;
   /** Callback for progressive output updates while the command is running. */
   onUpdate?: ToolUpdateCallback;
+}
+
+/** Structured shell result preserved on tool-result messages and events. */
+export interface ShellResultDetails {
+  /** Captured stdout text after shell-tool truncation. */
+  stdout: string;
+  /** Captured stderr text after shell-tool truncation. */
+  stderr: string;
+  /** Process exit code. */
+  exitCode: number;
 }
 
 /** pi-ai tool definition for `shell`. */
@@ -65,19 +76,134 @@ const DEFAULT_MAX_LINES = 1000;
 const DEFAULT_MAX_BYTES = 50_000;
 const SHELL_UPDATE_INTERVAL_MS = 75;
 const SHELL_STREAM_DRAIN_TIMEOUT_MS = 25;
+const LEGACY_SHELL_STDERR_PREFIX = "[stderr]\n";
+const LEGACY_SHELL_STDERR_SEPARATOR = `\n\n${LEGACY_SHELL_STDERR_PREFIX}`;
 
-/** Format combined stdout/stderr for display in tool results. */
+/** Format combined stdout/stderr for the legacy text payload preserved for model context. */
 function formatShellOutput(stdout: string, stderr: string): string {
   if (stdout && stderr) {
-    return `${stdout}\n\n[stderr]\n${stderr}`;
+    return `${stdout}${LEGACY_SHELL_STDERR_SEPARATOR}${stderr}`;
   }
   if (stdout) {
     return stdout;
   }
   if (stderr) {
-    return `[stderr]\n${stderr}`;
+    return `${LEGACY_SHELL_STDERR_PREFIX}${stderr}`;
   }
   return "";
+}
+
+/** Format the shell result as the legacy text payload stored in tool content. */
+export function formatShellResultText(result: ShellResultDetails): string {
+  const body = formatShellOutput(result.stdout, result.stderr) || "(no output)";
+  return `Exit code: ${result.exitCode}\n${body}`;
+}
+
+/** Parse structured shell-result details from a persisted tool-result message. */
+export function parseShellResultDetails(
+  details: unknown,
+): ShellResultDetails | null {
+  const record = toRecord(details);
+  if (!record) {
+    return null;
+  }
+
+  const stdout = readString(record, "stdout");
+  const stderr = readString(record, "stderr");
+  const exitCode = readFiniteNumber(record, "exitCode");
+  if (stdout === null || stderr === null || exitCode === null) {
+    return null;
+  }
+
+  return { stdout, stderr, exitCode };
+}
+
+/** Parse the legacy flattened shell-result text stored by older builds. */
+export function parseLegacyShellResult(
+  text: string,
+): ShellResultDetails | null {
+  const match = /^Exit code: (\d+)(?:\n([\s\S]*))?$/.exec(
+    normalizeLineEndings(text, "\n"),
+  );
+  if (!match) {
+    return null;
+  }
+
+  const exitCodeText = match[1];
+  if (!exitCodeText) {
+    return null;
+  }
+
+  const exitCode = Number.parseInt(exitCodeText, 10);
+  const body = match[2] ?? "";
+  if (body === "" || body === "(no output)") {
+    return { stdout: "", stderr: "", exitCode };
+  }
+  if (body.startsWith(LEGACY_SHELL_STDERR_PREFIX)) {
+    return {
+      stdout: "",
+      stderr: body.slice(LEGACY_SHELL_STDERR_PREFIX.length),
+      exitCode,
+    };
+  }
+
+  const separatorIndex = body.indexOf(LEGACY_SHELL_STDERR_SEPARATOR);
+  if (separatorIndex === -1) {
+    return { stdout: body, stderr: "", exitCode };
+  }
+
+  return {
+    stdout: body.slice(0, separatorIndex),
+    stderr: body.slice(separatorIndex + LEGACY_SHELL_STDERR_SEPARATOR.length),
+    exitCode,
+  };
+}
+
+function truncateShellResult(
+  result: ShellResultDetails,
+  maxLines: number,
+  maxBytes: number,
+): ShellResultDetails {
+  if (result.stdout === "" || result.stderr === "") {
+    return {
+      stdout:
+        result.stdout === ""
+          ? ""
+          : truncateOutput(result.stdout, maxLines, maxBytes),
+      stderr:
+        result.stderr === ""
+          ? ""
+          : truncateOutput(result.stderr, maxLines, maxBytes),
+      exitCode: result.exitCode,
+    };
+  }
+
+  return {
+    stdout: truncateOutput(
+      result.stdout,
+      Math.max(1, Math.ceil(maxLines / 2)),
+      Math.max(1, Math.ceil(maxBytes / 2)),
+    ),
+    stderr: truncateOutput(
+      result.stderr,
+      Math.max(1, Math.floor(maxLines / 2)),
+      Math.max(1, Math.floor(maxBytes / 2)),
+    ),
+    exitCode: result.exitCode,
+  };
+}
+
+function buildShellToolResult(
+  result: ShellResultDetails,
+  maxLines: number,
+  maxBytes: number,
+): ToolExecResult {
+  const truncated = truncateShellResult(result, maxLines, maxBytes);
+  return {
+    content: [{ type: "text", text: formatShellResultText(truncated) }],
+    details: truncated,
+    isError: truncated.exitCode !== 0,
+  };
 }
 
 interface ShellCommandLines {
@@ -648,9 +774,15 @@ export async function executeShell(
       opts.onUpdate(textResult(output, false));
     }
 
-    const isError = exitCode !== 0;
-    const body = output || "(no output)";
-    return textResult(`Exit code: ${exitCode}\n${body}`, isError);
+    return buildShellToolResult(
+      {
+        stdout: stdoutCapture?.getOutput().trimEnd() ?? "",
+        stderr: stderrCapture?.getOutput().trimEnd() ?? "",
+        exitCode,
+      },
+      maxLines,
+      maxBytes,
+    );
   } catch (err) {
     cleanupAbort?.();
     cleanupAbort = null;

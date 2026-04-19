@@ -96,4 +96,6 @@
 - TUI changes need real terminal validation in `tmux`; passing tests is not enough.
 - Stay within the agreed TODO scope. Do not pull in adjacent items without discussion.
 - Don't write tests that call real git commands.
-- Don't add brittle tests that pin incidental wording, formatting, colors, layout, or other implementation-shaped output unless that exact output is the actual contract.
+- For test work, read and follow the `testing-practices` skill, not just the generic coding guidance.
+- Don't add brittle tests that pin incidental wording, formatting, colors, layout, render-tree plumbing, tokenizer scopes, or other implementation-shaped output unless that exact output is the actual contract.
+- In UI tests, prefer real input paths and user-visible outcomes over poking `props.onKeyPress`, focus internals, or syntax-theme objects directly.

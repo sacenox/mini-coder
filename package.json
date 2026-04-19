@@ -18,17 +18,17 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@cel-tui/components": "^0.7.2",
-    "@cel-tui/core": "^0.7.2",
-    "@cel-tui/types": "^0.7.2",
-    "@mariozechner/pi-ai": "^0.66.1"
+    "@cel-tui/components": "^0.8.0",
+    "@cel-tui/core": "^0.8.0",
+    "@cel-tui/types": "^0.8.0",
+    "@mariozechner/pi-ai": "^0.67.68"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.12",
     "@types/bun": "^1.3.12",
-    "lefthook": "^2.1.5",
+    "lefthook": "^2.1.6",
     "prettier": "^3.8.3",
-    "typescript": "^6.0.2"
+    "typescript": "^6.0.3"
   },
   "license": "MIT"
 }

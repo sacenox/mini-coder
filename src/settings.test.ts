@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   loadSettings,
+  loadStartupSettings,
   resolveStartupSettings,
   saveSettings,
   type UserSettings,
@@ -51,6 +52,14 @@ describe("settings", () => {
     writeFileSync(path, "{not json", "utf-8");
 
     expect(() => loadSettings(path)).toThrow(/Failed to read settings .*:/);
+  });
+
+  test("loadStartupSettings treats invalid JSON as no saved settings", () => {
+    const dir = createTempDir();
+    const path = join(dir, "settings.json");
+    writeFileSync(path, "{not json", "utf-8");
+
+    expect(loadStartupSettings(path)).toEqual({});
   });
 
   test("updateSettings preserves an invalid settings file instead of overwriting it", () => {

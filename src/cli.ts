@@ -32,7 +32,8 @@ export interface TtyState {
  * Parse supported CLI arguments.
  *
  * Supports `-p, --prompt <text>` for headless one-shot mode and `--json`
- * to stream NDJSON events instead of the default final-text output.
+ * to stream NDJSON events instead of the default final-text mode
+ * (stdout final answer plus stderr activity snippets).
  * Unknown flags and positional arguments fail eagerly.
  *
  * @param argv - Process arguments excluding the Bun executable and script path.

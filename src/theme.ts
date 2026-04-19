@@ -12,10 +12,46 @@
  * @module
  */
 
+import type { SyntaxHighlightTheme } from "@cel-tui/components";
 import type { Color } from "@cel-tui/types";
 
 /** A cel-tui palette color or the terminal default when undefined. */
 type ThemeColor = Color | undefined;
+
+type SyntaxThemeRegistration = Exclude<SyntaxHighlightTheme, string>;
+type SyntaxThemeTokenColor = NonNullable<
+  SyntaxThemeRegistration["tokenColors"]
+>[number];
+type SyntaxThemeVariant = "markdown" | "code" | "shell";
+
+/** ANSI16 fallback hex values for syntax-highlighter theme overrides. */
+const ANSI_COLOR_HEX: Readonly<Record<Color, string>> = {
+  color00: "#000000",
+  color01: "#cd3131",
+  color02: "#0dbc79",
+  color03: "#e5e510",
+  color04: "#2472c8",
+  color05: "#bc3fbc",
+  color06: "#11a8cd",
+  color07: "#e5e5e5",
+  color08: "#666666",
+  color09: "#f14c4c",
+  color10: "#23d18b",
+  color11: "#f5f543",
+  color12: "#3b8eea",
+  color13: "#d670d6",
+  color14: "#29b8db",
+  color15: "#ffffff",
+};
+
+const syntaxThemeCache: Record<
+  SyntaxThemeVariant,
+  WeakMap<Theme, SyntaxThemeRegistration>
+> = {
+  markdown: new WeakMap(),
+  code: new WeakMap(),
+  shell: new WeakMap(),
+};
 
 // ---------------------------------------------------------------------------
 // Types
@@ -144,4 +180,152 @@ export function mergeThemes(
     merged = { ...merged, ...override };
   }
   return merged;
+}
+
+function colorToHex(color: ThemeColor): string | undefined {
+  return color ? ANSI_COLOR_HEX[color] : undefined;
+}
+
+function pushSyntaxTokenColor(
+  tokenColors: SyntaxThemeTokenColor[],
+  scope: string | readonly string[],
+  foreground: ThemeColor,
+  fontStyle?: string,
+): void {
+  const foregroundHex = colorToHex(foreground);
+  if (!foregroundHex && !fontStyle) {
+    return;
+  }
+
+  tokenColors.push({
+    scope,
+    settings: {
+      ...(foregroundHex ? { foreground: foregroundHex } : {}),
+      ...(fontStyle ? { fontStyle } : {}),
+    },
+  });
+}
+
+function pushCodeSyntaxTokenColors(
+  tokenColors: SyntaxThemeTokenColor[],
+  theme: Theme,
+): void {
+  pushSyntaxTokenColor(
+    tokenColors,
+    ["comment", "quote", "doctag", "markup.quote"],
+    theme.mutedText,
+    "italic",
+  );
+  pushSyntaxTokenColor(
+    tokenColors,
+    ["keyword", "operator"],
+    theme.secondaryAccentText,
+  );
+  pushSyntaxTokenColor(
+    tokenColors,
+    ["command", "function_", "function", "title"],
+    theme.accentText,
+  );
+  pushSyntaxTokenColor(
+    tokenColors,
+    ["builtin", "built_in", "class_", "class", "inherited__", "type"],
+    theme.accentText,
+  );
+  pushSyntaxTokenColor(
+    tokenColors,
+    ["escape", "literal", "number", "symbol"],
+    theme.secondaryAccentText ?? theme.accentText,
+  );
+  pushSyntaxTokenColor(
+    tokenColors,
+    ["code", "string", "markup.code"],
+    theme.diffAdded,
+  );
+  pushSyntaxTokenColor(tokenColors, "regexp", theme.diffRemoved);
+  pushSyntaxTokenColor(
+    tokenColors,
+    ["attr", "attribute", "params", "property", "selector-attr"],
+    theme.accentText,
+  );
+  pushSyntaxTokenColor(
+    tokenColors,
+    [
+      "name",
+      "tag",
+      "selector-class",
+      "selector-id",
+      "selector-pseudo",
+      "selector-tag",
+    ],
+    theme.accentText,
+  );
+}
+
+function pushMarkdownSyntaxTokenColors(
+  tokenColors: SyntaxThemeTokenColor[],
+  theme: Theme,
+): void {
+  pushSyntaxTokenColor(
+    tokenColors,
+    ["quote", "markup.quote"],
+    theme.mutedText,
+    "italic",
+  );
+  pushSyntaxTokenColor(
+    tokenColors,
+    ["section", "markup.heading"],
+    theme.accentText,
+    "bold",
+  );
+  pushSyntaxTokenColor(
+    tokenColors,
+    ["bullet", "markup.list"],
+    theme.secondaryAccentText,
+    "bold",
+  );
+  pushSyntaxTokenColor(
+    tokenColors,
+    ["code", "string", "markup.code"],
+    theme.diffAdded,
+  );
+  pushSyntaxTokenColor(tokenColors, "link", theme.accentText, "underline");
+  pushSyntaxTokenColor(tokenColors, "strong", undefined, "bold");
+  pushSyntaxTokenColor(tokenColors, "emphasis", undefined, "italic");
+}
+
+/**
+ * Build the shared syntax-highlight theme registration for a UI theme variant.
+ *
+ * Markdown, read/code blocks, and shell/tool previews all flow through this
+ * helper so active-theme overrides stay consistent in one place. Variant names
+ * are included in the registration so cel-tui's internal SyntaxHighlight cache
+ * does not collapse code and shell renders onto the same custom-theme key.
+ *
+ * @param theme - Active UI theme.
+ * @param variant - Semantic highlighting variant for the rendered content.
+ * @returns A cached cel-tui syntax-highlight theme registration.
+ */
+export function getSyntaxHighlightTheme(
+  theme: Theme,
+  variant: SyntaxThemeVariant,
+): SyntaxThemeRegistration {
+  const cache = syntaxThemeCache[variant];
+  const cached = cache.get(theme);
+  if (cached) {
+    return cached;
+  }
+
+  const tokenColors: SyntaxThemeTokenColor[] = [];
+  if (variant === "markdown") {
+    pushMarkdownSyntaxTokenColors(tokenColors, theme);
+  } else {
+    pushCodeSyntaxTokenColors(tokenColors, theme);
+  }
+
+  const syntaxTheme: SyntaxThemeRegistration = {
+    name: `mini-coder-${variant}`,
+    tokenColors,
+  };
+  cache.set(theme, syntaxTheme);
+  return syntaxTheme;
 }

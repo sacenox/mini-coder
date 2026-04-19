@@ -8,6 +8,7 @@ import type { AppState } from "../index.ts";
 import {
   computeContextTokens,
   createSession,
+  loadMessages,
   openDatabase,
 } from "../session.ts";
 import { loadSettings } from "../settings.ts";
@@ -116,6 +117,9 @@ describe("ui/commands", () => {
       model: "test/beta",
       effort: "high",
     });
+    state.queuedUserMessages = [
+      { role: "user", content: "stale steering", timestamp: now - 1 },
+    ];
 
     state.db.run(
       "INSERT INTO messages (session_id, turn, data, created_at) VALUES (?, ?, ?, ?)",
@@ -173,6 +177,7 @@ describe("ui/commands", () => {
         totalCost: 0,
       });
       expect(state.contextTokens).toBe(computeContextTokens(state.messages));
+      expect(state.queuedUserMessages).toEqual([]);
     } finally {
       state.db.close();
     }
@@ -214,6 +219,9 @@ describe("ui/commands", () => {
     ];
     state.stats = { totalInput: 10, totalOutput: 20, totalCost: 0.5 };
     state.contextTokens = 123;
+    state.queuedUserMessages = [
+      { role: "user", content: "stale steering", timestamp: 2 },
+    ];
 
     try {
       expect(controller.handleCommand("new", state)).toBe(true);
@@ -231,6 +239,74 @@ describe("ui/commands", () => {
       expect(state.agentsMd).toEqual([
         { path: "/tmp/reloaded/AGENTS.md", content: "Reloaded context" },
       ]);
+      expect(state.queuedUserMessages).toEqual([]);
+    } finally {
+      state.db.close();
+    }
+  });
+
+  test("/undo clears queued steering before removing the latest turn", async () => {
+    const state = createTestState();
+    const controller = createCommandController({
+      openOverlay: () => {},
+      dismissOverlay: () => {},
+      setInputValue: () => {},
+      appendInfoMessage: () => {},
+      appendTodoMessage: () => {},
+      scrollConversationToBottom: () => {},
+      requestRender: () => {},
+      reloadPromptContext: async () => {},
+      openInBrowser: () => {},
+    });
+    const now = new Date("2026-04-07T12:00:00Z").getTime();
+    const session = createSession(state.db, {
+      cwd: state.canonicalCwd,
+      model: "test/beta",
+      effort: "high",
+    });
+
+    state.session = session;
+    state.queuedUserMessages = [
+      { role: "user", content: "stale steering", timestamp: now + 2 },
+    ];
+    state.db.run(
+      "INSERT INTO messages (session_id, turn, data, created_at) VALUES (?, ?, ?, ?)",
+      [
+        session.id,
+        1,
+        JSON.stringify({
+          role: "user",
+          content: "historical prompt",
+          timestamp: now,
+        }),
+        now,
+      ],
+    );
+    state.db.run(
+      "INSERT INTO messages (session_id, turn, data, created_at) VALUES (?, ?, ?, ?)",
+      [
+        session.id,
+        1,
+        JSON.stringify({
+          role: "assistant",
+          content: [{ type: "text", text: "historical reply" }],
+          api: "anthropic-messages",
+          provider: "anthropic",
+          model: "test/beta",
+          stopReason: "stop",
+          timestamp: now + 1,
+        }),
+        now + 1,
+      ],
+    );
+    state.messages = loadMessages(state.db, session.id);
+
+    try {
+      expect(controller.handleCommand("undo", state)).toBe(true);
+      await Promise.resolve();
+
+      expect(state.queuedUserMessages).toEqual([]);
+      expect(state.messages).toEqual([]);
     } finally {
       state.db.close();
     }

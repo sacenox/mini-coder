@@ -856,7 +856,7 @@ Commands are discoverable when the input starts with `/`: pressing `Tab` in that
 
 mini-coder also supports a non-interactive one-shot mode for scripting and benchmark harnesses.
 
-`-p, --prompt <text>` submits exactly one user prompt, runs the full agent loop for that turn, and exits after the loop ends. No TUI is started. `--json` switches headless stdout from final-text output to the raw NDJSON event stream.
+`-p, --prompt <text>` submits exactly one user prompt, runs the full agent loop for that turn, and exits after the loop ends. No TUI is started. `--json` switches headless stdout from default text mode (final answer on stdout plus lightweight activity snippets on stderr) to the raw NDJSON event stream.
 
 Headless mode is selected when either:
 
@@ -875,7 +875,9 @@ Input parsing in headless mode reuses the same rules as the interactive input ar
 
 ### Headless text output
 
-In headless mode without `--json`, stdout contains only the final persisted assistant message's text content for the one-shot run. No intermediate streaming events, tool progress, status text, markdown rendering, or other TUI presentation output is written to stdout in this mode.
+In headless mode without `--json`, stdout contains only the final persisted assistant message's text content for the one-shot run. This preserves scriptability for stdout consumers.
+
+Lightweight activity updates may be written to stderr before that final answer, but only as compact assistant-text snippets from tool-use turns. No tool-call details, tool progress, reasoning/thinking text, markdown rendering, status text, or other TUI presentation output is written in this mode.
 
 ### Headless JSON output
 
@@ -926,7 +928,7 @@ On launch, mini-coder:
 7. In interactive mode, renders the UI with an empty conversation log, a minimal `mini-coder` empty-state banner (showing the packaged version when available, otherwise a simple dev label), and the status bar populated.
 8. Starts a new session only when a prompt is actually submitted (no 0-message sessions in the DB).
 
-The empty-state banner is only shown while the conversation log has no messages. In headless mode, stdout is reserved for the final assistant text response by default, or NDJSON event output when `--json` is used.
+The empty-state banner is only shown while the conversation log has no messages. In headless mode, stdout is reserved for the final assistant text response by default, with any lightweight non-JSON activity snippets going to stderr, or NDJSON event output when `--json` is used.
 
 ## User settings persistence
 

@@ -982,6 +982,74 @@ describe("agent loop", () => {
     expect(deltaIndex).toBeLessThan(endIndex);
   });
 
+  test("preserves structured tool details on tool_end events and persisted tool results", async () => {
+    faux.setResponses([
+      fauxAssistantMessage([fauxToolCall("shell", { command: "echo test" })], {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage("Done."),
+    ]);
+
+    const shellDetails = {
+      stdout: "out",
+      stderr: "err",
+      exitCode: 7,
+    };
+    const events: AgentEvent[] = [];
+    const toolHandlers = new Map<string, ToolHandler>([
+      [
+        "shell",
+        async () => ({
+          content: [
+            { type: "text", text: "Exit code: 7\nout\n\n[stderr]\nerr" },
+          ],
+          details: shellDetails,
+          isError: true,
+        }),
+      ],
+    ]);
+
+    const session = createSession(db, { cwd: tmp });
+    const userMsg = makeUser("go");
+    const turn = appendMessage(db, session.id, userMsg);
+
+    const result = await runAgentLoop({
+      db,
+      sessionId: session.id,
+      turn,
+      model: faux.getModel(),
+      systemPrompt: "Test",
+      tools: builtinToolDefs(),
+      toolHandlers,
+      messages: [userMsg],
+      cwd: tmp,
+      onEvent: (event) => events.push(event),
+    });
+
+    const toolEnd = expectEvent(events, "tool_end");
+    const toolResultEvent = expectEvent(events, "tool_result");
+    expect(toolEnd.result.details).toEqual(shellDetails);
+    expect(toolResultEvent.message.details).toEqual(shellDetails);
+
+    const toolResult = result.messages.find(
+      (message) => message.role === "toolResult",
+    );
+    expect(toolResult?.role).toBe("toolResult");
+    if (!toolResult || toolResult.role !== "toolResult") {
+      throw new Error("Expected tool result message");
+    }
+    expect(toolResult.details).toEqual(shellDetails);
+
+    const dbToolResult = loadMessages(db, session.id).find(
+      (message) => message.role === "toolResult",
+    );
+    expect(dbToolResult?.role).toBe("toolResult");
+    if (!dbToolResult || dbToolResult.role !== "toolResult") {
+      throw new Error("Expected persisted tool result message");
+    }
+    expect(dbToolResult.details).toEqual(shellDetails);
+  });
+
   test("interrupt preserves partial response", async () => {
     faux.setResponses([
       fauxAssistantMessage("This response will be interrupted"),

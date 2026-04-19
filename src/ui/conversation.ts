@@ -17,12 +17,9 @@ import {
   normalize,
   relative,
 } from "node:path";
-import {
-  SyntaxHighlight,
-  type SyntaxHighlightTheme,
-} from "@cel-tui/components";
+import { SyntaxHighlight } from "@cel-tui/components";
 import { HStack, measureContentHeight, Text, VStack } from "@cel-tui/core";
-import type { Color, Node } from "@cel-tui/types";
+import type { Node } from "@cel-tui/types";
 import type {
   AssistantMessage,
   TextContent,
@@ -32,11 +29,13 @@ import type {
 import type { AppState } from "../index.ts";
 import type { UiMessage } from "../session.ts";
 import { readBoolean, readFiniteNumber, readString } from "../shared.ts";
-import type { Theme } from "../theme.ts";
+import { getSyntaxHighlightTheme, type Theme } from "../theme.ts";
 import {
   parseGrepResult,
+  parseLegacyShellResult,
   parseReadContinuationHint,
   parseReadResult,
+  parseShellResultDetails,
   parseTodoSnapshot,
   type TodoItem,
 } from "../tools.ts";
@@ -54,26 +53,6 @@ const DEFAULT_TOOL_PREVIEW_WIDTH = 80;
 /** Horizontal columns consumed by tool-block padding and the left border. */
 const TOOL_BLOCK_CHROME_WIDTH = 4;
 
-/** ANSI16 fallback hex values for syntax-highlighter theme overrides. */
-const ANSI_COLOR_HEX: Readonly<Record<Color, string>> = {
-  color00: "#000000",
-  color01: "#cd3131",
-  color02: "#0dbc79",
-  color03: "#e5e510",
-  color04: "#2472c8",
-  color05: "#bc3fbc",
-  color06: "#11a8cd",
-  color07: "#e5e5e5",
-  color08: "#666666",
-  color09: "#f14c4c",
-  color10: "#23d18b",
-  color11: "#f5f543",
-  color12: "#3b8eea",
-  color13: "#d670d6",
-  color14: "#29b8db",
-  color15: "#ffffff",
-};
-
 /** A pending tool result shown in the streaming tail. */
 export interface PendingToolResult {
   /** Tool call id from the assistant message. */
@@ -82,6 +61,8 @@ export interface PendingToolResult {
   toolName: string;
   /** Progressive or final tool-result content captured so far. */
   content: ToolResultMessage["content"];
+  /** Optional structured details preserved on the tool result. */
+  details?: ToolResultMessage["details"];
   /** Whether the tool result was an error. */
   isError: boolean;
 }
@@ -551,12 +532,57 @@ function formatTodoWriteCallSummary(args: Record<string, unknown>): string {
   return `Updating todos... ${todoCount} ${todoLabel} updated`;
 }
 
-/** Strip shell execution labels and normalize the exit line for the UI. */
-function normalizeShellOutput(output: string): string {
-  return output
-    .replace(/^Exit code: (\d+)(?:\n|$)/, (_, code: string) => `exit ${code}\n`)
-    .replace(/(^|\n)\[stderr\]\n/g, "$1")
-    .replace(/\n$/, "");
+function parseShellToolContent(
+  content: ToolResultMessage["content"],
+  details?: ToolResultMessage["details"],
+) {
+  return (
+    parseShellResultDetails(details) ??
+    parseLegacyShellResult(getToolContentText(content))
+  );
+}
+
+function buildShellResultLines(
+  content: ToolResultMessage["content"],
+  details?: ToolResultMessage["details"],
+): { bodyLines: ToolRenderLine[]; footerLines?: ToolRenderLine[] } {
+  const result = parseShellToolContent(content, details);
+  if (!result) {
+    return {
+      bodyLines: splitToolTextLines(
+        normalizeDisplayLineEndings(getToolContentText(content)),
+        "text",
+      ),
+    };
+  }
+
+  const bodyLines: ToolRenderLine[] = [];
+  const stdout = normalizeDisplayLineEndings(result.stdout);
+  const stderr = normalizeDisplayLineEndings(result.stderr);
+
+  if (stdout !== "") {
+    bodyLines.push(...splitToolTextLines(stdout, "text"));
+  }
+  if (stderr !== "") {
+    if (bodyLines.length > 0) {
+      bodyLines.push({ kind: "text", text: "" });
+    }
+    bodyLines.push({ kind: "error", text: "stderr:" });
+    bodyLines.push(...splitToolTextLines(stderr, "error"));
+  }
+  if (bodyLines.length === 0) {
+    bodyLines.push({ kind: "summary", text: "(no output)" });
+  }
+
+  return {
+    bodyLines,
+    footerLines: [
+      {
+        kind: result.exitCode === 0 ? "text" : "error",
+        text: `exit ${result.exitCode}`,
+      },
+    ],
+  };
 }
 
 function getToolHeaderName(toolName: string): string {
@@ -579,137 +605,6 @@ function getToolHeaderColor(toolName: string, theme: Theme) {
   }
 }
 
-type SyntaxThemeRegistration = Exclude<SyntaxHighlightTheme, string>;
-type SyntaxThemeTokenColor = NonNullable<
-  SyntaxThemeRegistration["tokenColors"]
->[number];
-
-const syntaxThemeCache: Record<
-  SyntaxThemeVariant,
-  WeakMap<Theme, SyntaxThemeRegistration>
-> = {
-  markdown: new WeakMap(),
-  code: new WeakMap(),
-  shell: new WeakMap(),
-};
-
-function colorToHex(color: Color | undefined): string | undefined {
-  return color ? ANSI_COLOR_HEX[color] : undefined;
-}
-
-function pushSyntaxTokenColor(
-  tokenColors: SyntaxThemeTokenColor[],
-  scope: string | readonly string[],
-  foreground: Color | undefined,
-  fontStyle?: string,
-): void {
-  const foregroundHex = colorToHex(foreground);
-  if (!foregroundHex && !fontStyle) {
-    return;
-  }
-
-  tokenColors.push({
-    scope,
-    settings: {
-      ...(foregroundHex ? { foreground: foregroundHex } : {}),
-      ...(fontStyle ? { fontStyle } : {}),
-    },
-  });
-}
-
-function pushShellSyntaxTokenColors(
-  tokenColors: SyntaxThemeTokenColor[],
-  theme: Theme,
-): void {
-  pushSyntaxTokenColor(
-    tokenColors,
-    ["comment", "quote", "doctag"],
-    theme.mutedText,
-    "italic",
-  );
-  pushSyntaxTokenColor(
-    tokenColors,
-    ["keyword", "operator"],
-    theme.secondaryAccentText,
-  );
-  pushSyntaxTokenColor(
-    tokenColors,
-    ["function_", "function", "title"],
-    theme.accentText,
-  );
-  pushSyntaxTokenColor(
-    tokenColors,
-    ["built_in", "class_", "class", "inherited__", "type"],
-    theme.accentText,
-  );
-  pushSyntaxTokenColor(
-    tokenColors,
-    ["escape", "literal", "number", "symbol"],
-    theme.secondaryAccentText ?? theme.accentText,
-  );
-  pushSyntaxTokenColor(tokenColors, ["code", "string"], theme.diffAdded);
-  pushSyntaxTokenColor(tokenColors, "regexp", theme.diffRemoved);
-  pushSyntaxTokenColor(
-    tokenColors,
-    ["attr", "attribute", "params", "property", "selector-attr"],
-    theme.accentText,
-  );
-  pushSyntaxTokenColor(
-    tokenColors,
-    [
-      "name",
-      "tag",
-      "selector-class",
-      "selector-id",
-      "selector-pseudo",
-      "selector-tag",
-    ],
-    theme.accentText,
-  );
-}
-
-function pushMarkdownSyntaxTokenColors(
-  tokenColors: SyntaxThemeTokenColor[],
-  theme: Theme,
-): void {
-  pushSyntaxTokenColor(tokenColors, "quote", theme.mutedText, "italic");
-  pushSyntaxTokenColor(tokenColors, "section", theme.accentText, "bold");
-  pushSyntaxTokenColor(
-    tokenColors,
-    "bullet",
-    theme.secondaryAccentText,
-    "bold",
-  );
-  pushSyntaxTokenColor(tokenColors, ["code", "string"], theme.diffAdded);
-  pushSyntaxTokenColor(tokenColors, "link", theme.accentText, "underline");
-  pushSyntaxTokenColor(tokenColors, "strong", undefined, "bold");
-  pushSyntaxTokenColor(tokenColors, "emphasis", undefined, "italic");
-}
-
-function getSyntaxTheme(
-  theme: Theme,
-  variant: SyntaxThemeVariant,
-): SyntaxThemeRegistration {
-  const cache = syntaxThemeCache[variant];
-  const cached = cache.get(theme);
-  if (cached) {
-    return cached;
-  }
-
-  const tokenColors: SyntaxThemeTokenColor[] = [];
-  if (variant === "markdown") {
-    pushMarkdownSyntaxTokenColors(tokenColors, theme);
-  } else {
-    pushShellSyntaxTokenColors(tokenColors, theme);
-  }
-
-  const syntaxTheme: SyntaxThemeRegistration = {
-    tokenColors,
-  };
-  cache.set(theme, syntaxTheme);
-  return syntaxTheme;
-}
-
 function getHighlightedBodyNode(
   spec: HighlightedBodySpec,
   theme: Theme,
@@ -720,7 +615,7 @@ function getHighlightedBodyNode(
 
   try {
     return SyntaxHighlight(spec.text, spec.language, {
-      theme: getSyntaxTheme(theme, spec.themeVariant),
+      theme: getSyntaxHighlightTheme(theme, spec.themeVariant),
     });
   } catch {
     return null;
@@ -1219,14 +1114,16 @@ function renderToolCall(
 
 function buildShellToolResultSpec(
   content: ToolResultMessage["content"],
+  details?: ToolResultMessage["details"],
 ): ToolBlockSpec {
+  const shellResult = buildShellResultLines(content, details);
   return {
     toolName: "shell",
     direction: "<-",
-    bodyLines: splitToolTextLines(
-      normalizeShellOutput(getToolContentText(content)),
-      "text",
-    ),
+    bodyLines: shellResult.bodyLines,
+    ...(shellResult.footerLines
+      ? { footerLines: shellResult.footerLines }
+      : {}),
     previewBody: true,
   };
 }
@@ -1427,9 +1324,10 @@ function renderToolResultContent(
     ConversationRenderOpts,
     "previewWidth" | "verbose" | "theme" | "cwd"
   >,
+  details?: ToolResultMessage["details"],
 ): Node {
   if (toolName === "shell") {
-    return renderToolBlock(buildShellToolResultSpec(content), opts);
+    return renderToolBlock(buildShellToolResultSpec(content, details), opts);
   }
   if (toolName === "read") {
     return renderToolBlock(
@@ -1476,6 +1374,7 @@ function renderToolResultContent(
  * @param resultText - Text content from the tool result message.
  * @param isError - Whether the tool execution failed.
  * @param opts - Shared conversation render options.
+ * @param details - Optional structured tool-result details.
  * @returns The rendered tool block node.
  */
 export function renderToolResult(
@@ -1484,12 +1383,20 @@ export function renderToolResult(
   resultText: string,
   isError: boolean,
   opts: ConversationRenderOpts,
+  details?: ToolResultMessage["details"],
 ): Node {
   const content: ToolResultMessage["content"] = resultText
     ? [{ type: "text", text: resultText }]
     : [];
 
-  return renderToolResultContent(toolName, args, content, isError, opts);
+  return renderToolResultContent(
+    toolName,
+    args,
+    content,
+    isError,
+    opts,
+    details,
+  );
 }
 
 function renderUiTodoMessage(
@@ -1576,8 +1483,16 @@ function renderToolResultMessage(
   content: ToolResultMessage["content"],
   isError: boolean,
   renderOpts: ConversationRenderOpts,
+  details?: ToolResultMessage["details"],
 ): Node {
-  return renderToolResultContent(toolName, args, content, isError, renderOpts);
+  return renderToolResultContent(
+    toolName,
+    args,
+    content,
+    isError,
+    renderOpts,
+    details,
+  );
 }
 
 function renderConversationMessage(
@@ -1604,6 +1519,7 @@ function renderConversationMessage(
     message.content,
     message.isError,
     renderOpts,
+    message.details,
   );
 }
 
@@ -1750,6 +1666,7 @@ export function buildConversationLogNodes(
         pendingToolResult.content,
         pendingToolResult.isError,
         renderOpts,
+        pendingToolResult.details,
       ),
     );
   }

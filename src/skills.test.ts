@@ -8,7 +8,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { discoverSkills } from "./skills.ts";
+import { buildSkillCatalog, discoverSkills } from "./skills.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -91,5 +91,25 @@ describe("discoverSkills", () => {
     } finally {
       chmodSync(skillPath, 0o600);
     }
+  });
+});
+
+describe("buildSkillCatalog", () => {
+  test("XML-escapes skill values before injecting them into the catalog", () => {
+    const catalog = buildSkillCatalog([
+      {
+        name: `lint<&>"'`,
+        description: `Checks <xml> & "quotes" and 'apostrophes'`,
+        path: `/tmp/skill<&>"'`,
+      },
+    ]);
+
+    expect(catalog).toContain("<name>lint&lt;&amp;&gt;&quot;&apos;</name>");
+    expect(catalog).toContain(
+      "<description>Checks &lt;xml&gt; &amp; &quot;quotes&quot; and &apos;apostrophes&apos;</description>",
+    );
+    expect(catalog).toContain(
+      "<location>/tmp/skill&lt;&amp;&gt;&quot;&apos;</location>",
+    );
   });
 });

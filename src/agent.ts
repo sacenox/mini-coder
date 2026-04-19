@@ -596,6 +596,7 @@ function appendToolResultMessage(
     toolCallId: toolCall.id,
     toolName: toolCall.name,
     content: result.content,
+    ...(result.details !== undefined ? { details: result.details } : {}),
     isError: result.isError,
     timestamp: Date.now(),
   };

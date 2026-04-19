@@ -61,7 +61,7 @@ import {
 } from "./session.ts";
 import {
   type CustomProvider,
-  loadSettings,
+  loadStartupSettings,
   resolveStartupSettings,
   type UserSettings,
 } from "./settings.ts";
@@ -588,7 +588,7 @@ export async function init(): Promise<AppState> {
   const { providers, oauthCredentials } = await discoverProviders();
 
   // Load user settings and resolve startup defaults
-  const settings = loadSettings(SETTINGS_PATH);
+  const settings = loadStartupSettings(SETTINGS_PATH);
 
   // Discover custom providers from settings
   const builtInProviderNames = new Set(providers.keys());
@@ -776,7 +776,8 @@ type HeadlessCliStopReason = "stop" | "length" | "error" | "aborted";
  *
  * Non-TTY detection only decides whether headless mode should run at all.
  * Once headless mode is selected, `--json` is the only switch that chooses
- * NDJSON streaming versus final-text output.
+ * NDJSON streaming versus the default text mode (stdout final answer plus
+ * stderr activity snippets).
  *
  * @param state - Initialized application state for the run.
  * @param cli - Parsed CLI options.

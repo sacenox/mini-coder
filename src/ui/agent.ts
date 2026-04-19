@@ -46,6 +46,8 @@ interface UiAgentRuntime {
   requestRender: (priority?: UiRenderPriority) => void;
   /** Re-enable stick-to-bottom behavior for the conversation log. */
   scrollConversationToBottom: () => void;
+  /** Clear the readonly queued-input draft after it is committed. */
+  clearQueuedInputDraft: () => void;
   /** Start the active-turn divider animation. */
   startDividerAnimation: () => void;
   /** Stop the active-turn divider animation. */
@@ -116,12 +118,14 @@ export function createUiAgentController(
       if (
         pending.toolName === event.name &&
         pending.content === event.result.content &&
+        pending.details === event.result.details &&
         pending.isError === event.result.isError
       ) {
         return false;
       }
       pending.toolName = event.name;
       pending.content = event.result.content;
+      pending.details = event.result.details;
       pending.isError = event.result.isError;
       return true;
     }
@@ -130,6 +134,7 @@ export function createUiAgentController(
       toolCallId: event.toolCallId,
       toolName: event.name,
       content: event.result.content,
+      details: event.result.details,
       isError: event.result.isError,
     });
     return true;
@@ -195,6 +200,7 @@ export function createUiAgentController(
   ): void => {
     switch (event.type) {
       case "user_message":
+        runtime.clearQueuedInputDraft();
         runtime.scrollConversationToBottom();
         runtime.requestRender("normal");
         return;
@@ -280,6 +286,7 @@ export function createUiAgentController(
       onEvent: (event, currentState) => handleAgentEvent(event, currentState),
       onTurnEnd: () => {
         resetStreamingState();
+        runtime.clearQueuedInputDraft();
         runtime.stopDividerAnimation();
         runtime.requestRender("normal");
       },

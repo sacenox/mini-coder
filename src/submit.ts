@@ -216,6 +216,20 @@ function recordRawPromptHistory(
 }
 
 /**
+ * Drop any resolved steering messages still queued on the active app state.
+ *
+ * Raw prompt-history rows are intentionally left untouched because queue resets
+ * must not rewrite global input-history behavior.
+ *
+ * @param state - Mutable application state containing the queued steering list.
+ */
+export function clearQueuedUserMessages(
+  state: Pick<AppState, "queuedUserMessages">,
+): void {
+  state.queuedUserMessages.length = 0;
+}
+
+/**
  * Queue resolved user content for the next model-request boundary of an active run.
  *
  * The raw prompt is recorded immediately in prompt history, but the model-visible
@@ -301,6 +315,8 @@ export async function submitResolvedInput(
     throw new Error("Cannot submit empty input.");
   }
 
+  clearQueuedUserMessages(state);
+
   const session = ensureSession(state);
   recordRawPromptHistory(rawInput, state, session.id);
 
@@ -347,6 +363,7 @@ export async function submitResolvedInput(
     stopReason = result.stopReason;
     return result.stopReason;
   } finally {
+    clearQueuedUserMessages(state);
     state.running = false;
     state.abortController = null;
     hooks?.onTurnEnd?.(state, stopReason);

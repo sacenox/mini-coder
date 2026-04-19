@@ -23,6 +23,8 @@ import { validateToolArguments } from "@mariozechner/pi-ai";
 export interface ToolExecResult {
   /** Content blocks for the tool result. */
   content: (TextContent | ImageContent)[];
+  /** Optional structured metadata preserved on the tool-result message. */
+  details?: unknown;
   /** Whether the execution encountered an error. */
   isError: boolean;
 }

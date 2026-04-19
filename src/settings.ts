@@ -80,12 +80,34 @@ export function loadSettings(path: string): UserSettings {
   }
 
   try {
-    const raw = JSON.parse(readFileSync(path, "utf-8")) as unknown;
-    return sanitizeSettings(raw);
+    return parseSettingsFile(path);
   } catch (error) {
-    throw new Error(
-      `Failed to read settings ${path}: ${getErrorMessage(error)}`,
-    );
+    throw createSettingsReadError(path, error);
+  }
+}
+
+/**
+ * Load settings for startup without aborting on invalid JSON.
+ *
+ * Missing files and invalid JSON content are treated as empty settings so
+ * startup behaves like there are no saved settings. Other filesystem errors
+ * still fail with the same descriptive read error as {@link loadSettings}.
+ *
+ * @param path - Absolute path to `settings.json`.
+ * @returns The validated settings object, or `{}` when startup should ignore invalid JSON.
+ */
+export function loadStartupSettings(path: string): UserSettings {
+  if (!existsSync(path)) {
+    return {};
+  }
+
+  try {
+    return parseSettingsFile(path);
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      return {};
+    }
+    throw createSettingsReadError(path, error);
   }
 }
 
@@ -154,6 +176,17 @@ export function resolveStartupSettings(
     showReasoning: settings.showReasoning ?? DEFAULT_SHOW_REASONING,
     verbose: settings.verbose ?? DEFAULT_VERBOSE,
   };
+}
+
+function parseSettingsFile(path: string): UserSettings {
+  const raw = JSON.parse(readFileSync(path, "utf-8")) as unknown;
+  return sanitizeSettings(raw);
+}
+
+function createSettingsReadError(path: string, error: unknown): Error {
+  return new Error(
+    `Failed to read settings ${path}: ${getErrorMessage(error)}`,
+  );
 }
 
 /**

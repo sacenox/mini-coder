@@ -12,6 +12,11 @@ import {
   type SubmitTurnHooks,
   submitResolvedInput,
 } from "./submit.ts";
+import {
+  collapseWhitespaceToNull,
+  joinTextBlocks,
+  truncateText,
+} from "./text.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -27,31 +32,47 @@ export interface HeadlessRunOptions {
 
 /** Options for a headless final-text run. */
 export interface HeadlessTextRunOptions {
+  /** Optional writer for lightweight assistant-activity snippets. */
+  writeActivity?: (text: string) => void | Promise<void>;
   /** Optional writer for the final assistant text output. */
   writeText?: (text: string) => void | Promise<void>;
 }
 
 interface HeadlessOutputController {
-  /** Queue text for stdout with broken-pipe handling. */
+  /** Queue text for one output stream with broken-pipe handling. */
   write(text: string): void;
-  /** Attach SIGINT/stdout error handlers for the active run. */
+  /** Attach error handlers for the active run. */
   attach(): void;
-  /** Remove SIGINT/stdout error handlers after the run. */
+  /** Remove error handlers after the run. */
   detach(): void;
   /** Wait for queued writes and resolve the final stop reason. */
   finalize(stopReason: HeadlessStopReason): Promise<HeadlessStopReason>;
 }
 
+interface HeadlessProcessStream {
+  /** Register an output-stream error handler. */
+  on(event: "error", listener: (error: unknown) => void): void;
+  /** Remove an output-stream error handler. */
+  off(event: "error", listener: (error: unknown) => void): void;
+  /** Write a text chunk to the stream. */
+  write(text: string, callback?: () => void): boolean;
+}
+
+const HEADLESS_ACTIVITY_MAX_CHARS = 160;
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function defaultWrite(text: string): Promise<void> {
+function defaultWrite(
+  stream: HeadlessProcessStream,
+  text: string,
+): Promise<void> {
   return new Promise((resolve, reject) => {
     let settled = false;
 
     const cleanup = (): void => {
-      process.stdout.off("error", handleError);
+      stream.off("error", handleError);
     };
 
     const settle = (callback: () => void): void => {
@@ -69,9 +90,9 @@ function defaultWrite(text: string): Promise<void> {
       });
     };
 
-    process.stdout.on("error", handleError);
+    stream.on("error", handleError);
     try {
-      process.stdout.write(text, () => {
+      stream.write(text, () => {
         settle(resolve);
       });
     } catch (error) {
@@ -142,6 +163,17 @@ function extractAssistantText(message: AssistantMessage | null): string {
     .join("");
 }
 
+function extractAssistantActivitySnippet(
+  message: AssistantMessage,
+): string | null {
+  if (!message.content.some((block) => block.type === "toolCall")) {
+    return null;
+  }
+
+  const text = collapseWhitespaceToNull(joinTextBlocks(message.content));
+  return text ? truncateText(text, HEADLESS_ACTIVITY_MAX_CHARS) : null;
+}
+
 function shouldWriteHeadlessJsonEvent(event: AgentEvent): boolean {
   switch (event.type) {
     case "user_message":
@@ -158,12 +190,17 @@ function shouldWriteHeadlessJsonEvent(event: AgentEvent): boolean {
 
 function createHeadlessOutputController(
   state: AppState,
+  stream: HeadlessProcessStream,
   writeImpl: (text: string) => void | Promise<void>,
+  options?: {
+    attachSigint?: boolean;
+  },
 ): HeadlessOutputController {
   let brokenPipe = false;
   let outputError: unknown = null;
   let pendingWrite = Promise.resolve();
   const sigintHandler = createSigintHandler(state);
+  const attachSigint = options?.attachSigint ?? true;
 
   const stopForBrokenPipe = (): void => {
     if (brokenPipe) {
@@ -183,7 +220,7 @@ function createHeadlessOutputController(
     state.abortController?.abort();
   };
 
-  const stdoutErrorHandler = (error: unknown): void => {
+  const streamErrorHandler = (error: unknown): void => {
     failOutput(error);
   };
 
@@ -206,12 +243,16 @@ function createHeadlessOutputController(
       });
     },
     attach() {
-      process.stdout.on("error", stdoutErrorHandler);
-      process.on("SIGINT", sigintHandler);
+      stream.on("error", streamErrorHandler);
+      if (attachSigint) {
+        process.on("SIGINT", sigintHandler);
+      }
     },
     detach() {
-      process.stdout.off("error", stdoutErrorHandler);
-      process.off("SIGINT", sigintHandler);
+      stream.off("error", streamErrorHandler);
+      if (attachSigint) {
+        process.off("SIGINT", sigintHandler);
+      }
     },
     async finalize(stopReason) {
       await pendingWrite;
@@ -244,7 +285,8 @@ export async function runHeadlessPrompt(
   const content = resolveHeadlessContent(state, rawInput);
   const output = createHeadlessOutputController(
     state,
-    options?.writeLine ?? ((line) => defaultWrite(`${line}\n`)),
+    process.stdout,
+    options?.writeLine ?? ((line) => defaultWrite(process.stdout, `${line}\n`)),
   );
   const hooks: SubmitTurnHooks = {
     onEvent: (event) => {
@@ -270,11 +312,12 @@ export async function runHeadlessPrompt(
 }
 
 /**
- * Run a single headless prompt to completion and write only the final assistant text.
+ * Run a single headless prompt to completion and write the final assistant text.
  *
  * The raw input is parsed with the same rules as interactive input. Slash
- * commands are rejected in headless mode. Only the final persisted assistant
- * message's text content is written to stdout.
+ * commands are rejected in headless mode. The final assistant text is written
+ * to stdout, while lightweight assistant commentary snippets from tool-use
+ * turns are written to stderr.
  *
  * @param state - Mutable application state for the run.
  * @param rawInput - Exact raw prompt text supplied by the user.
@@ -287,20 +330,43 @@ export async function runHeadlessPromptText(
   options?: HeadlessTextRunOptions,
 ): Promise<HeadlessStopReason> {
   const content = resolveHeadlessContent(state, rawInput);
-  const output = createHeadlessOutputController(
+  const finalOutput = createHeadlessOutputController(
     state,
-    options?.writeText ?? defaultWrite,
+    process.stdout,
+    options?.writeText ?? ((text) => defaultWrite(process.stdout, text)),
+  );
+  const activityOutput = createHeadlessOutputController(
+    state,
+    process.stderr,
+    options?.writeActivity ?? ((text) => defaultWrite(process.stderr, text)),
+    { attachSigint: false },
   );
   let finalAssistantMessage: AssistantMessage | null = null;
   const hooks: SubmitTurnHooks = {
     onEvent: (event) => {
-      if (event.type === "assistant_message") {
-        finalAssistantMessage = event.message;
+      switch (event.type) {
+        case "assistant_message": {
+          const activitySnippet = extractAssistantActivitySnippet(
+            event.message,
+          );
+          if (activitySnippet) {
+            activityOutput.write(`${activitySnippet}\n`);
+          }
+          return;
+        }
+        case "done":
+        case "error":
+        case "aborted":
+          finalAssistantMessage = event.message;
+          return;
+        default:
+          return;
       }
     },
   };
 
-  output.attach();
+  finalOutput.attach();
+  activityOutput.attach();
   try {
     const stopReason = await submitResolvedInput(
       rawInput,
@@ -310,10 +376,17 @@ export async function runHeadlessPromptText(
     );
     const finalText = extractAssistantText(finalAssistantMessage);
     if (finalText.length > 0) {
-      output.write(finalText);
+      finalOutput.write(finalText);
     }
-    return await output.finalize(stopReason);
+    const [finalStopReason, activityStopReason] = await Promise.all([
+      finalOutput.finalize(stopReason),
+      activityOutput.finalize(stopReason),
+    ]);
+    return finalStopReason === "stop" || activityStopReason === "stop"
+      ? "stop"
+      : stopReason;
   } finally {
-    output.detach();
+    activityOutput.detach();
+    finalOutput.detach();
   }
 }

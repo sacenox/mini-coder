@@ -59,8 +59,12 @@ export {
 } from "./tool-read.ts";
 export {
   executeShell,
+  formatShellResultText,
+  parseLegacyShellResult,
+  parseShellResultDetails,
   type ShellArgs,
   type ShellOpts,
+  type ShellResultDetails,
   shellTool,
   shellToolHandler,
   truncateOutput,

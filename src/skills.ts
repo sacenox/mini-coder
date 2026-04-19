@@ -226,6 +226,15 @@ export function discoverSkills(scanPaths: string[]): Skill[] {
 // Catalog generation
 // ---------------------------------------------------------------------------
 
+function escapeXml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+}
+
 /**
  * Build the XML skill catalog for the system prompt.
  *
@@ -243,9 +252,9 @@ export function buildSkillCatalog(skills: Skill[]): string {
     .map(
       (s) =>
         `  <skill>\n` +
-        `    <name>${s.name}</name>\n` +
-        `    <description>${s.description}</description>\n` +
-        `    <location>${s.path}</location>\n` +
+        `    <name>${escapeXml(s.name)}</name>\n` +
+        `    <description>${escapeXml(s.description)}</description>\n` +
+        `    <location>${escapeXml(s.path)}</location>\n` +
         `  </skill>`,
     )
     .join("\n");

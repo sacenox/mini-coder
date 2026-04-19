@@ -97,6 +97,14 @@ const QUIT_RULES: Readonly<{
   keysWhenEmptyInput: new Set(["ctrl+d"]),
 };
 
+/** Keypresses that still bubble while the queued steering draft is readonly. */
+const READONLY_INPUT_BUBBLE_KEYS = new Set([
+  "ctrl+c",
+  "ctrl+d",
+  "ctrl+z",
+  "escape",
+]);
+
 // ---------------------------------------------------------------------------
 // UI state (module-scoped, not in AppState)
 // ---------------------------------------------------------------------------
@@ -112,6 +120,9 @@ let visibleConversationStart = 0;
 
 /** Current text in the input area. */
 let inputValue = "";
+
+/** Whether the visible input draft is temporarily readonly. */
+let inputReadOnly = false;
 
 /** Whether the text input is focused. */
 let inputFocused = true;
@@ -168,6 +179,7 @@ export function resetUiState(): void {
   stickToBottom = true;
   visibleConversationStart = 0;
   inputValue = "";
+  inputReadOnly = false;
   inputFocused = true;
   dividerTick = 0;
   stopDividerAnimation();
@@ -610,6 +622,13 @@ function openPathAutocompleteOverlay(state: AppState): void {
       inputValue = value;
       dismissOverlay();
     },
+    onKeyPress: (key) => {
+      if (key === "escape") {
+        dismissOverlay();
+        return;
+      }
+      return false;
+    },
     onBlur: dismissOverlay,
   });
 
@@ -663,7 +682,7 @@ export function createInputController(state: AppState): InputController {
 
   return {
     onChange: (value) => {
-      if (inputValue === value) {
+      if (inputReadOnly || inputValue === value) {
         return;
       }
       inputValue = value;
@@ -675,6 +694,13 @@ export function createInputController(state: AppState): InputController {
       inputFocused = false;
     },
     onKeyPress: (key) => {
+      if (inputReadOnly) {
+        if (READONLY_INPUT_BUBBLE_KEYS.has(key)) {
+          return;
+        }
+        return false;
+      }
+
       if (key === "enter") {
         const raw = inputValue;
 
@@ -684,8 +710,13 @@ export function createInputController(state: AppState): InputController {
           return false;
         }
 
-        inputValue = "";
+        const queuedInputCount = state.queuedUserMessages.length;
         handleInput(raw, state);
+        if (state.queuedUserMessages.length > queuedInputCount) {
+          inputReadOnly = true;
+        } else {
+          inputValue = "";
+        }
         return false;
       }
       if (key === "tab") {
@@ -773,7 +804,7 @@ const commandController = createCommandController({
   openOverlay,
   dismissOverlay,
   setInputValue: (value) => {
-    if (inputValue === value) {
+    if (inputReadOnly || inputValue === value) {
       return;
     }
     inputValue = value;
@@ -797,6 +828,14 @@ const agentController = createUiAgentController({
     commandController.handleCommand(command, state),
   requestRender,
   scrollConversationToBottom,
+  clearQueuedInputDraft: () => {
+    if (!inputReadOnly) {
+      return;
+    }
+    inputReadOnly = false;
+    inputValue = "";
+    inputFocused = true;
+  },
   startDividerAnimation,
   stopDividerAnimation,
 });

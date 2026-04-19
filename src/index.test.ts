@@ -165,6 +165,51 @@ test("bin/mc.ts reports headless command errors without a stack trace", async ()
   expect(result.stderr.trim().split("\n")).toHaveLength(1);
 });
 
+test("init treats invalid settings.json as no saved settings", async () => {
+  const home = createTempDir();
+  const configDir = join(home, ".config", "mini-coder");
+  mkdirSync(configDir, { recursive: true });
+  writeFileSync(join(configDir, "settings.json"), "{not json", "utf-8");
+
+  const result = await runChild(
+    [
+      process.execPath,
+      "--eval",
+      [
+        `const { init } = await import(${JSON.stringify(INDEX_MODULE_URL)});`,
+        "const state = await init();",
+        "try {",
+        "  process.stdout.write(JSON.stringify({",
+        "    settings: state.settings,",
+        "    effort: state.effort,",
+        "    showReasoning: state.showReasoning,",
+        "    verbose: state.verbose,",
+        "    modelId: state.model ? state.model.provider + '/' + state.model.id : null,",
+        "  }));",
+        "} finally {",
+        "  state.db.close();",
+        "}",
+      ].join("\n"),
+    ],
+    {
+      HOME: home,
+      PATH: process.env.PATH,
+      SHELL: process.env.SHELL,
+      TERM: process.env.TERM,
+    },
+  );
+
+  expect(result.exitCode).toBe(0);
+  expect(result.stderr).toBe("");
+  expect(JSON.parse(result.stdout)).toEqual({
+    settings: {},
+    effort: "medium",
+    showReasoning: true,
+    verbose: false,
+    modelId: null,
+  });
+});
+
 test("runHeadlessCli uses final-text mode by default in non-TTY environments", async () => {
   const state = createTestState();
   const calls: string[] = [];

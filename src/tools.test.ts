@@ -23,6 +23,7 @@ import {
   getTodoItems,
   grepToolHandler,
   parseGrepResult,
+  parseLegacyShellResult,
   parseReadResult,
   readImageToolHandler,
   readToolHandler,
@@ -417,11 +418,20 @@ describe("grep", () => {
     }
 
     expect(parsed.truncated).toBe(true);
-    expect(parsed.files).toEqual([
-      {
-        path: "aa.txt",
-        lines: [{ kind: "match", lineNumber: 1, text: "needle\n" }],
-      },
+    expect(parsed.files).toHaveLength(1);
+
+    const [file] = parsed.files;
+    expect(file?.path === "aa.txt" || file?.path === "ab.txt").toBe(true);
+    if (file?.path === "aa.txt") {
+      expect(file.lines).toEqual([
+        { kind: "match", lineNumber: 1, text: "needle\n" },
+      ]);
+      return;
+    }
+
+    expect(file?.lines).toEqual([
+      { kind: "context", lineNumber: 1, text: "before\n" },
+      { kind: "match", lineNumber: 2, text: "needle\n" },
     ]);
   });
 
@@ -538,14 +548,31 @@ describe("shell", () => {
     }
   });
 
-  test("combines stdout and stderr in output", async () => {
+  test("preserves stdout, stderr, and exitCode in structured shell details", async () => {
     const result = await executeShell(
-      { command: "echo out && echo err >&2" },
+      { command: "printf out && printf err >&2 && exit 7" },
       tmp,
     );
-    const text = resultText(result);
-    expect(text).toContain("out");
-    expect(text).toContain("err");
+
+    expect(result.isError).toBe(true);
+    expect(result.details).toEqual({
+      stdout: "out",
+      stderr: "err",
+      exitCode: 7,
+    });
+    expect(resultText(result)).toContain("Exit code: 7");
+    expect(resultText(result)).toContain("out");
+    expect(resultText(result)).toContain("err");
+  });
+
+  test("parses legacy flattened shell result text for backward compatibility", () => {
+    expect(
+      parseLegacyShellResult("Exit code: 9\nout\n\n[stderr]\nerr"),
+    ).toEqual({
+      stdout: "out",
+      stderr: "err",
+      exitCode: 9,
+    });
   });
 });
 

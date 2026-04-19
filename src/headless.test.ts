@@ -145,6 +145,46 @@ describe("headless", () => {
     );
   });
 
+  test("runHeadlessPromptText emits only assistant commentary snippets as activity output", async () => {
+    faux.setResponses([
+      fauxAssistantMessage(
+        [
+          fauxThinking("Need to inspect the tests first."),
+          fauxText("I'll inspect the tests first."),
+          fauxToolCall("shell", { command: "printf hidden-tool-call" }),
+        ],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage([
+        fauxThinking("Need to summarize the result."),
+        fauxText("Done."),
+      ]),
+    ]);
+    const state = createTestState();
+    let activity = "";
+    let output = "";
+
+    const stopReason = await runHeadlessPromptText(
+      state,
+      "run the shell command",
+      {
+        writeActivity: (text) => {
+          activity += text;
+        },
+        writeText: (text) => {
+          output += text;
+        },
+      },
+    );
+
+    expect(stopReason).toBe("stop");
+    expect(activity).toBe("I'll inspect the tests first.\n");
+    expect(activity).not.toContain("Need to inspect the tests first.");
+    expect(activity).not.toContain("hidden-tool-call");
+    expect(activity).not.toContain("Done.");
+    expect(output).toBe("Done.");
+  });
+
   test("runHeadlessPrompt waits for async NDJSON writers before returning", async () => {
     faux.setResponses([fauxAssistantMessage("Done.")]);
     const state = createTestState();
@@ -164,12 +204,26 @@ describe("headless", () => {
     ]);
   });
 
-  test("runHeadlessPromptText waits for async writers before returning", async () => {
-    faux.setResponses([fauxAssistantMessage("Done.")]);
+  test("runHeadlessPromptText waits for async activity and final-text writers before returning", async () => {
+    faux.setResponses([
+      fauxAssistantMessage(
+        [
+          fauxText("I'll inspect the tests first."),
+          fauxToolCall("shell", { command: "printf intermediate" }),
+        ],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("Done."),
+    ]);
     const state = createTestState();
+    let activity = "";
     let output = "";
 
     const stopReason = await runHeadlessPromptText(state, "reply once", {
+      writeActivity: async (text) => {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        activity += text;
+      },
       writeText: async (text) => {
         await new Promise((resolve) => setTimeout(resolve, 10));
         output += text;
@@ -177,6 +231,7 @@ describe("headless", () => {
     });
 
     expect(stopReason).toBe("stop");
+    expect(activity).toBe("I'll inspect the tests first.\n");
     expect(output).toBe("Done.");
   });
 

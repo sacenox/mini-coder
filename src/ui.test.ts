@@ -428,6 +428,151 @@ describe("ui rendering", () => {
     }
   });
 
+  test("keeps a queued steering draft visible and readonly until the queued message is sent", async () => {
+    const api = "ui-steering-input-readonly-test";
+    const sourceId = "ui-steering-input-readonly-test-source";
+    const model: Model<string> = {
+      id: "ui-steering-input-readonly-model",
+      name: "UI Steering Input Readonly Model",
+      api,
+      provider: "test",
+      baseUrl: "http://localhost:0",
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 128000,
+      maxTokens: 4096,
+    };
+
+    const releaseFirstResponse = createDeferred<void>();
+    const releaseSecondResponse = createDeferred<void>();
+    let requestCount = 0;
+    const buildProviderStream = () => {
+      requestCount += 1;
+      const stream = createAssistantMessageEventStream();
+
+      if (requestCount === 1) {
+        const firstMessage: AssistantMessage = {
+          role: "assistant",
+          content: [fauxText("First response.")],
+          api,
+          provider: model.provider,
+          model: model.id,
+          usage: {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            totalTokens: 0,
+            cost: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              total: 0,
+            },
+          },
+          stopReason: "stop",
+          timestamp: Date.now(),
+        };
+
+        queueMicrotask(() => {
+          void releaseFirstResponse.promise.then(() => {
+            stream.push({
+              type: "done",
+              reason: "stop",
+              message: firstMessage,
+            });
+            stream.end(firstMessage);
+          });
+        });
+
+        return stream;
+      }
+
+      const secondMessage = fauxAssistantMessage("Handled steering.");
+      queueMicrotask(() => {
+        void releaseSecondResponse.promise.then(() => {
+          stream.push({
+            type: "done",
+            reason: "stop",
+            message: secondMessage,
+          });
+          stream.end(secondMessage);
+        });
+      });
+      return stream;
+    };
+
+    registerApiProvider(
+      {
+        api,
+        stream: () => buildProviderStream(),
+        streamSimple: () => buildProviderStream(),
+      },
+      sourceId,
+    );
+
+    const state = createTestState();
+    state.cwd = process.cwd();
+    state.canonicalCwd = process.cwd();
+    state.model = model;
+
+    try {
+      const controller = createInputController(state);
+
+      controller.onChange("hello");
+      expect(controller.onKeyPress("enter")).toBe(false);
+      expect(
+        expectTextInput(renderInputArea(state.theme, controller)).props.value,
+      ).toBe("");
+      await waitFor(() => state.running && state.session !== null);
+
+      controller.onChange("steer later");
+      expect(controller.onKeyPress("enter")).toBe(false);
+      expect(
+        expectTextInput(renderInputArea(state.theme, controller)).props.value,
+      ).toBe("steer later");
+      expect(state.queuedUserMessages).toHaveLength(1);
+
+      controller.onChange("should stay blocked");
+      expect(
+        expectTextInput(renderInputArea(state.theme, controller)).props.value,
+      ).toBe("steer later");
+      expect(controller.onKeyPress("enter")).toBe(false);
+      expect(state.queuedUserMessages).toHaveLength(1);
+
+      releaseFirstResponse.resolve();
+
+      await waitFor(
+        () =>
+          requestCount === 2 &&
+          state.running &&
+          state.messages.some(
+            (message) =>
+              message.role === "user" && message.content === "steer later",
+          ),
+      );
+
+      expect(
+        expectTextInput(renderInputArea(state.theme, controller)).props.value,
+      ).toBe("");
+      expect(state.queuedUserMessages).toHaveLength(0);
+
+      controller.onChange("ready again");
+      expect(
+        expectTextInput(renderInputArea(state.theme, controller)).props.value,
+      ).toBe("ready again");
+
+      releaseSecondResponse.resolve();
+      await waitFor(() => !state.running);
+    } finally {
+      await stopRunningTurn(state);
+      unregisterApiProviders(sourceId);
+      state.db.close();
+    }
+  });
+
   test("/undo waits for an aborted run to settle before deleting the turn", async () => {
     const api = "ui-undo-abort-race-test";
     const sourceId = "ui-undo-abort-race-test-source";
@@ -534,6 +679,197 @@ describe("ui rendering", () => {
       await waitFor(() => state.messages.length === 0);
 
       expect(loadMessages(state.db, sessionId)).toEqual([]);
+    } finally {
+      await stopRunningTurn(state);
+      unregisterApiProviders(sourceId);
+      state.db.close();
+    }
+  });
+
+  test("aborted queued steering is discarded without leaking into the replacement run or prompt history", async () => {
+    const api = "ui-queued-steering-abort-reset-test";
+    const sourceId = "ui-queued-steering-abort-reset-test-source";
+    const model: Model<string> = {
+      id: "ui-queued-steering-abort-reset-model",
+      name: "UI Queued Steering Abort Reset Model",
+      api,
+      provider: "test",
+      baseUrl: "http://localhost:0",
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 128000,
+      maxTokens: 4096,
+    };
+
+    const buildAbortMessage = (): AssistantMessage => ({
+      role: "assistant",
+      content: [],
+      api,
+      provider: model.provider,
+      model: model.id,
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          total: 0,
+        },
+      },
+      stopReason: "aborted",
+      errorMessage: "aborted",
+      timestamp: Date.now(),
+    });
+
+    let requestCount = 0;
+    const buildProviderStream = (signal?: AbortSignal) => {
+      requestCount += 1;
+      const stream = createAssistantMessageEventStream();
+
+      if (requestCount === 1) {
+        queueMicrotask(() => {
+          const emitAbort = () => {
+            const abortedMessage = buildAbortMessage();
+            stream.push({
+              type: "error",
+              reason: "aborted",
+              error: abortedMessage,
+            });
+            stream.end(abortedMessage);
+          };
+
+          if (signal?.aborted) {
+            emitAbort();
+            return;
+          }
+
+          signal?.addEventListener("abort", emitAbort, { once: true });
+        });
+
+        return stream;
+      }
+
+      const replacementMessage = fauxAssistantMessage("Replacement response.");
+      queueMicrotask(() => {
+        stream.push({
+          type: "done",
+          reason: "stop",
+          message: replacementMessage,
+        });
+        stream.end(replacementMessage);
+      });
+      return stream;
+    };
+
+    registerApiProvider(
+      {
+        api,
+        stream: (_model, _context, options) =>
+          buildProviderStream(options?.signal),
+        streamSimple: (_model, _context, options) =>
+          buildProviderStream(options?.signal),
+      },
+      sourceId,
+    );
+
+    const state = createTestState();
+    state.cwd = process.cwd();
+    state.canonicalCwd = process.cwd();
+    state.model = model;
+
+    try {
+      const controller = createInputController(state);
+
+      controller.onChange("hello");
+      expect(controller.onKeyPress("enter")).toBe(false);
+      await waitFor(
+        () =>
+          state.running &&
+          state.session !== null &&
+          state.abortController !== null,
+      );
+
+      const sessionId = state.session?.id;
+      if (!sessionId) {
+        throw new Error("Expected a session to be created");
+      }
+
+      controller.onChange("steer later");
+      expect(controller.onKeyPress("enter")).toBe(false);
+      expect(
+        expectTextInput(renderInputArea(state.theme, controller)).props.value,
+      ).toBe("steer later");
+      expect(state.queuedUserMessages).toHaveLength(1);
+
+      state.abortController?.abort();
+      await waitFor(() => !state.running);
+
+      const input = expectTextInput(renderInputArea(state.theme, controller));
+      expect(input.props.value).toBe("");
+      expect(input.props.focused).toBe(true);
+      expect(state.queuedUserMessages).toEqual([]);
+
+      const messagesAfterAbort = loadMessages(state.db, sessionId);
+      const userContentsAfterAbort = messagesAfterAbort
+        .filter((message) => message.role === "user")
+        .map((message) => {
+          if (typeof message.content !== "string") {
+            throw new Error("Expected only text user messages");
+          }
+          return message.content;
+        });
+      expect(userContentsAfterAbort).toEqual(["hello"]);
+
+      const historyAfterAbort = state.db
+        .query<
+          { text: string },
+          []
+        >("SELECT text FROM prompt_history ORDER BY id DESC LIMIT 2")
+        .all();
+      expect(historyAfterAbort.map((entry) => entry.text)).toEqual([
+        "steer later",
+        "hello",
+      ]);
+
+      controller.onChange("replacement prompt");
+      expect(controller.onKeyPress("enter")).toBe(false);
+      await waitFor(
+        () =>
+          !state.running &&
+          state.messages.filter((message) => message.role === "user").length ===
+            2,
+      );
+
+      const finalMessages = loadMessages(state.db, sessionId);
+      const finalUserContents = finalMessages
+        .filter((message) => message.role === "user")
+        .map((message) => {
+          if (typeof message.content !== "string") {
+            throw new Error("Expected only text user messages");
+          }
+          return message.content;
+        });
+      expect(finalUserContents).toEqual(["hello", "replacement prompt"]);
+      expect(finalUserContents).not.toContain("steer later");
+      expect(requestCount).toBe(2);
+
+      const finalHistory = state.db
+        .query<
+          { text: string },
+          []
+        >("SELECT text FROM prompt_history ORDER BY id DESC LIMIT 3")
+        .all();
+      expect(finalHistory.map((entry) => entry.text)).toEqual([
+        "replacement prompt",
+        "steer later",
+        "hello",
+      ]);
     } finally {
       await stopRunningTurn(state);
       unregisterApiProviders(sourceId);
@@ -786,6 +1122,177 @@ describe("ui rendering", () => {
       await stopRunningTurn(state);
       cel.stop();
       faux.unregister();
+      state.db.close();
+    }
+  });
+
+  test("Escape dismisses the path picker without changing the current draft", async () => {
+    const state = createTestState();
+    const cwd = createTempDir();
+    const terminal = new MockTerminal(80, 20);
+    mkdirSync(join(cwd, "src"), { recursive: true });
+    writeFileSync(join(cwd, "src", "ui.ts"), "", "utf-8");
+    writeFileSync(join(cwd, "src", "utils.ts"), "", "utf-8");
+    state.cwd = cwd;
+    state.canonicalCwd = cwd;
+
+    try {
+      const controller = createInputController(state);
+      controller.onChange("inspect src/u");
+      expect(controller.onKeyPress("tab")).toBe(false);
+
+      const overlayText = collectText(renderActiveOverlay(state));
+      expect(overlayText.some((line) => line.includes("src/ui.ts"))).toBe(true);
+      expect(overlayText.some((line) => line.includes("src/utils.ts"))).toBe(
+        true,
+      );
+
+      startUiViewport(state, terminal, controller);
+      await waitForCelRender();
+
+      terminal.sendInput("\x1b");
+      await waitFor(() => renderActiveOverlay(state) === null);
+
+      const input = expectTextInput(renderInputArea(state.theme, controller));
+      expect(input.props.value).toBe("inspect src/u");
+      expect(input.props.focused).toBe(true);
+    } finally {
+      cel.stop();
+      state.db.close();
+    }
+  });
+
+  test("Escape dismisses command overlays without aborting the run or clearing a readonly steering draft", async () => {
+    const api = "ui-overlay-escape-running-test";
+    const sourceId = "ui-overlay-escape-running-test-source";
+    const model: Model<string> = {
+      id: "ui-overlay-escape-running-model",
+      name: "UI Overlay Escape Running Model",
+      api,
+      provider: "test",
+      baseUrl: "http://localhost:0",
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 128000,
+      maxTokens: 4096,
+    };
+
+    const releaseFirstResponse = createDeferred<void>();
+    let requestCount = 0;
+    const buildProviderStream = () => {
+      requestCount += 1;
+      const stream = createAssistantMessageEventStream();
+
+      if (requestCount === 1) {
+        const firstMessage: AssistantMessage = {
+          role: "assistant",
+          content: [fauxText("First response.")],
+          api,
+          provider: model.provider,
+          model: model.id,
+          usage: {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            totalTokens: 0,
+            cost: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              total: 0,
+            },
+          },
+          stopReason: "stop",
+          timestamp: Date.now(),
+        };
+
+        queueMicrotask(() => {
+          void releaseFirstResponse.promise.then(() => {
+            stream.push({
+              type: "done",
+              reason: "stop",
+              message: firstMessage,
+            });
+            stream.end(firstMessage);
+          });
+        });
+
+        return stream;
+      }
+
+      const secondMessage = fauxAssistantMessage("Handled steering.");
+      queueMicrotask(() => {
+        stream.push({
+          type: "done",
+          reason: "stop",
+          message: secondMessage,
+        });
+        stream.end(secondMessage);
+      });
+      return stream;
+    };
+
+    registerApiProvider(
+      {
+        api,
+        stream: () => buildProviderStream(),
+        streamSimple: () => buildProviderStream(),
+      },
+      sourceId,
+    );
+
+    const state = createTestState();
+    const terminal = new MockTerminal(80, 20);
+    state.cwd = process.cwd();
+    state.canonicalCwd = process.cwd();
+    state.model = model;
+
+    try {
+      const controller = createInputController(state);
+      startUiViewport(state, terminal, controller);
+      await waitForCelRender();
+
+      controller.onChange("hello");
+      expect(controller.onKeyPress("enter")).toBe(false);
+      await waitFor(
+        () =>
+          state.running &&
+          state.session !== null &&
+          state.abortController !== null,
+      );
+
+      controller.onChange("steer later");
+      expect(controller.onKeyPress("enter")).toBe(false);
+      expect(
+        expectTextInput(renderInputArea(state.theme, controller)).props.value,
+      ).toBe("steer later");
+      expect(state.queuedUserMessages).toHaveLength(1);
+
+      const base = expectVStack(renderBaseLayout(state, 80, controller));
+      expect(base.props.onKeyPress?.("ctrl+r")).toBeUndefined();
+      expect(renderActiveOverlay(state)).not.toBeNull();
+      await waitForCelRender();
+
+      terminal.sendInput("\x1b");
+      await waitFor(() => renderActiveOverlay(state) === null);
+
+      const input = expectTextInput(renderInputArea(state.theme, controller));
+      expect(input.props.value).toBe("steer later");
+      expect(input.props.focused).toBe(true);
+      expect(state.running).toBe(true);
+      expect(state.abortController?.signal.aborted).toBe(false);
+      expect(state.queuedUserMessages).toHaveLength(1);
+
+      releaseFirstResponse.resolve();
+      await waitFor(() => !state.running);
+      expect(requestCount).toBe(2);
+    } finally {
+      await stopRunningTurn(state);
+      cel.stop();
+      unregisterApiProviders(sourceId);
       state.db.close();
     }
   });

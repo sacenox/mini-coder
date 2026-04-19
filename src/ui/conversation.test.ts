@@ -55,17 +55,6 @@ function collectTextNodes(node: Node | null): TextNode[] {
   return node.children.flatMap((child) => collectTextNodes(child));
 }
 
-function findTextNode(node: Node | null, content: string): TextNode {
-  const textNode = collectTextNodes(node).find(
-    (text) => text.content === content,
-  );
-  expect(textNode).toBeDefined();
-  if (!textNode) {
-    throw new Error(`Missing text node: ${content}`);
-  }
-  return textNode;
-}
-
 function makeAssistantToolCallMessage(): AssistantMessage {
   return {
     role: "assistant",
@@ -146,7 +135,7 @@ describe("ui/conversation", () => {
     expect(lines.join("\n")).not.toContain('"path"');
   });
 
-  test("shell tool-call previews use cel-tui syntax scopes for custom colors", () => {
+  test("shell tool-call previews render the command instead of raw JSON", () => {
     const node = renderAssistantMessage(
       {
         content: [
@@ -169,9 +158,69 @@ describe("ui/conversation", () => {
       },
     );
 
-    expect(findTextNode(node, "true").props.fgColor).toBe(
-      DEFAULT_THEME.secondaryAccentText,
+    const lines = collectRenderedLines(node);
+    expect(lines).toContain("│ shell ->");
+    expect(lines.join("\n")).toContain('if true; then echo "$HOME"; fi');
+    expect(lines.join("\n")).not.toContain('"command"');
+  });
+
+  test("shell tool results render structured stdout/stderr details and keep exit code visible in preview", () => {
+    const stdout = Array.from(
+      { length: 12 },
+      (_, index) => `line ${index + 1}`,
+    ).join("\n");
+    const lines = collectRenderedLines(
+      renderToolResult(
+        "shell",
+        { command: "run-tests" },
+        "Exit code: 1\nlegacy text should be ignored when details exist",
+        true,
+        {
+          showReasoning: true,
+          verbose: false,
+          theme: DEFAULT_THEME,
+          cwd: "/tmp/project",
+          previewWidth: 48,
+        },
+        {
+          stdout,
+          stderr: "boom",
+          exitCode: 1,
+        },
+      ),
     );
+
+    expect(lines).toContain("│ shell <-");
+    expect(lines).toContain("│ stderr:");
+    expect(lines).toContain("│ boom");
+    expect(lines).toContain("│ exit 1");
+    expect(lines).toContain("│ And 7 lines more");
+    expect(lines.join("\n")).not.toContain("legacy text should be ignored");
+  });
+
+  test("shell tool results still render legacy flattened results from persisted history", () => {
+    const lines = collectRenderedLines(
+      renderToolResult(
+        "shell",
+        { command: "run-tests" },
+        "Exit code: 1\nout\n\n[stderr]\nerr",
+        true,
+        {
+          showReasoning: true,
+          verbose: true,
+          theme: DEFAULT_THEME,
+          cwd: "/tmp/project",
+          previewWidth: 80,
+        },
+      ),
+    );
+
+    expect(lines).toContain("│ out");
+    expect(lines).toContain("│ stderr:");
+    expect(lines).toContain("│ err");
+    expect(lines).toContain("│ exit 1");
+    expect(lines.join("\n")).not.toContain("[stderr]");
+    expect(lines.join("\n")).not.toContain("Exit code:");
   });
 
   test("read tool results include the resolved path, hide model paging hints, and render fewer body lines when verbose is off", () => {
@@ -292,17 +341,12 @@ describe("ui/conversation", () => {
       },
     );
 
-    expect(findTextNode(node, "42").props.fgColor).toBe(
-      DEFAULT_THEME.secondaryAccentText,
-    );
     expect(
-      findTextNode(node, "supercalifragilisticexpialidociousIdentifier")
-        .content,
-    ).toBe("supercalifragilisticexpialidociousIdentifier");
-    expect(
-      findTextNode(node, "supercalifragilisticexpialidociousIdentifier").props
-        .fgColor,
-    ).toBeUndefined();
+      collectTextNodes(node).some(
+        (textNode) =>
+          textNode.content === "supercalifragilisticexpialidociousIdentifier",
+      ),
+    ).toBe(true);
   });
 
   test("grep tool results render grouped files and lines instead of raw JSON", () => {
@@ -353,8 +397,5 @@ describe("ui/conversation", () => {
     expect(lines).toContain("│   858:   spec: ToolBlockSpec,");
     expect(lines.join("\n")).not.toContain('"files"');
     expect(lines.join("\n")).not.toContain('"kind"');
-    expect(
-      findTextNode(node, "  857: function renderToolBlock(").props.fgColor,
-    ).toBe(DEFAULT_THEME.toolText);
   });
 });
