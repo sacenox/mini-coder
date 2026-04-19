@@ -147,17 +147,18 @@ Implementation details:
 
 ### Configured MCP tools
 
-When `settings.json` includes `mcp.servers`, mini-coder connects to each configured Streamable HTTP MCP endpoint at startup and imports its advertised tools.
+When `settings.json` includes `mcp.servers`, mini-coder keeps those Streamable HTTP MCP endpoints in runtime state, connects enabled ones when needed, and imports their advertised tools.
 
 Implementation details:
 
 - Only MCP **tools** are imported. MCP prompts and resources are not surfaced in the UI yet.
 - Each configured server entry stores a `name`, `url`, and `enabled` flag. When `enabled` is omitted while loading older configs, it defaults to `true`.
-- Disabled servers are still discovered at startup so `/mcp` can re-enable them without reconnecting; the flag only controls whether their imported tools are exposed to new turns.
+- Disabled servers stay disconnected at startup. They still appear in `/mcp`, and turning one back on reconnects it on demand before exposing its tools to new turns.
+- Turning a server off disconnects it and removes its imported tools from future turns.
 - Imported tool names are prefixed as `<serverName>__<toolName>` so they stay stable and avoid collisions with built-ins and other servers.
 - Tool input schemas are forwarded from MCP JSON Schema into pi-ai tool definitions.
 - Tool calls execute through the MCP client and preserve text/image output directly. Unsupported MCP content kinds are summarized as text.
-- Empty, unreachable, invalid, or tool-less MCP servers do not block startup; they are skipped with a warning.
+- Invalid MCP URLs are skipped immediately. Enabled servers that are unreachable, empty, or tool-less do not block startup; they are skipped with a warning.
 
 ## Community standards
 
@@ -788,12 +789,12 @@ add tests for undo_
 | `/undo`      | Remove the last conversational turn from history: the most recent user message and all assistant/tool messages that followed in that turn. Persisted UI messages are not part of turns and are not removed by `/undo`. Context-only — does not revert filesystem changes.                                                                                                                                                                                                                                              |
 | `/reasoning` | Toggle display of model thinking/reasoning content in the log. The new on/off state is persisted immediately and restored on launch. When no setting exists yet, reasoning defaults to shown.                                                                                                                                                                                                                                                                                                                          |
 | `/verbose`   | Toggle [verbose tool rendering](#verbose-tool-rendering) for shell previews/results, read previews/results, grep previews/results, edit previews, and edit errors. Successful edit results stay compact regardless of this setting. Todo tool results always render in full.                                                                                                                                                                                                                                           |
-| `/mcp`       | Interactive MCP server selector. Lists discovered MCP servers with their current on/off state. Selecting a server toggles it for future turns, persists the new on/off state immediately, and appends a UI-only notice with the exact tool delta, for example `Disabled MCP server "docs" (-3 tools).` Discovery and connection still happen only at startup; `/mcp` does not add, remove, or reload servers.                                                                                                          |
+| `/mcp`       | Interactive MCP server selector. Lists configured MCP servers with their current on/off state. Selecting a server toggles it for future turns, persists the new on/off state immediately, and appends a UI-only notice with the exact tool delta, for example `Disabled MCP server "docs" (-3 tools).` Turning a server on reconnects it on demand; turning it off disconnects it. `/mcp` still does not add, remove, or reload server definitions.                                                                    |
 | `/todo`      | Append the current session todo list to the conversation pane as a UI-only checklist block. The message is persisted with the session, excluded from model context, and does not create a session by itself when no session exists yet.                                                                                                                                                                                                                                                                                |
 | `/login`     | Interactive OAuth login. Shows a selector with available OAuth providers and their login status (logged in / not logged in). Selecting a provider starts the browser-based OAuth flow. Uses pi-ai's OAuth registry. Credentials are persisted to the app data directory and used for provider discovery on subsequent launches.                                                                                                                                                                                        |
 | `/logout`    | Interactive OAuth logout. Shows a selector with logged-in OAuth providers. Selecting one clears its saved credentials.                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `/effort`    | Interactive effort selector. Shows the four reasoning levels (`low`, `medium`, `high`, `xhigh`) with the current level highlighted. Updates the status bar immediately, and the selected effort is persisted immediately as the user's global default. The session record's `effort` field is not updated (it reflects the initial choice, like `/model`).                                                                                                                                                             |
-| `/help`      | List available commands, including the current on/off state of `/reasoning`, `/verbose`, and discovered MCP servers, plus loaded AGENTS.md files and discovered skills.                                                                                                                                                                                                                                                                                                                                                |
+| `/help`      | List available commands, including the current on/off state of `/reasoning`, `/verbose`, and configured MCP servers, plus loaded AGENTS.md files and discovered skills.                                                                                                                                                                                                                                                                                                                                                |
 
 Commands are discoverable when the input starts with `/`: pressing `Tab` in that state switches from file-path autocomplete to interactive command select/filter.
 
@@ -861,11 +862,12 @@ On launch, mini-coder:
    - Each returned model is added to the launch's available model list as `provider/model`, where `provider` is the configured custom provider name.
    - Invalid entries are dropped while loading settings. Duplicate custom provider names keep the first entry.
    - If an endpoint is unreachable, returns a non-2xx response, or the custom provider name conflicts with an already-available built-in provider, startup continues and a warning is added to the UI log.
-4. Connects user-configured MCP servers from `settings.json`.
+4. Loads user-configured MCP servers from `settings.json`.
    - Each entry must provide a `name` and Streamable HTTP endpoint `url`. It also stores an `enabled` flag; older entries that omit it default to enabled.
    - Invalid entries are dropped while loading settings. Duplicate MCP server names keep the first entry.
-   - Startup imports only MCP tools. Imported names are exposed to the model as `<serverName>__<toolName>`, and only servers whose `enabled` flag is on are exposed to new turns.
-   - If a server URL is invalid, the endpoint is unreachable, or the server exposes no tools, startup continues and a warning is added to the UI log.
+   - Startup connects only servers whose `enabled` flag is on. Imported MCP tool names are exposed to the model as `<serverName>__<toolName>`.
+   - Disabled servers stay listed in runtime state so `/mcp` can reconnect them on demand later in the same app run.
+   - If an enabled server URL is invalid, the endpoint is unreachable, or the server exposes no tools, startup continues and a warning is added to the UI log.
 5. Selects the startup model, effort, reasoning visibility, and verbose mode from those settings when available.
    - `defaultModel`: if the saved provider/model is currently available, use it; otherwise fall back to the first available model for this launch.
    - `defaultEffort`: if valid, use it; otherwise fall back to `medium`.
@@ -923,8 +925,8 @@ mini-coder persists global user defaults in `~/.config/mini-coder/settings.json`
 - Custom providers are discovered only at startup. There is currently no interactive slash command to add or remove them.
 - `mcp.servers` is an optional array of user-configured Streamable HTTP MCP endpoints.
 - Each `mcp.servers` entry has a `name`, `url`, and `enabled` flag. `name` must be a simple identifier (`A-Z`, `a-z`, `0-9`, `_`, `-`) because it becomes the imported tool prefix, for example `docs__search`. Older entries that omit `enabled` default to `true` when loaded.
-- Invalid MCP entries are dropped while loading settings. Unreachable, invalid-URL, or tool-less MCP servers do not block startup; mini-coder skips them and shows a warning in the interactive log.
-- MCP server discovery is startup-only. `/mcp` can toggle already-discovered servers on or off for future turns during the current app run, and that on/off state is persisted back to `settings.json`, but there is still no interactive slash command to add, remove, or reload servers.
+- Invalid MCP entries are dropped while loading settings. Invalid MCP URLs are skipped immediately. Enabled MCP servers that are unreachable or tool-less do not block startup; mini-coder skips them and shows a warning in the interactive log.
+- MCP server definitions are loaded at startup. `/mcp` can toggle configured servers on or off for future turns during the current app run, and that on/off state is persisted back to `settings.json`. Turning a server on reconnects it on demand; turning it off disconnects it. There is still no interactive slash command to add, remove, or reload server definitions.
 - Only MCP tools are imported today; MCP prompts and resources are not surfaced yet.
 
 ## Session persistence

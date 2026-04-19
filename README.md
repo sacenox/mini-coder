@@ -71,7 +71,7 @@ Six built-in tools, plus a conditional read-only image tool and any configured M
 | `/undo`      | Remove the last conversational turn without touching filesystem changes.                               |
 | `/reasoning` | Show or hide model thinking. The setting is saved and restored on launch.                              |
 | `/verbose`   | Expand shell output plus edit previews and edit errors in the conversation log.                        |
-| `/mcp`       | Open the MCP server picker and toggle discovered servers on or off for future turns.                   |
+| `/mcp`       | Open the MCP server picker and toggle configured servers on or off for future turns.                   |
 | `/todo`      | Show the current session todo list in the conversation log as a UI-only checklist block.               |
 | `/login`     | Sign in with a supported OAuth provider.                                                               |
 | `/logout`    | Remove saved OAuth credentials for a logged-in provider.                                               |
@@ -126,7 +126,8 @@ Global defaults live in `~/.config/mini-coder/settings.json`.
     "servers": [
       {
         "name": "docs",
-        "url": "http://127.0.0.1:8787/mcp"
+        "url": "http://127.0.0.1:8787/mcp",
+        "enabled": true
       }
     ]
   }
@@ -135,8 +136,9 @@ Global defaults live in `~/.config/mini-coder/settings.json`.
 
 - `mcp.servers` currently supports Streamable HTTP MCP endpoints.
 - Each server `name` becomes the imported tool prefix, so a remote `search` tool appears as `docs__search`.
-- MCP servers are connected at startup; invalid or unreachable ones are skipped with a warning.
-- `/mcp` can temporarily enable or disable discovered MCP servers for future turns during the current app run.
+- MCP servers with `enabled: true` connect at startup; disabled ones stay disconnected until you turn them back on.
+- Invalid MCP URLs are skipped immediately, and enabled servers that are unreachable are skipped with a warning.
+- `/mcp` can enable or disable configured MCP servers during the current app run, and that on/off state is persisted.
 
 ## Docs
 

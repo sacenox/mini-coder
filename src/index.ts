@@ -1,7 +1,7 @@
 /**
  * Entry point for mini-coder.
  *
- * Discovers available LLM providers, connects configured MCP tools,
+ * Discovers available LLM providers, loads configured MCP tools,
  * loads prompt context (AGENTS.md, skills, and theme), opens the session
  * database, selects a model, and starts the TUI.
  *
@@ -32,7 +32,7 @@ import {
 } from "./cli.ts";
 import { getErrorMessage } from "./errors.ts";
 import { type GitState, getGitState } from "./git.ts";
-import { type ConnectedMcpServer, discoverMcpServers } from "./mcp.ts";
+import { discoverMcpServers, type McpServerState } from "./mcp.ts";
 import { canonicalizePath } from "./paths.ts";
 import {
   type AgentsMdFile,
@@ -359,7 +359,7 @@ function selectModel(
 function buildTools(
   model: Model<string>,
   messages: AppState["messages"],
-  mcpServers: readonly ConnectedMcpServer[],
+  mcpServers: readonly McpServerState[],
 ): { tools: Tool[]; toolHandlers: Map<string, ToolHandler> } {
   const tools: Tool[] = [
     shellTool,
@@ -379,7 +379,7 @@ function buildTools(
   ]);
 
   for (const server of mcpServers) {
-    if (!server.enabled) {
+    if (!server.enabled || !server.connected) {
       continue;
     }
 
@@ -519,8 +519,8 @@ export interface AppState {
   showReasoning: boolean;
   /** Whether to show full (un-truncated) tool output. */
   verbose: boolean;
-  /** Discovered MCP servers, including their current enabled/disabled state. */
-  mcpServers: ConnectedMcpServer[];
+  /** Configured MCP servers, including their current enabled/disabled state. */
+  mcpServers: McpServerState[];
   /** Models discovered from custom OpenAI-compatible providers. */
   customModels: Model<string>[];
   /** Warnings from startup (e.g. unreachable custom providers or MCP servers). */

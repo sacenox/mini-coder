@@ -22,7 +22,7 @@ export interface HelpRenderState {
   showReasoning: AppState["showReasoning"];
   /** Whether verbose tool rendering is enabled in the log. */
   verbose: AppState["verbose"];
-  /** Connected MCP servers discovered at startup. */
+  /** Configured MCP servers and their current on/off state. */
   mcpServers: AppState["mcpServers"];
 }
 
@@ -36,7 +36,7 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   undo: "Undo last turn",
   reasoning: "Toggle thinking display",
   verbose: "Toggle verbose tool rendering",
-  mcp: "Toggle discovered MCP servers",
+  mcp: "Toggle configured MCP servers",
   todo: "Show the current todo list",
   login: "OAuth login",
   logout: "OAuth logout",

@@ -1,9 +1,9 @@
 /**
  * Model Context Protocol client discovery and tool integration.
  *
- * mini-coder connects to configured Streamable HTTP MCP servers at startup,
- * imports their tools, and exposes those tools through the normal pi-ai tool
- * interface.
+ * mini-coder tracks configured Streamable HTTP MCP servers, connects enabled
+ * ones when needed, imports their tools, and exposes those tools through the
+ * normal pi-ai tool interface.
  *
  * @module
  */
@@ -144,14 +144,29 @@ const defaultMcpRuntime: McpRuntime = {
   },
 };
 
-/** A connected MCP server whose tools are available to the agent. */
-export interface ConnectedMcpServer {
+async function noopClose(): Promise<void> {}
+
+/** A configured MCP server and its current runtime connection state. */
+export interface McpServerState {
   /** User-configured server identifier from `settings.json`. */
   name: string;
   /** Absolute Streamable HTTP endpoint URL. */
   url: string;
-  /** Whether this server's tools are currently exposed to new turns. */
+  /** Whether this server should be available to future turns. */
   enabled: boolean;
+  /** Whether mini-coder currently has an active connection to this server. */
+  connected: boolean;
+  /** pi-ai tool definitions derived from the server's tool list. */
+  tools: Tool[];
+  /** Tool name → handler map for calling the remote MCP tools. */
+  toolHandlers: Map<string, ToolHandler>;
+  /** Close the underlying MCP transport when connected. */
+  close(): Promise<void>;
+}
+
+interface McpConnectionState {
+  /** Non-fatal warnings encountered while importing tools. */
+  warnings: string[];
   /** pi-ai tool definitions derived from the server's tool list. */
   tools: Tool[];
   /** Tool name → handler map for calling the remote MCP tools. */
@@ -161,93 +176,197 @@ export interface ConnectedMcpServer {
 }
 
 interface McpDiscoveryResult {
-  /** Successfully connected MCP servers with imported tools. */
-  servers: ConnectedMcpServer[];
+  /** MCP servers kept in runtime state after startup discovery. */
+  servers: McpServerState[];
   /** Non-fatal startup warnings for skipped or unreachable servers. */
   warnings: string[];
 }
 
+function createDisconnectedMcpServer(
+  entry: NonNullable<McpSettings["servers"]>[number],
+): McpServerState {
+  return {
+    name: entry.name,
+    url: entry.url,
+    enabled: entry.enabled,
+    connected: false,
+    tools: [],
+    toolHandlers: new Map(),
+    close: noopClose,
+  };
+}
+
+function resetMcpServerConnection(server: McpServerState): void {
+  server.connected = false;
+  server.tools = [];
+  server.toolHandlers = new Map();
+  server.close = noopClose;
+}
+
+function parseMcpServerUrl(rawUrl: string): URL | null {
+  try {
+    return new URL(rawUrl);
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Connect all configured MCP servers and import their tool definitions.
+ * Connect a configured MCP server and populate its imported tools.
  *
- * Invalid or unreachable servers do not fail startup. They are skipped and
- * returned as warnings instead.
+ * On failure the server is left disconnected and the returned warnings describe
+ * why the connection was skipped.
+ *
+ * @param server - Runtime MCP server state to connect.
+ * @param runtime - Internal runtime injection for tests.
+ * @returns Non-fatal warnings produced while connecting or importing tools.
+ */
+export async function connectMcpServer(
+  server: McpServerState,
+  runtime: McpRuntime = defaultMcpRuntime,
+): Promise<string[]> {
+  if (server.connected) {
+    return [];
+  }
+
+  const connection = await createMcpServerConnection(
+    server.name,
+    server.url,
+    runtime,
+  );
+
+  if (!("tools" in connection)) {
+    resetMcpServerConnection(server);
+    return [connection.warning];
+  }
+
+  server.connected = true;
+  server.tools = connection.tools;
+  server.toolHandlers = connection.toolHandlers;
+  server.close = connection.close;
+  return connection.warnings;
+}
+
+/**
+ * Disconnect an MCP server and clear its imported tool state.
+ *
+ * @param server - Runtime MCP server state to disconnect.
+ */
+export async function disconnectMcpServer(
+  server: McpServerState,
+): Promise<void> {
+  if (!server.connected) {
+    return;
+  }
+
+  const close = server.close;
+  resetMcpServerConnection(server);
+  await close();
+}
+
+/**
+ * Connect enabled MCP servers at startup while keeping disabled ones in state.
+ *
+ * Invalid or unreachable servers do not fail startup. Enabled servers that
+ * cannot connect are skipped with warnings. Disabled servers stay disconnected
+ * until the user turns them back on.
  *
  * @param settings - Optional MCP settings from `settings.json`.
  * @param runtime - Internal runtime injection for tests.
- * @returns Connected servers plus any non-fatal warnings.
+ * @returns MCP server state plus any non-fatal startup warnings.
  */
 export async function discoverMcpServers(
   settings: McpSettings | undefined,
   runtime: McpRuntime = defaultMcpRuntime,
 ): Promise<McpDiscoveryResult> {
-  const servers: ConnectedMcpServer[] = [];
+  const servers: McpServerState[] = [];
   const warnings: string[] = [];
 
   for (const entry of settings?.servers ?? []) {
-    let url: URL;
-    try {
-      url = new URL(entry.url);
-    } catch {
+    if (!parseMcpServerUrl(entry.url)) {
       warnings.push(`MCP server "${entry.name}": invalid URL (${entry.url})`);
       continue;
     }
 
-    const transport = runtime.createTransport(url);
-    const client = runtime.createClient();
-
-    try {
-      await client.connect(transport, { timeout: MCP_DISCOVERY_TIMEOUT_MS });
-      const listedTools = await listAllTools(client);
-
-      if (listedTools.length === 0) {
-        warnings.push(
-          `MCP server "${entry.name}" exposes no tools and was skipped.`,
-        );
-        await closeQuietly(transport);
-        continue;
-      }
-
-      const tools: Tool[] = [];
-      const toolHandlers = new Map<string, ToolHandler>();
-
-      for (const listedTool of listedTools) {
-        const { tool, handler } = createMcpTool(entry.name, listedTool, client);
-        if (toolHandlers.has(tool.name)) {
-          warnings.push(
-            `MCP server "${entry.name}": duplicate tool name "${listedTool.name}" was skipped.`,
-          );
-          continue;
-        }
-        tools.push(tool);
-        toolHandlers.set(tool.name, handler);
-      }
-
-      if (tools.length === 0) {
-        warnings.push(
-          `MCP server "${entry.name}" exposes no usable tools and was skipped.`,
-        );
-        await closeQuietly(transport);
-        continue;
-      }
-
-      servers.push({
-        name: entry.name,
-        url: entry.url,
-        enabled: entry.enabled,
-        tools,
-        toolHandlers,
-        close: () => transport.close(),
-      });
-    } catch (error) {
-      warnings.push(
-        `MCP server "${entry.name}": ${getErrorMessage(error)} (${entry.url})`,
-      );
-      await closeQuietly(transport);
+    const server = createDisconnectedMcpServer(entry);
+    if (!entry.enabled) {
+      servers.push(server);
+      continue;
     }
+
+    const connectWarnings = await connectMcpServer(server, runtime);
+    warnings.push(...connectWarnings);
+    if (!server.connected) {
+      continue;
+    }
+
+    servers.push(server);
   }
 
   return { servers, warnings };
+}
+
+async function createMcpServerConnection(
+  serverName: string,
+  serverUrl: string,
+  runtime: McpRuntime,
+): Promise<McpConnectionState | { warning: string }> {
+  const url = parseMcpServerUrl(serverUrl);
+  if (!url) {
+    return {
+      warning: `MCP server "${serverName}": invalid URL (${serverUrl})`,
+    };
+  }
+
+  const transport = runtime.createTransport(url);
+  const client = runtime.createClient();
+
+  try {
+    await client.connect(transport, { timeout: MCP_DISCOVERY_TIMEOUT_MS });
+    const listedTools = await listAllTools(client);
+
+    if (listedTools.length === 0) {
+      await closeQuietly(transport);
+      return {
+        warning: `MCP server "${serverName}" exposes no tools and was skipped.`,
+      };
+    }
+
+    const warnings: string[] = [];
+    const tools: Tool[] = [];
+    const toolHandlers = new Map<string, ToolHandler>();
+
+    for (const listedTool of listedTools) {
+      const { tool, handler } = createMcpTool(serverName, listedTool, client);
+      if (toolHandlers.has(tool.name)) {
+        warnings.push(
+          `MCP server "${serverName}": duplicate tool name "${listedTool.name}" was skipped.`,
+        );
+        continue;
+      }
+      tools.push(tool);
+      toolHandlers.set(tool.name, handler);
+    }
+
+    if (tools.length === 0) {
+      await closeQuietly(transport);
+      return {
+        warning: `MCP server "${serverName}" exposes no usable tools and was skipped.`,
+      };
+    }
+
+    return {
+      warnings,
+      tools,
+      toolHandlers,
+      close: () => transport.close(),
+    };
+  } catch (error) {
+    await closeQuietly(transport);
+    return {
+      warning: `MCP server "${serverName}": ${getErrorMessage(error)} (${serverUrl})`,
+    };
+  }
 }
 
 async function listAllTools(client: McpClientLike): Promise<McpListedTool[]> {

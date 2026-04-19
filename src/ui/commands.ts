@@ -18,6 +18,7 @@ import { getErrorMessage } from "../errors.ts";
 import type { AppState } from "../index.ts";
 import { getAvailableModels, saveOAuthCredentials } from "../index.ts";
 import { COMMANDS } from "../input.ts";
+import { connectMcpServer, disconnectMcpServer } from "../mcp.ts";
 import {
   clearConversationState,
   forkSession,
@@ -74,6 +75,22 @@ interface UiCommandRuntime {
   /** Open a URL in the user's default browser. */
   openInBrowser: (url: string) => void;
 }
+
+interface UiCommandDeps {
+  /** Connect a configured MCP server on demand. */
+  connectMcpServer: (
+    server: AppState["mcpServers"][number],
+  ) => Promise<string[]>;
+  /** Disconnect an MCP server and clear its imported tools. */
+  disconnectMcpServer: (
+    server: AppState["mcpServers"][number],
+  ) => Promise<void>;
+}
+
+const defaultUiCommandDeps: UiCommandDeps = {
+  connectMcpServer,
+  disconnectMcpServer,
+};
 
 /** Public command actions consumed by `ui.ts` and unit tests. */
 interface UiCommandController {
@@ -223,10 +240,11 @@ function formatMcpServerLabel(server: AppState["mcpServers"][number]): string {
 
 function formatMcpToggleMessage(
   server: AppState["mcpServers"][number],
+  toolCount: number,
 ): string {
   const action = server.enabled ? "Enabled" : "Disabled";
-  const delta = `${server.enabled ? "+" : "-"}${server.tools.length}`;
-  const toolSuffix = server.tools.length === 1 ? "tool" : "tools";
+  const delta = `${server.enabled ? "+" : "-"}${toolCount}`;
+  const toolSuffix = toolCount === 1 ? "tool" : "tools";
   return `${action} MCP server "${server.name}" (${delta} ${toolSuffix}).`;
 }
 
@@ -257,14 +275,64 @@ function persistMcpServerSettings(
   });
 }
 
+async function toggleMcpServer(
+  server: AppState["mcpServers"][number],
+  state: AppState,
+  runtime: UiCommandRuntime,
+  deps: UiCommandDeps,
+): Promise<void> {
+  try {
+    if (server.enabled) {
+      const toolCount = server.tools.length;
+      await deps.disconnectMcpServer(server);
+      server.enabled = false;
+      persistMcpServerSettings(state, server);
+      runtime.appendInfoMessage(
+        formatMcpToggleMessage(server, toolCount),
+        state,
+      );
+      runtime.requestRender("normal");
+      return;
+    }
+
+    const warnings = await deps.connectMcpServer(server);
+    if (!server.connected) {
+      for (const warning of warnings) {
+        runtime.appendInfoMessage(warning, state);
+      }
+      runtime.requestRender("normal");
+      return;
+    }
+
+    server.enabled = true;
+    persistMcpServerSettings(state, server);
+    runtime.appendInfoMessage(
+      formatMcpToggleMessage(server, server.tools.length),
+      state,
+    );
+    for (const warning of warnings) {
+      runtime.appendInfoMessage(warning, state);
+    }
+    runtime.requestRender("normal");
+  } catch (error) {
+    runtime.appendInfoMessage(
+      `MCP server "${server.name}": ${getErrorMessage(error)}`,
+      state,
+    );
+    runtime.requestRender("normal");
+  }
+}
+
 /**
  * Create the UI command controller bound to the current UI runtime hooks.
  *
  * @param runtime - State mutation and rendering hooks owned by `ui.ts`.
+ * @param deps - Internal MCP command dependencies, mainly for tests.
  * @returns Command actions for slash commands and overlays.
  */
 export function createCommandController(
   runtime: UiCommandRuntime,
+  deps: UiCommandDeps = defaultUiCommandDeps,
 ): UiCommandController {
   const openSelectOverlay = (
     state: AppState,
@@ -523,9 +591,7 @@ export function createCommandController(
         );
         runtime.dismissOverlay();
         if (server) {
-          server.enabled = !server.enabled;
-          persistMcpServerSettings(state, server);
-          runtime.appendInfoMessage(formatMcpToggleMessage(server), state);
+          void toggleMcpServer(server, state, runtime, deps);
         }
       },
     );

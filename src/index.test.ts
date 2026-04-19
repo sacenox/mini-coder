@@ -527,6 +527,7 @@ test("buildToolList includes connected MCP tools alongside built-ins", async () 
         name: "docs",
         url: "http://docs.test/mcp",
         enabled: true,
+        connected: true,
         tools: [
           {
             name: "docs__search",
@@ -590,6 +591,7 @@ test("buildToolList excludes disabled MCP servers", () => {
         name: "docs",
         url: "http://docs.test/mcp",
         enabled: false,
+        connected: false,
         tools: [
           {
             name: "docs__search",

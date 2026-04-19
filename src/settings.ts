@@ -61,7 +61,7 @@ export interface UserSettings {
   verbose?: boolean;
   /** Custom OpenAI-compatible provider endpoints. */
   customProviders?: CustomProvider[];
-  /** MCP server connections to import tools from at startup. */
+  /** MCP server definitions to manage and connect when enabled. */
   mcp?: McpSettings;
 }
 

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { discoverMcpServers } from "./mcp.ts";
+import { connectMcpServer, discoverMcpServers } from "./mcp.ts";
 
 interface FakeTransport {
   close(): Promise<void>;
@@ -41,6 +41,7 @@ type FakeToolResult =
 
 interface FakeServerBehavior {
   closeCalls: number;
+  connectCalls: number;
   connectError?: Error;
   pages?: FakeToolPage[];
   results?: Record<string, FakeToolResult | Error>;
@@ -77,6 +78,7 @@ function createFakeRuntime(servers: Record<string, FakeServerBehavior>) {
               `Unexpected MCP transport in test: ${transport.url}`,
             );
           }
+          behavior.connectCalls += 1;
           if (behavior.connectError) {
             throw behavior.connectError;
           }
@@ -113,6 +115,7 @@ function createFakeRuntime(servers: Record<string, FakeServerBehavior>) {
 test("discoverMcpServers_reachableServer_importsPrefixedToolsAndExecutesCalls", async () => {
   const behavior: FakeServerBehavior = {
     closeCalls: 0,
+    connectCalls: 0,
     pages: [
       {
         tools: [
@@ -151,6 +154,7 @@ test("discoverMcpServers_reachableServer_importsPrefixedToolsAndExecutesCalls", 
   const server = result.servers[0]!;
   expect(server.name).toBe("docs");
   expect(server.enabled).toBe(true);
+  expect(server.connected).toBe(true);
   expect(server.tools.map((tool) => tool.name)).toEqual(["docs__search"]);
   expect(server.tools[0]?.description).toBe("[MCP docs] Search the docs");
 
@@ -172,9 +176,10 @@ test("discoverMcpServers_reachableServer_importsPrefixedToolsAndExecutesCalls", 
   ]);
 });
 
-test("discoverMcpServers_structuredFallbackResult_formatsStructuredContent", async () => {
+test("discoverMcpServers_disabledServer_staysDisconnectedUntilEnabled", async () => {
   const behavior: FakeServerBehavior = {
     closeCalls: 0,
+    connectCalls: 0,
     pages: [
       {
         tools: [
@@ -197,6 +202,7 @@ test("discoverMcpServers_structuredFallbackResult_formatsStructuredContent", asy
     },
     toolCalls: [],
   };
+  const runtime = createFakeRuntime({ "http://state.test/mcp": behavior });
 
   const result = await discoverMcpServers(
     {
@@ -204,12 +210,21 @@ test("discoverMcpServers_structuredFallbackResult_formatsStructuredContent", asy
         { name: "state", url: "http://state.test/mcp", enabled: false },
       ],
     },
-    createFakeRuntime({ "http://state.test/mcp": behavior }),
+    runtime,
   );
 
-  expect(result.servers[0]?.enabled).toBe(false);
+  const server = result.servers[0]!;
+  expect(server.enabled).toBe(false);
+  expect(server.connected).toBe(false);
+  expect(server.tools).toEqual([]);
+  expect(behavior.connectCalls).toBe(0);
 
-  const handler = result.servers[0]?.toolHandlers.get("state__inspect");
+  expect(await connectMcpServer(server, runtime)).toEqual([]);
+  expect(server.connected).toBe(true);
+  expect(server.tools.map((tool) => tool.name)).toEqual(["state__inspect"]);
+  expect(behavior.connectCalls).toBe(1);
+
+  const handler = server.toolHandlers.get("state__inspect");
   const toolResult = await handler!({}, "/tmp");
 
   expect(toolResult).toEqual({
@@ -227,11 +242,13 @@ test("discoverMcpServers_structuredFallbackResult_formatsStructuredContent", asy
 test("discoverMcpServers_invalidOrUnusableServers_skipsThemWithWarningsAndCleanup", async () => {
   const emptyBehavior: FakeServerBehavior = {
     closeCalls: 0,
+    connectCalls: 0,
     pages: [{ tools: [] }],
     toolCalls: [],
   };
   const failingBehavior: FakeServerBehavior = {
     closeCalls: 0,
+    connectCalls: 0,
     connectError: new Error("connect failed"),
     toolCalls: [],
   };

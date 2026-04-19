@@ -362,7 +362,7 @@ describe("ui/commands", () => {
     }
   });
 
-  test("/mcp toggles the selected server and appends explicit tool deltas", () => {
+  test("/mcp toggles the selected server, persists it, and reconnects when re-enabled", async () => {
     const state = createTestState();
     state.model = {
       id: "test-model",
@@ -376,25 +376,34 @@ describe("ui/commands", () => {
       contextWindow: 8192,
       maxTokens: 4096,
     };
+
+    const docsTools = [
+      {
+        name: "docs__search",
+        description: "[MCP docs] Search the docs",
+        parameters: Type.Object({}),
+      },
+      {
+        name: "docs__fetch",
+        description: "[MCP docs] Fetch a page",
+        parameters: Type.Object({}),
+      },
+    ];
+    const docsHandlers = new Map();
+    let disconnectCalls = 0;
+    let connectCalls = 0;
+
     state.mcpServers = [
       {
         name: "docs",
         url: "http://docs.test/mcp",
         enabled: true,
-        tools: [
-          {
-            name: "docs__search",
-            description: "[MCP docs] Search the docs",
-            parameters: Type.Object({}),
-          },
-          {
-            name: "docs__fetch",
-            description: "[MCP docs] Fetch a page",
-            parameters: Type.Object({}),
-          },
-        ],
-        toolHandlers: new Map(),
-        close: async () => {},
+        connected: true,
+        tools: docsTools,
+        toolHandlers: docsHandlers,
+        close: async () => {
+          disconnectCalls += 1;
+        },
       },
     ];
     state.settings = saveSettings(state.settingsPath, {
@@ -418,23 +427,44 @@ describe("ui/commands", () => {
       text: string;
       sessionId: string | null;
     }> = [];
-    const controller = createCommandController({
-      openOverlay: (nextOverlay) => {
-        runtimeState.overlay = nextOverlay;
+    const controller = createCommandController(
+      {
+        openOverlay: (nextOverlay) => {
+          runtimeState.overlay = nextOverlay;
+        },
+        dismissOverlay: () => {
+          runtimeState.overlay = null;
+        },
+        setInputValue: () => {},
+        appendInfoMessage: (text, nextState) => {
+          appended.push({ text, sessionId: nextState.session?.id ?? null });
+        },
+        appendTodoMessage: () => {},
+        scrollConversationToBottom: () => {},
+        requestRender: () => {},
+        reloadPromptContext: async () => {},
+        openInBrowser: () => {},
       },
-      dismissOverlay: () => {
-        runtimeState.overlay = null;
+      {
+        connectMcpServer: async (server) => {
+          connectCalls += 1;
+          server.connected = true;
+          server.tools = docsTools;
+          server.toolHandlers = docsHandlers;
+          server.close = async () => {
+            disconnectCalls += 1;
+          };
+          return [];
+        },
+        disconnectMcpServer: async (server) => {
+          await server.close();
+          server.connected = false;
+          server.tools = [];
+          server.toolHandlers = new Map();
+          server.close = async () => {};
+        },
       },
-      setInputValue: () => {},
-      appendInfoMessage: (text, nextState) => {
-        appended.push({ text, sessionId: nextState.session?.id ?? null });
-      },
-      appendTodoMessage: () => {},
-      scrollConversationToBottom: () => {},
-      requestRender: () => {},
-      reloadPromptContext: async () => {},
-      openInBrowser: () => {},
-    });
+    );
 
     try {
       expect(controller.handleCommand("mcp", state)).toBe(true);
@@ -444,9 +474,12 @@ describe("ui/commands", () => {
         "docs__search",
       );
       renderSelect(firstOverlay).props.onKeyPress?.("enter");
+      await Promise.resolve();
+      await Promise.resolve();
 
       expect(runtimeState.overlay).toBeNull();
       expect(state.mcpServers[0]?.enabled).toBe(false);
+      expect(state.mcpServers[0]?.connected).toBe(false);
       expect(state.settings.mcp).toEqual({
         servers: [
           {
@@ -477,6 +510,7 @@ describe("ui/commands", () => {
           ],
         },
       });
+      expect(disconnectCalls).toBe(1);
       expect(appended).toEqual([
         {
           text: 'Disabled MCP server "docs" (-2 tools).',
@@ -490,8 +524,12 @@ describe("ui/commands", () => {
       expect(controller.handleCommand("mcp", state)).toBe(true);
       const secondOverlay = expectOverlay(runtimeState.overlay);
       renderSelect(secondOverlay).props.onKeyPress?.("enter");
+      await Promise.resolve();
+      await Promise.resolve();
 
       expect(state.mcpServers[0]?.enabled).toBe(true);
+      expect(state.mcpServers[0]?.connected).toBe(true);
+      expect(connectCalls).toBe(1);
       expect(loadSettings(state.settingsPath)).toEqual({
         mcp: {
           servers: [
@@ -527,6 +565,7 @@ describe("ui/commands", () => {
         name: "docs",
         url: "http://docs.test/mcp",
         enabled: false,
+        connected: false,
         tools: [],
         toolHandlers: new Map(),
         close: async () => {},
