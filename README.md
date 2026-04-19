@@ -39,9 +39,11 @@ $ mc
 
 ## Tools
 
-Four built-in tools, plus a read-only image tool:
+Six built-in tools, plus a conditional read-only image tool:
 
 - **`shell`** — runs commands in the user's shell. Returns stdout, stderr, and exit code. Large output is truncated to protect model context.
+- **`read`** — reads UTF-8 text files from disk, optionally by line window.
+- **`grep`** — searches file contents with ripgrep-style options and returns structured matches.
 - **`edit`** — exact-text replacement in a single file. Fails deterministically if the target is missing or ambiguous. Creates new files when old text is empty.
 - **`todoWrite`** — creates or updates the session todo list incrementally and returns the full current snapshot.
 - **`todoRead`** — returns the full current session todo list snapshot.
