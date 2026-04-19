@@ -64,6 +64,7 @@ function createTestState(): AppState {
     providers: new Map(),
     oauthCredentials: {},
     settings: {},
+    repoSettings: {},
     settingsPath,
     cwd,
     canonicalCwd: cwd,
@@ -553,6 +554,187 @@ describe("ui/commands", () => {
       expect(buildToolList(state).tools.map((tool) => tool.name)).toContain(
         "docs__search",
       );
+    } finally {
+      state.db.close();
+    }
+  });
+
+  test("/mcp toggles repo-local servers for the current run without persisting a global shadow copy", async () => {
+    const state = createTestState();
+    state.model = {
+      id: "test-model",
+      name: "test-model",
+      api: "openai-completions",
+      provider: "test-provider",
+      baseUrl: "http://localhost:1234/v1",
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 8192,
+      maxTokens: 4096,
+    };
+
+    const docsTools = [
+      {
+        name: "docs__search",
+        description: "[MCP docs] Search the docs",
+        parameters: Type.Object({}),
+      },
+    ];
+    const docsHandlers = new Map();
+    let disconnectCalls = 0;
+    let connectCalls = 0;
+
+    state.mcpServers = [
+      {
+        name: "docs",
+        url: "http://repo-docs.test/mcp",
+        enabled: true,
+        connected: true,
+        tools: docsTools,
+        toolHandlers: docsHandlers,
+        close: async () => {
+          disconnectCalls += 1;
+        },
+      },
+    ];
+    state.settings = saveSettings(state.settingsPath, {
+      mcp: {
+        servers: [
+          {
+            name: "docs",
+            url: "http://global-docs.test/mcp",
+            enabled: false,
+          },
+          {
+            name: "down",
+            url: "http://down.test/mcp",
+            enabled: false,
+          },
+        ],
+      },
+    });
+    state.repoSettings = {
+      mcp: {
+        servers: [
+          {
+            name: "docs",
+            url: "http://repo-docs.test/mcp",
+            enabled: true,
+          },
+        ],
+      },
+    };
+    const runtimeState = { overlay: null as ActiveOverlay | null };
+    const appended: Array<{
+      text: string;
+      sessionId: string | null;
+    }> = [];
+    const controller = createCommandController(
+      {
+        openOverlay: (nextOverlay) => {
+          runtimeState.overlay = nextOverlay;
+        },
+        dismissOverlay: () => {
+          runtimeState.overlay = null;
+        },
+        setInputValue: () => {},
+        appendInfoMessage: (text, nextState) => {
+          appended.push({ text, sessionId: nextState.session?.id ?? null });
+        },
+        appendTodoMessage: () => {},
+        scrollConversationToBottom: () => {},
+        requestRender: () => {},
+        reloadPromptContext: async () => {},
+        openInBrowser: () => {},
+      },
+      {
+        connectMcpServer: async (server) => {
+          connectCalls += 1;
+          server.connected = true;
+          server.tools = docsTools;
+          server.toolHandlers = docsHandlers;
+          server.close = async () => {
+            disconnectCalls += 1;
+          };
+          return [];
+        },
+        disconnectMcpServer: async (server) => {
+          await server.close();
+          server.connected = false;
+          server.tools = [];
+          server.toolHandlers = new Map();
+          server.close = async () => {};
+        },
+      },
+    );
+
+    try {
+      expect(controller.handleCommand("mcp", state)).toBe(true);
+      renderSelect(expectOverlay(runtimeState.overlay)).props.onKeyPress?.(
+        "enter",
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(state.mcpServers[0]?.enabled).toBe(false);
+      expect(state.mcpServers[0]?.connected).toBe(false);
+      expect(state.settings).toEqual({
+        mcp: {
+          servers: [
+            {
+              name: "docs",
+              url: "http://global-docs.test/mcp",
+              enabled: false,
+            },
+            {
+              name: "down",
+              url: "http://down.test/mcp",
+              enabled: false,
+            },
+          ],
+        },
+      });
+      expect(loadSettings(state.settingsPath)).toEqual(state.settings);
+      expect(disconnectCalls).toBe(1);
+
+      expect(controller.handleCommand("mcp", state)).toBe(true);
+      renderSelect(expectOverlay(runtimeState.overlay)).props.onKeyPress?.(
+        "enter",
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(state.mcpServers[0]?.enabled).toBe(true);
+      expect(state.mcpServers[0]?.connected).toBe(true);
+      expect(connectCalls).toBe(1);
+      expect(state.settings).toEqual({
+        mcp: {
+          servers: [
+            {
+              name: "docs",
+              url: "http://global-docs.test/mcp",
+              enabled: false,
+            },
+            {
+              name: "down",
+              url: "http://down.test/mcp",
+              enabled: false,
+            },
+          ],
+        },
+      });
+      expect(loadSettings(state.settingsPath)).toEqual(state.settings);
+      expect(appended).toEqual([
+        {
+          text: 'Disabled MCP server "docs" (-1 tool).',
+          sessionId: null,
+        },
+        {
+          text: 'Enabled MCP server "docs" (+1 tool).',
+          sessionId: null,
+        },
+      ]);
     } finally {
       state.db.close();
     }

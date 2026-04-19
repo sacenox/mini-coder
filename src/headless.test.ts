@@ -48,6 +48,7 @@ function createTestState(): AppState {
     providers: new Map(),
     oauthCredentials: {},
     settings: {},
+    repoSettings: {},
     settingsPath: join(tmp, "settings.json"),
     cwd: tmp,
     canonicalCwd: tmp,

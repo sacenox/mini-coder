@@ -11,6 +11,7 @@ import { join } from "node:path";
 import {
   loadSettings,
   loadStartupSettings,
+  mergeUserSettings,
   resolveStartupSettings,
   saveSettings,
   type UserSettings,
@@ -134,6 +135,103 @@ describe("settings", () => {
       defaultEffort: "xhigh",
       showReasoning: true,
       verbose: true,
+    });
+    expect(loadSettings(path)).toEqual(updated);
+  });
+
+  test("mergeUserSettings overlays scalars and merges named arrays", () => {
+    const merged = mergeUserSettings(
+      {
+        defaultModel: "openai/gpt-5",
+        verbose: false,
+        customProviders: [
+          { name: "ollama", baseUrl: "http://global-ollama/v1" },
+          { name: "lm-studio", baseUrl: "http://global-lm/v1" },
+        ],
+        mcp: {
+          servers: [
+            { name: "docs", url: "http://global-docs/mcp", enabled: false },
+            { name: "down", url: "http://down.test/mcp", enabled: false },
+          ],
+        },
+      },
+      {
+        defaultModel: "anthropic/claude-sonnet-4",
+        showReasoning: false,
+        customProviders: [
+          { name: "ollama", baseUrl: "http://repo-ollama/v1" },
+          { name: "vllm", baseUrl: "http://repo-vllm/v1" },
+        ],
+        mcp: {
+          servers: [
+            { name: "docs", url: "http://repo-docs/mcp", enabled: true },
+            { name: "repo", url: "http://repo.test/mcp", enabled: true },
+          ],
+        },
+      },
+    );
+
+    expect(merged).toEqual({
+      defaultModel: "anthropic/claude-sonnet-4",
+      showReasoning: false,
+      verbose: false,
+      customProviders: [
+        { name: "ollama", baseUrl: "http://repo-ollama/v1" },
+        { name: "lm-studio", baseUrl: "http://global-lm/v1" },
+        { name: "vllm", baseUrl: "http://repo-vllm/v1" },
+      ],
+      mcp: {
+        servers: [
+          { name: "docs", url: "http://repo-docs/mcp", enabled: true },
+          { name: "down", url: "http://down.test/mcp", enabled: false },
+          { name: "repo", url: "http://repo.test/mcp", enabled: true },
+        ],
+      },
+    });
+  });
+
+  test("updateSettings merges customProviders and MCP servers by name", () => {
+    const dir = createTempDir();
+    const path = join(dir, "settings.json");
+    saveSettings(path, {
+      customProviders: [
+        { name: "ollama", baseUrl: "http://global-ollama/v1" },
+        { name: "lm-studio", baseUrl: "http://global-lm/v1" },
+      ],
+      mcp: {
+        servers: [
+          { name: "docs", url: "http://global-docs/mcp", enabled: false },
+          { name: "down", url: "http://down.test/mcp", enabled: false },
+        ],
+      },
+    });
+
+    const updated = updateSettings(path, {
+      customProviders: [
+        { name: "ollama", baseUrl: "http://updated-ollama/v1" },
+        { name: "vllm", baseUrl: "http://updated-vllm/v1" },
+      ],
+      mcp: {
+        servers: [
+          { name: "docs", url: "http://updated-docs/mcp", enabled: true },
+          { name: "repo", url: "http://repo.test/mcp", enabled: true },
+        ],
+      },
+    });
+
+    expect(updated).toEqual({
+      customProviders: [
+        { name: "ollama", baseUrl: "http://updated-ollama/v1" },
+        { name: "lm-studio", baseUrl: "http://global-lm/v1" },
+        { name: "vllm", baseUrl: "http://updated-vllm/v1" },
+      ],
+      mcp: {
+        servers: [
+          { name: "docs", url: "http://updated-docs/mcp", enabled: true },
+          { name: "down", url: "http://down.test/mcp", enabled: false },
+          { name: "repo", url: "http://repo.test/mcp", enabled: true },
+        ],
+      },
     });
     expect(loadSettings(path)).toEqual(updated);
   });

@@ -12,6 +12,7 @@ import {
   getAvailableModels,
   loadOAuthCredentials,
   loadPromptContext,
+  loadUserSettingsForLaunch,
   reloadPromptContext,
   runHeadlessCli,
 } from "./index.ts";
@@ -45,6 +46,7 @@ function createTestState(): AppState {
     providers: new Map(),
     oauthCredentials: {},
     settings: {},
+    repoSettings: {},
     settingsPath: join(cwd, "settings.json"),
     cwd,
     canonicalCwd: cwd,
@@ -188,6 +190,103 @@ test("init treats invalid settings.json as no saved settings", async () => {
     showReasoning: true,
     verbose: false,
     modelId: null,
+  });
+});
+
+test("loadUserSettingsForLaunch keeps global settings separate from the repo overlay", () => {
+  const dir = createTempDir();
+  const settingsPath = join(dir, "settings.json");
+  const repoRoot = join(dir, "project");
+  mkdirSync(join(repoRoot, ".mini-coder"), { recursive: true });
+
+  writeFileSync(
+    settingsPath,
+    JSON.stringify({
+      defaultModel: "openai/gpt-5",
+      verbose: false,
+      customProviders: [
+        { name: "ollama", baseUrl: "http://global-ollama/v1" },
+        { name: "lm-studio", baseUrl: "http://global-lm/v1" },
+      ],
+      mcp: {
+        servers: [
+          { name: "docs", url: "http://global-docs/mcp", enabled: false },
+          { name: "down", url: "http://down.test/mcp", enabled: false },
+        ],
+      },
+    }),
+    "utf-8",
+  );
+  writeFileSync(
+    join(repoRoot, ".mini-coder", "settings.json"),
+    JSON.stringify({
+      defaultModel: "anthropic/claude-sonnet-4",
+      showReasoning: false,
+      customProviders: [
+        { name: "ollama", baseUrl: "http://repo-ollama/v1" },
+        { name: "vllm", baseUrl: "http://repo-vllm/v1" },
+      ],
+      mcp: {
+        servers: [
+          { name: "docs", url: "http://repo-docs/mcp", enabled: true },
+          { name: "repo", url: "http://repo.test/mcp", enabled: true },
+        ],
+      },
+    }),
+    "utf-8",
+  );
+
+  expect(
+    loadUserSettingsForLaunch({
+      settingsPath,
+      gitRoot: repoRoot,
+    }),
+  ).toEqual({
+    settings: {
+      defaultModel: "openai/gpt-5",
+      verbose: false,
+      customProviders: [
+        { name: "ollama", baseUrl: "http://global-ollama/v1" },
+        { name: "lm-studio", baseUrl: "http://global-lm/v1" },
+      ],
+      mcp: {
+        servers: [
+          { name: "docs", url: "http://global-docs/mcp", enabled: false },
+          { name: "down", url: "http://down.test/mcp", enabled: false },
+        ],
+      },
+    },
+    repoSettings: {
+      defaultModel: "anthropic/claude-sonnet-4",
+      showReasoning: false,
+      customProviders: [
+        { name: "ollama", baseUrl: "http://repo-ollama/v1" },
+        { name: "vllm", baseUrl: "http://repo-vllm/v1" },
+      ],
+      mcp: {
+        servers: [
+          { name: "docs", url: "http://repo-docs/mcp", enabled: true },
+          { name: "repo", url: "http://repo.test/mcp", enabled: true },
+        ],
+      },
+    },
+    effectiveSettings: {
+      defaultModel: "anthropic/claude-sonnet-4",
+      showReasoning: false,
+      verbose: false,
+      customProviders: [
+        { name: "ollama", baseUrl: "http://repo-ollama/v1" },
+        { name: "lm-studio", baseUrl: "http://global-lm/v1" },
+        { name: "vllm", baseUrl: "http://repo-vllm/v1" },
+      ],
+      mcp: {
+        servers: [
+          { name: "docs", url: "http://repo-docs/mcp", enabled: true },
+          { name: "down", url: "http://down.test/mcp", enabled: false },
+          { name: "repo", url: "http://repo.test/mcp", enabled: true },
+        ],
+      },
+    },
   });
 });
 

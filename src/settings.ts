@@ -133,6 +133,52 @@ export function loadStartupSettings(path: string): UserSettings {
 }
 
 /**
+ * Merge two settings objects using startup overlay semantics.
+ *
+ * Scalar fields use override-wins. `customProviders` merges by provider name,
+ * and `mcp.servers` merges by server name. Same-name override entries replace
+ * base entries while keeping the base ordering stable; new override entries are
+ * appended in override order.
+ *
+ * @param base - Base settings, usually the global settings file.
+ * @param override - Higher-priority settings, usually a repo-local overlay.
+ * @returns The merged effective settings.
+ */
+export function mergeUserSettings(
+  base: UserSettings,
+  override: UserSettings,
+): UserSettings {
+  const sanitizedBase = sanitizeSettings(base);
+  const sanitizedOverride = sanitizeSettings(override);
+  const merged: UserSettings = {
+    ...sanitizedBase,
+    ...sanitizedOverride,
+  };
+
+  const customProviders = mergeNamedEntries(
+    sanitizedBase.customProviders,
+    sanitizedOverride.customProviders,
+  );
+  if (customProviders) {
+    merged.customProviders = customProviders;
+  } else {
+    delete merged.customProviders;
+  }
+
+  const servers = mergeNamedEntries(
+    sanitizedBase.mcp?.servers,
+    sanitizedOverride.mcp?.servers,
+  );
+  if (servers) {
+    merged.mcp = { servers };
+  } else {
+    delete merged.mcp;
+  }
+
+  return merged;
+}
+
+/**
  * Save user settings to disk.
  *
  * Parent directories are created automatically. Only validated fields are
@@ -166,7 +212,7 @@ export function updateSettings(
   update: Partial<UserSettings>,
 ): UserSettings {
   const current = loadSettings(path);
-  const merged = { ...current, ...sanitizeSettings(update) };
+  const merged = mergeUserSettings(current, sanitizeSettings(update));
   return saveSettings(path, merged);
 }
 
@@ -197,6 +243,35 @@ export function resolveStartupSettings(
     showReasoning: settings.showReasoning ?? DEFAULT_SHOW_REASONING,
     verbose: settings.verbose ?? DEFAULT_VERBOSE,
   };
+}
+
+function mergeNamedEntries<T extends { name: string }>(
+  base: readonly T[] | undefined,
+  override: readonly T[] | undefined,
+): T[] | undefined {
+  if (!base?.length && !override?.length) {
+    return undefined;
+  }
+
+  const merged = [...(base ?? [])];
+  const indexes = new Map<string, number>();
+
+  for (const [index, entry] of merged.entries()) {
+    indexes.set(entry.name, index);
+  }
+
+  for (const entry of override ?? []) {
+    const existingIndex = indexes.get(entry.name);
+    if (existingIndex === undefined) {
+      indexes.set(entry.name, merged.length);
+      merged.push(entry);
+      continue;
+    }
+
+    merged[existingIndex] = entry;
+  }
+
+  return merged.length > 0 ? merged : undefined;
 }
 
 function parseSettingsFile(path: string): UserSettings {

@@ -130,6 +130,7 @@ function createTestState(): AppState {
     providers: new Map(),
     oauthCredentials: {},
     settings: {},
+    repoSettings: {},
     settingsPath,
     cwd,
     canonicalCwd: cwd,

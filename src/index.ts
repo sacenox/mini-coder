@@ -53,6 +53,7 @@ import {
 import {
   type CustomProvider,
   loadStartupSettings,
+  mergeUserSettings,
   resolveStartupSettings,
   type UserSettings,
 } from "./settings.ts";
@@ -447,6 +448,37 @@ export async function loadPromptContext(opts?: { cwd?: string }): Promise<{
   };
 }
 
+/**
+ * Load global and repo-local settings for the current launch.
+ *
+ * The repo-local overlay is read only and is loaded only when a git root is
+ * known. Invalid startup content in either file is treated as empty settings.
+ *
+ * @param opts - Optional settings path and git-root override for tests.
+ * @returns Global settings, repo-local overlay settings, and the merged result.
+ */
+export function loadUserSettingsForLaunch(opts?: {
+  settingsPath?: string;
+  gitRoot?: string | null;
+}): {
+  settings: UserSettings;
+  repoSettings: UserSettings;
+  effectiveSettings: UserSettings;
+} {
+  const settingsPath = opts?.settingsPath ?? SETTINGS_PATH;
+  const gitRoot = opts?.gitRoot ?? null;
+  const settings = loadStartupSettings(settingsPath);
+  const repoSettings = gitRoot
+    ? loadStartupSettings(join(gitRoot, ".mini-coder", "settings.json"))
+    : {};
+
+  return {
+    settings,
+    repoSettings,
+    effectiveSettings: mergeUserSettings(settings, repoSettings),
+  };
+}
+
 /** Refresh the current prompt/session context at a reload boundary like `/new`. */
 export async function reloadPromptContext(
   state: AppState,
@@ -501,6 +533,8 @@ export interface AppState {
   oauthCredentials: Record<string, OAuthCredentials>;
   /** Loaded global user settings. */
   settings: UserSettings;
+  /** Loaded repo-local settings overlay for the current app run. */
+  repoSettings: UserSettings;
   /** Absolute path to the global settings file. */
   settingsPath: string;
   /** Working directory as entered by the user/shell (for display and tool execution). */
@@ -541,13 +575,17 @@ export async function init(): Promise<AppState> {
   // Discover providers (env + OAuth)
   const { providers, oauthCredentials } = await discoverProviders();
 
-  // Load user settings and resolve startup defaults
-  const settings = loadStartupSettings(SETTINGS_PATH);
+  const promptContext = await loadPromptContext({ cwd });
+  const { settings, repoSettings, effectiveSettings } =
+    loadUserSettingsForLaunch({
+      settingsPath: SETTINGS_PATH,
+      gitRoot: promptContext.git?.root ?? null,
+    });
 
-  // Discover custom providers from settings
+  // Discover custom providers from effective settings
   const builtInProviderNames = new Set(providers.keys());
   const customResult = await discoverCustomProviders(
-    settings.customProviders ?? [],
+    effectiveSettings.customProviders ?? [],
     builtInProviderNames,
   );
 
@@ -556,12 +594,12 @@ export async function init(): Promise<AppState> {
     providers.set(name, key);
   }
 
-  const mcpResult = await discoverMcpServers(settings.mcp);
+  const mcpResult = await discoverMcpServers(effectiveSettings.mcp);
 
   const builtInModels = listAvailableModels(providers);
   const availableModels = [...builtInModels, ...customResult.models];
   const startup = resolveStartupSettings(
-    settings,
+    effectiveSettings,
     availableModels.map((model) => `${model.provider}/${model.id}`),
   );
   const model = selectModel(availableModels, startup.modelId);
@@ -570,7 +608,6 @@ export async function init(): Promise<AppState> {
   const db = openDatabase(DB_PATH);
   const effort = startup.effort;
   const conversation = createConversationSnapshot();
-  const promptContext = await loadPromptContext({ cwd });
 
   return {
     db,
@@ -588,6 +625,7 @@ export async function init(): Promise<AppState> {
     providers,
     oauthCredentials,
     settings,
+    repoSettings,
     settingsPath: SETTINGS_PATH,
     cwd: promptContext.cwd,
     canonicalCwd: promptContext.canonicalCwd,

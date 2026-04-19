@@ -248,30 +248,32 @@ function formatMcpToggleMessage(
   return `${action} MCP server "${server.name}" (${delta} ${toolSuffix}).`;
 }
 
+function isRepoLocalMcpServer(state: AppState, serverName: string): boolean {
+  return (
+    state.repoSettings.mcp?.servers?.some(
+      (entry) => entry.name === serverName,
+    ) ?? false
+  );
+}
+
 function persistMcpServerSettings(
   state: AppState,
   server: AppState["mcpServers"][number],
 ): void {
-  const currentServers = state.settings.mcp?.servers ?? [];
-  let found = false;
-  const servers = currentServers.map((entry) => {
-    if (entry.name !== server.name) {
-      return entry;
-    }
-    found = true;
-    return { ...entry, enabled: server.enabled };
-  });
-
-  if (!found) {
-    servers.push({
-      name: server.name,
-      url: server.url,
-      enabled: server.enabled,
-    });
+  if (isRepoLocalMcpServer(state, server.name)) {
+    return;
   }
 
   state.settings = updateSettings(state.settingsPath, {
-    mcp: { servers },
+    mcp: {
+      servers: [
+        {
+          name: server.name,
+          url: server.url,
+          enabled: server.enabled,
+        },
+      ],
+    },
   });
 }
 
