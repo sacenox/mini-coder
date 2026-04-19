@@ -567,8 +567,7 @@ function buildShellResultLines(
     if (bodyLines.length > 0) {
       bodyLines.push({ kind: "text", text: "" });
     }
-    bodyLines.push({ kind: "error", text: "stderr:" });
-    bodyLines.push(...splitToolTextLines(stderr, "error"));
+    bodyLines.push(...splitToolTextLines(stderr, "text"));
   }
   if (bodyLines.length === 0) {
     bodyLines.push({ kind: "summary", text: "(no output)" });
@@ -578,7 +577,7 @@ function buildShellResultLines(
     bodyLines,
     footerLines: [
       {
-        kind: result.exitCode === 0 ? "text" : "error",
+        kind: "text",
         text: `exit ${result.exitCode}`,
       },
     ],

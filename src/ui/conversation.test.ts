@@ -164,63 +164,91 @@ describe("ui/conversation", () => {
     expect(lines.join("\n")).not.toContain('"command"');
   });
 
-  test("shell tool results render structured stdout/stderr details and keep exit code visible in preview", () => {
+  test("shell tool results render structured stdout/stderr details without stderr labels or error styling", () => {
     const stdout = Array.from(
       { length: 12 },
       (_, index) => `line ${index + 1}`,
     ).join("\n");
-    const lines = collectRenderedLines(
-      renderToolResult(
-        "shell",
-        { command: "run-tests" },
-        "Exit code: 1\nlegacy text should be ignored when details exist",
-        true,
-        {
-          showReasoning: true,
-          verbose: false,
-          theme: DEFAULT_THEME,
-          cwd: "/tmp/project",
-          previewWidth: 48,
-        },
-        {
-          stdout,
-          stderr: "boom",
-          exitCode: 1,
-        },
-      ),
+    const node = renderToolResult(
+      "shell",
+      { command: "run-tests" },
+      "Exit code: 1\nlegacy text should be ignored when details exist",
+      true,
+      {
+        showReasoning: true,
+        verbose: false,
+        theme: DEFAULT_THEME,
+        cwd: "/tmp/project",
+        previewWidth: 48,
+      },
+      {
+        stdout,
+        stderr: "boom",
+        exitCode: 1,
+      },
     );
+    const lines = collectRenderedLines(node);
+    const textNodes = collectTextNodes(node);
 
     expect(lines).toContain("│ shell <-");
-    expect(lines).toContain("│ stderr:");
     expect(lines).toContain("│ boom");
     expect(lines).toContain("│ exit 1");
-    expect(lines).toContain("│ And 7 lines more");
+    expect(lines).toContain("│ And 6 lines more");
+    expect(lines.join("\n")).not.toContain("stderr:");
     expect(lines.join("\n")).not.toContain("legacy text should be ignored");
+    expect(
+      textNodes.some(
+        (textNode) =>
+          textNode.content === "boom" &&
+          textNode.props.fgColor === DEFAULT_THEME.toolText,
+      ),
+    ).toBe(true);
+    expect(
+      textNodes.some(
+        (textNode) =>
+          textNode.content === "exit 1" &&
+          textNode.props.fgColor === DEFAULT_THEME.toolText,
+      ),
+    ).toBe(true);
   });
 
-  test("shell tool results still render legacy flattened results from persisted history", () => {
-    const lines = collectRenderedLines(
-      renderToolResult(
-        "shell",
-        { command: "run-tests" },
-        "Exit code: 1\nout\n\n[stderr]\nerr",
-        true,
-        {
-          showReasoning: true,
-          verbose: true,
-          theme: DEFAULT_THEME,
-          cwd: "/tmp/project",
-          previewWidth: 80,
-        },
-      ),
+  test("shell tool results still render legacy flattened results from persisted history without stderr labels", () => {
+    const node = renderToolResult(
+      "shell",
+      { command: "run-tests" },
+      "Exit code: 1\nout\n\n[stderr]\nerr",
+      true,
+      {
+        showReasoning: true,
+        verbose: true,
+        theme: DEFAULT_THEME,
+        cwd: "/tmp/project",
+        previewWidth: 80,
+      },
     );
+    const lines = collectRenderedLines(node);
+    const textNodes = collectTextNodes(node);
 
     expect(lines).toContain("│ out");
-    expect(lines).toContain("│ stderr:");
     expect(lines).toContain("│ err");
     expect(lines).toContain("│ exit 1");
+    expect(lines.join("\n")).not.toContain("stderr:");
     expect(lines.join("\n")).not.toContain("[stderr]");
     expect(lines.join("\n")).not.toContain("Exit code:");
+    expect(
+      textNodes.some(
+        (textNode) =>
+          textNode.content === "err" &&
+          textNode.props.fgColor === DEFAULT_THEME.toolText,
+      ),
+    ).toBe(true);
+    expect(
+      textNodes.some(
+        (textNode) =>
+          textNode.content === "exit 1" &&
+          textNode.props.fgColor === DEFAULT_THEME.toolText,
+      ),
+    ).toBe(true);
   });
 
   test("read tool results include the resolved path, hide model paging hints, and render fewer body lines when verbose is off", () => {
