@@ -360,6 +360,23 @@
           <article
             class="rounded-lg border border-term-border bg-term-surface p-4"
           >
+            <h3 class="mt-0 mb-2 font-semibold text-term-bright">read</h3>
+            <p class="mb-0 text-sm leading-relaxed text-term-fg">
+              Reads UTF-8 text files from disk, optionally by line window.
+            </p>
+          </article>
+          <article
+            class="rounded-lg border border-term-border bg-term-surface p-4"
+          >
+            <h3 class="mt-0 mb-2 font-semibold text-term-bright">grep</h3>
+            <p class="mb-0 text-sm leading-relaxed text-term-fg">
+              Searches file contents with ripgrep-style options and returns
+              structured matches.
+            </p>
+          </article>
+          <article
+            class="rounded-lg border border-term-border bg-term-surface p-4"
+          >
             <h3 class="mt-0 mb-2 font-semibold text-term-bright">edit</h3>
             <p class="mb-0 text-sm leading-relaxed text-term-fg">
               Performs exact-text replacement in a single file. It fails
@@ -396,8 +413,9 @@
         </div>
         <p>
           Plugins can add more tools, but the core stays intentionally small:
-          <code>shell</code>, <code>edit</code>, <code>todoWrite</code>, and
-          <code>todoRead</code> cover repo work and task tracking, and
+          <code>shell</code>, <code>read</code>, <code>grep</code>, and
+          <code>edit</code> cover repo work, <code>todoWrite</code> and
+          <code>todoRead</code> handle task tracking, and
           <code>readImage</code> appears only when it is useful.
         </p>
       </section>
@@ -627,9 +645,10 @@ $ printf '%s\n' 'fix the failing tests' | mc</code></pre>
           <li>
             <strong>Completed NDJSON output.</strong> With <code>--json</code>,
             stdout carries completed assistant and tool-result messages plus
-            <code>done</code>, <code>error</code>, or <code>aborted</code>
-            outcomes. Queued <code>user_message</code> events may also appear.
-            Streaming deltas are omitted.
+            <code>done</code>, <code>error</code>, or
+            <code>aborted</code> outcomes. Queued
+            <code>user_message</code> events may also appear. Streaming deltas
+            are omitted.
           </li>
           <li>
             <strong>Normal session persistence.</strong> Headless runs still

@@ -57,7 +57,7 @@ This replaces: `yoctocolors`, `yoctomarkdown`, `yoctoselect`, and all our custom
 
 ## Tools
 
-Four built-in tools, plus a read-only image tool. Plugins may add more (see [Plugins](#plugins)).
+Six built-in tools, plus a conditional read-only image tool. Plugins may add more (see [Plugins](#plugins)).
 
 ### `shell`
 
@@ -72,6 +72,30 @@ Implementation details:
 - Before execution, the harness may apply a small set of silent, lossless compatibility normalizations for common model-authored shell mistakes when the intended command is unambiguous (for example, moving a heredoc trailer's `|`, `&&`, or `>` continuation back onto the heredoc start line, or rewriting `printf '--- ...'` to `printf -- '--- ...'` when the format string begins with `-`).
 - Compatibility normalization is best-effort and intentionally narrow. If a rewrite is ambiguous or the normalization step itself fails, the raw command is executed unchanged.
 - Timeout: no default timeout. The user can interrupt via `Escape`.
+
+### `read`
+
+Reads a UTF-8 text file from disk, optionally by line window. Use it for reading file contents instead of shelling out to `cat`, `sed`, `head`, or `tail`.
+
+Implementation details:
+
+- Takes `path`, optional `offset`, and optional `limit`.
+- `path` may be absolute or relative to the session CWD.
+- `offset` and `limit` are line-based.
+- Returns the requested slice as plain text, plus a clear continuation hint when more content remains (for example `use offset=...`).
+- Any tool-level truncation or continuation behavior is part of the tool contract and stays separate from the UI's `/verbose` rendering.
+
+### `grep`
+
+Searches file contents using ripgrep-style options and returns structured matches. Use it for content search instead of shelling out to `grep` / `rg` when the goal is to find relevant files or matching lines.
+
+Implementation details:
+
+- Takes `pattern`, optional `path`, optional `glob`, optional `ignoreCase`, optional `literal`, optional `context`, and optional `limit`.
+- `path` defaults to the session CWD when omitted. Relative `path` values are resolved against the session CWD.
+- Executes ripgrep in JSON mode under the hood (`rg --json`) so matches, context lines, and summary data can be parsed deterministically.
+- Returns structured match data, plus clear continuation behavior when the result set is capped.
+- Any tool-level truncation or continuation behavior is part of the tool contract and stays separate from the UI's `/verbose` rendering.
 
 ### `edit`
 
@@ -239,7 +263,7 @@ The core runtime. Streaming is the default behavior throughout the turn: user-vi
    - `error` → display error in the log, return to the input prompt.
 
 4. **Tool execution** — when the LLM requests tool calls:
-   - Execute each tool call. For `shell`: run the command, capture output, truncate if needed. For `edit`: perform the replacement. For `todoWrite`: apply the incremental todo changes and return the full current list. For `todoRead`: return the full current list. For `readImage`: read and base64-encode the file. For plugin tools: delegate to the plugin.
+   - Execute each tool call. For `shell`: run the command, capture output, truncate if needed. For `read`: read the requested file slice and include continuation guidance when needed. For `grep`: run the structured ripgrep search and return parsed match data. For `edit`: perform the replacement. For `todoWrite`: apply the incremental todo changes and return the full current list. For `todoRead`: return the full current list. For `readImage`: read and base64-encode the file. For plugin tools: delegate to the plugin.
    - Each result becomes a `ToolResultMessage` appended to history and DB (same turn number).
    - After all tool results are appended, if queued steering messages exist go to step 6; otherwise loop back to step 2 (re-stream with the updated context).
 
@@ -273,7 +297,7 @@ Flat `src/` directory. No workspaces, no internal packages. Files are grouped by
 src/
   index.ts          — entry point, CLI setup
   agent.ts          — the core agent loop
-  tools.ts          — shell and edit tool implementations
+  tools.ts          — built-in tool implementations
   skills.ts         — agentskills.io discovery, parsing, catalog
   prompt.ts         — system prompt construction (core prompt + AGENTS.md + skills + plugins + environment)
   session.ts        — SQLite session persistence
@@ -302,6 +326,8 @@ The current environment is:
 - Current working directory: /path/to/cwd
 - Git: branch main | 3 staged, 1 modified, 2 untracked | +5 −2 vs origin/main
 - Shell: bash. Use `command -v <name>` to check what is available to you; do not assume environment support.
+- Read: Read a text file from disk with offset/limit support.
+- Grep: Search file contents with ripgrep-style options and structured results.
 - Edit: Safe exact-text replacement in a single file.
 - Read Image: Read an image from disk.
 
@@ -323,6 +349,12 @@ The current environment is:
 - Use the appropriate commands and package managers for the specified operating system.
 - Don't assume environment supports all commands, check before using.
 - Avoid destructive commands that can discard changes or overide edits.
+
+### Choosing tools:
+
+- Prefer `read` for reading file contents instead of `cat`, `sed`, `head`, or `tail`.
+- Prefer `grep` for content search instead of raw `grep` / `rg`.
+- Use shell `ls` and `fd` for lightweight exploration when you just need to inspect directories or discover candidate files.
 
 ### Working with code:
 
@@ -554,11 +586,13 @@ Scrollable area that shows the full conversation history. Stick-to-bottom by def
 
 Message types and their rendering:
 
-Tool blocks share a common frame: a left border (`│`) plus a compact header pill naming the tool and direction (`tool ->` for assistant tool calls, `tool <-` for tool results). The body renders tool-specific content rather than raw JSON.
+Tool blocks share a common frame: a left border (`│`) plus a compact header pill naming the tool and direction (`tool ->` for assistant tool calls, `tool <-` for tool results). Tools may append compact metadata such as a file path after the pill on the same line. The body renders tool-specific content rather than raw JSON.
 
 - **User messages**: displayed as plain text with a subtle background color to distinguish them from agent responses. No prefix or role indicator.
 - **Assistant messages**: streamed raw markdown rendered via cel-tui's `SyntaxHighlight` component on the default background so the log stays copy-friendly and preserves markdown markers. Thinking/reasoning content is collapsible (shown or hidden according to the user's persisted `/reasoning` preference; defaults to shown when no setting exists).
 - **Tool calls — shell**: rendered in the shared tool frame. The assistant tool call streams the command as it arrives. The command preview and shell tool result body use [verbose tool rendering](#verbose-tool-rendering). Shell tool results render the tool output content below a `shell <-` header.
+- **Tool calls — read**: rendered in the shared tool frame. The in-progress tool-call preview streams `path`, `offset`, and `limit` in a structured styled layout rather than raw JSON. The preview body uses [verbose tool rendering](#verbose-tool-rendering). Successful results render syntax-highlighted file content as it streams in; the `read <-` header line appends the resolved file path on the same line, and the result body also uses [verbose tool rendering](#verbose-tool-rendering). Errors render the returned error text.
+- **Tool calls — grep**: rendered in the shared tool frame. The in-progress tool-call preview streams its arguments in a structured styled layout rather than raw JSON, including the pattern, optional path/glob, and any active flags or limits. The preview body uses [verbose tool rendering](#verbose-tool-rendering). Successful results render a structured, styled list parsed from `rg --json`, focused on session-CWD-relative filenames and matches (with context lines when present), and the result body also uses [verbose tool rendering](#verbose-tool-rendering). Errors render the returned error text.
 - **Tool calls — edit**: rendered in the shared tool frame. The in-progress tool-call preview shows the target path followed by the streamed `oldText` and `newText` bodies. Old text is styled as removed and new text as added, but the preview does not render literal `-`/`+` diff prefixes. The preview body uses [verbose tool rendering](#verbose-tool-rendering). Successful results render a compact confirmation block (`edit <-` plus the file path); errors render the returned error text.
 - **Tool calls — todoWrite / todoRead**: rendered in the shared tool frame. Successful results render the full current todo list as a structured themed checklist with status markers (`[ ]`, `[~]`, `[x]`). This checklist is always shown in full and never truncated, regardless of `/verbose`. Errors render the returned error text.
 - **Tool calls — readImage**: rendered in the shared tool frame. The assistant tool call streams the path as it arrives. Successful results render a compact result block (`read image <-` plus the file path) rather than rendering the image itself.
@@ -570,12 +604,12 @@ Tool blocks share a common frame: a left border (`│`) plus a compact header pi
 
 `/verbose` controls a single persisted UI preference for how tool-call previews and selected tool-result bodies are displayed in the conversation log.
 
-- Scope: shell tool-call bodies, shell tool-result bodies, edit tool-call preview bodies, and edit error results only. Successful edit results stay compact in both modes. Todo tool results ignore `/verbose` and always show the full current list.
+- Scope: shell tool-call bodies and tool-result bodies; read tool-call bodies and tool-result bodies; grep tool-call bodies and tool-result bodies; edit tool-call preview bodies and edit error results. Successful edit results stay compact in both modes. Todo tool results ignore `/verbose` and always show the full current list.
 - Default: off when no saved setting exists.
 - Off: show as many trailing logical lines as fit within a fixed rendered-height preview, followed by `And X lines more` when earlier lines are hidden. The preview height stays stable for a given block, so wrapped long lines do not make the log jump while content streams.
 - On: show the full stored tool result or preview body.
 - Persistence: the new on/off state is saved immediately and restored on launch.
-- This is a UI-only display choice over streamed tool-call previews and stored tool results; it does not affect tool execution or the shell tool's own safety truncation for pathological output.
+- This is a UI-only display choice over streamed tool-call previews and stored tool results; it does not affect tool execution or any tool's own truncation / continuation behavior.
 
 #### Conversation log sketches
 
@@ -639,6 +673,51 @@ Representative entry shapes:
   │   AssertionError: expected 2 to be 1
   │   at <anonymous> (src/session.test.ts:84:23)
   │   exit 1
+```
+
+**Read tool call preview**
+
+```text
+  │ read ->
+  │ src/ui/conversation.ts
+  │ offset: 820
+  │ limit: 80
+```
+
+**Read tool result (`/verbose` off)**
+
+```text
+  │ read <- src/ui/conversation.ts
+  │ function renderToolBlock(
+  │   spec: ToolBlockSpec,
+  │   opts: Pick<ConversationRenderOpts, "previewWidth" | "theme" | "verbose">,
+  │ ) {
+  │   const body = renderToolBody(spec, opts);
+  │   ...
+  │ And 48 lines more
+```
+
+**Grep tool call preview**
+
+```text
+  │ grep ->
+  │ renderToolBlock
+  │ path: src
+  │ glob: *.ts
+  │ context: 2
+```
+
+**Grep tool result (`/verbose` off)**
+
+```text
+  │ grep <-
+  │ src/ui/conversation.ts
+  │   857: function renderToolBlock(
+  │   858:   spec: ToolBlockSpec,
+  │
+  │ src/ui/conversation.ts
+  │   1098: return renderToolBlock(buildShellToolResultSpec(content), opts);
+  │ And 6 lines more
 ```
 
 **Edit tool call preview (`/verbose` off)**
@@ -764,7 +843,7 @@ add tests for undo_
 | `/fork`      | Fork the current conversation into a new session. Copies the full message history, continues from here independently, and appends a UI-only `Forked session.` notice in the new session. The original session is preserved.                                                                                                                                                                                                                                                                                            |
 | `/undo`      | Remove the last conversational turn from history: the most recent user message and all assistant/tool messages that followed in that turn. Persisted UI messages are not part of turns and are not removed by `/undo`. Context-only — does not revert filesystem changes.                                                                                                                                                                                                                                              |
 | `/reasoning` | Toggle display of model thinking/reasoning content in the log. The new on/off state is persisted immediately and restored on launch. When no setting exists yet, reasoning defaults to shown.                                                                                                                                                                                                                                                                                                                          |
-| `/verbose`   | Toggle [verbose tool rendering](#verbose-tool-rendering) for shell previews/results, edit previews, and edit errors. Successful edit results stay compact regardless of this setting. Todo tool results always render in full.                                                                                                                                                                                                                                                                                         |
+| `/verbose`   | Toggle [verbose tool rendering](#verbose-tool-rendering) for shell previews/results, read previews/results, grep previews/results, edit previews, and edit errors. Successful edit results stay compact regardless of this setting. Todo tool results always render in full.                                                                                                                                                                                                                                           |
 | `/todo`      | Append the current session todo list to the conversation pane as a UI-only checklist block. The message is persisted with the session, excluded from model context, and does not create a session by itself when no session exists yet.                                                                                                                                                                                                                                                                                |
 | `/login`     | Interactive OAuth login. Shows a selector with available OAuth providers and their login status (logged in / not logged in). Selecting a provider starts the browser-based OAuth flow. Uses pi-ai's OAuth registry. Credentials are persisted to the app data directory and used for provider discovery on subsequent launches.                                                                                                                                                                                        |
 | `/logout`    | Interactive OAuth logout. Shows a selector with logged-in OAuth providers. Selecting one clears its saved credentials.                                                                                                                                                                                                                                                                                                                                                                                                 |

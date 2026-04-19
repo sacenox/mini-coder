@@ -39,9 +39,11 @@ $ mc
 
 ## Tools
 
-Four built-in tools, plus a read-only image tool:
+Six built-in tools, plus a conditional read-only image tool:
 
 - **`shell`** — runs commands in the user's shell. Returns stdout, stderr, and exit code. Large output is truncated to protect model context.
+- **`read`** — reads UTF-8 text files from disk, optionally by line window.
+- **`grep`** — searches file contents with ripgrep-style options and returns structured matches.
 - **`edit`** — exact-text replacement in a single file. Fails deterministically if the target is missing or ambiguous. Creates new files when old text is empty.
 - **`todoWrite`** — creates or updates the session todo list incrementally and returns the full current snapshot.
 - **`todoRead`** — returns the full current session todo list snapshot.
@@ -122,6 +124,17 @@ bun run check
 bun run format
 bun run typecheck
 ```
+
+## Also makes LLMs smarter
+
+LLMs famously tell you to walk 50 meters to the car wash — forgetting the car needs to be there too. Not on our watch.
+
+<table align="center">
+  <tr>
+    <td><img src="assets/mc-claude-smart.png" alt="Claude correctly answering the car wash question" width="400" /></td>
+    <td><img src="assets/mc-gpt-smart.png" alt="GPT correctly answering the car wash question" width="400" /></td>
+  </tr>
+</table>
 
 ## License
 
