@@ -1,3 +1,5 @@
 # CURRENT TASK PROGRESS
 
-- Started benchmark loop.
+- Benchmark loop stopped.
+- In-progress experiment changes reverted.
+- Progress reset for a fresh benchmark restart.

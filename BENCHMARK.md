@@ -4,6 +4,8 @@ Use this as the default tuning loop for `mini-coder` on Terminal-Bench.
 
 The goal is not to rerun the whole benchmark after every change. The goal is to get fast enough feedback that small prompt / loop / tool-use changes can be judged quickly, then promote only the promising ones to bigger runs.
 
+Terminal-Bench is a signal, not the product. The target is a better coding agent, not a higher benchmark score from benchmark-shaped patches.
+
 ## Principles
 
 - Keep changes small.
@@ -11,6 +13,9 @@ The goal is not to rerun the whole benchmark after every change. The goal is to 
 - Compare against a fresh baseline, not an old leaderboard run.
 - Use fast suites for iteration, broad suites for promotion.
 - Keep structured `mc --json` logs in trial artifacts so behavior can be analyzed.
+- Optimize for general coding-agent behavior first.
+- Use benchmark failures to extract general behavior gaps, not to encode benchmark lore into the agent.
+- Prefer generic improvements over task-named patches, reminders, or stop-time nudges.
 
 ## Suites
 
@@ -115,19 +120,52 @@ That gives a fresh local baseline for:
 
 Do not compare a new change only against an old run from days ago if a fresh same-HEAD baseline is available.
 
+## Experiment quality bar
+
+Before changing code, write the hypothesis in two layers:
+
+1. the benchmark symptom
+2. the general coding-agent behavior gap behind it
+
+Only run an experiment if you can answer all of these:
+
+- what general behavior is being improved?
+- why should that help outside Terminal-Bench?
+- what would make this change obviously overfit?
+
+Good experiment themes:
+
+- verification-equivalence before completion
+- artifact-grounded verification of final outputs
+- preferring a task-named local source of truth over approximations
+- reducing shell thrash before first meaningful verification
+
+Reject or redesign experiments that:
+
+- depend on benchmark-specific task names, file names, package names, or tool names in product logic
+- inject reminders or guards keyed to one benchmark noun unless that rule maps cleanly to a real product behavior
+- only make sense because a particular verifier is known
+- cannot be explained without citing a single task transcript
+
+Hard rule:
+
+- no task-specific nouns in agent logic unless they map to a real product feature
+
 ## Iteration loop
 
 For each change:
 
 1. inspect the last fast / focused failures
-2. pick **one** failure pattern
-3. form **one** narrow hypothesis
-4. make **one** small change
-5. run:
+2. translate them into **one** general behavior gap
+3. reject benchmark-shaped ideas; if you cannot phrase the change without task-specific nouns, keep diagnosing
+4. if the change depends on a dynamic trigger, confirm that the trigger actually appears in the target failures
+5. form **one** narrow hypothesis
+6. make **one** small change
+7. run:
    - guardrails
    - fast suite
-6. compare to baseline
-7. decide:
+8. compare to baseline
+9. decide:
    - keep
    - revert
    - refine
@@ -157,6 +195,7 @@ Keep a change if:
 - the fast suite improves materially
 - guardrails do not regress
 - the result repeats on another fast-suite rerun
+- the mechanism is still a general agent-quality improvement, not just a benchmark-specific patch
 
 Revert a change if:
 
@@ -166,6 +205,11 @@ Revert a change if:
 Call it inconclusive if:
 
 - the delta is tiny and does not repeat
+
+Also prefer:
+
+- a smaller, more general improvement over a larger but obviously benchmark-specific patch
+- a clearly exercised mechanism over a theory that never fired in the target runs
 
 ## Failure buckets to optimize against
 
@@ -179,13 +223,21 @@ Examples:
 - right output plus extra junk
 - correct core work, but violates a strict file / in-place requirement
 
-### Didn’t verify early enough
+### Verification-equivalence / premature completion
 
 Examples:
 
-- waited too long to run a test
+- waited too long to run a meaningful check
 - never checked the exact contract
-- kept exploring before the first meaningful verification
+- stopped after a weaker non-equivalent check
+- verified the intended design instead of the written artifact
+
+### Source-of-truth selection gaps
+
+Examples:
+
+- task names an exact local tool/package/interface, but the agent uses an approximation instead
+- lower-level library reasoning replaces package-local or task-local semantics
 
 ### Over-exploration / shell thrash
 
@@ -235,6 +287,9 @@ With those artifacts, analyze things like:
 - time to first edit
 - number of `shell` / `read` / `grep` / `edit` calls
 - whether the agent ran a verifier-like shell command
+- whether it used the named local source of truth when one was available
+- whether it verified the final artifact it actually wrote
+- whether a dynamic intervention visibly exercised
 - whether it had a local pass before ending
 - whether it kept changing files after a pass-worthy state
 - whether it left extra artifacts
@@ -336,11 +391,18 @@ PYTHONPATH="$PWD/terminal-bench" "${cmd[@]}"
 
 ## Minimal experiment log format
 
-Keep this in the PROGRESS.md, a final summary for each change:
+Keep this in `PROGRESS.md`, a final summary for each completed change:
 
+- benchmark symptom
+- general behavior gap
+- why this should help outside Terminal-Bench
+- overfitting risk / why this is still general
+- trigger evidence, if relevant
 - hypothesis
 - files changed
+- local verification
 - guardrail result
 - fast-suite result
 - focused-suite result, if run
-- keep / revert / refine
+- mechanism exercised?
+- keep / revert / refine (Make the decision very visible in the file).
