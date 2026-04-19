@@ -1,9 +1,9 @@
 /**
  * Entry point for mini-coder.
  *
- * Discovers available LLM providers, loads context (AGENTS.md, skills,
- * plugins), opens the session database, selects a model, and starts
- * the TUI.
+ * Discovers available LLM providers, loads prompt context (AGENTS.md,
+ * skills, and theme), opens the session database, selects a model, and
+ * starts the TUI.
  *
  * @module
  */
@@ -14,7 +14,6 @@ import { basename, dirname, join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import type {
   KnownProvider,
-  Message,
   Model,
   OAuthCredentials,
   ThinkingLevel,
@@ -35,14 +34,6 @@ import { getErrorMessage } from "./errors.ts";
 import { type GitState, getGitState } from "./git.ts";
 import { canonicalizePath } from "./paths.ts";
 import {
-  type AgentContext,
-  destroyPlugins,
-  initPlugins,
-  type LoadedPlugin,
-  loadPluginConfig,
-  type PluginEntry,
-} from "./plugins.ts";
-import {
   type AgentsMdFile,
   buildSystemPrompt,
   discoverAgentsMd,
@@ -52,7 +43,6 @@ import {
   appendMessage,
   createConversationSnapshot,
   createSession,
-  filterModelMessages,
   type loadMessages,
   openDatabase,
   type Session,
@@ -66,7 +56,7 @@ import {
   type UserSettings,
 } from "./settings.ts";
 import { discoverSkills, type Skill } from "./skills.ts";
-import { DEFAULT_THEME, mergeThemes, type Theme } from "./theme.ts";
+import { DEFAULT_THEME, type Theme } from "./theme.ts";
 import {
   createTodoReadToolHandler,
   createTodoWriteToolHandler,
@@ -94,9 +84,6 @@ const DATA_DIR = join(homedir(), ".config", "mini-coder");
 
 /** SQLite database path. */
 const DB_PATH = join(DATA_DIR, "mini-coder.db");
-
-/** Plugin config file path. */
-const PLUGIN_CONFIG_PATH = join(DATA_DIR, "plugins.json");
 
 /** OAuth credentials file path. */
 const AUTH_PATH = join(DATA_DIR, "auth.json");
@@ -370,7 +357,6 @@ function selectModel(
  */
 function buildTools(
   model: Model<string>,
-  plugins: LoadedPlugin[],
   messages: AppState["messages"],
 ): { tools: Tool[]; toolHandlers: Map<string, ToolHandler> } {
   const tools: Tool[] = [
@@ -396,20 +382,6 @@ function buildTools(
     toolHandlers.set(readImageTool.name, readImageToolHandler);
   }
 
-  // Add plugin tools
-  for (const plugin of plugins) {
-    if (plugin.result.tools) {
-      for (const tool of plugin.result.tools) {
-        tools.push(tool);
-      }
-    }
-    if (plugin.result.toolHandlers) {
-      for (const [name, handler] of plugin.result.toolHandlers) {
-        toolHandlers.set(name, handler);
-      }
-    }
-  }
-
   return { tools, toolHandlers };
 }
 
@@ -429,21 +401,13 @@ function getSkillScanPaths(cwd: string, gitRoot: string | null): string[] {
   ];
 }
 
-/** Load AGENTS.md files, skills, plugins, git state, and the merged theme. */
-export async function loadPromptContext(
-  messages: readonly Message[],
-  opts?: {
-    cwd?: string;
-    pluginEntries?: PluginEntry[];
-    pluginConfigPath?: string;
-  },
-): Promise<{
+/** Load AGENTS.md files, skills, git state, and the active theme. */
+export async function loadPromptContext(opts?: { cwd?: string }): Promise<{
   cwd: string;
   canonicalCwd: string;
   git: GitState | null;
   agentsMd: AgentsMdFile[];
   skills: Skill[];
-  plugins: LoadedPlugin[];
   theme: Theme;
 }> {
   const cwd = opts?.cwd ?? process.cwd();
@@ -459,20 +423,6 @@ export async function loadPromptContext(
   );
   const agentsMd = discoverAgentsMd(cwd, scanRoot, join(home, ".agents"));
   const skills = discoverSkills(getSkillScanPaths(canonicalCwd, gitRoot));
-  const pluginEntries =
-    opts?.pluginEntries ??
-    loadPluginConfig(opts?.pluginConfigPath ?? PLUGIN_CONFIG_PATH);
-  const context: AgentContext = {
-    cwd,
-    messages,
-    dataDir: DATA_DIR,
-  };
-  const plugins = await initPlugins(pluginEntries, context, (entry, err) => {
-    console.error(`Plugin "${entry.name}" failed to init: ${err.message}`);
-  });
-  const themeOverrides = plugins
-    .map((plugin) => plugin.result.theme)
-    .filter((theme): theme is Partial<Theme> => theme != null);
 
   return {
     cwd,
@@ -480,8 +430,7 @@ export async function loadPromptContext(
     git,
     agentsMd,
     skills,
-    plugins,
-    theme: mergeThemes(DEFAULT_THEME, ...themeOverrides),
+    theme: DEFAULT_THEME,
   };
 }
 
@@ -490,25 +439,17 @@ export async function reloadPromptContext(
   state: AppState,
   runtime?: {
     loadPromptContext?: typeof loadPromptContext;
-    destroyPlugins?: typeof destroyPlugins;
   },
 ): Promise<void> {
   const loadContext = runtime?.loadPromptContext ?? loadPromptContext;
-  const destroyLoadedPlugins = runtime?.destroyPlugins ?? destroyPlugins;
-  const previousPlugins = state.plugins;
-  const context = await loadContext(filterModelMessages(state.messages));
+  const context = await loadContext();
 
   state.cwd = context.cwd;
   state.canonicalCwd = context.canonicalCwd;
   state.git = context.git;
   state.agentsMd = context.agentsMd;
   state.skills = context.skills;
-  state.plugins = context.plugins;
   state.theme = context.theme;
-
-  await destroyLoadedPlugins(previousPlugins, (entry, err) => {
-    console.error(`Plugin "${entry.name}" failed to destroy: ${err.message}`);
-  });
 }
 
 // ---------------------------------------------------------------------------
@@ -535,9 +476,7 @@ export interface AppState {
   agentsMd: AgentsMdFile[];
   /** Discovered skills. */
   skills: Skill[];
-  /** Loaded plugins. */
-  plugins: LoadedPlugin[];
-  /** Active theme (default + plugin overrides). */
+  /** Active theme. */
   theme: Theme;
   /** Version label shown in the empty conversation banner. */
   versionLabel: string;
@@ -614,12 +553,7 @@ export async function init(): Promise<AppState> {
   const db = openDatabase(DB_PATH);
   const effort = startup.effort;
   const conversation = createConversationSnapshot();
-  const promptContext = await loadPromptContext(
-    filterModelMessages(conversation.messages),
-    {
-      cwd,
-    },
-  );
+  const promptContext = await loadPromptContext({ cwd });
 
   return {
     db,
@@ -631,7 +565,6 @@ export async function init(): Promise<AppState> {
     contextTokens: conversation.contextTokens,
     agentsMd: promptContext.agentsMd,
     skills: promptContext.skills,
-    plugins: promptContext.plugins,
     theme: promptContext.theme,
     versionLabel: resolveAppVersionLabel(),
     git: promptContext.git,
@@ -686,9 +619,6 @@ export function buildPrompt(state: AppState): string {
     git: state.git,
     agentsMd: state.agentsMd,
     skills: state.skills,
-    pluginSuffixes: state.plugins
-      .map((p) => p.result.systemPromptSuffix)
-      .filter((s): s is string => s != null),
   });
 }
 
@@ -698,7 +628,7 @@ export function buildToolList(state: AppState): {
   toolHandlers: Map<string, ToolHandler>;
 } {
   if (!state.model) return { tools: [], toolHandlers: new Map() };
-  return buildTools(state.model, state.plugins, state.messages);
+  return buildTools(state.model, state.messages);
 }
 
 /**
@@ -747,9 +677,6 @@ export function getAvailableModels(state: AppState): Model<string>[] {
 
 /** Clean up resources on shutdown. */
 export async function shutdown(state: AppState): Promise<void> {
-  await destroyPlugins(state.plugins, (entry, err) => {
-    console.error(`Plugin "${entry.name}" failed to destroy: ${err.message}`);
-  });
   state.db.close();
 }
 

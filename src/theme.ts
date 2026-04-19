@@ -2,8 +2,7 @@
  * UI theme definition and default colors.
  *
  * All UI colors are read from the active {@link Theme} object — the UI
- * never hardcodes colors. Plugins can return a `Partial<Theme>` in their
- * result to override any color. Multiple overrides are merged left-to-right.
+ * never hardcodes colors. Theme overrides are merged left-to-right.
  *
  * Theme values are cel-tui {@link Color} palette references. The default
  * theme prefers ANSI 16-color palette entries so it adapts cleanly to the
@@ -168,7 +167,7 @@ export const DEFAULT_THEME: Theme = {
  * mutated.
  *
  * @param base - The base theme to start from.
- * @param overrides - Partial theme objects to merge (from plugins).
+ * @param overrides - Partial theme objects to merge.
  * @returns A complete {@link Theme} with all overrides applied.
  */
 export function mergeThemes(

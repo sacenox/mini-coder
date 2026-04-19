@@ -13,11 +13,11 @@
 
 ## Code map
 
-- `src/index.ts` — startup, providers, settings, AGENTS.md/skills/plugins loading, theme assembly, shared app state.
+- `src/index.ts` — startup, providers, settings, AGENTS.md/skills loading, theme assembly, shared app state.
 - `src/agent.ts` — streaming model loop, tool dispatch, agent events.
 - `src/tools.ts` — built-in tools and truncation logic.
 - `src/session.ts` — SQLite persistence, turn numbering, undo/fork, prompt history, cumulative stats.
-- `src/prompt.ts`, `src/skills.ts`, `src/plugins.ts` — prompt assembly and external context discovery/loading.
+- `src/prompt.ts`, `src/skills.ts` — prompt assembly and external context discovery/loading.
 - `src/ui.ts` — cel-tui lifecycle and top-level orchestration.
 - `src/ui/agent.ts` — input submission, streaming state, agent-loop wiring.
 - `src/ui/commands.ts` — slash commands and Select overlays.
@@ -88,10 +88,9 @@
 - In cel-tui `onKeyPress`, return `false` only for keys you explicitly intercept. Escape often needs `onBlur`, not `onKeyPress`.
 - When adding provider/tool options, trace them through the full call chain (for example `apiKey` into `streamSimple`).
 - UI/info messages may live in the persisted log and in `state.messages`, but they must stay marked as UI-only (`role: "ui"`, `turn = NULL`) and always be filtered out of model context.
-- Prompt context has explicit reload boundaries: AGENTS.md content, discovered skills, and plugin prompt suffixes are stable within a session and should refresh only at boundaries like `/new` or CWD change.
+- Prompt context has explicit reload boundaries: AGENTS.md content and discovered skills are stable within a session and should refresh only at boundaries like `/new` or CWD change.
 - Tool safety truncation and UI `/verbose` preview are separate layers. Do not conflate them.
 - Avoid accretive growth. When a file starts absorbing unrelated behavior, split it at a real seam instead of appending more helpers. Prefer explicit state ownership over module globals, shared helpers over copy-modify text/state logic, and typed boundaries over `Record<string, unknown>` plus downstream casts.
-- The plugin API is still in spec-alignment cleanup. Current repo reality is `tools` plus `toolHandlers`; treat that as temporary, not settled design.
 - Before 1.0, prefer correct/simple semantics over speculative compatibility shims, but call out intentional breaking changes.
 - TUI changes need real terminal validation in `tmux`; passing tests is not enough.
 - Stay within the agreed TODO scope. Do not pull in adjacent items without discussion.

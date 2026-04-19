@@ -21,7 +21,8 @@
     "@cel-tui/components": "^0.8.1",
     "@cel-tui/core": "^0.8.1",
     "@cel-tui/types": "^0.8.1",
-    "@mariozechner/pi-ai": "^0.67.68"
+    "@mariozechner/pi-ai": "^0.67.68",
+    "@modelcontextprotocol/sdk": "^1.29.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.12",

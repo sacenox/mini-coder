@@ -15,7 +15,6 @@ import {
   reloadPromptContext,
   runHeadlessCli,
 } from "./index.ts";
-import type { LoadedPlugin } from "./plugins.ts";
 import { openDatabase } from "./session.ts";
 import { DEFAULT_THEME } from "./theme.ts";
 
@@ -29,7 +28,7 @@ function createTempDir(): string {
   return dir;
 }
 
-function createTestState(plugins: LoadedPlugin[] = []): AppState {
+function createTestState(): AppState {
   const cwd = createTempDir();
   return {
     db: openDatabase(":memory:"),
@@ -41,7 +40,6 @@ function createTestState(plugins: LoadedPlugin[] = []): AppState {
     contextTokens: 0,
     agentsMd: [],
     skills: [],
-    plugins,
     theme: DEFAULT_THEME,
     git: null,
     providers: new Map(),
@@ -59,24 +57,6 @@ function createTestState(plugins: LoadedPlugin[] = []): AppState {
     versionLabel: "dev",
     customModels: [],
     startupWarnings: [],
-  };
-}
-
-function createLoadedPlugin(name: string): LoadedPlugin {
-  return {
-    entry: { name, module: `${name}.ts` },
-    plugin: {
-      name,
-      description: `${name} plugin`,
-      async init() {
-        return {};
-      },
-      async destroy() {},
-    },
-    result: {
-      systemPromptSuffix: `${name} suffix`,
-      theme: { accentText: "color03" },
-    },
   };
 }
 
@@ -297,9 +277,8 @@ test("loadOAuthCredentials throws a helpful error when the auth file contains in
   );
 });
 
-test("loadPromptContext loads AGENTS.md, skills, plugins, and theme overrides", async () => {
+test("loadPromptContext loads AGENTS.md, skills, and the default theme", async () => {
   const project = createTempDir();
-  const pluginPath = join(project, "plugin.ts");
 
   writeFileSync(join(project, "AGENTS.md"), "Project instructions");
   mkdirSync(join(project, ".agents", "skills", "example-skill"), {
@@ -316,41 +295,25 @@ test("loadPromptContext loads AGENTS.md, skills, plugins, and theme overrides", 
       "# Example Skill",
     ].join("\n"),
   );
-  writeFileSync(
-    pluginPath,
-    [
-      "export default {",
-      '  name: "test-plugin",',
-      '  description: "Adds prompt context.",',
-      "  async init(agent) {",
-      "    return {",
-      `      systemPromptSuffix: \`Plugin cwd: \${agent.cwd}\` ,`,
-      '      theme: { accentText: "color03" },',
-      "    };",
-      "  },",
-      "};",
-    ].join("\n"),
-  );
 
-  const context = await loadPromptContext([], {
-    cwd: project,
-    pluginEntries: [{ name: "test-plugin", module: pluginPath }],
-  });
+  const context = await loadPromptContext({ cwd: project });
 
   expect(context.cwd).toBe(project);
   expect(context.agentsMd.at(-1)?.content).toBe("Project instructions");
   expect(context.skills.map((skill) => skill.name)).toContain("example-skill");
-  expect(context.plugins).toHaveLength(1);
-  expect(context.plugins[0]?.result.systemPromptSuffix).toBe(
-    `Plugin cwd: ${project}`,
-  );
-  expect(context.theme.accentText).toBe("color03");
+  expect(context.theme).toBe(DEFAULT_THEME);
 });
 
-test("reloadPromptContext keeps the current plugin state when loading the replacement context fails", async () => {
-  const plugin = createLoadedPlugin("existing");
-  const state = createTestState([plugin]);
-  let destroyed = false;
+test("reloadPromptContext keeps the current prompt context when replacement loading fails", async () => {
+  const state = createTestState();
+  state.agentsMd = [{ path: "/tmp/AGENTS.md", content: "current agents" }];
+  state.skills = [
+    {
+      name: "existing-skill",
+      description: "Already loaded.",
+      path: "/tmp/existing/SKILL.md",
+    },
+  ];
 
   try {
     await expect(
@@ -358,25 +321,21 @@ test("reloadPromptContext keeps the current plugin state when loading the replac
         loadPromptContext: async () => {
           throw new Error("reload failed");
         },
-        destroyPlugins: async () => {
-          destroyed = true;
-        },
       }),
     ).rejects.toThrow("reload failed");
 
-    expect(destroyed).toBe(false);
-    expect(state.plugins).toEqual([plugin]);
+    expect(state.agentsMd).toEqual([
+      { path: "/tmp/AGENTS.md", content: "current agents" },
+    ]);
+    expect(state.skills.map((skill) => skill.name)).toEqual(["existing-skill"]);
     expect(state.theme).toBe(DEFAULT_THEME);
   } finally {
     state.db.close();
   }
 });
 
-test("reloadPromptContext swaps in the new context before destroying the old plugins", async () => {
-  const previousPlugin = createLoadedPlugin("previous");
-  const nextPlugin = createLoadedPlugin("next");
-  const state = createTestState([previousPlugin]);
-  let destroyedPlugins: LoadedPlugin[] = [];
+test("reloadPromptContext replaces the current prompt context", async () => {
+  const state = createTestState();
 
   try {
     await reloadPromptContext(state, {
@@ -385,22 +344,22 @@ test("reloadPromptContext swaps in the new context before destroying the old plu
         canonicalCwd: state.canonicalCwd,
         git: null,
         agentsMd: [{ path: "/tmp/AGENTS.md", content: "next agents" }],
-        skills: [],
-        plugins: [nextPlugin],
+        skills: [
+          {
+            name: "next-skill",
+            description: "Replacement skill.",
+            path: "/tmp/next/SKILL.md",
+          },
+        ],
         theme: { ...DEFAULT_THEME, accentText: "color05" },
       }),
-      destroyPlugins: async (plugins) => {
-        destroyedPlugins = [...plugins];
-        expect(state.plugins).toEqual([nextPlugin]);
-        expect(state.theme.accentText).toBe("color05");
-      },
     });
 
-    expect(destroyedPlugins).toEqual([previousPlugin]);
-    expect(state.plugins).toEqual([nextPlugin]);
     expect(state.agentsMd).toEqual([
       { path: "/tmp/AGENTS.md", content: "next agents" },
     ]);
+    expect(state.skills.map((skill) => skill.name)).toEqual(["next-skill"]);
+    expect(state.theme.accentText).toBe("color05");
   } finally {
     state.db.close();
   }

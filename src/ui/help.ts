@@ -18,8 +18,6 @@ export interface HelpRenderState {
   agentsMd: AppState["agentsMd"];
   /** Discovered skills. */
   skills: AppState["skills"];
-  /** Active plugins. */
-  plugins: AppState["plugins"];
   /** Whether reasoning blocks are shown in the log. */
   showReasoning: AppState["showReasoning"];
   /** Whether verbose tool rendering is enabled in the log. */
@@ -128,13 +126,6 @@ export function buildHelpText(state: HelpRenderState): string {
           ? `- ${formatInlineCode(skill.name)} — ${skill.description}`
           : `- ${formatInlineCode(skill.name)}`,
       );
-    }
-  }
-
-  if (state.plugins.length > 0) {
-    lines.push("", "## Plugins", "");
-    for (const plugin of state.plugins) {
-      lines.push(`- ${formatInlineCode(plugin.entry.name)}`);
     }
   }
 

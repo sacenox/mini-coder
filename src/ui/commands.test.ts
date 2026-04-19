@@ -59,7 +59,6 @@ function createTestState(): AppState {
     contextTokens: 0,
     agentsMd: [],
     skills: [],
-    plugins: [],
     theme: DEFAULT_THEME,
     git: null,
     providers: new Map(),

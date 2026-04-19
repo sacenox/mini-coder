@@ -2,8 +2,8 @@
  * System prompt construction.
  *
  * Assembles the full system prompt from the core prompt template plus
- * dynamic context: AGENTS.md files, skill catalog, plugin suffixes,
- * and the current environment block.
+ * dynamic context: AGENTS.md files, the skill catalog, and the current
+ * environment block.
  *
  * @module
  */
@@ -44,8 +44,6 @@ interface BuildSystemPromptOpts {
   agentsMd?: AgentsMdFile[];
   /** Discovered agent skills. */
   skills?: Skill[];
-  /** Plugin system prompt suffixes. */
-  pluginSuffixes?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -287,7 +285,6 @@ function buildCorePrompt(opts: BuildSystemPromptOpts): string {
  * 1. Core prompt template (including the current environment block)
  * 2. AGENTS.md content (project-specific)
  * 3. Skills catalog (XML)
- * 4. Plugin suffixes
  *
  * @param opts - Prompt construction options.
  * @returns The assembled system prompt string.
@@ -311,13 +308,6 @@ export function buildSystemPrompt(opts: BuildSystemPromptOpts): string {
   if (opts.skills && opts.skills.length > 0) {
     const catalog = buildSkillCatalog(opts.skills);
     if (catalog) sections.push(catalog);
-  }
-
-  // 4. Plugin suffixes
-  if (opts.pluginSuffixes) {
-    for (const suffix of opts.pluginSuffixes) {
-      sections.push(suffix);
-    }
   }
 
   return sections.join("\n\n");

@@ -57,7 +57,7 @@ This replaces: `yoctocolors`, `yoctomarkdown`, `yoctoselect`, and all our custom
 
 ## Tools
 
-Six built-in tools, plus a conditional read-only image tool. Plugins may add more (see [Plugins](#plugins)).
+Six built-in tools, plus a conditional read-only image tool.
 
 ### `shell`
 
@@ -187,74 +187,13 @@ We follow the spec's progressive disclosure model:
 
 Relative paths in skills are resolved against the skill's directory. The system prompt instructions explain this to the model.
 
-## Plugins
-
-Plugins extend mini-coder itself, not just the prompt. They are the mechanism for optional capabilities that don't belong in the core — MCP servers, custom tools, integrations, alternate context-management strategies, UI/theme extensions, and other agent features.
-
-### Interface
-
-A plugin is a module that exports a function conforming to a simple interface:
-
-```ts
-interface Plugin {
-  name: string;
-  description: string;
-
-  /** Called once at startup. Returns tools to register and/or context to add. */
-  init(
-    agent: AgentContext,
-    config?: Record<string, unknown>,
-  ): Promise<PluginResult>;
-
-  /** Called on shutdown for cleanup. */
-  destroy?(): Promise<void>;
-}
-
-interface PluginResult {
-  /** Additional tools the agent can use. */
-  tools?: Tool[];
-  /** Additional context to append to the system prompt. */
-  systemPromptSuffix?: string;
-  /** Partial theme override — merged on top of the default theme. */
-  theme?: Partial<Theme>;
-}
-
-interface AgentContext {
-  /** The working directory. */
-  cwd: string;
-  /** Read-only access to the current session's messages. */
-  messages: readonly Message[];
-  /** The app data directory (~/.config/mini-coder/). */
-  dataDir: string;
-}
-```
-
-### Discovery
-
-Plugins are declared in a config file (`~/.config/mini-coder/plugins.json` or similar). Each entry points to a module path or package name:
-
-```json
-{
-  "plugins": [
-    { "name": "mcp", "module": "@mini-coder/plugin-mcp", "config": { ... } },
-    { "name": "custom", "module": "./my-plugin.ts" }
-  ]
-}
-```
-
-### Why plugins
-
-- **Separation of concerns**: the agent loop doesn't know about specific integrations or optional behaviors — it only sees `Tool[]` and plugin-provided context/theme extensions.
-- **Optional complexity**: capabilities are opt-in. Users only pay for what they use.
-- **Extensibility without bloat**: third-party tools, custom integrations, project-specific helpers, and non-core agent features all go through the same interface.
-
 ## Agent loop
 
 The core runtime. Streaming is the default behavior throughout the turn: user-visible state should update incrementally as the model emits text, thinking, and tool-call events, rather than waiting for whole responses to complete. This is what happens while the agent is active:
 
 1. **User submits a message** — the input text (plus any embedded images or skill bodies from `/skill:name`) becomes a pi-ai `UserMessage`. It is appended to the session's message history, rendered in the UI immediately, and persisted to the DB.
 
-2. **Build context** — construct a pi-ai `Context`: the system prompt (see [System prompt](#system-prompt)), the full message history, and the registered tool definitions (built-in + plugin tools). The prompt context snapshot is loaded once at startup or another explicit reload boundary and then reused across turns so provider prompt caching stays effective. It is refreshed only at boundaries such as `/new` or CWD change.
+2. **Build context** — construct a pi-ai `Context`: the system prompt (see [System prompt](#system-prompt)), the full message history, and the registered tool definitions. The prompt context snapshot is loaded once at startup or another explicit reload boundary and then reused across turns so provider prompt caching stays effective. It is refreshed only at boundaries such as `/new` or CWD change.
 
 3. **Stream to LLM** — call `streamSimple(model, context, options)` from pi-ai. Iterate over the event stream:
    - `text_delta` / `thinking_delta` / `toolcall_delta` → update the in-progress assistant message and the UI incrementally (stream raw markdown text, show thinking if enabled, accumulate tool call arguments as they arrive).
@@ -263,7 +202,7 @@ The core runtime. Streaming is the default behavior throughout the turn: user-vi
    - `error` → display error in the log, return to the input prompt.
 
 4. **Tool execution** — when the LLM requests tool calls:
-   - Execute each tool call. For `shell`: run the command, capture output, truncate if needed. For `read`: read the requested file slice and include continuation guidance when needed. For `grep`: run the structured ripgrep search and return parsed match data. For `edit`: perform the replacement. For `todoWrite`: apply the incremental todo changes and return the full current list. For `todoRead`: return the full current list. For `readImage`: read and base64-encode the file. For plugin tools: delegate to the plugin.
+   - Execute each tool call. For `shell`: run the command, capture output, truncate if needed. For `read`: read the requested file slice and include continuation guidance when needed. For `grep`: run the structured ripgrep search and return parsed match data. For `edit`: perform the replacement. For `todoWrite`: apply the incremental todo changes and return the full current list. For `todoRead`: return the full current list. For `readImage`: read and base64-encode the file.
    - Each result becomes a `ToolResultMessage` appended to history and DB (same turn number).
    - After all tool results are appended, if queued steering messages exist go to step 6; otherwise loop back to step 2 (re-stream with the updated context).
 
@@ -287,7 +226,7 @@ The core runtime. Streaming is the default behavior throughout the turn: user-vi
 
 **No step limit** — the loop runs until the model stops (`stopReason: "stop"`) or the user interrupts. There is no maximum number of tool calls per turn.
 
-**Context limit** — mini-coder does not implement built-in context compaction. The status bar still estimates current context usage for the next request, but automatic history summarization is not a core feature. If compaction or summarization is added, it should be optional and plugin-provided rather than hardwired into the core, since users disagree about whether automatic compaction is desirable.
+**Context limit** — mini-coder does not implement built-in context compaction. The status bar still estimates current context usage for the next request, but automatic history summarization is not a core feature. If compaction or summarization is added, it should stay optional rather than hardwired into the core, since users disagree about whether automatic compaction is desirable.
 
 ## Architecture
 
@@ -299,9 +238,8 @@ src/
   agent.ts          — the core agent loop
   tools.ts          — built-in tool implementations
   skills.ts         — agentskills.io discovery, parsing, catalog
-  prompt.ts         — system prompt construction (core prompt + AGENTS.md + skills + plugins + environment)
+  prompt.ts         — system prompt construction (core prompt + AGENTS.md + skills + environment)
   session.ts        — SQLite session persistence
-  plugins.ts        — plugin loader and lifecycle
   git.ts            — git state gathering
   ui.ts             — cel-tui UI (layout, rendering, state)
   types.ts          — shared types
@@ -380,7 +318,7 @@ The current environment is:
 - Delegate when you are orchestarting a large to-do/plan execution.
 ```
 
-AGENTS.md content, skills catalog, and plugin suffixes are appended after this core prompt in that order.
+AGENTS.md content and the skills catalog are appended after this core prompt in that order.
 
 **AGENTS.md** (when present):
 
@@ -413,7 +351,7 @@ Environment block notes:
 - The `Read Image` line is omitted when the active model does not support image input.
 - The OS value is normalized to `linux`, `mac`, or `docker`.
 - The static core prompt text should remain identical across turns.
-- AGENTS.md content, skills, plugin suffixes, and the git snapshot are stable within a session, changing only on `/new` or CWD change.
+- AGENTS.md content, skills, and the git snapshot are stable within a session, changing only on `/new` or CWD change.
 - Rebuilding the prompt for later turns must reuse that same session-start snapshot so provider prompt caching keeps working.
 
 Git state is gathered when the session prompt context is loaded (startup, `/new`, or CWD change), not after each turn, via fast git commands:
@@ -494,7 +432,7 @@ VStack({ height: "100%" }, [
 
 ### Theme
 
-All UI colors are defined in a single `Theme` object. The UI never hardcodes colors — it reads from the active theme. Plugins can return a `Partial<Theme>` in their `PluginResult` to override any color. Multiple plugin overrides are merged left-to-right (last wins).
+All UI colors are defined in a single `Theme` object. The UI never hardcodes colors — it reads from the active theme. When theme overrides are applied, they merge left-to-right (last wins).
 
 ```ts
 interface StatusTone {
@@ -596,7 +534,6 @@ Tool blocks share a common frame: a left border (`│`) plus a compact header pi
 - **Tool calls — edit**: rendered in the shared tool frame. The in-progress tool-call preview shows the target path followed by the streamed `oldText` and `newText` bodies. Old text is styled as removed and new text as added, but the preview does not render literal `-`/`+` diff prefixes. The preview body uses [verbose tool rendering](#verbose-tool-rendering). Successful results render a compact confirmation block (`edit <-` plus the file path); errors render the returned error text.
 - **Tool calls — todoWrite / todoRead**: rendered in the shared tool frame. Successful results render the full current todo list as a structured themed checklist with status markers (`[ ]`, `[~]`, `[x]`). This checklist is always shown in full and never truncated, regardless of `/verbose`. Errors render the returned error text.
 - **Tool calls — readImage**: rendered in the shared tool frame. The assistant tool call streams the path as it arrives. Successful results render a compact result block (`read image <-` plus the file path) rather than rendering the image itself.
-- **Tool calls — plugin tools**: rendered in the shared tool frame, prefixed with plugin/tool name when available.
 - **UI messages**: internal app messages such as `/help` output, OAuth progress, `/fork` notices, and other session-local notices. They are rendered in the conversation log, persisted with the session, excluded from model context, and do not participate in conversational turn numbering. `/help` output renders as syntax-highlighted raw markdown so headings, lists, and inline code stay scannable while preserving the literal markdown markers. `/todo` output is also UI-only, but it renders using the same structured todo-checklist block as todo tool results instead of plain info text.
 - **Errors**: one-line summary, styled distinctly.
 
@@ -755,13 +692,6 @@ Representative entry shapes:
   │ screenshots/failing-layout.png
 ```
 
-**Plugin tool**
-
-```text
-  │ mcp/search <-
-  │ session persistence sqlite turn numbering
-```
-
 **UI message**
 
 ```text
@@ -848,7 +778,7 @@ add tests for undo_
 | `/login`     | Interactive OAuth login. Shows a selector with available OAuth providers and their login status (logged in / not logged in). Selecting a provider starts the browser-based OAuth flow. Uses pi-ai's OAuth registry. Credentials are persisted to the app data directory and used for provider discovery on subsequent launches.                                                                                                                                                                                        |
 | `/logout`    | Interactive OAuth logout. Shows a selector with logged-in OAuth providers. Selecting one clears its saved credentials.                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `/effort`    | Interactive effort selector. Shows the four reasoning levels (`low`, `medium`, `high`, `xhigh`) with the current level highlighted. Updates the status bar immediately, and the selected effort is persisted immediately as the user's global default. The session record's `effort` field is not updated (it reflects the initial choice, like `/model`).                                                                                                                                                             |
-| `/help`      | List available commands, including the current on/off state of `/reasoning` and `/verbose`, plus loaded AGENTS.md files, discovered skills, and active plugins.                                                                                                                                                                                                                                                                                                                                                        |
+| `/help`      | List available commands, including the current on/off state of `/reasoning` and `/verbose`, plus loaded AGENTS.md files and discovered skills.                                                                                                                                                                                                                                                                                                                                                                         |
 
 Commands are discoverable when the input starts with `/`: pressing `Tab` in that state switches from file-path autocomplete to interactive command select/filter.
 
@@ -921,7 +851,7 @@ On launch, mini-coder:
    - `defaultEffort`: if valid, use it; otherwise fall back to `medium`.
    - `showReasoning`: if present, use it; otherwise fall back to `true`.
    - `verbose`: if present, use it; otherwise fall back to `false`.
-5. Loads AGENTS.md files, skills, plugins.
+5. Loads AGENTS.md files and skills.
 6. Selects the launch mode:
    - Interactive TUI when `stdin` and `stdout` are both TTYs and `-p` was not provided.
    - Headless one-shot mode otherwise.
