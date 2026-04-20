@@ -418,6 +418,19 @@ function buildIncompleteAssistantMessage(
   };
 }
 
+async function resolveStreamResultSoon(
+  streamResult: Promise<AssistantMessage>,
+): Promise<AssistantMessage | undefined> {
+  const pending = Symbol("pending");
+  const result = await Promise.race([
+    streamResult,
+    new Promise<typeof pending>((resolve) => {
+      setTimeout(() => resolve(pending), 0);
+    }),
+  ]);
+  return result === pending ? undefined : result;
+}
+
 async function streamAssistantMessage(
   opts: Pick<
     RunAgentOpts,
@@ -455,7 +468,13 @@ async function streamAssistantMessage(
   }
 
   // `end(result)` resolves the final result without emitting a terminal event.
+  // Some wrappers settle that promise on the next task, so give it one more
+  // turn before treating the stream as incomplete.
   await Promise.resolve();
+  if (!assistantMessage && !settledStreamResult) {
+    settledStreamResult = await resolveStreamResultSoon(streamResult);
+  }
+
   const finalAssistantMessage =
     assistantMessage ??
     settledStreamResult ??

@@ -27,7 +27,7 @@ import type { Theme } from "./theme.ts";
 import { createUiAgentController } from "./ui/agent.ts";
 import { createCommandController } from "./ui/commands.ts";
 import {
-  buildConversationLogNodes,
+  buildConversationLayoutSnapshot,
   CONVERSATION_GAP,
   resetConversationRenderCache,
 } from "./ui/conversation.ts";
@@ -74,8 +74,8 @@ const TERMINAL_TITLE_FRAMES = [
   "[o=---]",
 ] as const;
 
-/** Maximum number of committed messages rendered before older history is chunked. */
-const CONVERSATION_CHUNK_MESSAGES = 50;
+/** Overscan applied above and below the viewport for virtualized log rendering. */
+const CONVERSATION_OVERSCAN_ROWS = 6;
 
 /** Minimum delay between coalesced streaming renders. */
 const STREAM_RENDER_MIN_INTERVAL_MS = 33;
@@ -114,9 +114,6 @@ let scrollOffset = 0;
 
 /** Whether the log auto-scrolls to the bottom. */
 let stickToBottom = true;
-
-/** First visible committed message when older history is chunked. */
-let visibleConversationStart = 0;
 
 /** Current text in the input area. */
 let inputValue = "";
@@ -177,7 +174,6 @@ export function isQuitKey(key: string, input: string): boolean {
 export function resetUiState(): void {
   scrollOffset = 0;
   stickToBottom = true;
-  visibleConversationStart = 0;
   inputValue = "";
   inputReadOnly = false;
   inputFocused = true;
@@ -528,62 +524,151 @@ function renderDivider(state: AppState, width: number): Node {
 // Conversation log
 // ---------------------------------------------------------------------------
 
-function getLatestConversationChunkStart(messageCount: number): number {
-  return Math.max(0, messageCount - CONVERSATION_CHUNK_MESSAGES);
+function measureConversationSliceHeight(
+  prefixHeights: readonly number[],
+  startIndex: number,
+  endIndex: number,
+): number {
+  const count = endIndex - startIndex;
+  if (count <= 0) {
+    return 0;
+  }
+  return (
+    prefixHeights[endIndex]! -
+    prefixHeights[startIndex]! +
+    CONVERSATION_GAP * Math.max(0, count - 1)
+  );
 }
 
-function getVisibleConversationStart(messageCount: number): number {
-  if (stickToBottom) {
-    return getLatestConversationChunkStart(messageCount);
+function getConversationItemTop(
+  prefixHeights: readonly number[],
+  index: number,
+): number {
+  return prefixHeights[index]! + CONVERSATION_GAP * index;
+}
+
+function findConversationStartIndex(
+  itemHeights: readonly { height: number }[],
+  prefixHeights: readonly number[],
+  offset: number,
+): number {
+  let low = 0;
+  let high = itemHeights.length;
+
+  while (low < high) {
+    const mid = Math.floor((low + high) / 2);
+    const bottom =
+      getConversationItemTop(prefixHeights, mid) + itemHeights[mid]!.height;
+    if (bottom > offset) {
+      high = mid;
+    } else {
+      low = mid + 1;
+    }
   }
 
-  visibleConversationStart = Math.min(
-    visibleConversationStart,
-    getLatestConversationChunkStart(messageCount),
-  );
-  return visibleConversationStart;
+  return Math.min(low, Math.max(0, itemHeights.length - 1));
+}
+
+function findConversationEndIndex(
+  items: readonly { height: number }[],
+  prefixHeights: readonly number[],
+  offset: number,
+): number {
+  let low = 0;
+  let high = items.length;
+
+  while (low < high) {
+    const mid = Math.floor((low + high) / 2);
+    if (getConversationItemTop(prefixHeights, mid) < offset) {
+      low = mid + 1;
+    } else {
+      high = mid;
+    }
+  }
+
+  return low;
+}
+
+function renderConversationSpacer(height: number): Node | null {
+  const rows = Math.max(0, Math.floor(height));
+  if (rows === 0) {
+    return null;
+  }
+
+  const paddingY = Math.floor(rows / 2);
+  if (rows % 2 === 0) {
+    return VStack({ padding: { y: paddingY } }, []);
+  }
+
+  return VStack({ padding: { y: paddingY } }, [Text("")]);
 }
 
 /** Build the full conversation log as an array of nodes. */
 export function buildConversationLog(
   state: AppState,
   width = Number.POSITIVE_INFINITY,
+  viewportHeight = Number.POSITIVE_INFINITY,
 ): Node[] {
-  return buildConversationLogNodes(
+  const layout = buildConversationLayoutSnapshot(
     state,
     agentController.getStreamingConversationState(),
-    getVisibleConversationStart(state.messages.length),
     width,
   );
-}
+  const { items, prefixHeights } = layout;
+  if (!Number.isFinite(viewportHeight) || items.length <= 1) {
+    return items.map((item) => item.node);
+  }
 
-function measureConversationHeight(
-  state: AppState,
-  width: number,
-  startIndex: number,
-): number {
-  return measureContentHeight(
-    VStack(
-      { gap: CONVERSATION_GAP },
-      buildConversationLogNodes(
-        state,
-        agentController.getStreamingConversationState(),
-        startIndex,
-        width,
-      ),
-    ),
-    { width: Math.max(1, width) },
+  const totalHeight = measureConversationSliceHeight(
+    prefixHeights,
+    0,
+    items.length,
   );
-}
+  const visibleHeight = Math.max(1, Math.floor(viewportHeight));
+  const maxOffset = Math.max(0, totalHeight - visibleHeight);
+  const effectiveScrollOffset = stickToBottom
+    ? maxOffset
+    : Math.max(0, Math.min(scrollOffset, maxOffset));
+  const paddedTop = Math.max(
+    0,
+    effectiveScrollOffset - CONVERSATION_OVERSCAN_ROWS,
+  );
+  const paddedBottom = Math.min(
+    totalHeight,
+    effectiveScrollOffset + visibleHeight + CONVERSATION_OVERSCAN_ROWS,
+  );
 
-function prependConversationChunk(state: AppState, width: number): void {
-  const currentStart = visibleConversationStart;
-  const nextStart = Math.max(0, currentStart - CONVERSATION_CHUNK_MESSAGES);
-  const currentHeight = measureConversationHeight(state, width, currentStart);
-  const nextHeight = measureConversationHeight(state, width, nextStart);
+  let startIndex = findConversationStartIndex(items, prefixHeights, paddedTop);
+  let endIndex = findConversationEndIndex(items, prefixHeights, paddedBottom);
+  if (endIndex <= startIndex) {
+    endIndex = Math.min(items.length, startIndex + 1);
+  }
+  startIndex = Math.min(startIndex, Math.max(0, endIndex - 1));
 
-  visibleConversationStart = nextStart;
-  scrollOffset += Math.max(0, nextHeight - currentHeight);
+  const topSpacerHeight = measureConversationSliceHeight(
+    prefixHeights,
+    0,
+    startIndex,
+  );
+  const bottomSpacerHeight = measureConversationSliceHeight(
+    prefixHeights,
+    endIndex,
+    items.length,
+  );
+
+  const nodes: Node[] = [];
+  const topSpacer = renderConversationSpacer(topSpacerHeight);
+  if (topSpacer) {
+    nodes.push(topSpacer);
+  }
+  for (let index = startIndex; index < endIndex; index++) {
+    nodes.push(items[index]!.node);
+  }
+  const bottomSpacer = renderConversationSpacer(bottomSpacerHeight);
+  if (bottomSpacer) {
+    nodes.push(bottomSpacer);
+  }
+  return nodes;
 }
 
 // ---------------------------------------------------------------------------
@@ -930,7 +1015,30 @@ export function suspendToBackground(
 // Main
 // ---------------------------------------------------------------------------
 
-function renderConversationLog(state: AppState, width: number): Node {
+function getConversationViewportHeight(
+  cols: number,
+  rows: number,
+  divider: Node,
+  input: Node,
+  statusBar: Node,
+): number {
+  if (!Number.isFinite(rows)) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  const width = Math.max(1, Math.floor(cols));
+  const reservedHeight =
+    measureContentHeight(divider, { width }) +
+    measureContentHeight(input, { width }) +
+    measureContentHeight(statusBar, { width });
+  return Math.max(1, Math.floor(rows) - reservedHeight);
+}
+
+function renderConversationLog(
+  state: AppState,
+  width: number,
+  viewportHeight: number,
+): Node {
   return VStack(
     {
       flex: 1,
@@ -939,23 +1047,11 @@ function renderConversationLog(state: AppState, width: number): Node {
       justifyContent: state.messages.length === 0 ? "center" : undefined,
       scrollOffset: stickToBottom ? Infinity : scrollOffset,
       onScroll: (offset, maxOffset) => {
-        const wasStickToBottom = stickToBottom;
         scrollOffset = offset;
-
-        if (wasStickToBottom && offset < maxOffset) {
-          visibleConversationStart = getLatestConversationChunkStart(
-            state.messages.length,
-          );
-        }
-
         stickToBottom = offset >= maxOffset;
-
-        if (!stickToBottom && offset === 0 && visibleConversationStart > 0) {
-          prependConversationChunk(state, width);
-        }
       },
     },
-    buildConversationLog(state, width),
+    buildConversationLog(state, width, viewportHeight),
   );
 }
 
@@ -968,6 +1064,8 @@ function renderConversationLog(state: AppState, width: number): Node {
  * @param state - Application state.
  * @param cols - Current terminal width in columns.
  * @param inputController - Stable callbacks for the controlled TextInput.
+ * @param onSuspend - Optional suspend handler for Ctrl+Z.
+ * @param rows - Current terminal height in rows.
  * @returns The base layout node.
  */
 export function renderBaseLayout(
@@ -975,12 +1073,24 @@ export function renderBaseLayout(
   cols: number,
   inputController: InputController,
   onSuspend?: () => void,
+  rows = Number.POSITIVE_INFINITY,
 ): Node {
   titleState = state;
   titleViewportActive = true;
   if (lastTerminalTitle === null) {
     syncTerminalTitle(state);
   }
+
+  const divider = renderDivider(state, cols);
+  const input = renderInputArea(state.theme, inputController);
+  const statusBar = renderStatusBar(state, cols);
+  const conversationViewportHeight = getConversationViewportHeight(
+    cols,
+    rows,
+    divider,
+    input,
+    statusBar,
+  );
 
   return VStack(
     {
@@ -1012,16 +1122,16 @@ export function renderBaseLayout(
     },
     [
       // ── Conversation log ──
-      renderConversationLog(state, cols),
+      renderConversationLog(state, cols, conversationViewportHeight),
 
       // ── Animated divider (pulse when agent is working) ──
-      renderDivider(state, cols),
+      divider,
 
       // ── Input area ──
-      renderInputArea(state.theme, inputController),
+      input,
 
       // ── Status bar (1 line) ──
-      renderStatusBar(state, cols),
+      statusBar,
     ],
   );
 }
@@ -1044,16 +1154,22 @@ export function startUI(state: AppState): void {
 
   cel.viewport(() => {
     const cols = terminal.columns;
-    const base = renderBaseLayout(state, cols, inputController, () => {
-      suspendToBackground(() => {
-        resumeTerminalUi();
-        cel._getBuffer()?.clear();
-        if (state.running) {
-          startDividerAnimation();
-        }
-        requestRender("immediate");
-      });
-    });
+    const base = renderBaseLayout(
+      state,
+      cols,
+      inputController,
+      () => {
+        suspendToBackground(() => {
+          resumeTerminalUi();
+          cel._getBuffer()?.clear();
+          if (state.running) {
+            startDividerAnimation();
+          }
+          requestRender("immediate");
+        });
+      },
+      terminal.rows,
+    );
     const overlay = renderActiveOverlay(state);
 
     if (overlay) {

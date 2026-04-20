@@ -119,16 +119,14 @@ interface ToolCallArgsCache {
   entries: Map<string, ToolCallRenderInfo>;
 }
 
-interface ConversationRenderCache {
-  messages: readonly ConversationMessage[] | null;
-  startIndex: number;
-  count: number;
+interface ConversationMessageRenderCacheEntry {
+  node: Node | null;
+  height: number;
   showReasoning: boolean;
   verbose: boolean;
   previewWidth: number;
   cwd: string | null;
   theme: Theme | null;
-  nodes: Node[];
 }
 
 type ToolRenderDirection = "->" | "<-";
@@ -181,9 +179,36 @@ export interface ToolRenderLine {
   text: string;
 }
 
+/** A rendered conversation item plus its measured height. */
+export interface ConversationLogItem {
+  /** Rendered conversation node. */
+  node: Node;
+  /** Intrinsic item height in rows, excluding conversation gaps. */
+  height: number;
+}
+
+/** Rendered items plus cached cumulative intrinsic heights. */
+export interface ConversationLayoutSnapshot {
+  /** Rendered items in on-screen order. */
+  items: readonly ConversationLogItem[];
+  /** Cumulative intrinsic heights, excluding inter-item gaps. */
+  prefixHeights: readonly number[];
+}
+
+interface ConversationLayoutCache {
+  messages: readonly ConversationMessage[] | null;
+  count: number;
+  showReasoning: boolean;
+  verbose: boolean;
+  previewWidth: number;
+  cwd: string | null;
+  theme: Theme | null;
+  items: ConversationLogItem[];
+  prefixHeights: number[];
+}
+
 const EMPTY_STREAMING_CONTENT: AssistantMessage["content"] = [];
 const EMPTY_PENDING_TOOL_RESULTS: readonly PendingToolResult[] = [];
-const EMPTY_RENDER_NODES: Node[] = [];
 const EMPTY_TOOL_RESULT_ARGS: Record<string, unknown> = Object.freeze({});
 
 const toolCallArgsCache: ToolCallArgsCache = {
@@ -192,16 +217,21 @@ const toolCallArgsCache: ToolCallArgsCache = {
   entries: new Map(),
 };
 
-const conversationRenderCache: ConversationRenderCache = {
+let conversationMessageRenderCache = new WeakMap<
+  ConversationMessage,
+  ConversationMessageRenderCacheEntry
+>();
+
+const conversationLayoutCache: ConversationLayoutCache = {
   messages: null,
-  startIndex: 0,
   count: 0,
   showReasoning: false,
   verbose: false,
   previewWidth: DEFAULT_TOOL_PREVIEW_WIDTH,
   cwd: null,
   theme: null,
-  nodes: EMPTY_RENDER_NODES,
+  items: [],
+  prefixHeights: [0],
 };
 
 /** Reset cached committed conversation renders. */
@@ -209,15 +239,16 @@ export function resetConversationRenderCache(): void {
   toolCallArgsCache.messages = null;
   toolCallArgsCache.count = 0;
   toolCallArgsCache.entries = new Map();
-  conversationRenderCache.messages = null;
-  conversationRenderCache.startIndex = 0;
-  conversationRenderCache.count = 0;
-  conversationRenderCache.showReasoning = false;
-  conversationRenderCache.verbose = false;
-  conversationRenderCache.previewWidth = DEFAULT_TOOL_PREVIEW_WIDTH;
-  conversationRenderCache.cwd = null;
-  conversationRenderCache.theme = null;
-  conversationRenderCache.nodes = EMPTY_RENDER_NODES;
+  conversationMessageRenderCache = new WeakMap();
+  conversationLayoutCache.messages = null;
+  conversationLayoutCache.count = 0;
+  conversationLayoutCache.showReasoning = false;
+  conversationLayoutCache.verbose = false;
+  conversationLayoutCache.previewWidth = DEFAULT_TOOL_PREVIEW_WIDTH;
+  conversationLayoutCache.cwd = null;
+  conversationLayoutCache.theme = null;
+  conversationLayoutCache.items = [];
+  conversationLayoutCache.prefixHeights = [0];
 }
 
 /** Render a user message with a subtle background. */
@@ -706,36 +737,58 @@ function renderTodoChecklist(todos: readonly TodoItem[], theme: Theme): Node {
   );
 }
 
-function measureToolNodesHeight(lines: readonly Node[], width: number): number {
-  if (lines.length === 0) {
-    return 0;
-  }
-
-  return measureContentHeight(VStack({}, [...lines]), { width });
+function measureToolNodeHeight(node: Node, width: number): number {
+  return measureContentHeight(VStack({}, [node]), { width });
 }
 
-function measureToolNodeHeight(line: Node, width: number): number {
-  return measureContentHeight(VStack({}, [line]), { width });
-}
-
-function countVisibleTailNodes(
-  lines: readonly Node[],
-  width: number,
-  maxRows: number,
-): number {
-  let remainingRows = maxRows;
-  let visibleLineCount = 0;
-
-  for (let index = lines.length - 1; index >= 0; index--) {
-    const lineHeight = measureToolNodeHeight(lines[index]!, width);
-    if (lineHeight > remainingRows) {
-      return visibleLineCount > 0 ? visibleLineCount : 1;
+function renderFullToolBody(spec: ToolBlockSpec, theme: Theme): Node | null {
+  if (spec.highlightedBody) {
+    const highlighted = getHighlightedBodyNode(spec.highlightedBody, theme);
+    if (highlighted) {
+      return highlighted;
     }
-    remainingRows -= lineHeight;
-    visibleLineCount += 1;
   }
 
-  return visibleLineCount;
+  if (spec.bodyLines.length === 0) {
+    return null;
+  }
+
+  return VStack({}, renderToolLines(spec.bodyLines, theme));
+}
+
+function renderToolBodyLines(
+  spec: ToolBlockSpec,
+  lines: readonly ToolRenderLine[],
+  theme: Theme,
+): Node | null {
+  if (lines.length === 0) {
+    return null;
+  }
+
+  if (spec.highlightedBody) {
+    const highlighted = getHighlightedBodyNode(
+      {
+        ...spec.highlightedBody,
+        text: lines.map((line) => line.text).join("\n"),
+      },
+      theme,
+    );
+    if (highlighted) {
+      return highlighted;
+    }
+  }
+
+  return VStack({}, renderToolLines(lines, theme));
+}
+
+function wrapToolPreviewBody(body: Node): Node {
+  return VStack(
+    {
+      height: UI_TOOL_PREVIEW_ROWS,
+      justifyContent: "end",
+    },
+    body.type === "vstack" ? [...body.children] : [body],
+  );
 }
 
 function renderToolHeaderPill(
@@ -768,93 +821,47 @@ function renderToolHeaderRow(spec: ToolBlockSpec, theme: Theme): Node {
   return HStack({}, children);
 }
 
-function renderToolBodyFromNodes(
-  lines: readonly Node[],
-  previewBody: boolean,
-  opts: Pick<ConversationRenderOpts, "previewWidth" | "theme" | "verbose">,
+function renderCompactToolBody(
+  spec: ToolBlockSpec,
+  opts: Pick<ConversationRenderOpts, "previewWidth" | "theme">,
 ): { body: Node | null; summary?: ToolRenderLine } {
-  if (lines.length === 0) {
+  if (spec.bodyLines.length === 0) {
     return { body: null };
   }
 
-  if (opts.verbose || !previewBody) {
-    return { body: VStack({}, [...lines]) };
-  }
-
   const bodyWidth = getToolBodyWidth(opts.previewWidth);
-  const totalHeight = measureToolNodesHeight(lines, bodyWidth);
-  if (totalHeight <= UI_TOOL_PREVIEW_ROWS) {
-    return { body: VStack({}, [...lines]) };
+  let previewStart = Math.max(0, spec.bodyLines.length - UI_TOOL_PREVIEW_ROWS);
+
+  for (;;) {
+    const previewLines = spec.bodyLines.slice(previewStart);
+    const previewBody = renderToolBodyLines(spec, previewLines, opts.theme);
+    if (!previewBody) {
+      return { body: null };
+    }
+
+    const previewHeight = measureToolNodeHeight(previewBody, bodyWidth);
+    if (
+      previewHeight <= UI_TOOL_PREVIEW_ROWS ||
+      previewStart >= spec.bodyLines.length - 1
+    ) {
+      const hiddenLineCount = previewStart;
+      return {
+        body:
+          hiddenLineCount > 0 || previewHeight > UI_TOOL_PREVIEW_ROWS
+            ? wrapToolPreviewBody(previewBody)
+            : previewBody,
+        summary:
+          hiddenLineCount > 0
+            ? {
+                kind: "summary",
+                text: `And ${hiddenLineCount} lines more`,
+              }
+            : undefined,
+      };
+    }
+
+    previewStart += 1;
   }
-
-  const visibleLineCount = countVisibleTailNodes(
-    lines,
-    bodyWidth,
-    UI_TOOL_PREVIEW_ROWS,
-  );
-  const previewLines = lines.slice(-visibleLineCount);
-  const hiddenLineCount = Math.max(0, lines.length - visibleLineCount);
-
-  return {
-    body: VStack(
-      {
-        height: UI_TOOL_PREVIEW_ROWS,
-        justifyContent: "end",
-      },
-      [...previewLines],
-    ),
-    summary:
-      hiddenLineCount > 0
-        ? {
-            kind: "summary",
-            text: `And ${hiddenLineCount} lines more`,
-          }
-        : undefined,
-  };
-}
-
-function renderToolBodyFromHighlightedNode(
-  highlighted: Node,
-  previewBody: boolean,
-  opts: Pick<ConversationRenderOpts, "previewWidth" | "theme" | "verbose">,
-): { body: Node | null; summary?: ToolRenderLine } {
-  if (opts.verbose || !previewBody) {
-    return { body: highlighted };
-  }
-
-  const bodyWidth = getToolBodyWidth(opts.previewWidth);
-  const totalHeight = measureToolNodeHeight(highlighted, bodyWidth);
-  if (totalHeight <= UI_TOOL_PREVIEW_ROWS || highlighted.type !== "vstack") {
-    return { body: highlighted };
-  }
-
-  const visibleLineCount = countVisibleTailNodes(
-    highlighted.children,
-    bodyWidth,
-    UI_TOOL_PREVIEW_ROWS,
-  );
-  const previewLines = highlighted.children.slice(-visibleLineCount);
-  const hiddenLineCount = Math.max(
-    0,
-    highlighted.children.length - visibleLineCount,
-  );
-
-  return {
-    body: VStack(
-      {
-        height: UI_TOOL_PREVIEW_ROWS,
-        justifyContent: "end",
-      },
-      [...previewLines],
-    ),
-    summary:
-      hiddenLineCount > 0
-        ? {
-            kind: "summary",
-            text: `And ${hiddenLineCount} lines more`,
-          }
-        : undefined,
-  };
 }
 
 function renderToolBody(
@@ -865,25 +872,13 @@ function renderToolBody(
     return { body: spec.bodyNode };
   }
 
-  if (spec.highlightedBody) {
-    const highlighted = getHighlightedBodyNode(
-      spec.highlightedBody,
-      opts.theme,
-    );
-    if (highlighted) {
-      return renderToolBodyFromHighlightedNode(
-        highlighted,
-        spec.previewBody,
-        opts,
-      );
-    }
+  if (opts.verbose || !spec.previewBody) {
+    return {
+      body: renderFullToolBody(spec, opts.theme),
+    };
   }
 
-  return renderToolBodyFromNodes(
-    renderToolLines(spec.bodyLines, opts.theme),
-    spec.previewBody,
-    opts,
-  );
+  return renderCompactToolBody(spec, opts);
 }
 
 /** Render a tool block with a left border and compact header pill. */
@@ -1458,13 +1453,6 @@ function renderEmptyConversationBanner(
   ]);
 }
 
-function pushConversationNode(nodes: Node[], node: Node | null): void {
-  if (!node) {
-    return;
-  }
-  nodes.push(node);
-}
-
 function rememberToolCallArgs(
   message: AssistantMessage,
   toolCallArgs: Map<string, ToolCallRenderInfo>,
@@ -1546,60 +1534,150 @@ function cacheToolCallArgs(messages: readonly ConversationMessage[]): void {
   toolCallArgsCache.count = messages.length;
 }
 
-function canReuseCommittedConversationCache(
-  state: ConversationLogState,
-  startIndex: number,
+function canReuseConversationMessageRender(
+  cached: ConversationMessageRenderCacheEntry | undefined,
+  renderOpts: ConversationRenderOpts,
   previewWidth: number,
-): boolean {
+): cached is ConversationMessageRenderCacheEntry {
   return (
-    conversationRenderCache.messages === state.messages &&
-    conversationRenderCache.startIndex === startIndex &&
-    conversationRenderCache.showReasoning === state.showReasoning &&
-    conversationRenderCache.verbose === state.verbose &&
-    conversationRenderCache.previewWidth === previewWidth &&
-    conversationRenderCache.cwd === state.cwd &&
-    conversationRenderCache.theme === state.theme &&
-    conversationRenderCache.count <= state.messages.length
+    cached !== undefined &&
+    cached.showReasoning === renderOpts.showReasoning &&
+    cached.verbose === renderOpts.verbose &&
+    cached.previewWidth === previewWidth &&
+    cached.cwd === renderOpts.cwd &&
+    cached.theme === renderOpts.theme
   );
 }
 
-function cacheCommittedConversation(
+function canReuseCommittedConversationLayout(
   state: ConversationLogState,
   renderOpts: ConversationRenderOpts,
-  startIndex: number,
-): void {
-  const previewWidth = getPreviewWidth(renderOpts.previewWidth);
-  cacheToolCallArgs(state.messages);
+  previewWidth: number,
+): boolean {
+  return (
+    conversationLayoutCache.messages === state.messages &&
+    conversationLayoutCache.count <= state.messages.length &&
+    conversationLayoutCache.showReasoning === renderOpts.showReasoning &&
+    conversationLayoutCache.verbose === renderOpts.verbose &&
+    conversationLayoutCache.previewWidth === previewWidth &&
+    conversationLayoutCache.cwd === renderOpts.cwd &&
+    conversationLayoutCache.theme === renderOpts.theme
+  );
+}
 
-  if (!canReuseCommittedConversationCache(state, startIndex, previewWidth)) {
-    conversationRenderCache.messages = state.messages;
-    conversationRenderCache.startIndex = startIndex;
-    conversationRenderCache.count = startIndex;
-    conversationRenderCache.showReasoning = state.showReasoning;
-    conversationRenderCache.verbose = state.verbose;
-    conversationRenderCache.previewWidth = previewWidth;
-    conversationRenderCache.cwd = state.cwd;
-    conversationRenderCache.theme = state.theme;
-    conversationRenderCache.nodes = [];
+function appendConversationLogItem(
+  items: ConversationLogItem[],
+  prefixHeights: number[],
+  item: ConversationLogItem | null,
+): void {
+  if (!item) {
+    return;
+  }
+
+  items.push(item);
+  prefixHeights.push(prefixHeights[prefixHeights.length - 1]! + item.height);
+}
+
+function measureConversationItemHeight(
+  node: Node,
+  previewWidth: number,
+): number {
+  return measureContentHeight(node, {
+    width: getPreviewWidth(previewWidth),
+  });
+}
+
+function createConversationLogItem(
+  node: Node | null,
+  previewWidth: number,
+): ConversationLogItem | null {
+  if (!node) {
+    return null;
+  }
+
+  return {
+    node,
+    height: measureConversationItemHeight(node, previewWidth),
+  };
+}
+
+function getCommittedConversationLogItem(
+  message: ConversationMessage,
+  renderOpts: ConversationRenderOpts,
+): ConversationLogItem | null {
+  const previewWidth = getPreviewWidth(renderOpts.previewWidth);
+  const cached = conversationMessageRenderCache.get(message);
+  if (canReuseConversationMessageRender(cached, renderOpts, previewWidth)) {
+    if (!cached.node) {
+      return null;
+    }
+    return {
+      node: cached.node,
+      height: cached.height,
+    };
+  }
+
+  const node = renderConversationMessage(
+    message,
+    renderOpts,
+    toolCallArgsCache.entries,
+    renderOpts.theme,
+  );
+  const nextEntry: ConversationMessageRenderCacheEntry = {
+    node,
+    height: node ? measureConversationItemHeight(node, previewWidth) : 0,
+    showReasoning: renderOpts.showReasoning,
+    verbose: renderOpts.verbose,
+    previewWidth,
+    cwd: renderOpts.cwd ?? null,
+    theme: renderOpts.theme,
+  };
+  conversationMessageRenderCache.set(message, nextEntry);
+
+  if (!node) {
+    return null;
+  }
+
+  return {
+    node,
+    height: nextEntry.height,
+  };
+}
+
+function getCommittedConversationLayoutSnapshot(
+  state: ConversationLogState,
+  renderOpts: ConversationRenderOpts,
+): ConversationLayoutSnapshot {
+  const previewWidth = getPreviewWidth(renderOpts.previewWidth);
+  if (!canReuseCommittedConversationLayout(state, renderOpts, previewWidth)) {
+    conversationLayoutCache.messages = state.messages;
+    conversationLayoutCache.count = 0;
+    conversationLayoutCache.showReasoning = renderOpts.showReasoning;
+    conversationLayoutCache.verbose = renderOpts.verbose;
+    conversationLayoutCache.previewWidth = previewWidth;
+    conversationLayoutCache.cwd = renderOpts.cwd ?? null;
+    conversationLayoutCache.theme = renderOpts.theme;
+    conversationLayoutCache.items = [];
+    conversationLayoutCache.prefixHeights = [0];
   }
 
   for (
-    let index = conversationRenderCache.count;
+    let index = conversationLayoutCache.count;
     index < state.messages.length;
     index++
   ) {
-    pushConversationNode(
-      conversationRenderCache.nodes,
-      renderConversationMessage(
-        state.messages[index]!,
-        renderOpts,
-        toolCallArgsCache.entries,
-        state.theme,
-      ),
+    appendConversationLogItem(
+      conversationLayoutCache.items,
+      conversationLayoutCache.prefixHeights,
+      getCommittedConversationLogItem(state.messages[index]!, renderOpts),
     );
   }
 
-  conversationRenderCache.count = state.messages.length;
+  conversationLayoutCache.count = state.messages.length;
+  return {
+    items: conversationLayoutCache.items,
+    prefixHeights: conversationLayoutCache.prefixHeights,
+  };
 }
 
 function hasStreamingTail(streaming: StreamingConversationState): boolean {
@@ -1610,21 +1688,78 @@ function hasStreamingTail(streaming: StreamingConversationState): boolean {
   );
 }
 
+function appendStreamingConversationLogItems(
+  items: ConversationLogItem[],
+  prefixHeights: number[],
+  streaming: StreamingConversationState,
+  renderOpts: ConversationRenderOpts,
+  previewWidth: number,
+): void {
+  appendConversationLogItem(
+    items,
+    prefixHeights,
+    createConversationLogItem(
+      renderAssistantMessage(
+        {
+          content: streaming.content,
+        },
+        renderOpts,
+      ),
+      previewWidth,
+    ),
+  );
+
+  for (const pendingToolResult of streaming.pendingToolResults) {
+    const info = toolCallArgsCache.entries.get(pendingToolResult.toolCallId);
+    appendConversationLogItem(
+      items,
+      prefixHeights,
+      createConversationLogItem(
+        renderToolResultMessage(
+          info?.name ?? pendingToolResult.toolName,
+          info?.args ?? EMPTY_TOOL_RESULT_ARGS,
+          pendingToolResult.content,
+          pendingToolResult.isError,
+          renderOpts,
+          pendingToolResult.details,
+        ),
+        previewWidth,
+      ),
+    );
+  }
+}
+
+function buildEmptyConversationBannerSnapshot(
+  state: ConversationLogState,
+  previewWidth: number,
+): ConversationLayoutSnapshot {
+  const banner = renderEmptyConversationBanner(
+    state.theme,
+    state.versionLabel ?? DEV_VERSION_LABEL,
+  );
+  const item = {
+    node: banner,
+    height: measureConversationItemHeight(banner, previewWidth),
+  };
+  return {
+    items: [item],
+    prefixHeights: [0, item.height],
+  };
+}
+
 /**
- * Build the full conversation log as an array of nodes.
+ * Build rendered conversation items plus cached cumulative intrinsic heights.
  *
  * @param state - Conversation rendering state.
  * @param streaming - Current in-progress assistant tail, if any.
- * @param startIndex - Index of the first committed message to render.
  * @param previewWidth - Available terminal width for width-aware tool previews.
- * @returns The rendered conversation log nodes.
+ * @returns Rendered items plus cumulative heights in on-screen order.
  */
-export function buildConversationLogNodes(
+export function buildConversationLayoutSnapshot(
   state: ConversationLogState,
   streaming: StreamingConversationState,
-  startIndex = 0,
   previewWidth = DEFAULT_TOOL_PREVIEW_WIDTH,
-): Node[] {
+): ConversationLayoutSnapshot {
   const renderOpts: ConversationRenderOpts = {
     showReasoning: state.showReasoning,
     verbose: state.verbose,
@@ -1633,46 +1768,69 @@ export function buildConversationLogNodes(
     previewWidth,
   };
 
-  if (state.messages.length === 0 && !hasStreamingTail(streaming)) {
-    return [
-      renderEmptyConversationBanner(
-        state.theme,
-        state.versionLabel ?? DEV_VERSION_LABEL,
-      ),
-    ];
-  }
+  cacheToolCallArgs(state.messages);
 
-  cacheCommittedConversation(state, renderOpts, startIndex);
-
-  if (!hasStreamingTail(streaming)) {
-    return conversationRenderCache.nodes;
-  }
-
-  const nodes = [...conversationRenderCache.nodes];
-  pushConversationNode(
-    nodes,
-    renderAssistantMessage(
-      {
-        content: streaming.content,
-      },
-      renderOpts,
-    ),
+  const committedSnapshot = getCommittedConversationLayoutSnapshot(
+    state,
+    renderOpts,
   );
-
-  for (const pendingToolResult of streaming.pendingToolResults) {
-    const info = toolCallArgsCache.entries.get(pendingToolResult.toolCallId);
-    pushConversationNode(
-      nodes,
-      renderToolResultMessage(
-        info?.name ?? pendingToolResult.toolName,
-        info?.args ?? EMPTY_TOOL_RESULT_ARGS,
-        pendingToolResult.content,
-        pendingToolResult.isError,
-        renderOpts,
-        pendingToolResult.details,
-      ),
-    );
+  const streamingTailVisible = hasStreamingTail(streaming);
+  if (!streamingTailVisible) {
+    if (committedSnapshot.items.length > 0 || state.messages.length > 0) {
+      return committedSnapshot;
+    }
+    return buildEmptyConversationBannerSnapshot(state, previewWidth);
   }
 
-  return nodes;
+  const items = [...committedSnapshot.items];
+  const prefixHeights = [...committedSnapshot.prefixHeights];
+  appendStreamingConversationLogItems(
+    items,
+    prefixHeights,
+    streaming,
+    renderOpts,
+    previewWidth,
+  );
+  return {
+    items,
+    prefixHeights,
+  };
+}
+
+/**
+ * Build the rendered conversation items with cached per-message nodes/heights.
+ *
+ * @param state - Conversation rendering state.
+ * @param streaming - Current in-progress assistant tail, if any.
+ * @param previewWidth - Available terminal width for width-aware tool previews.
+ * @returns Rendered items in on-screen order.
+ */
+export function buildConversationLogItems(
+  state: ConversationLogState,
+  streaming: StreamingConversationState,
+  previewWidth = DEFAULT_TOOL_PREVIEW_WIDTH,
+): readonly ConversationLogItem[] {
+  return buildConversationLayoutSnapshot(state, streaming, previewWidth).items;
+}
+
+/**
+ * Build the full conversation log as an array of nodes.
+ *
+ * @param state - Conversation rendering state.
+ * @param streaming - Current in-progress assistant tail, if any.
+ * @param startIndex - Index of the first rendered item to include.
+ * @param previewWidth - Available terminal width for width-aware tool previews.
+ * @param endIndex - Exclusive rendered-item end index.
+ * @returns The rendered conversation log nodes.
+ */
+export function buildConversationLogNodes(
+  state: ConversationLogState,
+  streaming: StreamingConversationState,
+  startIndex = 0,
+  previewWidth = DEFAULT_TOOL_PREVIEW_WIDTH,
+  endIndex = Number.POSITIVE_INFINITY,
+): Node[] {
+  return buildConversationLogItems(state, streaming, previewWidth)
+    .slice(startIndex, endIndex)
+    .map((item) => item.node);
 }

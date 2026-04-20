@@ -9,7 +9,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { cel, MockTerminal } from "@cel-tui/core";
+import { cel, MockTerminal, measureContentHeight, VStack } from "@cel-tui/core";
 import type { ContainerNode, Node } from "@cel-tui/types";
 import type { AssistantMessage, Model } from "@mariozechner/pi-ai";
 import {
@@ -26,6 +26,11 @@ import { createSession, loadMessages, openDatabase } from "./session.ts";
 import { DEFAULT_SHOW_REASONING, DEFAULT_VERBOSE } from "./settings.ts";
 import { DEFAULT_THEME } from "./theme.ts";
 import {
+  buildConversationLogNodes,
+  CONVERSATION_GAP,
+} from "./ui/conversation.ts";
+import {
+  buildConversationLog,
   createInputController,
   createRenderScheduler,
   handleInput,
@@ -90,7 +95,13 @@ function startUiViewport(
 ): void {
   cel.init(terminal);
   cel.viewport(() => {
-    const base = renderBaseLayout(state, terminal.columns, controller);
+    const base = renderBaseLayout(
+      state,
+      terminal.columns,
+      controller,
+      undefined,
+      terminal.rows,
+    );
     const overlay = renderActiveOverlay(state);
     return overlay ? [base, overlay] : base;
   });
@@ -227,6 +238,94 @@ describe("ui render scheduling", () => {
 });
 
 describe("ui rendering", () => {
+  test("virtualizes long conversation logs with spacers while preserving total height", () => {
+    const state = createTestState();
+    state.messages = Array.from({ length: 40 }, (_, index) => ({
+      role: "user",
+      content: `message ${index + 1}`,
+      timestamp: index + 1,
+    }));
+    const controller = createInputController(state);
+
+    try {
+      const viewportHeight = 4;
+      const fullNodes = buildConversationLogNodes(
+        state,
+        {
+          isStreaming: false,
+          content: [],
+          pendingToolResults: [],
+        },
+        0,
+        80,
+      );
+      const fullHeight = measureContentHeight(
+        VStack({ gap: CONVERSATION_GAP }, fullNodes),
+        { width: 80 },
+      );
+      const base = expectVStack(
+        renderBaseLayout(state, 80, controller, undefined, 8),
+      );
+      const conversation = expectVStack(base.children[0]!);
+      const maxOffset = Math.max(0, fullHeight - viewportHeight);
+
+      conversation.props.onScroll?.(Math.floor(maxOffset / 2), maxOffset);
+
+      const virtualNodes = buildConversationLog(state, 80, viewportHeight);
+      const virtualHeight = measureContentHeight(
+        VStack({ gap: CONVERSATION_GAP }, virtualNodes),
+        { width: 80 },
+      );
+      const visibleMessages = virtualNodes
+        .flatMap((node) => collectText(node))
+        .filter((line) => line.startsWith("message "));
+
+      expect(virtualHeight).toBe(fullHeight);
+      expect(virtualNodes.length).toBeLessThan(fullNodes.length);
+      expect(visibleMessages.length).toBeLessThan(state.messages.length);
+      expect(visibleMessages).not.toContain("message 1");
+      expect(visibleMessages).not.toContain("message 40");
+    } finally {
+      state.db.close();
+    }
+  });
+
+  test("renderBaseLayout derives the virtualized log height from the terminal rows", () => {
+    const state = createTestState();
+    state.messages = Array.from({ length: 30 }, (_, index) => ({
+      role: "user",
+      content: `message ${index + 1}`,
+      timestamp: index + 1,
+    }));
+    const controller = createInputController(state);
+
+    try {
+      const compactBase = expectVStack(
+        renderBaseLayout(state, 80, controller, undefined, 10),
+      );
+      const compactConversation = expectVStack(compactBase.children[0]!);
+      const compactMessages = collectText(compactConversation).filter((line) =>
+        line.startsWith("message "),
+      );
+
+      controller.onChange("line 1\nline 2\nline 3\nline 4\nline 5\nline 6");
+
+      const tallInputBase = expectVStack(
+        renderBaseLayout(state, 80, controller, undefined, 10),
+      );
+      const tallInputConversation = expectVStack(tallInputBase.children[0]!);
+      const tallInputMessages = collectText(tallInputConversation).filter(
+        (line) => line.startsWith("message "),
+      );
+
+      expect(compactMessages.length).toBeGreaterThan(tallInputMessages.length);
+      expect(compactMessages.at(-1)).toBe("message 30");
+      expect(tallInputMessages.at(-1)).toBe("message 30");
+    } finally {
+      state.db.close();
+    }
+  });
+
   test("first user message creates the session lazily", async () => {
     const faux = registerFauxProvider();
     const state = createTestState();

@@ -7,9 +7,19 @@ The spec and code are the sources of truth; this file is just the verified backl
 
 ## Open issues:
 
-_None._
+- [ ] Stream stops without finishing the turn after tools calls. happens in both headless and interactive mode.
+
+### Conversation log virtualization / performance plan
+
+Goal: replace the current message-count chunking with a real visible-slice virtual list and remove expensive preview/layout work from the scroll hot path.
+
+- [ ] Run a focused benchmark for long sessions after the virtualization refactor and confirm the new path holds up.
 
 # Defered issues:
+
+- [ ] Read tool output should include line numbers to help the llm find it's anchors.
+- [ ] If an agent uses readImage on a non-image file, mc crashes
+- [ ] If a conversation is truncated away from the db when the UI is still open somewhere, the app crashes.
 
 ## Theme config plan
 

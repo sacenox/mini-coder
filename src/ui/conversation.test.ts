@@ -164,6 +164,63 @@ describe("ui/conversation", () => {
     expect(lines.join("\n")).not.toContain('"command"');
   });
 
+  test("compact shell tool-call previews only render the visible tail slice", () => {
+    const command = Array.from(
+      { length: 14 },
+      (_, index) => `echo line ${index + 1}`,
+    ).join("\n");
+
+    const compactLines = collectRenderedLines(
+      renderAssistantMessage(
+        {
+          content: [
+            {
+              type: "toolCall",
+              id: "call-shell",
+              name: "shell",
+              arguments: { command },
+            },
+          ],
+        },
+        {
+          showReasoning: true,
+          verbose: false,
+          theme: DEFAULT_THEME,
+          cwd: "/tmp/project",
+          previewWidth: 80,
+        },
+      ),
+    );
+    const verboseLines = collectRenderedLines(
+      renderAssistantMessage(
+        {
+          content: [
+            {
+              type: "toolCall",
+              id: "call-shell",
+              name: "shell",
+              arguments: { command },
+            },
+          ],
+        },
+        {
+          showReasoning: true,
+          verbose: true,
+          theme: DEFAULT_THEME,
+          cwd: "/tmp/project",
+          previewWidth: 80,
+        },
+      ),
+    );
+
+    expect(compactLines).toContain("│ shell ->");
+    expect(compactLines).toContain("│ echo line 14");
+    expect(compactLines).toContain("│ And 6 lines more");
+    expect(compactLines).not.toContain("│ echo line 1");
+    expect(verboseLines).toContain("│ echo line 1");
+    expect(compactLines.length).toBeLessThan(verboseLines.length);
+  });
+
   test("MCP tool-call previews honor verbose mode", () => {
     const args = {
       query: "routing",

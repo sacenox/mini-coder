@@ -1314,6 +1314,129 @@ describe("agent loop", () => {
     }
   });
 
+  test("waits one task for a delayed result-only follow-up after tool use", async () => {
+    const api = "agent-delayed-tool-followup-test";
+    const sourceId = "agent-delayed-tool-followup-test-source";
+    const model: Model<string> = {
+      id: "agent-delayed-tool-followup-model",
+      name: "Agent Delayed Tool Follow-up Model",
+      api,
+      provider: "test",
+      baseUrl: "http://localhost:0",
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 128000,
+      maxTokens: 4096,
+    };
+
+    const toolCallMessage: AssistantMessage = {
+      role: "assistant",
+      content: [
+        {
+          type: "toolCall",
+          id: "tool-1",
+          name: "shell",
+          arguments: { command: "echo hi" },
+        },
+      ],
+      api,
+      provider: model.provider,
+      model: model.id,
+      usage: ZERO_USAGE,
+      stopReason: "toolUse",
+      timestamp: Date.now(),
+    };
+    const finalMessage: AssistantMessage = {
+      role: "assistant",
+      content: [{ type: "text", text: "Done after tool." }],
+      api,
+      provider: model.provider,
+      model: model.id,
+      usage: ZERO_USAGE,
+      stopReason: "stop",
+      timestamp: Date.now(),
+    };
+    let requestCount = 0;
+
+    const buildStream = () => {
+      requestCount += 1;
+      if (requestCount === 1) {
+        const stream = createAssistantMessageEventStream();
+        queueMicrotask(() => {
+          stream.push({
+            type: "done",
+            reason: "toolUse",
+            message: toolCallMessage,
+          });
+          stream.end(toolCallMessage);
+        });
+        return stream;
+      }
+
+      const stream = createAssistantMessageEventStream();
+      stream[Symbol.asyncIterator] = async function* () {};
+      stream.result = () =>
+        new Promise<AssistantMessage>((resolve) => {
+          setTimeout(() => resolve(finalMessage), 0);
+        });
+      return stream;
+    };
+
+    registerApiProvider(
+      {
+        api,
+        stream: () => buildStream(),
+        streamSimple: () => buildStream(),
+      },
+      sourceId,
+    );
+
+    const session = createSession(db, { cwd: tmp });
+    const userMsg = makeUser("hello");
+    const turn = appendMessage(db, session.id, userMsg);
+
+    try {
+      const result = await runAgentLoop({
+        db,
+        sessionId: session.id,
+        turn,
+        model,
+        systemPrompt: "Test",
+        tools: [shellTool],
+        toolHandlers: new Map<string, ToolHandler>([
+          [
+            "shell",
+            () => ({
+              content: [{ type: "text", text: "tool output" }],
+              isError: false,
+            }),
+          ],
+        ]),
+        messages: [userMsg],
+        cwd: tmp,
+      });
+
+      expect(result.stopReason).toBe("stop");
+      expect(result.messages.map((message) => message.role)).toEqual([
+        "user",
+        "assistant",
+        "toolResult",
+        "assistant",
+      ]);
+
+      const lastMessage = result.messages.at(-1);
+      expect(lastMessage?.role).toBe("assistant");
+      if (!lastMessage || lastMessage.role !== "assistant") {
+        throw new Error("Expected assistant message");
+      }
+      expect(lastMessage.stopReason).toBe("stop");
+      expect(lastMessage.content).toEqual(finalMessage.content);
+    } finally {
+      unregisterApiProviders(sourceId);
+    }
+  });
+
   test("treats a stream that ends without a terminal event as an error instead of hanging", async () => {
     const api = "agent-incomplete-stream-test";
     const sourceId = "agent-incomplete-stream-test-source";
