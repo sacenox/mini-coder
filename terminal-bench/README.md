@@ -118,3 +118,5 @@ PYTHONPATH=$PWD/terminal-bench harbor run -y \
   --n-concurrent 1 \
   --max-retries 0
 ```
+
+See `TERMINALBENCH_README.md` for more information.
