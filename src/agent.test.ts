@@ -109,6 +109,78 @@ const ZERO_USAGE: Usage = {
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 };
 
+function withUsage(
+  message: AssistantMessage,
+  api: string,
+  totalTokens: number,
+): AssistantMessage {
+  return {
+    ...message,
+    api,
+    provider: "test",
+    model: api,
+    usage: {
+      ...ZERO_USAGE,
+      input: totalTokens,
+      totalTokens,
+      cost: { ...ZERO_USAGE.cost },
+    },
+  };
+}
+
+function advanceCompleteToolHistorySpan(
+  messages: readonly Message[],
+  startIndex: number,
+): number | null {
+  const message = messages[startIndex];
+  if (!message) {
+    return null;
+  }
+  if (message.role === "toolResult") {
+    return null;
+  }
+  if (message.role !== "assistant") {
+    return startIndex + 1;
+  }
+
+  const pendingToolCallIds = message.content.flatMap((block) => {
+    return block.type === "toolCall" ? [block.id] : [];
+  });
+  if (pendingToolCallIds.length === 0) {
+    return startIndex + 1;
+  }
+
+  let cursor = startIndex + 1;
+  while (pendingToolCallIds.length > 0) {
+    const nextMessage = messages[cursor];
+    if (!nextMessage || nextMessage.role !== "toolResult") {
+      return null;
+    }
+
+    const matchIndex = pendingToolCallIds.indexOf(nextMessage.toolCallId);
+    if (matchIndex === -1) {
+      return null;
+    }
+
+    pendingToolCallIds.splice(matchIndex, 1);
+    cursor += 1;
+  }
+
+  return cursor;
+}
+
+function isCompleteToolHistory(messages: readonly Message[]): boolean {
+  let index = 0;
+  while (index < messages.length) {
+    const nextIndex = advanceCompleteToolHistorySpan(messages, index);
+    if (nextIndex === null) {
+      return false;
+    }
+    index = nextIndex;
+  }
+  return true;
+}
+
 function getTextContent(
   content: ReadonlyArray<{ type: string; text?: string }>,
 ): string {
@@ -2316,6 +2388,120 @@ describe("agent loop", () => {
     }
   });
 
+  test("context compaction keeps tool call history valid across compaction boundaries", async () => {
+    const api = "test/context-compaction-tool-history";
+    const sourceId = "test-context-compaction-tool-history";
+    const model: Model<string> = {
+      id: api,
+      name: "Context Compaction Tool History Model",
+      api,
+      provider: "test",
+      baseUrl: "http://localhost:0",
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 250,
+      maxTokens: 4096,
+    };
+    const compactionRequests: Message[][] = [];
+    const mainRequests: Message[][] = [];
+
+    const buildProviderStream = (context: Context) => {
+      const isCompaction = (context.systemPrompt ?? "").includes(
+        "You summarize earlier conversation context for a coding agent.",
+      );
+      if (isCompaction) {
+        compactionRequests.push(structuredClone(context.messages));
+      } else {
+        mainRequests.push(structuredClone(context.messages));
+      }
+
+      const stream = createAssistantMessageEventStream();
+      const finalMessage = isCompaction
+        ? fauxAssistantMessage("summary")
+        : fauxAssistantMessage("done");
+
+      queueMicrotask(() => {
+        stream.push({ type: "done", reason: "stop", message: finalMessage });
+        stream.end(finalMessage);
+      });
+
+      return stream;
+    };
+
+    registerApiProvider(
+      {
+        api,
+        stream: (_model, context) => buildProviderStream(context),
+        streamSimple: (_model, context) => buildProviderStream(context),
+      },
+      sourceId,
+    );
+
+    try {
+      const session = createSession(db, { cwd: tmp });
+      const currentUser = makeUser(`current request ${"x".repeat(380)}`);
+      const turn = appendMessage(db, session.id, currentUser);
+      const toolCall = fauxToolCall("shell", { command: "echo tool" });
+      const toolCallMessage = withUsage(
+        fauxAssistantMessage([toolCall], { stopReason: "toolUse" }),
+        api,
+        250,
+      );
+      const toolResultMessage: Message = {
+        role: "toolResult",
+        toolCallId: toolCall.id,
+        toolName: "shell",
+        content: [{ type: "text", text: `tool output ${"t".repeat(380)}` }],
+        isError: false,
+        timestamp: Date.now() + 1,
+      };
+      const followUpOne = withUsage(
+        fauxAssistantMessage(`assistant 1 ${"a".repeat(380)}`),
+        api,
+        250,
+      );
+      const followUpTwo = withUsage(
+        fauxAssistantMessage(`assistant 2 ${"b".repeat(380)}`),
+        api,
+        250,
+      );
+      const messages: Message[] = [
+        currentUser,
+        toolCallMessage,
+        toolResultMessage,
+        followUpOne,
+        followUpTwo,
+      ];
+
+      appendMessage(db, session.id, toolCallMessage, turn);
+      appendMessage(db, session.id, toolResultMessage, turn);
+      appendMessage(db, session.id, followUpOne, turn);
+      appendMessage(db, session.id, followUpTwo, turn);
+
+      const result = await runAgentLoop({
+        db,
+        sessionId: session.id,
+        turn,
+        model,
+        systemPrompt: "Test",
+        tools: [],
+        toolHandlers: new Map(),
+        messages,
+        cwd: tmp,
+      });
+
+      expect(result.stopReason).toBe("stop");
+      expect(compactionRequests.length).toBeGreaterThan(0);
+      expect(mainRequests).toHaveLength(1);
+      for (const request of [...compactionRequests, ...mainRequests]) {
+        expect(isCompleteToolHistory(request)).toBe(true);
+      }
+    } finally {
+      unregisterApiProviders(sourceId);
+    }
+  });
+
   test("context compaction summarizes older messages without re-compacting earlier summaries", async () => {
     const api = "test/context-compaction";
     const sourceId = "test-context-compaction";
@@ -2521,21 +2707,17 @@ describe("agent loop", () => {
       const messages: Message[] = [userMsg];
 
       for (let index = 0; index < 6; index += 1) {
-        const assistantMessage: AssistantMessage = {
-          ...fauxAssistantMessage(`assistant ${index} ${"a".repeat(380)}`),
+        const toolCall = fauxToolCall("shell", {
+          command: `echo tool ${index}`,
+        });
+        const assistantMessage = withUsage(
+          fauxAssistantMessage([toolCall], { stopReason: "toolUse" }),
           api,
-          provider: "test",
-          model: api,
-          usage: {
-            ...ZERO_USAGE,
-            input: 250,
-            totalTokens: 250,
-            cost: { ...ZERO_USAGE.cost },
-          },
-        };
+          250,
+        );
         const toolResultMessage: Message = {
           role: "toolResult",
-          toolCallId: `call-${index}`,
+          toolCallId: toolCall.id,
           toolName: "shell",
           content: [{ type: "text", text: `tool ${index} ${"t".repeat(380)}` }],
           isError: false,

@@ -7,7 +7,6 @@ The spec and code are the sources of truth; this file is just the verified backl
 
 ## Open issues:
 
-- [ ] Add first-class delegation/subagent support instead of relying on shell-level `mc -p` delegation (`src/agent.ts`, `src/tools.ts`, `src/prompt.ts`, `src/headless.ts`)
 - [ ] Read tool output should include line numbers to help the llm find it's anchors.
 - [ ] If an agent uses readImage on a non-image file, mc crashes
 - [ ] If a conversation is truncated away from the db when the UI is still open somewhere, the app crashes.

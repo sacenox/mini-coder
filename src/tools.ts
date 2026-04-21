@@ -1,9 +1,10 @@
 /**
- * Built-in tool implementations: `shell`, `read`, `grep`, `edit`, `todoWrite`,
- * `todoRead`, and `readImage`.
+ * Built-in tool implementations: `shell`, `delegate`, `read`, `grep`, `edit`,
+ * `todoWrite`, `todoRead`, and `readImage`.
  *
- * Shell, read, and grep live in dedicated modules and are re-exported here so
- * the rest of the codebase can keep a single built-in-tools import surface.
+ * Shell, delegate, read, and grep live in dedicated modules and are re-exported
+ * here so the rest of the codebase can keep a single built-in-tools import
+ * surface.
  *
  * Each tool is exposed as a pure-ish execute function that takes typed
  * arguments and a working directory, returning a result object. The pi-ai
@@ -35,6 +36,15 @@ import {
 
 export type { ToolExecResult } from "./tool-common.ts";
 export {
+  type CreateDelegateToolHandlerOpts,
+  createDelegateToolHandler,
+  type DelegateArgs,
+  type DelegateResultDetails,
+  type DelegateRunResult,
+  delegateTool,
+  formatDelegateResultText,
+} from "./tool-delegate.ts";
+export {
   DEFAULT_GREP_LIMIT,
   executeGrep,
   type GrepArgs,
@@ -59,6 +69,8 @@ export {
   readToolHandler,
 } from "./tool-read.ts";
 export {
+  createDelegationAwareShellToolHandler,
+  type DelegationAwareShellToolHandlerOpts,
   executeShell,
   formatShellResultText,
   parseLegacyShellResult,

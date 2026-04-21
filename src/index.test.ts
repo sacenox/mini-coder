@@ -43,6 +43,9 @@ function createTestState(): AppState {
     skills: [],
     theme: DEFAULT_THEME,
     git: null,
+    delegationDepth: 0,
+    delegationBudgetLimit: 4,
+    delegationBudgetRemaining: 4,
     providers: new Map(),
     oauthCredentials: {},
     settings: {},
@@ -584,6 +587,7 @@ test("buildToolList uses validated built-in handlers and gates readImage by mode
 
     expect(textOnlyTools.tools.map((tool) => tool.name)).toEqual([
       "shell",
+      "delegate",
       "read",
       "grep",
       "edit",
@@ -601,6 +605,71 @@ test("buildToolList uses validated built-in handlers and gates readImage by mode
 
     expect(visionTools.tools.map((tool) => tool.name)).toContain("readImage");
     expect(visionTools.toolHandlers.has("readImage")).toBe(true);
+  } finally {
+    state.db.close();
+  }
+});
+
+test("buildToolList blocks nested delegate tool calls in delegated children", async () => {
+  const state = createTestState();
+  try {
+    state.model = {
+      id: "test-model",
+      name: "test-model",
+      api: "openai-completions",
+      provider: "test-provider",
+      baseUrl: "http://localhost:1234/v1",
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 8192,
+      maxTokens: 4096,
+    };
+    state.delegationDepth = 1;
+
+    const toolList = buildToolList(state);
+    const result = await toolList.toolHandlers.get("delegate")!(
+      { task: "review again" },
+      state.cwd,
+    );
+
+    expect(result.isError).toBe(true);
+    expect(JSON.stringify(result.content)).toContain(
+      "delegated `delegate` tool runs may not delegate again",
+    );
+  } finally {
+    state.db.close();
+  }
+});
+
+test("buildToolList blocks delegate tool calls when the delegation budget is exhausted", async () => {
+  const state = createTestState();
+  try {
+    state.model = {
+      id: "test-model",
+      name: "test-model",
+      api: "openai-completions",
+      provider: "test-provider",
+      baseUrl: "http://localhost:1234/v1",
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 8192,
+      maxTokens: 4096,
+    };
+    state.delegationBudgetLimit = 0;
+    state.delegationBudgetRemaining = 0;
+
+    const toolList = buildToolList(state);
+    const result = await toolList.toolHandlers.get("delegate")!(
+      { task: "review the diff" },
+      state.cwd,
+    );
+
+    expect(result.isError).toBe(true);
+    expect(JSON.stringify(result.content)).toContain(
+      "no remaining `delegate` delegation budget",
+    );
   } finally {
     state.db.close();
   }

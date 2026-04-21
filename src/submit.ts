@@ -320,6 +320,7 @@ export async function submitResolvedInput(
   }
 
   clearQueuedUserMessages(state);
+  state.delegationBudgetRemaining = state.delegationBudgetLimit;
 
   const session = ensureSession(state);
   recordRawPromptHistory(rawInput, state, session.id);

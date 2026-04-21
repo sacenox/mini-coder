@@ -524,6 +524,90 @@ function computeCompactionMessageCount(messageCount: number): number {
   );
 }
 
+function advanceCompleteContextSpan(
+  messages: readonly Message[],
+  startIndex: number,
+): number | null {
+  const message = messages[startIndex];
+  if (!message) {
+    return null;
+  }
+  if (message.role === "toolResult") {
+    return null;
+  }
+  if (message.role !== "assistant") {
+    return startIndex + 1;
+  }
+
+  const toolCalls = getAssistantToolCalls(message);
+  if (toolCalls.length === 0) {
+    return startIndex + 1;
+  }
+
+  let cursor = startIndex + 1;
+  const pendingToolCallIds = new Set(toolCalls.map((toolCall) => toolCall.id));
+  while (pendingToolCallIds.size > 0) {
+    const nextMessage = messages[cursor];
+    if (!nextMessage || nextMessage.role !== "toolResult") {
+      return null;
+    }
+    if (!pendingToolCallIds.delete(nextMessage.toolCallId)) {
+      return null;
+    }
+    cursor += 1;
+  }
+
+  return cursor;
+}
+
+function collectCompactionBoundaryCounts(
+  messages: readonly Message[],
+): number[] {
+  const boundaries: number[] = [];
+  let index = 0;
+
+  while (index < messages.length) {
+    const nextIndex = advanceCompleteContextSpan(messages, index);
+    if (nextIndex === null) {
+      return [];
+    }
+    index = nextIndex;
+    if (index < messages.length) {
+      boundaries.push(index);
+    }
+  }
+
+  return boundaries;
+}
+
+function computeSafeCompactionMessageCount(
+  messages: readonly Message[],
+): number {
+  const targetCount = computeCompactionMessageCount(messages.length);
+  if (targetCount === 0) {
+    return 0;
+  }
+
+  const safeBoundaryCounts = collectCompactionBoundaryCounts(messages);
+  if (safeBoundaryCounts.length === 0) {
+    return 0;
+  }
+
+  let nearestLowerBoundary = 0;
+  for (const boundaryCount of safeBoundaryCounts) {
+    if (boundaryCount === targetCount) {
+      return boundaryCount;
+    }
+    if (boundaryCount < targetCount) {
+      nearestLowerBoundary = boundaryCount;
+      continue;
+    }
+    return nearestLowerBoundary > 0 ? nearestLowerBoundary : boundaryCount;
+  }
+
+  return nearestLowerBoundary;
+}
+
 interface CompactionSummaryResult {
   /** Replacement summary text for the compacted context prefix. */
   text: string;
@@ -591,7 +675,9 @@ async function maybeCompactContext(
     }
 
     const candidateRows = loadUncompactedModelMessages(opts.db, opts.sessionId);
-    const compactCount = computeCompactionMessageCount(candidateRows.length);
+    const compactCount = computeSafeCompactionMessageCount(
+      candidateRows.map((row) => row.message),
+    );
     if (compactCount === 0) {
       return compactedMessages;
     }

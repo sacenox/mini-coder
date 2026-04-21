@@ -12,7 +12,12 @@ import {
 } from "@mariozechner/pi-ai";
 import { runHeadlessPrompt, runHeadlessPromptText } from "./headless.ts";
 import type { AppState } from "./index.ts";
-import { listPromptHistory, loadMessages, openDatabase } from "./session.ts";
+import {
+  listPromptHistory,
+  listSessions,
+  loadMessages,
+  openDatabase,
+} from "./session.ts";
 import { DEFAULT_THEME } from "./theme.ts";
 
 let tmp: string;
@@ -45,6 +50,9 @@ function createTestState(): AppState {
     skills: [],
     theme: DEFAULT_THEME,
     git: null,
+    delegationDepth: 0,
+    delegationBudgetLimit: 4,
+    delegationBudgetRemaining: 4,
     providers: new Map(),
     oauthCredentials: {},
     settings: {},
@@ -367,5 +375,121 @@ describe("headless", () => {
     expect(stopReason).toBe("stop");
     expect(state.running).toBe(false);
     expect(state.abortController).toBeNull();
+  });
+
+  test("runHeadlessPromptText can delegate a bounded subtask without leaving a child session behind", async () => {
+    faux.setResponses([
+      fauxAssistantMessage(
+        [fauxToolCall("delegate", { task: "review the diff" })],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("Subagent review complete."),
+      fauxAssistantMessage("Used the delegated result."),
+    ]);
+    const state = createTestState();
+    let finalText = "";
+
+    const stopReason = await runHeadlessPromptText(state, "delegate once", {
+      writeActivity: () => {},
+      writeText: (text) => {
+        finalText += text;
+      },
+    });
+
+    expect(stopReason).toBe("stop");
+    expect(finalText).toBe("Used the delegated result.");
+
+    const sessionId = state.session?.id;
+    if (!sessionId) {
+      throw new Error("Expected a session to be created");
+    }
+
+    const delegateResult = loadMessages(state.db, sessionId).find(
+      (message) =>
+        message.role === "toolResult" && message.toolName === "delegate",
+    );
+    if (!delegateResult || delegateResult.role !== "toolResult") {
+      throw new Error("Expected a delegate tool result");
+    }
+    expect(delegateResult.isError).toBe(false);
+    expect(JSON.stringify(delegateResult.content)).toContain(
+      "Subagent review complete.",
+    );
+    expect(listSessions(state.db, tmp)).toHaveLength(1);
+  });
+
+  test("delegated headless children cannot launch more mc -p subagents", async () => {
+    faux.setResponses([
+      fauxAssistantMessage(
+        [fauxToolCall("shell", { command: 'mc -p "review again"' })],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("Stopped the recursive delegation."),
+    ]);
+    const state = createTestState();
+    state.delegationDepth = 1;
+
+    const stopReason = await runHeadlessPromptText(state, "delegate once", {
+      writeActivity: () => {},
+      writeText: () => {},
+    });
+
+    expect(stopReason).toBe("stop");
+
+    const sessionId = state.session?.id;
+    if (!sessionId) {
+      throw new Error("Expected a session to be created");
+    }
+
+    const toolResult = loadMessages(state.db, sessionId).find(
+      (message) => message.role === "toolResult",
+    );
+    if (!toolResult || toolResult.role !== "toolResult") {
+      throw new Error("Expected a shell tool result");
+    }
+    expect(toolResult.isError).toBe(true);
+    expect(JSON.stringify(toolResult.content)).toContain(
+      "delegated `mc -p` runs may not launch more `mc -p` subagents",
+    );
+  });
+
+  test("runHeadlessPrompt blocks mc -p when the shell delegation budget is exhausted", async () => {
+    faux.setResponses([
+      fauxAssistantMessage(
+        [fauxToolCall("shell", { command: 'mc -p "review the diff"' })],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("Stayed within the delegation budget."),
+    ]);
+    const state = createTestState();
+    state.delegationBudgetLimit = 0;
+    state.delegationBudgetRemaining = 0;
+
+    const stopReason = await runHeadlessPromptText(
+      state,
+      "review the diff safely",
+      {
+        writeActivity: () => {},
+        writeText: () => {},
+      },
+    );
+
+    expect(stopReason).toBe("stop");
+
+    const sessionId = state.session?.id;
+    if (!sessionId) {
+      throw new Error("Expected a session to be created");
+    }
+
+    const toolResult = loadMessages(state.db, sessionId).find(
+      (message) => message.role === "toolResult",
+    );
+    if (!toolResult || toolResult.role !== "toolResult") {
+      throw new Error("Expected a shell tool result");
+    }
+    expect(toolResult.isError).toBe(true);
+    expect(JSON.stringify(toolResult.content)).toContain(
+      "no remaining `mc -p` delegation budget",
+    );
   });
 });

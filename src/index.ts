@@ -13,6 +13,7 @@ import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import type {
+  AssistantMessage,
   KnownProvider,
   Model,
   OAuthCredentials,
@@ -22,7 +23,16 @@ import type {
 } from "@mariozechner/pi-ai";
 import { getEnvApiKey, getModels, getProviders } from "@mariozechner/pi-ai";
 import { getOAuthApiKey, getOAuthProviders } from "@mariozechner/pi-ai/oauth";
-import type { ToolHandler } from "./agent.ts";
+import {
+  runAgentLoop,
+  type ToolHandler,
+  type ToolUpdateCallback,
+} from "./agent.ts";
+import {
+  extractAssistantActivitySnippet,
+  extractAssistantErrorText,
+  extractAssistantText,
+} from "./assistant-output.ts";
 import {
   type CliOptions,
   parseCliArgs,
@@ -30,6 +40,10 @@ import {
   shouldUseHeadlessMode,
   type TtyState,
 } from "./cli.ts";
+import {
+  readShellDelegationContext,
+  type ShellDelegationContext,
+} from "./delegation.ts";
 import { getErrorMessage } from "./errors.ts";
 import { type GitState, getGitState } from "./git.ts";
 import { discoverMcpServers, type McpServerState } from "./mcp.ts";
@@ -44,6 +58,8 @@ import {
   appendMessage,
   createConversationSnapshot,
   createSession,
+  deleteSession,
+  loadCompactedModelMessages,
   type loadMessages,
   openDatabase,
   type Session,
@@ -60,8 +76,12 @@ import {
 import { discoverSkills, type Skill } from "./skills.ts";
 import { DEFAULT_THEME, type Theme } from "./theme.ts";
 import {
+  createDelegateToolHandler,
+  createDelegationAwareShellToolHandler,
   createTodoReadToolHandler,
   createTodoWriteToolHandler,
+  type DelegateRunResult,
+  delegateTool,
   editTool,
   editToolHandler,
   grepTool,
@@ -71,7 +91,6 @@ import {
   readTool,
   readToolHandler,
   shellTool,
-  shellToolHandler,
   todoReadTool,
   todoWriteTool,
 } from "./tools.ts";
@@ -351,19 +370,128 @@ function selectModel(
 // Tool wiring
 // ---------------------------------------------------------------------------
 
+type ToolRuntimeState = Pick<
+  AppState,
+  | "agentsMd"
+  | "cwd"
+  | "db"
+  | "delegationDepth"
+  | "delegationBudgetRemaining"
+  | "effort"
+  | "git"
+  | "mcpServers"
+  | "messages"
+  | "providers"
+  | "skills"
+> & {
+  model: Model<string>;
+};
+
+/**
+ * Run one isolated delegated subtask with the current model and toolset.
+ *
+ * @param task - Raw delegated subtask prompt.
+ * @param state - Runtime state to inherit into the delegated child run.
+ * @param context - Delegation context reserved for the child run.
+ * @param signal - Optional abort signal from the parent run.
+ * @param onUpdate - Optional progressive tool-update callback.
+ * @returns The delegated subagent result summary.
+ */
+async function runDelegatedTask(
+  task: string,
+  state: ToolRuntimeState,
+  context: ShellDelegationContext,
+  signal?: AbortSignal,
+  onUpdate?: ToolUpdateCallback,
+): Promise<DelegateRunResult> {
+  const session = createSession(state.db, {
+    cwd: state.cwd,
+    model: `${state.model.provider}/${state.model.id}`,
+    effort: state.effort,
+  });
+  let finalAssistantMessage: AssistantMessage | null = null;
+
+  try {
+    const userMessage = {
+      role: "user",
+      content: task,
+      timestamp: Date.now(),
+    } satisfies UserMessage;
+    const turn = appendMessage(state.db, session.id, userMessage);
+    const messages = loadCompactedModelMessages(state.db, session.id);
+    const childState: ToolRuntimeState = {
+      ...state,
+      delegationDepth: context.depth,
+      delegationBudgetRemaining: context.remainingBudget,
+      messages,
+    };
+    const { tools, toolHandlers } = buildTools(childState);
+
+    const result = await runAgentLoop({
+      db: state.db,
+      sessionId: session.id,
+      turn,
+      model: state.model,
+      systemPrompt: buildPrompt(childState),
+      tools,
+      toolHandlers,
+      messages,
+      cwd: state.cwd,
+      apiKey: state.providers.get(state.model.provider),
+      effort: state.effort,
+      signal,
+      onEvent: (event) => {
+        switch (event.type) {
+          case "assistant_message": {
+            const snippet = extractAssistantActivitySnippet(event.message);
+            if (snippet) {
+              onUpdate?.({
+                content: [
+                  {
+                    type: "text",
+                    text: `Subagent: ${snippet}`,
+                  },
+                ],
+                isError: false,
+              });
+            }
+            break;
+          }
+          case "done":
+          case "error":
+          case "aborted":
+            finalAssistantMessage = event.message;
+            break;
+          default:
+            break;
+        }
+      },
+    });
+
+    return {
+      stopReason: result.stopReason,
+      finalText: extractAssistantText(finalAssistantMessage),
+      errorText: extractAssistantErrorText(finalAssistantMessage),
+    };
+  } finally {
+    deleteSession(state.db, session.id);
+  }
+}
+
 /**
  * Build tool definitions and handler map for the current model.
  *
  * Returns the `Tool[]` to send to the model and the handler map
  * for the agent loop to dispatch tool calls.
  */
-function buildTools(
-  model: Model<string>,
-  messages: AppState["messages"],
-  mcpServers: readonly McpServerState[],
-): { tools: Tool[]; toolHandlers: Map<string, ToolHandler> } {
+function buildTools(state: ToolRuntimeState): {
+  tools: Tool[];
+  toolHandlers: Map<string, ToolHandler>;
+} {
+  const { mcpServers, messages, model } = state;
   const tools: Tool[] = [
     shellTool,
+    delegateTool,
     readTool,
     grepTool,
     editTool,
@@ -371,7 +499,33 @@ function buildTools(
     todoReadTool,
   ];
   const toolHandlers = new Map<string, ToolHandler>([
-    [shellTool.name, shellToolHandler],
+    [
+      shellTool.name,
+      createDelegationAwareShellToolHandler({
+        getDelegationContext: () => ({
+          depth: state.delegationDepth,
+          remainingBudget: state.delegationBudgetRemaining,
+        }),
+        setDelegationContext: (context) => {
+          state.delegationBudgetRemaining = context.remainingBudget;
+        },
+      }),
+    ],
+    [
+      delegateTool.name,
+      createDelegateToolHandler({
+        getDelegationContext: () => ({
+          depth: state.delegationDepth,
+          remainingBudget: state.delegationBudgetRemaining,
+        }),
+        setDelegationContext: (context) => {
+          state.delegationBudgetRemaining = context.remainingBudget;
+        },
+        runSubagent: (task, context, signal, onUpdate) => {
+          return runDelegatedTask(task, state, context, signal, onUpdate);
+        },
+      }),
+    ],
     [readTool.name, readToolHandler],
     [grepTool.name, grepToolHandler],
     [editTool.name, editToolHandler],
@@ -527,6 +681,12 @@ export interface AppState {
   versionLabel: string;
   /** Current git state (null if not in a repo). */
   git: GitState | null;
+  /** Delegated-subagent depth inherited by this app process. */
+  delegationDepth: number;
+  /** Delegated-subagent budget reset at the start of each top-level agent run. */
+  delegationBudgetLimit: number;
+  /** Remaining delegated-subagent launches in the active run. */
+  delegationBudgetRemaining: number;
   /** Available provider credentials (provider → API key). */
   providers: Map<string, string>;
   /** OAuth credentials on disk. */
@@ -595,6 +755,7 @@ export async function init(): Promise<AppState> {
   }
 
   const mcpResult = await discoverMcpServers(effectiveSettings.mcp);
+  const delegation = readShellDelegationContext(process.env);
 
   const builtInModels = listAvailableModels(providers);
   const availableModels = [...builtInModels, ...customResult.models];
@@ -622,6 +783,9 @@ export async function init(): Promise<AppState> {
     theme: promptContext.theme,
     versionLabel: resolveAppVersionLabel(),
     git: promptContext.git,
+    delegationDepth: delegation.depth,
+    delegationBudgetLimit: delegation.remainingBudget,
+    delegationBudgetRemaining: delegation.remainingBudget,
     providers,
     oauthCredentials,
     settings,
@@ -663,7 +827,9 @@ function resolvePromptOs(): "linux" | "mac" | "docker" {
  * Separated from `init` because turns still rebuild the assembled prompt
  * from the session-stable prompt context plus the current runtime state.
  */
-export function buildPrompt(state: AppState): string {
+export function buildPrompt(
+  state: Pick<AppState, "cwd" | "model" | "git" | "agentsMd" | "skills">,
+): string {
   return buildSystemPrompt({
     cwd: state.cwd,
     modelLabel: state.model
@@ -683,8 +849,22 @@ export function buildToolList(state: AppState): {
   tools: Tool[];
   toolHandlers: Map<string, ToolHandler>;
 } {
-  if (!state.model) return { tools: [], toolHandlers: new Map() };
-  return buildTools(state.model, state.messages, state.mcpServers);
+  const { model } = state;
+  if (!model) return { tools: [], toolHandlers: new Map() };
+  return buildTools({
+    agentsMd: state.agentsMd,
+    cwd: state.cwd,
+    db: state.db,
+    delegationDepth: state.delegationDepth,
+    delegationBudgetRemaining: state.delegationBudgetRemaining,
+    effort: state.effort,
+    git: state.git,
+    mcpServers: state.mcpServers,
+    messages: state.messages,
+    model,
+    providers: state.providers,
+    skills: state.skills,
+  });
 }
 
 /**

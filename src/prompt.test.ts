@@ -215,10 +215,25 @@ describe("buildSystemPrompt", () => {
       "Before you finish, re-check the explicit deliverables and current state. If the user named files, paths, ports, services, commands, or output values, make sure they already exist and work now.",
     );
     expect(prompt).toContain(
+      "If the request includes structural constraints on files or outputs (for example allowed commands, required lines, exact formats, or counts), treat those as acceptance criteria too and verify them directly against what you produced, not just through downstream behavior.",
+    );
+    expect(prompt).toContain(
+      "Treat concrete command sequences and expected outputs in the user's request as acceptance criteria for the end state. If you verify that flow during the task, do not roll the environment back afterward unless the user explicitly asked for a reset.",
+    );
+    expect(prompt).toContain(
       "If a check or tool result contradicts your expectation, trust the evidence and resolve the mismatch before you answer.",
     );
     expect(prompt).toContain(
       "When multiple outputs or end states seem plausible, do not guess or swap in a cleaner alternative after verification. Run the smallest check that distinguishes them, and if you change the state later, verify again.",
+    );
+    expect(prompt).toContain(
+      "Use the `delegate` tool for bounded subtasks when another focused agent pass would help.",
+    );
+    expect(prompt).toContain(
+      "Prefer `delegate` over shelling out to `mc -p` unless you specifically need to exercise the CLI itself.",
+    );
+    expect(prompt).toContain(
+      "Do not re-delegate the whole task, spin on repeated self-review prompts, or ask a delegated child to delegate again.",
     );
   });
 });

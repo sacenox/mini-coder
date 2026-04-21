@@ -6,17 +6,17 @@
 
 import type { AssistantMessage, UserMessage } from "@mariozechner/pi-ai";
 import type { AgentEvent } from "./agent.ts";
+import {
+  extractAssistantActivitySnippet,
+  extractAssistantErrorText,
+  extractAssistantText,
+} from "./assistant-output.ts";
 import type { AppState } from "./index.ts";
 import {
   resolveRawInput,
   type SubmitTurnHooks,
   submitResolvedInput,
 } from "./submit.ts";
-import {
-  collapseWhitespaceToNull,
-  joinTextBlocks,
-  truncateText,
-} from "./text.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -57,8 +57,6 @@ interface HeadlessProcessStream {
   /** Write a text chunk to the stream. */
   write(text: string, callback?: () => void): boolean;
 }
-
-const HEADLESS_ACTIVITY_MAX_CHARS = 160;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -141,47 +139,6 @@ function resolveHeadlessContent(
     case "message":
       return resolved.content;
   }
-}
-
-function extractAssistantText(message: AssistantMessage | null): string {
-  if (!message) {
-    return "";
-  }
-
-  return message.content
-    .filter(
-      (
-        block,
-      ): block is Extract<
-        AssistantMessage["content"][number],
-        { type: "text" }
-      > => {
-        return block.type === "text";
-      },
-    )
-    .map((block) => block.text)
-    .join("");
-}
-
-function extractAssistantActivitySnippet(
-  message: AssistantMessage,
-): string | null {
-  if (!message.content.some((block) => block.type === "toolCall")) {
-    return null;
-  }
-
-  const text = collapseWhitespaceToNull(joinTextBlocks(message.content));
-  return text ? truncateText(text, HEADLESS_ACTIVITY_MAX_CHARS) : null;
-}
-
-function extractAssistantErrorText(
-  message: AssistantMessage | null,
-): string | null {
-  if (!message || message.stopReason !== "error" || !message.errorMessage) {
-    return null;
-  }
-
-  return collapseWhitespaceToNull(message.errorMessage) ?? null;
 }
 
 function shouldWriteHeadlessJsonEvent(event: AgentEvent): boolean {

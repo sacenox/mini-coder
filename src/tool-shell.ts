@@ -7,6 +7,11 @@
 import type { Static, Tool } from "@mariozechner/pi-ai";
 import { Type } from "@mariozechner/pi-ai";
 import type { ToolHandler, ToolUpdateCallback } from "./agent.ts";
+import {
+  buildShellDelegationEnv,
+  reserveShellDelegation,
+  type ShellDelegationContext,
+} from "./delegation.ts";
 import { readFiniteNumber, readString, toRecord } from "./shared.ts";
 import {
   detectLineEnding,
@@ -33,6 +38,8 @@ export interface ShellOpts {
   signal?: AbortSignal;
   /** Callback for progressive output updates while the command is running. */
   onUpdate?: ToolUpdateCallback;
+  /** Optional environment overrides for the spawned shell process. */
+  env?: Record<string, string>;
 }
 
 /** Structured shell result preserved on tool-result messages and events. */
@@ -69,6 +76,42 @@ export const shellToolHandler: ToolHandler = (args, cwd, signal, onUpdate) =>
     ...(signal ? { signal } : {}),
     ...(onUpdate ? { onUpdate } : {}),
   });
+
+/** Options for a shell handler that enforces shell-level delegation safeguards. */
+export interface DelegationAwareShellToolHandlerOpts {
+  /** Return the current shell-level delegation context for the active run. */
+  getDelegationContext: () => ShellDelegationContext;
+  /** Persist the updated delegation context after a launch reservation. */
+  setDelegationContext: (context: ShellDelegationContext) => void;
+}
+
+/**
+ * Create a shell handler that propagates and enforces `mc -p` delegation limits.
+ *
+ * @param opts - Delegation-context accessors for the active run.
+ * @returns A shell tool handler that blocks recursive or over-budget delegation.
+ */
+export function createDelegationAwareShellToolHandler(
+  opts: DelegationAwareShellToolHandlerOpts,
+): ToolHandler {
+  return (args, cwd, signal, onUpdate) => {
+    const validatedArgs = validateBuiltinToolArgs(shellTool, args);
+    const reservation = reserveShellDelegation(
+      validatedArgs.command,
+      opts.getDelegationContext(),
+    );
+    if (!reservation.ok) {
+      return textResult(reservation.error, true);
+    }
+
+    opts.setDelegationContext(reservation.reservation.updatedContext);
+    return executeShell(validatedArgs, cwd, {
+      ...(signal ? { signal } : {}),
+      ...(onUpdate ? { onUpdate } : {}),
+      env: buildShellDelegationEnv(reservation.reservation.childContext),
+    });
+  };
+}
 
 type ShellProcess = ReturnType<typeof Bun.spawn>;
 
@@ -614,9 +657,13 @@ async function finalizeShellStreamCaptures(
   await Promise.all(captures.map((capture) => capture.close()));
 }
 
-function buildShellSpawnOptions(cwd: string): Parameters<typeof Bun.spawn>[1] {
+function buildShellSpawnOptions(
+  cwd: string,
+  env?: Record<string, string>,
+): Parameters<typeof Bun.spawn>[1] {
   return {
     cwd,
+    ...(env ? { env: { ...process.env, ...env } } : {}),
     stdout: "pipe",
     stderr: "pipe",
     ...(process.platform === "win32" ? {} : { detached: true }),
@@ -747,7 +794,10 @@ export async function executeShell(
     };
 
     const command = normalizeShellCommand(args.command);
-    const proc = Bun.spawn([shell, "-c", command], buildShellSpawnOptions(cwd));
+    const proc = Bun.spawn(
+      [shell, "-c", command],
+      buildShellSpawnOptions(cwd, opts?.env),
+    );
     cleanupAbort = registerShellAbort(opts?.signal, proc);
     stdoutCapture = startShellStreamCapture(
       proc.stdout as ReadableStream<Uint8Array>,

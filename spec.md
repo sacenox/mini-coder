@@ -57,7 +57,7 @@ This replaces: `yoctocolors`, `yoctomarkdown`, `yoctoselect`, and all our custom
 
 ## Tools
 
-Six built-in tools, plus a conditional read-only image tool and any tools imported from configured MCP servers.
+Seven built-in tools, plus a conditional read-only image tool and any tools imported from configured MCP servers.
 
 ### `shell`
 
@@ -68,10 +68,23 @@ Implementation details:
 - Large outputs are truncated as a safety guard against context explosion from bad or overly broad commands (for example, accidentally reading a huge file, binary, or unbounded command output). This guard applies to both very tall output (many lines) and very wide output (a few extremely long lines), and is not related to the user-configured verbose setting.
 - The truncation threshold is configurable, tuned to keep useful output while staying well within context limits. This tool-level truncation is intentionally narrow in scope: it protects the model context from pathological output, not as a general-purpose presentation layer for every output-shaping concern.
 - Commands run via `$SHELL -c "<command>"` (falling back to `/bin/sh` if `$SHELL` is unset) with the CWD set to the session's working directory.
+- Shell-launched `mc -p` subagents inherit a small namespaced delegation context through the environment. That context enforces a shallow maximum delegation depth and a small per-run delegation budget so shell-level subagents can help with compaction without recursing forever.
 - Verification commands that produce build artifacts should prefer temporary output paths or clean up generated files before the agent finishes.
 - Before execution, the harness may apply a small set of silent, lossless compatibility normalizations for common model-authored shell mistakes when the intended command is unambiguous (for example, moving a heredoc trailer's `|`, `&&`, or `>` continuation back onto the heredoc start line, or rewriting `printf '--- ...'` to `printf -- '--- ...'` when the format string begins with `-`).
 - Compatibility normalization is best-effort and intentionally narrow. If a rewrite is ambiguous or the normalization step itself fails, the raw command is executed unchanged.
 - Timeout: no default timeout. The user can interrupt via `Escape`.
+
+### `delegate`
+
+Runs a bounded subtask in an isolated subagent session using the current model, prompt context, and tools. Use it when a focused second agent pass will help, and prefer it over shelling out to `mc -p` unless you are explicitly testing the CLI itself.
+
+Implementation details:
+
+- Takes a single `task` string containing the delegated subtask prompt.
+- Delegated runs inherit the current system prompt, model, working directory, MCP availability, and built-in tools.
+- Delegated runs execute in an isolated temporary session that is deleted after the tool finishes, so first-class delegation does not clutter the user's session list or prompt history.
+- Delegated runs share the same shallow maximum delegation depth and per-run delegation budget as shell-launched `mc -p` subagents. Delegated children may not delegate again.
+- Tool results include the delegated subagent stop reason plus its final answer text, and delegated assistant activity can stream back through normal tool-delta updates while the tool is running.
 
 ### `read`
 
@@ -217,7 +230,7 @@ The core runtime. Streaming is the default behavior throughout the turn: user-vi
    - `error` → display error in the log, return to the input prompt.
 
 4. **Tool execution** — when the LLM requests tool calls:
-   - Execute each tool call. For `shell`: run the command, capture output, truncate if needed. For `read`: read the requested file slice and include continuation guidance when needed. For `grep`: run the structured ripgrep search and return parsed match data. For `edit`: perform the replacement. For `todoWrite`: apply the incremental todo changes and return the full current list. For `todoRead`: return the full current list. For `readImage`: read and base64-encode the file.
+   - Execute each tool call. For `shell`: run the command, capture output, truncate if needed. For `delegate`: run the bounded delegated subtask in an isolated temporary session and return the subagent's summarized final result. For `read`: read the requested file slice and include continuation guidance when needed. For `grep`: run the structured ripgrep search and return parsed match data. For `edit`: perform the replacement. For `todoWrite`: apply the incremental todo changes and return the full current list. For `todoRead`: return the full current list. For `readImage`: read and base64-encode the file.
    - Each result becomes a `ToolResultMessage` appended to history and DB (same turn number).
    - After all tool results are appended, if queued steering messages exist go to step 6; otherwise loop back to step 2 (re-stream with the updated context).
 
@@ -329,7 +342,9 @@ The current environment is:
 - A todo item is only complete if the requested work is actually finished and verified to the degree the task requires.
 - Use `cancelled` to remove tasks that are no longer relevant.
 - Skip todo tools for single trivial tasks and purely conversational/informational requests.
-- You have the option to delegate tasks to copies of yourself with `mc -p "subtask prompt"` in the shell.
+- Use the `delegate` tool for bounded subtasks when another focused agent pass would help.
+- Prefer `delegate` over shelling out to `mc -p` unless you specifically need to exercise the CLI itself.
+- Do not re-delegate the whole task, spin on repeated self-review prompts, or ask a delegated child to delegate again.
 - Delegate when you are orchestarting a large to-do/plan execution.
 ```
 
@@ -386,7 +401,7 @@ Key decisions informed by the Codex prompting guide and Claude prompting best pr
 - **Minimality over flourish**: the prompt emphasizes concise, direct help, discourages extra work the user did not ask for, and explicitly calls for the smallest implementation that satisfies the request.
 - **Targeted changes over rewrites**: the prompt tells the agent to preserve working behavior where possible, prefer targeted fixes, and avoid speculative abstractions.
 - **Operational discipline**: separate sections for shell use, code changes, and task management keep the prompt easy to scan while reinforcing non-interactive shell usage, environment checks, and cleanup expectations.
-- **Verification and delegation**: the prompt explicitly requires verification, requires a `/tmp` to-do list, and reminds the agent it can delegate subtasks with `mc -p` when that helps.
+- **Verification and delegation**: the prompt explicitly requires verification, requires a `/tmp` to-do list, and reminds the agent it can use the first-class `delegate` tool for bounded subtasks while avoiding recursive re-delegation.
 - **Single prompt**: no branching based on model family. Complexity in the prompt is complexity we maintain.
 
 ## CLI UX
