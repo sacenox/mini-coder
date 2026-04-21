@@ -21,8 +21,32 @@ import type {
   UserMessage,
 } from "@mariozechner/pi-ai";
 import { streamSimple } from "@mariozechner/pi-ai";
-import { appendMessage } from "./session.ts";
+import {
+  appendMessage,
+  appendSessionCompaction,
+  computeContextTokens,
+  computeSessionStats,
+  loadCompactedModelMessages,
+  loadMessages,
+  loadUncompactedModelMessages,
+} from "./session.ts";
+import { collapseWhitespaceToNull, joinTextBlocks } from "./text.ts";
 import { getTodoItems, type ToolExecResult } from "./tools.ts";
+
+const CONTEXT_COMPACTION_THRESHOLD = 0.9;
+const CONTEXT_COMPACTION_FRACTION = 0.4;
+const DEFAULT_CURRENT_USER_REQUEST =
+  "Continue the current task using the earlier conversation context.";
+const COMPACTION_RECOVERY_PREFIX =
+  "These earlier messages were compacted out of the active context.";
+
+const COMPACTION_SUMMARY_SYSTEM_PROMPT = [
+  "You summarize earlier conversation context for a coding agent.",
+  "Write a concise replacement summary for the provided earlier messages so the agent can continue the current request after those messages are removed from active context.",
+  "Keep only concrete facts that may still matter: user goals, decisions, constraints, files or paths, commands run, tool results, errors, and unfinished work.",
+  "Prefer short bullet points.",
+  "Do not invent details or mention information that is not supported by the provided messages.",
+].join("\n");
 
 // ---------------------------------------------------------------------------
 // Types
@@ -101,6 +125,11 @@ export type AgentEvent =
       result: ToolExecResult;
     }
   | { type: "tool_result"; message: ToolResultMessage }
+  | {
+      type: "context_compacted";
+      contextTokens: number;
+      stats: ReturnType<typeof computeSessionStats>;
+    }
   | { type: "done"; message: AssistantMessage }
   | { type: "error"; message: AssistantMessage }
   | { type: "aborted"; message: AssistantMessage };
@@ -312,21 +341,36 @@ function sanitizeMessageContentForContext(
 function sanitizeContextMessages(
   messages: Message[],
   modelSupportsImages: boolean,
-): Message[] {
+): { messages: Message[]; changed: boolean } {
   const imageBudget = {
     remaining: modelSupportsImages ? MAX_CONTEXT_IMAGE_BLOCKS : 0,
     supportsImages: modelSupportsImages,
   };
   const sanitized = new Array<Message>(messages.length);
+  let changed = false;
 
   for (let index = messages.length - 1; index >= 0; index -= 1) {
-    sanitized[index] = sanitizeMessageContentForContext(
+    const message = sanitizeMessageContentForContext(
       messages[index]!,
       imageBudget,
     );
+    if (message !== messages[index]) {
+      changed = true;
+    }
+    sanitized[index] = message;
   }
 
-  return sanitized;
+  return { messages: sanitized, changed };
+}
+
+function computeRequestContextTokens(
+  messages: Message[],
+  modelSupportsImages: boolean,
+): number {
+  const sanitized = sanitizeContextMessages(messages, modelSupportsImages);
+  return computeContextTokens(sanitized.messages, {
+    ignoreAssistantUsage: sanitized.changed,
+  });
 }
 
 function buildAgentContext(
@@ -338,7 +382,7 @@ function buildAgentContext(
   const contextMessages = sanitizeContextMessages(
     messages,
     modelSupportsImages,
-  );
+  ).messages;
   return tools.length > 0
     ? { systemPrompt, messages: contextMessages, tools }
     : { systemPrompt, messages: contextMessages };
@@ -354,6 +398,237 @@ function buildStreamOptions(
     ...(effort ? { reasoning: effort } : {}),
     ...(signal ? { signal } : {}),
   };
+}
+
+function stripSyntheticSystemMessageBlock(text: string): string {
+  return text.replace(/\n?<system-message>[\s\S]*?<\/system-message>/g, "");
+}
+
+function describeUserContent(content: UserMessage["content"]): string | null {
+  if (typeof content === "string") {
+    return collapseWhitespaceToNull(stripSyntheticSystemMessageBlock(content));
+  }
+
+  const text = collapseWhitespaceToNull(joinTextBlocks(content));
+  const imageCount = content.filter((block) => block.type === "image").length;
+  const parts = [
+    text,
+    imageCount > 0
+      ? `[${imageCount} image${imageCount === 1 ? "" : "s"} attached]`
+      : null,
+  ].filter(
+    (part): part is string => typeof part === "string" && part.length > 0,
+  );
+
+  return parts.length > 0 ? parts.join("\n") : null;
+}
+
+function resolveCurrentUserRequest(userMessage: UserMessage): string {
+  return (
+    describeUserContent(userMessage.content) ?? DEFAULT_CURRENT_USER_REQUEST
+  );
+}
+
+function isSystemReminderMessage(message: Message): boolean {
+  return (
+    message.role === "user" &&
+    typeof message.content === "string" &&
+    message.content.startsWith("<system_reminder>")
+  );
+}
+
+function isCompactionSummaryMessage(message: Message): boolean {
+  return (
+    message.role === "user" &&
+    typeof message.content === "string" &&
+    message.content.includes("<system-message>") &&
+    message.content.includes(COMPACTION_RECOVERY_PREFIX)
+  );
+}
+
+function extractCurrentUserRequest(messages: readonly Message[]): string {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (
+      !message ||
+      message.role !== "user" ||
+      isSystemReminderMessage(message) ||
+      isCompactionSummaryMessage(message)
+    ) {
+      continue;
+    }
+
+    const content = describeUserContent(message.content);
+    if (content) {
+      return content;
+    }
+  }
+
+  return DEFAULT_CURRENT_USER_REQUEST;
+}
+
+function createCompactionInstructionMessage(
+  currentUserRequest: string,
+): UserMessage {
+  return {
+    role: "user",
+    content: [
+      "Current user request:",
+      currentUserRequest,
+      "",
+      "Summarize the earlier conversation messages above so the coding agent can continue the current request after those messages are removed from active context.",
+    ].join("\n"),
+    timestamp: Date.now(),
+  };
+}
+
+function extractAssistantTextContent(message: AssistantMessage): string | null {
+  const text = message.content
+    .flatMap((block) => {
+      return block.type === "text" ? [block.text] : [];
+    })
+    .join("\n")
+    .trim();
+  return text.length > 0 ? text : null;
+}
+
+function buildCompactionSummaryMessage(
+  summaryText: string,
+  dbPath: string,
+  sessionId: string,
+): UserMessage {
+  return {
+    role: "user",
+    content: [
+      summaryText,
+      "",
+      "<system-message>",
+      `${COMPACTION_RECOVERY_PREFIX} If you need the exact originals again, read them from the SQLite database at ${dbPath} for session ${sessionId}.`,
+      "</system-message>",
+    ].join("\n"),
+    timestamp: Date.now(),
+  };
+}
+
+function computeCompactionMessageCount(messageCount: number): number {
+  if (messageCount <= 1) {
+    return 0;
+  }
+
+  return Math.max(
+    1,
+    Math.min(
+      messageCount - 1,
+      Math.floor(messageCount * CONTEXT_COMPACTION_FRACTION),
+    ),
+  );
+}
+
+interface CompactionSummaryResult {
+  /** Replacement summary text for the compacted context prefix. */
+  text: string;
+  /** Usage consumed by the hidden summarization request. */
+  usage: AssistantMessage["usage"];
+}
+
+async function summarizeCompactionChunk(
+  messages: Message[],
+  currentUserRequest: string,
+  opts: Pick<RunAgentOpts, "model" | "apiKey" | "effort" | "signal">,
+): Promise<CompactionSummaryResult | null> {
+  const summaryMessage = await streamAssistantMessage({
+    model: opts.model,
+    systemPrompt: COMPACTION_SUMMARY_SYSTEM_PROMPT,
+    tools: [],
+    messages: [
+      ...messages,
+      createCompactionInstructionMessage(currentUserRequest),
+    ],
+    apiKey: opts.apiKey,
+    effort: opts.effort,
+    signal: opts.signal,
+  });
+
+  if (
+    summaryMessage.stopReason === "error" ||
+    summaryMessage.stopReason === "aborted"
+  ) {
+    return null;
+  }
+
+  const text = extractAssistantTextContent(summaryMessage);
+  if (!text) {
+    return null;
+  }
+
+  return {
+    text,
+    usage: summaryMessage.usage,
+  };
+}
+
+async function maybeCompactContext(
+  messages: Message[],
+  pendingContextMessages: readonly Message[],
+  currentUserRequest: string,
+  opts: Pick<
+    RunAgentOpts,
+    "db" | "sessionId" | "model" | "apiKey" | "effort" | "signal" | "onEvent"
+  >,
+): Promise<Message[]> {
+  let compactedMessages = messages;
+
+  while (!opts.signal?.aborted) {
+    const contextTokens = computeRequestContextTokens(
+      [...compactedMessages, ...pendingContextMessages],
+      opts.model.input.includes("image"),
+    );
+    if (
+      contextTokens / opts.model.contextWindow <
+      CONTEXT_COMPACTION_THRESHOLD
+    ) {
+      return compactedMessages;
+    }
+
+    const candidateRows = loadUncompactedModelMessages(opts.db, opts.sessionId);
+    const compactCount = computeCompactionMessageCount(candidateRows.length);
+    if (compactCount === 0) {
+      return compactedMessages;
+    }
+
+    const summaryResult = await summarizeCompactionChunk(
+      candidateRows.slice(0, compactCount).map((row) => row.message),
+      currentUserRequest,
+      opts,
+    );
+    if (!summaryResult) {
+      return compactedMessages;
+    }
+
+    appendSessionCompaction(
+      opts.db,
+      opts.sessionId,
+      candidateRows[compactCount - 1]!.id,
+      buildCompactionSummaryMessage(
+        summaryResult.text,
+        opts.db.filename,
+        opts.sessionId,
+      ),
+      summaryResult.usage,
+    );
+
+    compactedMessages = loadCompactedModelMessages(opts.db, opts.sessionId);
+    opts.onEvent?.({
+      type: "context_compacted",
+      contextTokens: computeRequestContextTokens(
+        [...compactedMessages, ...pendingContextMessages],
+        opts.model.input.includes("image"),
+      ),
+      stats: computeSessionStats(opts.db, opts.sessionId),
+    });
+  }
+
+  return compactedMessages;
 }
 
 interface StreamedToolCallEventPayload {
@@ -564,17 +839,27 @@ async function streamAssistantMessage(
   return mergeAssistantMessage(partialAssistantMessage, finalAssistantMessage);
 }
 
+interface AppendedUserTurn {
+  /** Turn number assigned to the appended user message. */
+  turn: number;
+  /** Actual current user request text to keep anchoring future compactions. */
+  currentUserRequest: string;
+}
+
 function appendUserMessage(
   db: Database,
   sessionId: string,
   messages: Message[],
   userMessage: UserMessage,
   onEvent: RunAgentOpts["onEvent"],
-): number {
+): AppendedUserTurn {
   messages.push(userMessage);
   const turn = appendMessage(db, sessionId, userMessage);
   onEvent?.({ type: "user_message", message: userMessage });
-  return turn;
+  return {
+    turn,
+    currentUserRequest: resolveCurrentUserRequest(userMessage),
+  };
 }
 
 function appendAssistantMessage(
@@ -614,7 +899,7 @@ function consumeQueuedUserMessage(
   messages: Message[],
   takeQueuedUserMessage: RunAgentOpts["takeQueuedUserMessage"],
   onEvent: RunAgentOpts["onEvent"],
-): number | null {
+): AppendedUserTurn | null {
   const queuedUserMessage = takeQueuedUserMessage?.();
   if (!queuedUserMessage) {
     return null;
@@ -704,8 +989,14 @@ function appendToolResultMessage(
   onEvent?.({ type: "tool_result", message: toolResultMessage });
 }
 
-function getIncompleteTodos(messages: readonly Message[]) {
-  return getTodoItems(messages).filter((todo) => todo.status !== "completed");
+function getIncompleteTodos(
+  db: Database,
+  sessionId: string,
+  messages: readonly Message[],
+) {
+  return getTodoItems([...loadMessages(db, sessionId), ...messages]).filter(
+    (todo) => todo.status !== "completed",
+  );
 }
 
 function getTodoReminderSignature(
@@ -727,10 +1018,12 @@ function wrapSystemReminder(content: string): string {
 }
 
 function createTodoReminderMessage(
+  db: Database,
+  sessionId: string,
   messages: readonly Message[],
   remindedTodoSignatures: Set<string>,
 ): UserMessage | null {
-  const incompleteTodos = getIncompleteTodos(messages);
+  const incompleteTodos = getIncompleteTodos(db, sessionId, messages);
   if (incompleteTodos.length === 0) {
     return null;
   }
@@ -762,6 +1055,8 @@ function createTodoReminderMessage(
 interface StoppedAssistantResolution {
   /** Next turn number when a queued steering message was consumed. */
   nextTurn: number | null;
+  /** Updated current user request when a queued steering message starts a new turn. */
+  nextCurrentUserRequest: string | null;
   /** Ephemeral context messages to include on the next model request. */
   pendingContextMessages: Message[];
   /** Final loop result when the turn should stop immediately. */
@@ -786,19 +1081,23 @@ function resolveStoppedAssistantMessage(
   );
   if (queuedTurn !== null) {
     return {
-      nextTurn: queuedTurn,
+      nextTurn: queuedTurn.turn,
+      nextCurrentUserRequest: queuedTurn.currentUserRequest,
       pendingContextMessages: [],
       finalResult: null,
     };
   }
 
   const todoReminder = createTodoReminderMessage(
+    opts.db,
+    opts.sessionId,
     opts.messages,
     remindedTodoSignatures,
   );
   if (todoReminder) {
     return {
       nextTurn: null,
+      nextCurrentUserRequest: null,
       pendingContextMessages: [todoReminder],
       finalResult: null,
     };
@@ -807,6 +1106,7 @@ function resolveStoppedAssistantMessage(
   opts.onEvent?.({ type: "done", message: assistantMessage });
   return {
     nextTurn: null,
+    nextCurrentUserRequest: null,
     pendingContextMessages: [],
     finalResult: {
       messages: opts.messages,
@@ -862,6 +1162,8 @@ interface AgentIterationOutcome {
   finalResult: AgentLoopResult | null;
   /** Next turn number when a queued steering message starts a new turn. */
   nextTurn: number;
+  /** Current user request text that should anchor any future compactions. */
+  nextCurrentUserRequest: string;
   /** Ephemeral context messages for the next model request. */
   pendingContextMessages: Message[];
 }
@@ -869,6 +1171,7 @@ interface AgentIterationOutcome {
 async function resolveAgentIteration(
   assistantMessage: AssistantMessage,
   currentTurn: number,
+  currentUserRequest: string,
   remindedTodoSignatures: Set<string>,
   opts: Pick<
     RunAgentOpts,
@@ -892,6 +1195,7 @@ async function resolveAgentIteration(
     return {
       finalResult: stopResult,
       nextTurn: currentTurn,
+      nextCurrentUserRequest: currentUserRequest,
       pendingContextMessages: [],
     };
   }
@@ -915,6 +1219,8 @@ async function resolveAgentIteration(
     return {
       finalResult: stopResolution.finalResult,
       nextTurn: stopResolution.nextTurn ?? currentTurn,
+      nextCurrentUserRequest:
+        stopResolution.nextCurrentUserRequest ?? currentUserRequest,
       pendingContextMessages: stopResolution.pendingContextMessages,
     };
   }
@@ -928,6 +1234,7 @@ async function resolveAgentIteration(
     return {
       finalResult: toolStopResult,
       nextTurn: currentTurn,
+      nextCurrentUserRequest: currentUserRequest,
       pendingContextMessages: [],
     };
   }
@@ -941,7 +1248,9 @@ async function resolveAgentIteration(
   );
   return {
     finalResult: null,
-    nextTurn: queuedTurn ?? currentTurn,
+    nextTurn: queuedTurn?.turn ?? currentTurn,
+    nextCurrentUserRequest:
+      queuedTurn?.currentUserRequest ?? currentUserRequest,
     pendingContextMessages: [],
   };
 }
@@ -969,18 +1278,35 @@ export async function runAgentLoop(
     sessionId,
     turn,
     model,
-    messages,
+    messages: initialMessages,
     signal,
     onEvent,
     toolHandlers,
     cwd,
     takeQueuedUserMessage,
   } = opts;
+  let messages = initialMessages;
   let currentTurn = turn;
+  let currentUserRequest = extractCurrentUserRequest(initialMessages);
   let pendingContextMessages: Message[] = [];
   const remindedTodoSignatures = new Set<string>();
 
   while (true) {
+    messages = await maybeCompactContext(
+      messages,
+      pendingContextMessages,
+      currentUserRequest,
+      {
+        db,
+        sessionId,
+        model,
+        apiKey: opts.apiKey,
+        effort: opts.effort,
+        signal,
+        onEvent,
+      },
+    );
+
     const assistantMessage = await streamAssistantMessage({
       ...opts,
       messages:
@@ -1001,6 +1327,7 @@ export async function runAgentLoop(
     const iterationOutcome = await resolveAgentIteration(
       assistantMessage,
       currentTurn,
+      currentUserRequest,
       remindedTodoSignatures,
       {
         db,
@@ -1019,6 +1346,7 @@ export async function runAgentLoop(
     }
 
     currentTurn = iterationOutcome.nextTurn;
+    currentUserRequest = iterationOutcome.nextCurrentUserRequest;
     pendingContextMessages = iterationOutcome.pendingContextMessages;
   }
 }

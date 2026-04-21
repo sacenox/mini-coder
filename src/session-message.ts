@@ -126,23 +126,61 @@ function isToolCallContentBlock(
   );
 }
 
-function isAssistantUsage(value: unknown): value is AssistantMessage["usage"] {
+/**
+ * Parse and validate an assistant usage payload from unknown input.
+ *
+ * @param value - Unknown value to validate.
+ * @returns The parsed assistant usage, or `null` when invalid.
+ */
+export function readAssistantUsage(
+  value: unknown,
+): AssistantMessage["usage"] | null {
   const usageRecord = toRecord(value);
   const costRecord = toRecord(usageRecord?.cost);
-  return (
-    usageRecord !== null &&
-    costRecord !== null &&
-    readFiniteNumber(usageRecord, "input") !== null &&
-    readFiniteNumber(usageRecord, "output") !== null &&
-    readFiniteNumber(usageRecord, "cacheRead") !== null &&
-    readFiniteNumber(usageRecord, "cacheWrite") !== null &&
-    readFiniteNumber(usageRecord, "totalTokens") !== null &&
-    readFiniteNumber(costRecord, "input") !== null &&
-    readFiniteNumber(costRecord, "output") !== null &&
-    readFiniteNumber(costRecord, "cacheRead") !== null &&
-    readFiniteNumber(costRecord, "cacheWrite") !== null &&
-    readFiniteNumber(costRecord, "total") !== null
-  );
+  if (!usageRecord || !costRecord) {
+    return null;
+  }
+
+  const input = readFiniteNumber(usageRecord, "input");
+  const output = readFiniteNumber(usageRecord, "output");
+  const cacheRead = readFiniteNumber(usageRecord, "cacheRead");
+  const cacheWrite = readFiniteNumber(usageRecord, "cacheWrite");
+  const totalTokens = readFiniteNumber(usageRecord, "totalTokens");
+  const costInput = readFiniteNumber(costRecord, "input");
+  const costOutput = readFiniteNumber(costRecord, "output");
+  const costCacheRead = readFiniteNumber(costRecord, "cacheRead");
+  const costCacheWrite = readFiniteNumber(costRecord, "cacheWrite");
+  const costTotal = readFiniteNumber(costRecord, "total");
+
+  if (
+    input === null ||
+    output === null ||
+    cacheRead === null ||
+    cacheWrite === null ||
+    totalTokens === null ||
+    costInput === null ||
+    costOutput === null ||
+    costCacheRead === null ||
+    costCacheWrite === null ||
+    costTotal === null
+  ) {
+    return null;
+  }
+
+  return {
+    input,
+    output,
+    cacheRead,
+    cacheWrite,
+    totalTokens,
+    cost: {
+      input: costInput,
+      output: costOutput,
+      cacheRead: costCacheRead,
+      cacheWrite: costCacheWrite,
+      total: costTotal,
+    },
+  };
 }
 
 function isStopReason(value: unknown): value is AssistantMessage["stopReason"] {
@@ -206,9 +244,9 @@ function parseAssistantMessageRecord(value: unknown): AssistantMessage | null {
     api,
     provider,
     model,
-    usage: isAssistantUsage(record.usage)
-      ? record.usage
-      : structuredClone(EMPTY_ASSISTANT_USAGE),
+    usage:
+      readAssistantUsage(record.usage) ??
+      structuredClone(EMPTY_ASSISTANT_USAGE),
     stopReason: record.stopReason,
     ...(errorMessage !== null ? { errorMessage } : {}),
     timestamp,
@@ -343,51 +381,5 @@ export function getAssistantUsage(
     return null;
   }
 
-  const messageRecord = toRecord(message);
-  const usageRecord = toRecord(messageRecord?.usage);
-  const costRecord = toRecord(usageRecord?.cost);
-  if (!usageRecord || !costRecord) {
-    return null;
-  }
-
-  const input = readFiniteNumber(usageRecord, "input");
-  const output = readFiniteNumber(usageRecord, "output");
-  const cacheRead = readFiniteNumber(usageRecord, "cacheRead");
-  const cacheWrite = readFiniteNumber(usageRecord, "cacheWrite");
-  const totalTokens = readFiniteNumber(usageRecord, "totalTokens");
-  const costInput = readFiniteNumber(costRecord, "input");
-  const costOutput = readFiniteNumber(costRecord, "output");
-  const costCacheRead = readFiniteNumber(costRecord, "cacheRead");
-  const costCacheWrite = readFiniteNumber(costRecord, "cacheWrite");
-  const costTotal = readFiniteNumber(costRecord, "total");
-
-  if (
-    input === null ||
-    output === null ||
-    cacheRead === null ||
-    cacheWrite === null ||
-    totalTokens === null ||
-    costInput === null ||
-    costOutput === null ||
-    costCacheRead === null ||
-    costCacheWrite === null ||
-    costTotal === null
-  ) {
-    return null;
-  }
-
-  return {
-    input,
-    output,
-    cacheRead,
-    cacheWrite,
-    totalTokens,
-    cost: {
-      input: costInput,
-      output: costOutput,
-      cacheRead: costCacheRead,
-      cacheWrite: costCacheWrite,
-      total: costTotal,
-    },
-  };
+  return readAssistantUsage(toRecord(message)?.usage);
 }

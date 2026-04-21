@@ -6,7 +6,7 @@ import type { ContainerNode } from "@cel-tui/types";
 import { registerFauxProvider, Type } from "@mariozechner/pi-ai";
 import { type AppState, buildToolList } from "../index.ts";
 import {
-  computeContextTokens,
+  computeSessionContextTokens,
   createSession,
   loadMessages,
   openDatabase,
@@ -152,8 +152,47 @@ describe("ui/commands", () => {
         now + 1,
       ],
     );
+    const messageRows = state.db
+      .query<
+        { id: number },
+        [string]
+      >("SELECT id FROM messages WHERE session_id = ? ORDER BY id")
+      .all(session.id);
+    state.db.run(
+      "INSERT INTO session_compactions (session_id, message_end_id, summary_data, usage_data, created_at) VALUES (?, ?, ?, ?, ?)",
+      [
+        session.id,
+        messageRows[1]!.id,
+        JSON.stringify({
+          role: "user",
+          content: [
+            "summary of the earlier turn",
+            "",
+            "<system-message>",
+            "Read the originals from the SQLite DB if needed.",
+            "</system-message>",
+          ].join("\n"),
+          timestamp: now + 2,
+        }),
+        JSON.stringify({
+          input: 12,
+          output: 3,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 15,
+          cost: {
+            input: 0.01,
+            output: 0.02,
+            cacheRead: 0,
+            cacheWrite: 0,
+            total: 0.03,
+          },
+        }),
+        now + 2,
+      ],
+    );
     state.db.run("UPDATE sessions SET updated_at = ? WHERE id = ?", [
-      now + 1,
+      now + 2,
       session.id,
     ]);
 
@@ -173,11 +212,13 @@ describe("ui/commands", () => {
         "assistant",
       ]);
       expect(state.stats).toEqual({
-        totalInput: 0,
-        totalOutput: 0,
-        totalCost: 0,
+        totalInput: 12,
+        totalOutput: 3,
+        totalCost: 0.03,
       });
-      expect(state.contextTokens).toBe(computeContextTokens(state.messages));
+      expect(state.contextTokens).toBe(
+        computeSessionContextTokens(state.db, session.id),
+      );
       expect(state.queuedUserMessages).toEqual([]);
     } finally {
       state.db.close();

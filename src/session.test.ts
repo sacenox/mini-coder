@@ -1,3 +1,4 @@
+import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -14,8 +15,11 @@ import {
   appendConversationMessage,
   appendMessage,
   appendPromptHistory,
+  appendSessionCompaction,
   clearConversationState,
   computeContextTokens,
+  computeSessionContextTokens,
+  computeSessionStats,
   computeStats,
   createConversationSnapshot,
   createSession,
@@ -26,7 +30,9 @@ import {
   forkSession,
   getSession,
   listPromptHistory,
+  listSessionCompactions,
   listSessions,
+  loadCompactedModelMessages,
   loadMessages,
   openDatabase,
   replaceConversationState,
@@ -93,6 +99,20 @@ function makeUiTodoMessage() {
     { content: "Review prompt wording", status: "completed" },
     { content: "Implement todo tools", status: "in_progress" },
   ]);
+}
+
+function makeCompactionSummary(text: string): UserMessage {
+  return {
+    role: "user",
+    content: [
+      text,
+      "",
+      "<system-message>",
+      "Read the originals from the SQLite DB if needed.",
+      "</system-message>",
+    ].join("\n"),
+    timestamp: Date.now(),
+  };
 }
 
 function loadSessionOrThrow(db: ReturnType<typeof openDatabase>, id: string) {
@@ -240,6 +260,43 @@ describe("database initialization", () => {
 
     expect(row?.timeout).toBeGreaterThan(0);
     db.close();
+  });
+
+  test("openDatabase migrates session_compactions usage_data on existing databases", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mc-session-migration-"));
+    const path = join(dir, "mini-coder.db");
+    const legacyDb = new Database(path);
+    legacyDb.exec(`
+CREATE TABLE sessions (
+  id          TEXT PRIMARY KEY,
+  cwd         TEXT NOT NULL,
+  model       TEXT,
+  effort      TEXT,
+  forked_from TEXT,
+  created_at  INTEGER NOT NULL,
+  updated_at  INTEGER NOT NULL
+);
+
+CREATE TABLE session_compactions (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id     TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  message_end_id INTEGER NOT NULL,
+  summary_data   TEXT NOT NULL,
+  created_at     INTEGER NOT NULL
+);
+`);
+    legacyDb.close();
+
+    const db = openDatabase(path);
+    try {
+      const columns = db
+        .query<{ name: string }, []>("PRAGMA table_info(session_compactions)")
+        .all();
+      expect(columns.some((column) => column.name === "usage_data")).toBe(true);
+    } finally {
+      db.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
@@ -520,6 +577,63 @@ describe("fork", () => {
     db.close();
   });
 
+  test("fork preserves persisted compaction summaries", () => {
+    const db = openDatabase(":memory:");
+    const original = createSession(db, { cwd: "/tmp/test" });
+
+    const t1 = appendMessage(db, original.id, makeUser("first request"));
+    appendMessage(db, original.id, makeAssistant("first reply"), t1);
+    const t2 = appendMessage(db, original.id, makeUser("second request"));
+    appendMessage(db, original.id, makeAssistant("second reply"), t2);
+
+    const rows = db
+      .query<
+        { id: number },
+        [string]
+      >("SELECT id FROM messages WHERE session_id = ? ORDER BY id")
+      .all(original.id);
+    appendSessionCompaction(
+      db,
+      original.id,
+      rows[1]!.id,
+      makeCompactionSummary("summary of the first turn"),
+      {
+        input: 12,
+        output: 3,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 15,
+        cost: {
+          input: 0.01,
+          output: 0.02,
+          cacheRead: 0,
+          cacheWrite: 0,
+          total: 0.03,
+        },
+      },
+    );
+
+    const originalCompactions = listSessionCompactions(db, original.id);
+    const originalContext = loadCompactedModelMessages(db, original.id);
+    const originalContextTokens = computeSessionContextTokens(db, original.id);
+    const originalStats = computeSessionStats(db, original.id);
+
+    const forked = forkSession(db, original.id);
+
+    expect(listSessionCompactions(db, forked.id)).toMatchObject([
+      {
+        sessionId: forked.id,
+        summaryMessage: originalCompactions[0]!.summaryMessage,
+      },
+    ]);
+    expect(loadCompactedModelMessages(db, forked.id)).toEqual(originalContext);
+    expect(computeSessionContextTokens(db, forked.id)).toBe(
+      originalContextTokens,
+    );
+    expect(computeSessionStats(db, forked.id)).toEqual(originalStats);
+    db.close();
+  });
+
   test("fork preserves turn numbers", () => {
     const db = openDatabase(":memory:");
     const original = createSession(db, { cwd: "/tmp/test" });
@@ -787,6 +901,121 @@ describe("cumulative stats", () => {
     expect(filtered).toHaveLength(2);
     expect(filtered[0]).toEqual(user);
     expect(filtered[1]).toEqual(assistant);
+  });
+
+  test("loadCompactedModelMessages prepends persisted compaction summaries", () => {
+    const db = openDatabase(":memory:");
+    const session = createSession(db, { cwd: "/tmp/test" });
+    const firstUser = makeUser("first request");
+    const firstTurn = appendMessage(db, session.id, firstUser);
+    appendMessage(db, session.id, makeAssistant("first reply"), firstTurn);
+    const secondUser = makeUser("second request");
+    const secondTurn = appendMessage(db, session.id, secondUser);
+    const secondAssistant = makeAssistant("second reply");
+    appendMessage(db, session.id, secondAssistant, secondTurn);
+
+    const rows = db
+      .query<
+        { id: number },
+        [string]
+      >("SELECT id FROM messages WHERE session_id = ? ORDER BY id")
+      .all(session.id);
+    const summaryMessage = makeCompactionSummary("summary of the first turn");
+
+    appendSessionCompaction(db, session.id, rows[1]!.id, summaryMessage);
+
+    expect(listSessionCompactions(db, session.id)).toMatchObject([
+      {
+        sessionId: session.id,
+        messageEndId: rows[1]!.id,
+        summaryMessage,
+      },
+    ]);
+    expect(loadMessages(db, session.id)).toHaveLength(4);
+    expect(loadCompactedModelMessages(db, session.id)).toEqual([
+      summaryMessage,
+      secondUser,
+      secondAssistant,
+    ]);
+    expect(computeSessionContextTokens(db, session.id)).toBe(
+      computeContextTokens(loadCompactedModelMessages(db, session.id)),
+    );
+    db.close();
+  });
+
+  test("undoLastTurn removes overlapping compaction summaries", () => {
+    const db = openDatabase(":memory:");
+    const session = createSession(db, { cwd: "/tmp/test" });
+    const firstUser = makeUser("first request");
+    const firstTurn = appendMessage(db, session.id, firstUser);
+    const firstAssistant = makeAssistant("first reply");
+    appendMessage(db, session.id, firstAssistant, firstTurn);
+    const secondUser = makeUser("second request");
+    const secondTurn = appendMessage(db, session.id, secondUser);
+    appendMessage(db, session.id, makeAssistant("second reply"), secondTurn);
+
+    const rows = db
+      .query<
+        { id: number },
+        [string]
+      >("SELECT id FROM messages WHERE session_id = ? ORDER BY id")
+      .all(session.id);
+    appendSessionCompaction(
+      db,
+      session.id,
+      rows[2]!.id,
+      makeCompactionSummary("summary overlapping the second turn"),
+    );
+
+    expect(undoLastTurn(db, session.id)).toBe(true);
+    expect(listSessionCompactions(db, session.id)).toEqual([]);
+    expect(loadCompactedModelMessages(db, session.id)).toEqual([
+      firstUser,
+      firstAssistant,
+    ]);
+    db.close();
+  });
+
+  test("computeSessionStats includes persisted compaction usage", () => {
+    const db = openDatabase(":memory:");
+    const session = createSession(db, { cwd: "/tmp/test" });
+    const user = makeUser("first request");
+    const turn = appendMessage(db, session.id, user);
+    appendMessage(db, session.id, makeAssistant("first reply"), turn);
+
+    const rows = db
+      .query<
+        { id: number },
+        [string]
+      >("SELECT id FROM messages WHERE session_id = ? ORDER BY id")
+      .all(session.id);
+    appendSessionCompaction(
+      db,
+      session.id,
+      rows[1]!.id,
+      makeCompactionSummary("summary of the first turn"),
+      {
+        input: 12,
+        output: 3,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 15,
+        cost: {
+          input: 0.01,
+          output: 0.02,
+          cacheRead: 0,
+          cacheWrite: 0,
+          total: 0.03,
+        },
+      },
+    );
+
+    expect(computeSessionStats(db, session.id)).toEqual({
+      totalInput: 112,
+      totalOutput: 53,
+      totalCost: 0.033,
+    });
+    db.close();
   });
 
   test("loadMessages round-trips UI todo messages", () => {

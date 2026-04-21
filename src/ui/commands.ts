@@ -21,6 +21,8 @@ import { COMMANDS, SKILL_COMMAND } from "../input.ts";
 import { connectMcpServer, disconnectMcpServer } from "../mcp.ts";
 import {
   clearConversationState,
+  computeSessionContextTokens,
+  computeSessionStats,
   forkSession,
   listPromptHistory,
   listSessions,
@@ -546,6 +548,11 @@ export function createCommandController(
           if (picked) {
             state.session = picked;
             replaceConversationState(state, loadMessages(state.db, picked.id));
+            state.stats = computeSessionStats(state.db, picked.id);
+            state.contextTokens = computeSessionContextTokens(
+              state.db,
+              picked.id,
+            );
             runtime.scrollConversationToBottom();
           }
         }
@@ -574,6 +581,8 @@ export function createCommandController(
     const forked = forkSession(state.db, state.session.id);
     state.session = forked;
     replaceConversationState(state, loadMessages(state.db, forked.id));
+    state.stats = computeSessionStats(state.db, forked.id);
+    state.contextTokens = computeSessionContextTokens(state.db, forked.id);
     runtime.appendInfoMessage("Forked session.", state);
   };
 
@@ -594,6 +603,11 @@ export function createCommandController(
     const removed = undoLastTurn(state.db, state.session.id);
     if (removed) {
       replaceConversationState(state, loadMessages(state.db, state.session.id));
+      state.stats = computeSessionStats(state.db, state.session.id);
+      state.contextTokens = computeSessionContextTokens(
+        state.db,
+        state.session.id,
+      );
       runtime.scrollConversationToBottom();
       runtime.requestRender("normal");
     }

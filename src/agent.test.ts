@@ -26,7 +26,9 @@ import {
 import { type AgentEvent, runAgentLoop, type ToolHandler } from "./agent.ts";
 import {
   appendMessage,
+  computeSessionStats,
   createSession,
+  loadCompactedModelMessages,
   loadMessages,
   openDatabase,
 } from "./session.ts";
@@ -2073,6 +2075,497 @@ describe("agent loop", () => {
           text: "[Image omitted from model context because the active model does not support image input.]",
         },
       ]);
+    } finally {
+      unregisterApiProviders(sourceId);
+    }
+  });
+
+  test("text-only image sanitization does not trigger unnecessary compaction from stale assistant usage", async () => {
+    const api = "test/text-only-image-compaction";
+    const sourceId = "test-text-only-image-compaction";
+    const model: Model<string> = {
+      id: api,
+      name: "Text Only Image Compaction Model",
+      api,
+      provider: "test",
+      baseUrl: "http://localhost:0",
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 1_500,
+      maxTokens: 4_096,
+    };
+    const compactionRequests: Message[][] = [];
+    const mainRequests: Message[][] = [];
+
+    const buildProviderStream = (context: Context) => {
+      const isCompaction = (context.systemPrompt ?? "").includes(
+        "You summarize earlier conversation context for a coding agent.",
+      );
+      if (isCompaction) {
+        compactionRequests.push(structuredClone(context.messages));
+      } else {
+        mainRequests.push(structuredClone(context.messages));
+      }
+
+      const stream = createAssistantMessageEventStream();
+      const finalMessage = fauxAssistantMessage("done");
+      queueMicrotask(() => {
+        stream.push({ type: "done", reason: "stop", message: finalMessage });
+        stream.end(finalMessage);
+      });
+      return stream;
+    };
+
+    registerApiProvider(
+      {
+        api,
+        stream: (_model, context) => buildProviderStream(context),
+        streamSimple: (_model, context) => buildProviderStream(context),
+      },
+      sourceId,
+    );
+
+    try {
+      const session = createSession(db, { cwd: tmp });
+      const firstUser = makeUser("inspect the screenshot");
+      const firstTurn = appendMessage(db, session.id, firstUser);
+      const imageResult = makeImageToolResultMessage(1);
+      appendMessage(db, session.id, imageResult, firstTurn);
+      const historicalAssistant: AssistantMessage = {
+        ...fauxAssistantMessage("historical reply"),
+        api,
+        provider: "test",
+        model: api,
+        usage: {
+          ...ZERO_USAGE,
+          input: 2_400,
+          totalTokens: 2_400,
+          cost: { ...ZERO_USAGE.cost },
+        },
+      };
+      appendMessage(db, session.id, historicalAssistant, firstTurn);
+      const currentUser = makeUser("continue without using vision");
+      const turn = appendMessage(db, session.id, currentUser);
+
+      const result = await runAgentLoop({
+        db,
+        sessionId: session.id,
+        turn,
+        model,
+        systemPrompt: "Test",
+        tools: [],
+        toolHandlers: new Map(),
+        messages: [firstUser, imageResult, historicalAssistant, currentUser],
+        cwd: tmp,
+      });
+
+      expect(result.stopReason).toBe("stop");
+      expect(compactionRequests).toEqual([]);
+      expect(mainRequests).toHaveLength(1);
+      const sanitizedImageResult = mainRequests[0]?.[1];
+      if (
+        !sanitizedImageResult ||
+        sanitizedImageResult.role !== "toolResult" ||
+        !Array.isArray(sanitizedImageResult.content)
+      ) {
+        throw new Error("Expected the sanitized image tool result in context");
+      }
+      expect(sanitizedImageResult.content).toEqual([
+        {
+          type: "text",
+          text: "[Image omitted from model context because the active model does not support image input.]",
+        },
+      ]);
+    } finally {
+      unregisterApiProviders(sourceId);
+    }
+  });
+
+  test("context_compacted events and persisted session stats include hidden summary usage", async () => {
+    const api = "test/context-compaction-usage";
+    const sourceId = "test-context-compaction-usage";
+    const model: Model<string> = {
+      id: api,
+      name: "Context Compaction Usage Model",
+      api,
+      provider: "test",
+      baseUrl: "http://localhost:0",
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 250,
+      maxTokens: 4096,
+    };
+    const events: AgentEvent[] = [];
+    let compactionCallCount = 0;
+    let compactionInput = 0;
+    let compactionOutput = 0;
+    let compactionCost = 0;
+
+    const buildProviderStream = (context: Context) => {
+      const isCompaction = (context.systemPrompt ?? "").includes(
+        "You summarize earlier conversation context for a coding agent.",
+      );
+      const stream = createAssistantMessageEventStream();
+      const finalMessage = isCompaction
+        ? {
+            ...fauxAssistantMessage(`summary ${++compactionCallCount}`),
+            usage: {
+              input: 123,
+              output: 45,
+              cacheRead: 0,
+              cacheWrite: 0,
+              totalTokens: 168,
+              cost: {
+                input: 1,
+                output: 2,
+                cacheRead: 0,
+                cacheWrite: 0,
+                total: 3,
+              },
+            },
+          }
+        : {
+            ...fauxAssistantMessage("done"),
+            usage: {
+              input: 10,
+              output: 2,
+              cacheRead: 0,
+              cacheWrite: 0,
+              totalTokens: 12,
+              cost: {
+                input: 0.1,
+                output: 0.2,
+                cacheRead: 0,
+                cacheWrite: 0,
+                total: 0.3,
+              },
+            },
+          };
+
+      if (isCompaction) {
+        compactionInput += finalMessage.usage.input;
+        compactionOutput += finalMessage.usage.output;
+        compactionCost += finalMessage.usage.cost.total;
+      }
+
+      queueMicrotask(() => {
+        stream.push({ type: "done", reason: "stop", message: finalMessage });
+        stream.end(finalMessage);
+      });
+
+      return stream;
+    };
+
+    registerApiProvider(
+      {
+        api,
+        stream: (_model, context) => buildProviderStream(context),
+        streamSimple: (_model, context) => buildProviderStream(context),
+      },
+      sourceId,
+    );
+
+    try {
+      const session = createSession(db, { cwd: tmp });
+      const messages: Message[] = [];
+      let turn = 0;
+
+      for (let index = 0; index < 7; index += 1) {
+        const userMsg = makeUser(`request ${index} ${"x".repeat(380)}`);
+        turn = appendMessage(db, session.id, userMsg);
+        messages.push(userMsg);
+      }
+
+      const result = await runAgentLoop({
+        db,
+        sessionId: session.id,
+        turn,
+        model,
+        systemPrompt: "Test",
+        tools: [],
+        toolHandlers: new Map(),
+        messages,
+        cwd: tmp,
+        onEvent: (event) => events.push(event),
+      });
+
+      expect(result.stopReason).toBe("stop");
+      const compactionEvents = events.filter(
+        (
+          event,
+        ): event is Extract<AgentEvent, { type: "context_compacted" }> => {
+          return event.type === "context_compacted";
+        },
+      );
+      expect(compactionEvents.length).toBe(compactionCallCount);
+      expect(compactionEvents.length).toBeGreaterThan(0);
+      expect(compactionEvents.at(-1)?.stats).toEqual({
+        totalInput: compactionInput,
+        totalOutput: compactionOutput,
+        totalCost: compactionCost,
+      });
+      expect(computeSessionStats(db, session.id)).toEqual({
+        totalInput: compactionInput + 10,
+        totalOutput: compactionOutput + 2,
+        totalCost: compactionCost + 0.3,
+      });
+    } finally {
+      unregisterApiProviders(sourceId);
+    }
+  });
+
+  test("context compaction summarizes older messages without re-compacting earlier summaries", async () => {
+    const api = "test/context-compaction";
+    const sourceId = "test-context-compaction";
+    const model: Model<string> = {
+      id: api,
+      name: "Context Compaction Model",
+      api,
+      provider: "test",
+      baseUrl: "http://localhost:0",
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 250,
+      maxTokens: 4096,
+    };
+    const compactionRequests: Message[][] = [];
+    const mainRequests: Message[][] = [];
+    let compactionCallCount = 0;
+
+    const buildProviderStream = (context: Context) => {
+      const isCompaction = (context.systemPrompt ?? "").includes(
+        "You summarize earlier conversation context for a coding agent.",
+      );
+      if (isCompaction) {
+        compactionRequests.push(structuredClone(context.messages));
+        compactionCallCount += 1;
+      } else {
+        mainRequests.push(structuredClone(context.messages));
+      }
+
+      const stream = createAssistantMessageEventStream();
+      const finalMessage = isCompaction
+        ? fauxAssistantMessage(`summary ${compactionCallCount}`)
+        : fauxAssistantMessage("done");
+
+      queueMicrotask(() => {
+        stream.push({ type: "done", reason: "stop", message: finalMessage });
+        stream.end(finalMessage);
+      });
+
+      return stream;
+    };
+
+    registerApiProvider(
+      {
+        api,
+        stream: (_model, context) => buildProviderStream(context),
+        streamSimple: (_model, context) => buildProviderStream(context),
+      },
+      sourceId,
+    );
+
+    try {
+      const session = createSession(db, { cwd: tmp });
+      const messages: Message[] = [];
+      let turn = 0;
+
+      for (let index = 0; index < 7; index += 1) {
+        const label =
+          index === 6 ? "current request" : `earlier request ${index}`;
+        const userMsg = makeUser(`${label} ${"x".repeat(380)}`);
+        turn = appendMessage(db, session.id, userMsg);
+        messages.push(userMsg);
+      }
+
+      const result = await runAgentLoop({
+        db,
+        sessionId: session.id,
+        turn,
+        model,
+        systemPrompt: "Test",
+        tools: [],
+        toolHandlers: new Map(),
+        messages,
+        cwd: tmp,
+      });
+
+      expect(result.stopReason).toBe("stop");
+      expect(compactionRequests.length).toBeGreaterThanOrEqual(2);
+      expect(mainRequests).toHaveLength(1);
+
+      const firstInstruction = compactionRequests[0]?.at(-1);
+      if (!firstInstruction || firstInstruction.role !== "user") {
+        throw new Error("Expected the first compaction instruction message");
+      }
+      if (typeof firstInstruction.content !== "string") {
+        throw new Error("Expected the first compaction instruction to be text");
+      }
+      expect(firstInstruction.content).toContain("Current user request:");
+      expect(firstInstruction.content).toContain("current request");
+
+      const secondCompaction = compactionRequests[1]!;
+      expect(
+        secondCompaction.some(
+          (message) =>
+            message.role === "user" &&
+            typeof message.content === "string" &&
+            message.content.includes("summary 1"),
+        ),
+      ).toBe(false);
+
+      const compactedContext = mainRequests[0]!;
+      const summaryMessages = compactedContext.filter(
+        (message): message is UserMessage =>
+          message.role === "user" &&
+          typeof message.content === "string" &&
+          message.content.includes("<system-message>"),
+      );
+      expect(summaryMessages.length).toBeGreaterThan(0);
+      expect(summaryMessages[0]!.content).toContain("summary 1");
+      expect(summaryMessages[0]!.content).toContain(session.id);
+      expect(summaryMessages[0]!.content).toContain(":memory:");
+      expect(
+        compactedContext.some(
+          (message) =>
+            message.role === "user" &&
+            typeof message.content === "string" &&
+            message.content.includes("earlier request 0"),
+        ),
+      ).toBe(false);
+      expect(
+        loadMessages(db, session.id).some(
+          (message) =>
+            message.role === "user" &&
+            typeof message.content === "string" &&
+            message.content.includes("earlier request 0"),
+        ),
+      ).toBe(true);
+      expect(
+        loadCompactedModelMessages(db, session.id).some(
+          (message) =>
+            message.role === "user" &&
+            typeof message.content === "string" &&
+            message.content.includes("<system-message>"),
+        ),
+      ).toBe(true);
+    } finally {
+      unregisterApiProviders(sourceId);
+    }
+  });
+
+  test("repeated compactions stay anchored to the active user request after that request is compacted", async () => {
+    const api = "test/context-compaction-anchor";
+    const sourceId = "test-context-compaction-anchor";
+    const model: Model<string> = {
+      id: api,
+      name: "Context Compaction Anchor Model",
+      api,
+      provider: "test",
+      baseUrl: "http://localhost:0",
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 250,
+      maxTokens: 4096,
+    };
+    const currentRequestAnchor = "current request anchor";
+    const compactionInstructions: string[] = [];
+    let compactionCallCount = 0;
+
+    const buildProviderStream = (context: Context) => {
+      const isCompaction = (context.systemPrompt ?? "").includes(
+        "You summarize earlier conversation context for a coding agent.",
+      );
+      if (isCompaction) {
+        const instruction = context.messages.at(-1);
+        if (
+          instruction?.role === "user" &&
+          typeof instruction.content === "string"
+        ) {
+          compactionInstructions.push(instruction.content);
+        }
+        compactionCallCount += 1;
+      }
+
+      const stream = createAssistantMessageEventStream();
+      const finalMessage = isCompaction
+        ? fauxAssistantMessage(`summary ${compactionCallCount}`)
+        : fauxAssistantMessage("done");
+
+      queueMicrotask(() => {
+        stream.push({ type: "done", reason: "stop", message: finalMessage });
+        stream.end(finalMessage);
+      });
+
+      return stream;
+    };
+
+    registerApiProvider(
+      {
+        api,
+        stream: (_model, context) => buildProviderStream(context),
+        streamSimple: (_model, context) => buildProviderStream(context),
+      },
+      sourceId,
+    );
+
+    try {
+      const session = createSession(db, { cwd: tmp });
+      const currentRequest = `${currentRequestAnchor} ${"x".repeat(380)}`;
+      const userMsg = makeUser(currentRequest);
+      const turn = appendMessage(db, session.id, userMsg);
+      const messages: Message[] = [userMsg];
+
+      for (let index = 0; index < 6; index += 1) {
+        const assistantMessage: AssistantMessage = {
+          ...fauxAssistantMessage(`assistant ${index} ${"a".repeat(380)}`),
+          api,
+          provider: "test",
+          model: api,
+          usage: {
+            ...ZERO_USAGE,
+            input: 250,
+            totalTokens: 250,
+            cost: { ...ZERO_USAGE.cost },
+          },
+        };
+        const toolResultMessage: Message = {
+          role: "toolResult",
+          toolCallId: `call-${index}`,
+          toolName: "shell",
+          content: [{ type: "text", text: `tool ${index} ${"t".repeat(380)}` }],
+          isError: false,
+          timestamp: Date.now() + 100 + index,
+        };
+
+        appendMessage(db, session.id, assistantMessage, turn);
+        appendMessage(db, session.id, toolResultMessage, turn);
+        messages.push(assistantMessage, toolResultMessage);
+      }
+
+      const result = await runAgentLoop({
+        db,
+        sessionId: session.id,
+        turn,
+        model,
+        systemPrompt: "Test",
+        tools: [],
+        toolHandlers: new Map(),
+        messages,
+        cwd: tmp,
+      });
+
+      expect(result.stopReason).toBe("stop");
+      expect(compactionCallCount).toBeGreaterThanOrEqual(2);
+      expect(compactionInstructions).toHaveLength(compactionCallCount);
+      for (const instruction of compactionInstructions) {
+        expect(instruction).toContain("Current user request:");
+        expect(instruction).toContain(currentRequestAnchor);
+      }
     } finally {
       unregisterApiProviders(sourceId);
     }

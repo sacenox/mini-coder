@@ -221,6 +221,9 @@ export function createUiAgentController(
           runtime.requestRender("normal");
         }
         return;
+      case "context_compacted":
+        runtime.requestRender("normal");
+        return;
       case "tool_start":
         return;
     }

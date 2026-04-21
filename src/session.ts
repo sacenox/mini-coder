@@ -10,12 +10,17 @@
  */
 
 import { Database } from "bun:sqlite";
-import type { AssistantMessage, Message } from "@mariozechner/pi-ai";
+import type {
+  AssistantMessage,
+  Message,
+  UserMessage,
+} from "@mariozechner/pi-ai";
 import {
   getAssistantUsage,
   isUiMessage,
   type PersistedMessage,
   parsePersistedMessage,
+  readAssistantUsage,
   readFirstUserPreview,
   type UiInfoFormat,
   type UiInfoMessage,
@@ -86,6 +91,28 @@ export interface SessionStats {
   totalCost: number;
 }
 
+/** One persisted synthetic summary that replaces an older compacted context prefix. */
+export interface SessionCompaction {
+  /** Monotonic compaction row id. */
+  id: number;
+  /** Session that owns this compaction. */
+  sessionId: string;
+  /** Message-row id of the last raw message covered by the summary. */
+  messageEndId: number;
+  /** Synthetic user message injected into future model context. */
+  summaryMessage: UserMessage;
+  /** Unix timestamp in milliseconds when the compaction was created. */
+  createdAt: number;
+}
+
+/** One uncompacted model-visible session message paired with its SQLite row id. */
+export interface SessionModelMessageRow {
+  /** Monotonic message row id. */
+  id: number;
+  /** Persisted model-visible message. */
+  message: Message;
+}
+
 /** A raw submitted prompt stored for global input-history search. */
 interface PromptHistoryEntry {
   /** Monotonic row id. */
@@ -143,6 +170,28 @@ type SessionListRow = SessionRow & {
 /** Row shape for `SELECT MAX(turn)` queries. */
 type MaxTurnRow = { max_turn: number | null };
 
+/** Row shape for `SELECT id, data` message queries. */
+type StoredMessageRow = {
+  id: number;
+  data: string;
+};
+
+/** Row shape returned by `SELECT * FROM session_compactions`. */
+type SessionCompactionRow = {
+  id: number;
+  session_id: string;
+  message_end_id: number;
+  summary_data: string;
+  usage_data: string | null;
+  created_at: number;
+};
+
+/** Row shape for `SELECT message_end_id` compaction queries. */
+type CompactionEndRow = { message_end_id: number };
+
+/** Row shape returned by `SELECT id` message queries. */
+type MessageIdRow = { id: number };
+
 /** Row shape for `SELECT data` queries. */
 type DataRow = { data: string };
 
@@ -178,6 +227,15 @@ const SQL = {
   `,
   maxTurn: "SELECT MAX(turn) as max_turn FROM messages WHERE session_id = ?",
   loadMessages: "SELECT data FROM messages WHERE session_id = ? ORDER BY id",
+  loadStoredMessagesAfterId:
+    "SELECT id, data FROM messages WHERE session_id = ? AND id > ? ORDER BY id",
+  listCompactions:
+    "SELECT * FROM session_compactions WHERE session_id = ? ORDER BY message_end_id, id",
+  latestCompactionEnd:
+    "SELECT message_end_id FROM session_compactions WHERE session_id = ? ORDER BY message_end_id DESC, id DESC LIMIT 1",
+  firstMessageIdForTurn:
+    "SELECT id FROM messages WHERE session_id = ? AND turn = ? ORDER BY id LIMIT 1",
+  listMessageIds: "SELECT id FROM messages WHERE session_id = ? ORDER BY id",
   listPromptHistory:
     "SELECT * FROM prompt_history ORDER BY created_at DESC, id DESC LIMIT ?",
 } as const;
@@ -204,6 +262,17 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 
 CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, turn);
+
+CREATE TABLE IF NOT EXISTS session_compactions (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id     TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  message_end_id INTEGER NOT NULL,
+  summary_data   TEXT NOT NULL,
+  usage_data     TEXT,
+  created_at     INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_session_compactions_session ON session_compactions(session_id, message_end_id);
 
 CREATE TABLE IF NOT EXISTS prompt_history (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -238,12 +307,26 @@ CREATE INDEX IF NOT EXISTS idx_prompt_history_created_at ON prompt_history(creat
  * db.close();
  * ```
  */
+function ensureSessionCompactionUsageColumn(db: Database): void {
+  try {
+    db.run("ALTER TABLE session_compactions ADD COLUMN usage_data TEXT");
+  } catch (error) {
+    if (
+      !(error instanceof Error) ||
+      !error.message.includes("duplicate column name: usage_data")
+    ) {
+      throw error;
+    }
+  }
+}
+
 export function openDatabase(path: string): Database {
   const db = new Database(path);
   db.run("PRAGMA journal_mode = WAL");
   db.run(`PRAGMA busy_timeout = ${SQLITE_BUSY_TIMEOUT_MS}`);
   db.run("PRAGMA foreign_keys = ON");
   db.exec(SCHEMA);
+  ensureSessionCompactionUsageColumn(db);
   return db;
 }
 
@@ -436,6 +519,175 @@ function runInImmediateTransaction<T>(db: Database, callback: () => T): T {
     }
     throw error;
   }
+}
+
+function parseCompactionSummaryMessage(data: string): UserMessage | null {
+  const message = parsePersistedMessage(data);
+  return message?.role === "user" ? message : null;
+}
+
+function parseCompactionUsage(
+  data: string | null,
+): AssistantMessage["usage"] | null {
+  if (!data) {
+    return null;
+  }
+
+  try {
+    return readAssistantUsage(JSON.parse(data) as unknown);
+  } catch {
+    return null;
+  }
+}
+
+function getLatestCompactionEndId(db: Database, sessionId: string): number {
+  const row = db
+    .query<CompactionEndRow, [string]>(SQL.latestCompactionEnd)
+    .get(sessionId);
+  return row?.message_end_id ?? 0;
+}
+
+function listMessageIds(db: Database, sessionId: string): number[] {
+  return db
+    .query<MessageIdRow, [string]>(SQL.listMessageIds)
+    .all(sessionId)
+    .map((row) => row.id);
+}
+
+/**
+ * List persisted compaction summaries for a session in replacement order.
+ *
+ * @param db - Open database handle.
+ * @param sessionId - Session whose compactions should be listed.
+ * @returns Parsed compaction summaries ordered by covered message range.
+ */
+export function listSessionCompactions(
+  db: Database,
+  sessionId: string,
+): SessionCompaction[] {
+  const rows = db
+    .query<SessionCompactionRow, [string]>(SQL.listCompactions)
+    .all(sessionId);
+  const compactions: SessionCompaction[] = [];
+
+  for (const row of rows) {
+    const summaryMessage = parseCompactionSummaryMessage(row.summary_data);
+    if (!summaryMessage) {
+      continue;
+    }
+
+    compactions.push({
+      id: row.id,
+      sessionId: row.session_id,
+      messageEndId: row.message_end_id,
+      summaryMessage,
+      createdAt: row.created_at,
+    });
+  }
+
+  return compactions;
+}
+
+/**
+ * Persist one synthetic compaction summary for future model-context rebuilds.
+ *
+ * @param db - Open database handle.
+ * @param sessionId - Session that owns the compaction.
+ * @param messageEndId - Last raw message-row id covered by the summary.
+ * @param summaryMessage - Synthetic user message that replaces that prefix in context.
+ * @param summaryUsage - Optional usage for the hidden summarization model call.
+ * @returns The stored {@link SessionCompaction}.
+ */
+export function appendSessionCompaction(
+  db: Database,
+  sessionId: string,
+  messageEndId: number,
+  summaryMessage: UserMessage,
+  summaryUsage?: AssistantMessage["usage"],
+): SessionCompaction {
+  return runInImmediateTransaction(db, () => {
+    const now = Date.now();
+    const result = db.run(
+      "INSERT INTO session_compactions (session_id, message_end_id, summary_data, usage_data, created_at) VALUES (?, ?, ?, ?, ?)",
+      [
+        sessionId,
+        messageEndId,
+        JSON.stringify(summaryMessage),
+        summaryUsage ? JSON.stringify(summaryUsage) : null,
+        now,
+      ],
+    );
+
+    return {
+      id: Number(result.lastInsertRowid),
+      sessionId,
+      messageEndId,
+      summaryMessage,
+      createdAt: now,
+    };
+  });
+}
+
+/**
+ * Load raw model-visible messages that have not yet been compacted.
+ *
+ * @param db - Open database handle.
+ * @param sessionId - Session whose uncompacted message tail should be loaded.
+ * @returns Model-visible message rows after the latest compaction boundary.
+ */
+export function loadUncompactedModelMessages(
+  db: Database,
+  sessionId: string,
+): SessionModelMessageRow[] {
+  const latestCompactionEndId = getLatestCompactionEndId(db, sessionId);
+  const rows = db
+    .query<StoredMessageRow, [string, number]>(SQL.loadStoredMessagesAfterId)
+    .all(sessionId, latestCompactionEndId);
+  const messages: SessionModelMessageRow[] = [];
+
+  for (const row of rows) {
+    const message = parsePersistedMessage(row.data);
+    if (!message || isUiMessage(message)) {
+      continue;
+    }
+
+    messages.push({ id: row.id, message });
+  }
+
+  return messages;
+}
+
+/**
+ * Rebuild the model-visible session context using persisted compaction summaries.
+ *
+ * @param db - Open database handle.
+ * @param sessionId - Session whose compacted model context should be loaded.
+ * @returns Synthetic compaction summaries followed by the uncompacted message tail.
+ */
+export function loadCompactedModelMessages(
+  db: Database,
+  sessionId: string,
+): Message[] {
+  return [
+    ...listSessionCompactions(db, sessionId).map(
+      (compaction) => compaction.summaryMessage,
+    ),
+    ...loadUncompactedModelMessages(db, sessionId).map((row) => row.message),
+  ];
+}
+
+/**
+ * Compute the next-request context-token estimate for a persisted session.
+ *
+ * @param db - Open database handle.
+ * @param sessionId - Session whose compacted model context should be estimated.
+ * @returns Estimated context tokens for the next request.
+ */
+export function computeSessionContextTokens(
+  db: Database,
+  sessionId: string,
+): number {
+  return computeContextTokens(loadCompactedModelMessages(db, sessionId));
 }
 
 /**
@@ -661,14 +913,30 @@ export function truncatePromptHistory(db: Database, keep: number): void {
  * @returns `true` if a turn was removed, `false` if the session had no messages.
  */
 export function undoLastTurn(db: Database, sessionId: string): boolean {
-  const row = db.query<MaxTurnRow, [string]>(SQL.maxTurn).get(sessionId);
-  if (!row?.max_turn) return false;
+  return runInImmediateTransaction(db, () => {
+    const row = db.query<MaxTurnRow, [string]>(SQL.maxTurn).get(sessionId);
+    if (!row?.max_turn) {
+      return false;
+    }
 
-  db.run("DELETE FROM messages WHERE session_id = ? AND turn = ?", [
-    sessionId,
-    row.max_turn,
-  ]);
-  return true;
+    const firstMessageRow = db
+      .query<MessageIdRow, [string, number]>(SQL.firstMessageIdForTurn)
+      .get(sessionId, row.max_turn);
+
+    db.run("DELETE FROM messages WHERE session_id = ? AND turn = ?", [
+      sessionId,
+      row.max_turn,
+    ]);
+
+    if (firstMessageRow) {
+      db.run(
+        "DELETE FROM session_compactions WHERE session_id = ? AND message_end_id >= ?",
+        [sessionId, firstMessageRow.id],
+      );
+    }
+
+    return true;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -679,8 +947,9 @@ export function undoLastTurn(db: Database, sessionId: string): boolean {
  * Fork a session into a new independent copy.
  *
  * Creates a new session with the same `cwd`, `model`, and `effort` as the
- * source, then copies all messages preserving their turn numbers. The new
- * session's `forkedFrom` field points back to the source. The original
+ * source, then copies all messages preserving their turn numbers plus any
+ * persisted compaction summaries with remapped message-row boundaries. The
+ * new session's `forkedFrom` field points back to the source. The original
  * session is not modified.
  *
  * @param db - Open database handle.
@@ -692,33 +961,82 @@ export function forkSession(db: Database, sourceId: string): Session {
   const source = getSession(db, sourceId);
   if (!source) throw new Error(`Session not found: ${sourceId}`);
 
-  const id = generateId();
-  const now = Date.now();
+  return runInImmediateTransaction(db, () => {
+    const id = generateId();
+    const now = Date.now();
 
-  db.run(
-    "INSERT INTO sessions (id, cwd, model, effort, forked_from, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-    [id, source.cwd, source.model, source.effort, sourceId, now, now],
-  );
+    db.run(
+      "INSERT INTO sessions (id, cwd, model, effort, forked_from, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      [id, source.cwd, source.model, source.effort, sourceId, now, now],
+    );
 
-  db.run(
-    "INSERT INTO messages (session_id, turn, data, created_at) SELECT ?, turn, data, created_at FROM messages WHERE session_id = ? ORDER BY id",
-    [id, sourceId],
-  );
+    const sourceMessageIds = listMessageIds(db, sourceId);
 
-  return {
-    id,
-    cwd: source.cwd,
-    model: source.model,
-    effort: source.effort,
-    forkedFrom: sourceId,
-    createdAt: now,
-    updatedAt: now,
-  };
+    db.run(
+      "INSERT INTO messages (session_id, turn, data, created_at) SELECT ?, turn, data, created_at FROM messages WHERE session_id = ? ORDER BY id",
+      [id, sourceId],
+    );
+
+    const forkedMessageIds = listMessageIds(db, id);
+    const forkedMessageIdBySourceId = new Map<number, number>();
+    for (let index = 0; index < sourceMessageIds.length; index += 1) {
+      const sourceMessageId = sourceMessageIds[index];
+      const forkedMessageId = forkedMessageIds[index];
+      if (sourceMessageId === undefined || forkedMessageId === undefined) {
+        continue;
+      }
+      forkedMessageIdBySourceId.set(sourceMessageId, forkedMessageId);
+    }
+
+    const sourceCompactions = db
+      .query<SessionCompactionRow, [string]>(SQL.listCompactions)
+      .all(sourceId);
+    for (const compaction of sourceCompactions) {
+      const forkedMessageEndId = forkedMessageIdBySourceId.get(
+        compaction.message_end_id,
+      );
+      if (forkedMessageEndId === undefined) {
+        continue;
+      }
+
+      db.run(
+        "INSERT INTO session_compactions (session_id, message_end_id, summary_data, usage_data, created_at) VALUES (?, ?, ?, ?, ?)",
+        [
+          id,
+          forkedMessageEndId,
+          compaction.summary_data,
+          compaction.usage_data,
+          compaction.created_at,
+        ],
+      );
+    }
+
+    return {
+      id,
+      cwd: source.cwd,
+      model: source.model,
+      effort: source.effort,
+      forkedFrom: sourceId,
+      createdAt: now,
+      updatedAt: now,
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------
 // Stats
 // ---------------------------------------------------------------------------
+
+function addUsageToStats(
+  stats: SessionStats,
+  usage: AssistantMessage["usage"],
+): SessionStats {
+  return {
+    totalInput: stats.totalInput + usage.input,
+    totalOutput: stats.totalOutput + usage.output,
+    totalCost: stats.totalCost + usage.cost.total,
+  };
+}
 
 /**
  * Add one persisted message's assistant usage to cumulative session stats.
@@ -735,15 +1053,7 @@ export function addMessageToStats(
   message: PersistedMessage,
 ): SessionStats {
   const usage = getAssistantUsage(message);
-  if (!usage) {
-    return stats;
-  }
-
-  return {
-    totalInput: stats.totalInput + usage.input,
-    totalOutput: stats.totalOutput + usage.output,
-    totalCost: stats.totalCost + usage.cost.total,
-  };
+  return usage ? addUsageToStats(stats, usage) : stats;
 }
 
 /** Create a zeroed cumulative session-stats object. */
@@ -768,6 +1078,32 @@ export function computeStats(
 
   for (const message of messages) {
     stats = addMessageToStats(stats, message);
+  }
+
+  return stats;
+}
+
+/**
+ * Compute cumulative session stats including persisted compaction-summary calls.
+ *
+ * @param db - Open database handle.
+ * @param sessionId - Session whose cumulative stats should be loaded.
+ * @returns Aggregated cumulative session stats for visible turns plus compactions.
+ */
+export function computeSessionStats(
+  db: Database,
+  sessionId: string,
+): SessionStats {
+  let stats = computeStats(loadMessages(db, sessionId));
+
+  const compactionRows = db
+    .query<SessionCompactionRow, [string]>(SQL.listCompactions)
+    .all(sessionId);
+  for (const row of compactionRows) {
+    const usage = parseCompactionUsage(row.usage_data);
+    if (usage) {
+      stats = addUsageToStats(stats, usage);
+    }
   }
 
   return stats;
@@ -868,21 +1204,29 @@ function estimateMessageTokens(message: Message): number {
   }
 }
 
+interface ContextTokenOptions {
+  /** Ignore assistant usage anchors and estimate every message directly. */
+  ignoreAssistantUsage?: boolean;
+}
+
 /**
  * Fold one persisted message into the running context estimate for the next request.
  *
  * Assistant messages with valid usage anchor the full model-visible context for
- * that point in the transcript, so they replace the running estimate. All other
- * model-visible messages are added incrementally using the same conservative
- * estimation logic used before the first valid assistant usage appears.
+ * that point in the transcript, so they replace the running estimate unless the
+ * caller explicitly disables those anchors. All other model-visible messages are
+ * added incrementally using the same conservative estimation logic used before
+ * the first valid assistant usage appears.
  *
  * @param contextTokens - Running estimate before this message.
  * @param message - Persisted message to fold into the estimate.
+ * @param options - Optional estimation behavior overrides.
  * @returns Updated context-token estimate.
  */
 export function addMessageToContextTokens(
   contextTokens: number,
   message: PersistedMessage,
+  options?: ContextTokenOptions,
 ): number {
   if (message.role === "ui") {
     return contextTokens;
@@ -890,6 +1234,7 @@ export function addMessageToContextTokens(
 
   const usage = getAssistantUsage(message);
   if (
+    !options?.ignoreAssistantUsage &&
     message.role === "assistant" &&
     usage &&
     message.stopReason !== "aborted" &&
@@ -909,15 +1254,17 @@ export function addMessageToContextTokens(
  * message history.
  *
  * @param messages - Full persisted session history.
+ * @param options - Optional estimation behavior overrides.
  * @returns Estimated context tokens visible to the next model request.
  */
 export function computeContextTokens(
   messages: readonly PersistedMessage[],
+  options?: ContextTokenOptions,
 ): number {
   let contextTokens = 0;
 
   for (const message of messages) {
-    contextTokens = addMessageToContextTokens(contextTokens, message);
+    contextTokens = addMessageToContextTokens(contextTokens, message, options);
   }
 
   return contextTokens;

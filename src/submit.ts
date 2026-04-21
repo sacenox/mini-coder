@@ -21,7 +21,7 @@ import {
   appendConversationMessage,
   appendMessage,
   appendPromptHistory,
-  filterModelMessages,
+  loadCompactedModelMessages,
   truncatePromptHistory,
 } from "./session.ts";
 import { executeReadImage } from "./tools.ts";
@@ -271,6 +271,10 @@ function handleAgentEvent(event: AgentEvent, state: AppState): void {
     case "tool_result":
       appendConversationMessage(state, event.message);
       break;
+    case "context_compacted":
+      state.contextTokens = event.contextTokens;
+      state.stats = event.stats;
+      break;
     case "text_delta":
     case "thinking_delta":
     case "toolcall_start":
@@ -332,7 +336,7 @@ export async function submitResolvedInput(
 
   const systemPrompt = buildPrompt(state);
   const { tools, toolHandlers } = buildToolList(state);
-  const modelMessages = filterModelMessages(state.messages);
+  const modelMessages = loadCompactedModelMessages(state.db, session.id);
 
   state.running = true;
   state.abortController = new AbortController();

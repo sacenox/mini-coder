@@ -22,8 +22,15 @@ import {
   unregisterApiProviders,
 } from "@mariozechner/pi-ai";
 import type { AppState } from "./index.ts";
-import { createSession, loadMessages, openDatabase } from "./session.ts";
+import {
+  appendMessage,
+  createSession,
+  loadMessages,
+  openDatabase,
+  replaceConversationState,
+} from "./session.ts";
 import { DEFAULT_SHOW_REASONING, DEFAULT_VERBOSE } from "./settings.ts";
+import { submitResolvedInput } from "./submit.ts";
 import { DEFAULT_THEME } from "./theme.ts";
 import {
   buildConversationLogNodes,
@@ -400,6 +407,128 @@ describe("ui rendering", () => {
       await stopRunningTurn(state);
       process.env.PATH = originalPath;
       faux.unregister();
+      state.db.close();
+    }
+  });
+
+  test("submitResolvedInput counts hidden compaction usage in active session stats", async () => {
+    const api = "ui-compaction-usage-test";
+    const sourceId = "ui-compaction-usage-test-source";
+    const model: Model<string> = {
+      id: api,
+      name: "UI Compaction Usage Model",
+      api,
+      provider: "test",
+      baseUrl: "http://localhost:0",
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 250,
+      maxTokens: 4096,
+    };
+    let compactionCallCount = 0;
+    let compactionInput = 0;
+    let compactionOutput = 0;
+    let compactionCost = 0;
+
+    const buildProviderStream = (context: { systemPrompt?: string }) => {
+      const isCompaction = (context.systemPrompt ?? "").includes(
+        "You summarize earlier conversation context for a coding agent.",
+      );
+      const stream = createAssistantMessageEventStream();
+      const finalMessage = isCompaction
+        ? {
+            ...fauxAssistantMessage(`summary ${++compactionCallCount}`),
+            usage: {
+              input: 123,
+              output: 45,
+              cacheRead: 0,
+              cacheWrite: 0,
+              totalTokens: 168,
+              cost: {
+                input: 1,
+                output: 2,
+                cacheRead: 0,
+                cacheWrite: 0,
+                total: 3,
+              },
+            },
+          }
+        : {
+            ...fauxAssistantMessage("done"),
+            usage: {
+              input: 10,
+              output: 2,
+              cacheRead: 0,
+              cacheWrite: 0,
+              totalTokens: 12,
+              cost: {
+                input: 0.1,
+                output: 0.2,
+                cacheRead: 0,
+                cacheWrite: 0,
+                total: 0.3,
+              },
+            },
+          };
+
+      if (isCompaction) {
+        compactionInput += finalMessage.usage.input;
+        compactionOutput += finalMessage.usage.output;
+        compactionCost += finalMessage.usage.cost.total;
+      }
+
+      queueMicrotask(() => {
+        stream.push({ type: "done", reason: "stop", message: finalMessage });
+        stream.end(finalMessage);
+      });
+
+      return stream;
+    };
+
+    registerApiProvider(
+      {
+        api,
+        stream: (_model, context) => buildProviderStream(context),
+        streamSimple: (_model, context) => buildProviderStream(context),
+      },
+      sourceId,
+    );
+
+    const state = createTestState();
+    state.model = model;
+    state.session = createSession(state.db, {
+      cwd: state.canonicalCwd,
+      model: `${model.provider}/${model.id}`,
+      effort: state.effort,
+    });
+
+    try {
+      for (let index = 0; index < 6; index += 1) {
+        appendMessage(state.db, state.session.id, {
+          role: "user",
+          content: `historical request ${index} ${"x".repeat(380)}`,
+          timestamp: Date.now() + index,
+        });
+      }
+      replaceConversationState(state, loadMessages(state.db, state.session.id));
+
+      const stopReason = await submitResolvedInput(
+        `current request ${"x".repeat(380)}`,
+        `current request ${"x".repeat(380)}`,
+        state,
+      );
+
+      expect(stopReason).toBe("stop");
+      expect(compactionCallCount).toBeGreaterThan(0);
+      expect(state.stats).toEqual({
+        totalInput: compactionInput + 10,
+        totalOutput: compactionOutput + 2,
+        totalCost: compactionCost + 0.3,
+      });
+    } finally {
+      await stopRunningTurn(state);
+      unregisterApiProviders(sourceId);
       state.db.close();
     }
   });
