@@ -39,9 +39,10 @@ $ mc
 
 ## Tools
 
-Six built-in tools, plus a conditional read-only image tool and any configured MCP tools:
+Seven built-in tools, plus a conditional read-only image tool and any configured MCP tools:
 
 - **`shell`** — runs commands in the user's shell. Returns stdout, stderr, and exit code. Large output is truncated to protect model context.
+- **`delegate`** — runs a bounded subtask in an isolated subagent session using the current model, prompt context, and tools.
 - **`read`** — reads UTF-8 text files from disk, optionally by line window.
 - **`grep`** — searches file contents with ripgrep-style options and returns structured matches.
 - **`edit`** — exact-text replacement in a single file. Fails deterministically if the target is missing or ambiguous. Creates new files when old text is empty.
