@@ -1,6 +1,6 @@
 {
   "name": "mini-coder",
-  "version": "0.5.13",
+  "version": "0.5.14",
   "description": "A small, fast CLI coding agent",
   "module": "src/index.ts",
   "type": "module",
