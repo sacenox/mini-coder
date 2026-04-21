@@ -260,14 +260,88 @@ function unknownToolResult(name: string): ToolExecResult {
   };
 }
 
+const MAX_CONTEXT_IMAGE_BLOCKS = 12;
+const OMITTED_CONTEXT_IMAGE_PLACEHOLDER =
+  "[Earlier image omitted from model context to stay within image-input limits.]";
+const UNSUPPORTED_CONTEXT_IMAGE_PLACEHOLDER =
+  "[Image omitted from model context because the active model does not support image input.]";
+
+function sanitizeMessageContentForContext(
+  message: Message,
+  imageBudget: { remaining: number; supportsImages: boolean },
+): Message {
+  if (message.role === "assistant" || !Array.isArray(message.content)) {
+    return message;
+  }
+
+  let changed = false;
+  const sanitized: typeof message.content = [];
+
+  for (const block of message.content) {
+    if (block.type !== "image") {
+      sanitized.push(block);
+      continue;
+    }
+
+    const placeholder = imageBudget.supportsImages
+      ? OMITTED_CONTEXT_IMAGE_PLACEHOLDER
+      : UNSUPPORTED_CONTEXT_IMAGE_PLACEHOLDER;
+
+    if (imageBudget.supportsImages && imageBudget.remaining > 0) {
+      imageBudget.remaining -= 1;
+      sanitized.push(block);
+      continue;
+    }
+
+    changed = true;
+    const lastBlock = sanitized.at(-1);
+    if (lastBlock?.type === "text" && lastBlock.text === placeholder) {
+      continue;
+    }
+
+    sanitized.push({ type: "text", text: placeholder });
+  }
+
+  if (!changed) {
+    return message;
+  }
+
+  return { ...message, content: sanitized };
+}
+
+function sanitizeContextMessages(
+  messages: Message[],
+  modelSupportsImages: boolean,
+): Message[] {
+  const imageBudget = {
+    remaining: modelSupportsImages ? MAX_CONTEXT_IMAGE_BLOCKS : 0,
+    supportsImages: modelSupportsImages,
+  };
+  const sanitized = new Array<Message>(messages.length);
+
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    sanitized[index] = sanitizeMessageContentForContext(
+      messages[index]!,
+      imageBudget,
+    );
+  }
+
+  return sanitized;
+}
+
 function buildAgentContext(
   systemPrompt: string,
   messages: Message[],
   tools: Tool[],
+  modelSupportsImages: boolean,
 ) {
+  const contextMessages = sanitizeContextMessages(
+    messages,
+    modelSupportsImages,
+  );
   return tools.length > 0
-    ? { systemPrompt, messages, tools }
-    : { systemPrompt, messages };
+    ? { systemPrompt, messages: contextMessages, tools }
+    : { systemPrompt, messages: contextMessages };
 }
 
 function buildStreamOptions(
@@ -446,7 +520,12 @@ async function streamAssistantMessage(
 ): Promise<AssistantMessage> {
   const eventStream = streamSimple(
     opts.model,
-    buildAgentContext(opts.systemPrompt, opts.messages, opts.tools),
+    buildAgentContext(
+      opts.systemPrompt,
+      opts.messages,
+      opts.tools,
+      opts.model.input.includes("image"),
+    ),
     buildStreamOptions(opts.apiKey, opts.effort, opts.signal),
   );
   const streamResult = eventStream.result();

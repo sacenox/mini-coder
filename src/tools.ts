@@ -15,6 +15,7 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, extname, isAbsolute, join } from "node:path";
+import { crc32, inflateSync } from "node:zlib";
 import type {
   Message,
   Static,
@@ -703,6 +704,312 @@ const IMAGE_MIME_TYPES: Record<string, string> = {
   ".webp": "image/webp",
 };
 
+const PNG_SIGNATURE = Buffer.from([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+]);
+const JPEG_SIGNATURE = Buffer.from([0xff, 0xd8]);
+const GIF_SIGNATURES = ["GIF87a", "GIF89a"];
+const WEBP_RIFF_SIGNATURE = "RIFF";
+const WEBP_FILE_SIGNATURE = "WEBP";
+
+interface PngChunk {
+  typeBytes: Buffer;
+  type: string;
+  data: Buffer;
+}
+
+interface PngValidationState {
+  sawIHDR: boolean;
+  sawIDAT: boolean;
+  sawIEND: boolean;
+  width: number;
+  height: number;
+  bitDepth: number;
+  colorType: number;
+  interlaceMethod: number;
+  compressedParts: Buffer[];
+}
+
+function createPngValidationState(): PngValidationState {
+  return {
+    sawIHDR: false,
+    sawIDAT: false,
+    sawIEND: false,
+    width: 0,
+    height: 0,
+    bitDepth: 0,
+    colorType: 0,
+    interlaceMethod: 0,
+    compressedParts: [],
+  };
+}
+
+function isValidPngColorFormat(bitDepth: number, colorType: number): boolean {
+  switch (colorType) {
+    case 0:
+      return [1, 2, 4, 8, 16].includes(bitDepth);
+    case 2:
+    case 4:
+    case 6:
+      return bitDepth === 8 || bitDepth === 16;
+    case 3:
+      return [1, 2, 4, 8].includes(bitDepth);
+    default:
+      return false;
+  }
+}
+
+function getPngScanlineByteLength(
+  width: number,
+  bitDepth: number,
+  colorType: number,
+): number {
+  const samplesPerPixel =
+    colorType === 0 || colorType === 3
+      ? 1
+      : colorType === 4
+        ? 2
+        : colorType === 2
+          ? 3
+          : 4;
+  return Math.ceil((width * bitDepth * samplesPerPixel) / 8);
+}
+
+function readPngChunk(
+  data: Buffer,
+  offset: number,
+): { chunk: PngChunk; nextOffset: number } | string {
+  if (offset + 12 > data.length) {
+    return "truncated PNG chunk header";
+  }
+
+  const length = data.readUInt32BE(offset);
+  const typeBytes = data.subarray(offset + 4, offset + 8);
+  const type = typeBytes.toString("ascii");
+  const dataOffset = offset + 8;
+  const nextOffset = dataOffset + length + 4;
+
+  if (nextOffset > data.length) {
+    return `truncated PNG chunk ${type}`;
+  }
+
+  const chunkData = data.subarray(dataOffset, dataOffset + length);
+  const storedCrc = data.readUInt32BE(dataOffset + length);
+  const computedCrc = crc32(Buffer.concat([typeBytes, chunkData]));
+
+  if (storedCrc !== computedCrc) {
+    return `invalid PNG CRC for chunk ${type}`;
+  }
+
+  return {
+    chunk: { typeBytes, type, data: chunkData },
+    nextOffset,
+  };
+}
+
+function validatePngHeaderChunk(
+  state: PngValidationState,
+  chunk: PngChunk,
+): string | null {
+  if (state.sawIHDR || state.sawIDAT || chunk.data.length !== 13) {
+    return "invalid IHDR chunk";
+  }
+
+  const compressionMethod = chunk.data[10] ?? 0;
+  const filterMethod = chunk.data[11] ?? 0;
+  const interlaceMethod = chunk.data[12] ?? 0;
+
+  state.sawIHDR = true;
+  state.width = chunk.data.readUInt32BE(0);
+  state.height = chunk.data.readUInt32BE(4);
+  state.bitDepth = chunk.data[8] ?? 0;
+  state.colorType = chunk.data[9] ?? 0;
+  state.interlaceMethod = interlaceMethod;
+
+  if (state.width === 0 || state.height === 0) {
+    return "invalid PNG image size";
+  }
+  if (!isValidPngColorFormat(state.bitDepth, state.colorType)) {
+    return "unsupported PNG color format";
+  }
+  if (compressionMethod !== 0 || filterMethod !== 0) {
+    return "unsupported PNG header values";
+  }
+  if (interlaceMethod !== 0 && interlaceMethod !== 1) {
+    return "unsupported PNG interlace method";
+  }
+
+  return null;
+}
+
+function applyPngChunk(
+  state: PngValidationState,
+  chunk: PngChunk,
+  nextOffset: number,
+  totalLength: number,
+): string | null {
+  if (chunk.type === "IHDR") {
+    return validatePngHeaderChunk(state, chunk);
+  }
+
+  if (!state.sawIHDR) {
+    return "missing IHDR chunk";
+  }
+
+  if (chunk.type === "IDAT") {
+    if (state.sawIEND) {
+      return "invalid PNG chunk order";
+    }
+    state.sawIDAT = true;
+    state.compressedParts.push(chunk.data);
+    return null;
+  }
+
+  if (chunk.type !== "IEND") {
+    return null;
+  }
+
+  if (!state.sawIDAT) {
+    return "missing IDAT chunk";
+  }
+  if (chunk.data.length !== 0) {
+    return "invalid IEND chunk length";
+  }
+
+  state.sawIEND = true;
+  if (nextOffset !== totalLength) {
+    return "unexpected trailing data after IEND chunk";
+  }
+
+  return null;
+}
+
+function validateInflatedPngData(state: PngValidationState): string | null {
+  try {
+    const inflated = inflateSync(Buffer.concat(state.compressedParts));
+    if (state.interlaceMethod !== 0) {
+      return null;
+    }
+
+    const expectedLength =
+      state.height *
+      (1 +
+        getPngScanlineByteLength(state.width, state.bitDepth, state.colorType));
+    if (inflated.length !== expectedLength) {
+      return "decoded PNG payload does not match image dimensions";
+    }
+    return null;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return `corrupt PNG image data: ${message}`;
+  }
+}
+
+function validatePngImageData(data: Buffer): string | null {
+  if (
+    data.length < PNG_SIGNATURE.length ||
+    !data.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)
+  ) {
+    return "invalid PNG signature";
+  }
+
+  const state = createPngValidationState();
+  let offset = PNG_SIGNATURE.length;
+
+  while (offset < data.length) {
+    const parsedChunk = readPngChunk(data, offset);
+    if (typeof parsedChunk === "string") {
+      return parsedChunk;
+    }
+
+    const chunkError = applyPngChunk(
+      state,
+      parsedChunk.chunk,
+      parsedChunk.nextOffset,
+      data.length,
+    );
+    if (chunkError) {
+      return chunkError;
+    }
+
+    offset = parsedChunk.nextOffset;
+  }
+
+  if (!state.sawIHDR) {
+    return "missing IHDR chunk";
+  }
+  if (!state.sawIDAT) {
+    return "missing IDAT chunk";
+  }
+  if (!state.sawIEND) {
+    return "missing IEND chunk";
+  }
+
+  return validateInflatedPngData(state);
+}
+
+function validateJpegImageData(data: Buffer): string | null {
+  if (
+    data.length < 4 ||
+    !data.subarray(0, JPEG_SIGNATURE.length).equals(JPEG_SIGNATURE) ||
+    data.at(-2) !== 0xff ||
+    data.at(-1) !== 0xd9
+  ) {
+    return "invalid JPEG markers";
+  }
+  return null;
+}
+
+function validateGifImageData(data: Buffer): string | null {
+  if (data.length < 14) {
+    return "truncated GIF file";
+  }
+
+  const header = data.subarray(0, 6).toString("ascii");
+  if (!GIF_SIGNATURES.includes(header)) {
+    return "invalid GIF signature";
+  }
+  if (data.at(-1) !== 0x3b) {
+    return "missing GIF trailer";
+  }
+  return null;
+}
+
+function validateWebpImageData(data: Buffer): string | null {
+  if (data.length < 16) {
+    return "truncated WebP file";
+  }
+
+  if (
+    data.subarray(0, 4).toString("ascii") !== WEBP_RIFF_SIGNATURE ||
+    data.subarray(8, 12).toString("ascii") !== WEBP_FILE_SIGNATURE
+  ) {
+    return "invalid WebP signature";
+  }
+
+  const riffSize = data.readUInt32LE(4);
+  if (riffSize + 8 > data.length) {
+    return "truncated WebP file";
+  }
+
+  return null;
+}
+
+function validateImageData(mimeType: string, data: Buffer): string | null {
+  switch (mimeType) {
+    case "image/png":
+      return validatePngImageData(data);
+    case "image/jpeg":
+      return validateJpegImageData(data);
+    case "image/gif":
+      return validateGifImageData(data);
+    case "image/webp":
+      return validateWebpImageData(data);
+    default:
+      return `unsupported image MIME type ${mimeType}`;
+  }
+}
+
 const readImageToolParameters = Type.Object({
   path: Type.String({
     description: "File path (absolute or relative to cwd)",
@@ -744,10 +1051,16 @@ export function executeReadImage(
 
   try {
     const data = readFileSync(filePath);
-    const base64 = Buffer.from(data).toString("base64");
+    const validationError = validateImageData(mimeType, data);
+    if (validationError) {
+      return textResult(
+        `Invalid image file ${args.path}: ${validationError}`,
+        true,
+      );
+    }
 
     return {
-      content: [{ type: "image", data: base64, mimeType }],
+      content: [{ type: "image", data: data.toString("base64"), mimeType }],
       isError: false,
     };
   } catch (error) {

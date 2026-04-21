@@ -208,7 +208,7 @@ The core runtime. Streaming is the default behavior throughout the turn: user-vi
 
 1. **User submits a message** — the input text (plus any embedded images or skill bodies from `/skill:name`) becomes a pi-ai `UserMessage`. It is appended to the session's message history, rendered in the UI immediately, and persisted to the DB.
 
-2. **Build context** — construct a pi-ai `Context`: the system prompt (see [System prompt](#system-prompt)), the full message history, and the registered tool definitions. The prompt context snapshot is loaded once at startup or another explicit reload boundary and then reused across turns so provider prompt caching stays effective. It is refreshed only at boundaries such as `/new` or CWD change.
+2. **Build context** — construct a pi-ai `Context`: the system prompt (see [System prompt](#system-prompt)), the full message history, and the registered tool definitions. Before each request, mini-coder may apply a narrow image-compatibility pass to the model-visible history: if the current model does not support image input, or if the session has accumulated more than a small conservative image budget, image blocks are replaced with explicit text placeholders instead of being sent verbatim. The prompt context snapshot is loaded once at startup or another explicit reload boundary and then reused across turns so provider prompt caching stays effective. It is refreshed only at boundaries such as `/new` or CWD change.
 
 3. **Stream to LLM** — call `streamSimple(model, context, options)` from pi-ai. Iterate over the event stream:
    - `text_delta` / `thinking_delta` / `toolcall_delta` → update the in-progress assistant message and the UI incrementally (stream raw markdown text, show thinking if enabled, accumulate tool call arguments as they arrive).
@@ -824,7 +824,7 @@ Input parsing in headless mode reuses the same rules as the interactive input ar
 
 In headless mode without `--json`, stdout contains only the final persisted assistant message's text content for the one-shot run. This preserves scriptability for stdout consumers.
 
-Lightweight activity updates may be written to stderr before that final answer, but only as compact assistant-text snippets from tool-use turns. No tool-call details, tool progress, reasoning/thinking text, markdown rendering, status text, or other TUI presentation output is written in this mode.
+Lightweight activity updates may be written to stderr before that final answer, but only as compact assistant-text snippets from tool-use turns. If the run terminates with a terminal assistant error, that final assistant `errorMessage` is also written to stderr. No tool-call details, tool progress, reasoning/thinking text, markdown rendering, status text, or other TUI presentation output is written in this mode.
 
 ### Headless JSON output
 

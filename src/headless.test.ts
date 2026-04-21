@@ -236,6 +236,31 @@ describe("headless", () => {
     expect(output).toBe("Done.");
   });
 
+  test("runHeadlessPromptText writes terminal assistant errors to stderr", async () => {
+    faux.setResponses([
+      fauxAssistantMessage("", {
+        stopReason: "error",
+        errorMessage: "Codex error: context_length_exceeded",
+      }),
+    ]);
+    const state = createTestState();
+    let activity = "";
+    let output = "";
+
+    const stopReason = await runHeadlessPromptText(state, "reply once", {
+      writeActivity: (text) => {
+        activity += text;
+      },
+      writeText: (text) => {
+        output += text;
+      },
+    });
+
+    expect(stopReason).toBe("error");
+    expect(activity).toBe("Codex error: context_length_exceeded\n");
+    expect(output).toBe("");
+  });
+
   test("runHeadlessPrompt rejects slash commands before creating a session", async () => {
     const state = createTestState();
     const lines: string[] = [];

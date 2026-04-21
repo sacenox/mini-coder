@@ -81,6 +81,23 @@ function makeTodoSnapshotMessage(
   };
 }
 
+function makeImageToolResultMessage(index: number): Message {
+  return {
+    role: "toolResult",
+    toolCallId: `image-${index}`,
+    toolName: "readImage",
+    content: [
+      {
+        type: "image",
+        data: Buffer.from(`image-${index}`).toString("base64"),
+        mimeType: "image/png",
+      },
+    ],
+    isError: false,
+    timestamp: Date.now() + index,
+  };
+}
+
 const ZERO_USAGE: Usage = {
   input: 0,
   output: 0,
@@ -1871,6 +1888,194 @@ describe("agent loop", () => {
       (message): message is AssistantMessage => message.role === "assistant",
     );
     expect(assistantMessages).toHaveLength(3);
+  });
+
+  test("older image tool results are replaced once the context image budget is exceeded", async () => {
+    const api = "test/image-budget";
+    const sourceId = "test-image-budget";
+    const model: Model<string> = {
+      id: api,
+      name: "Image Budget Model",
+      api,
+      provider: "test",
+      baseUrl: "http://localhost:0",
+      reasoning: false,
+      input: ["text", "image"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 128000,
+      maxTokens: 4096,
+    };
+    const requestMessages: Message[][] = [];
+
+    const buildProviderStream = (context: Context) => {
+      requestMessages.push(structuredClone(context.messages));
+      const stream = createAssistantMessageEventStream();
+      const finalMessage = fauxAssistantMessage("done");
+
+      queueMicrotask(() => {
+        stream.push({ type: "done", reason: "stop", message: finalMessage });
+        stream.end(finalMessage);
+      });
+
+      return stream;
+    };
+
+    registerApiProvider(
+      {
+        api,
+        stream: (_model, context) => buildProviderStream(context),
+        streamSimple: (_model, context) => buildProviderStream(context),
+      },
+      sourceId,
+    );
+
+    try {
+      const session = createSession(db, { cwd: tmp });
+      const userMsg = makeUser("describe the screenshots");
+      const turn = appendMessage(db, session.id, userMsg);
+      const messages: Message[] = [
+        userMsg,
+        ...Array.from({ length: 14 }, (_, index) =>
+          makeImageToolResultMessage(index + 1),
+        ),
+      ];
+
+      await runAgentLoop({
+        db,
+        sessionId: session.id,
+        turn,
+        model,
+        systemPrompt: "Test",
+        tools: [],
+        toolHandlers: new Map(),
+        messages,
+        cwd: tmp,
+      });
+
+      expect(requestMessages).toHaveLength(1);
+      const contextMessages = requestMessages[0]!;
+      const imageBlocks = contextMessages.flatMap((message) =>
+        Array.isArray(message.content)
+          ? message.content.filter((block) => block.type === "image")
+          : [],
+      );
+      expect(imageBlocks).toHaveLength(12);
+
+      const firstImageResult = contextMessages[1];
+      const secondImageResult = contextMessages[2];
+      if (
+        !firstImageResult ||
+        firstImageResult.role !== "toolResult" ||
+        !Array.isArray(firstImageResult.content)
+      ) {
+        throw new Error("Expected the first image tool result in context");
+      }
+      if (
+        !secondImageResult ||
+        secondImageResult.role !== "toolResult" ||
+        !Array.isArray(secondImageResult.content)
+      ) {
+        throw new Error("Expected the second image tool result in context");
+      }
+
+      expect(firstImageResult.content).toEqual([
+        {
+          type: "text",
+          text: "[Earlier image omitted from model context to stay within image-input limits.]",
+        },
+      ]);
+      expect(secondImageResult.content).toEqual(firstImageResult.content);
+
+      const newestImageResult = contextMessages.at(-1);
+      if (
+        !newestImageResult ||
+        newestImageResult.role !== "toolResult" ||
+        !Array.isArray(newestImageResult.content)
+      ) {
+        throw new Error("Expected the newest image tool result in context");
+      }
+      expect(newestImageResult.content[0]?.type).toBe("image");
+    } finally {
+      unregisterApiProviders(sourceId);
+    }
+  });
+
+  test("image blocks are replaced in model context for text-only models", async () => {
+    const api = "test/text-only-image-context";
+    const sourceId = "test-text-only-image-context";
+    const model: Model<string> = {
+      id: api,
+      name: "Text Only Context Model",
+      api,
+      provider: "test",
+      baseUrl: "http://localhost:0",
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 128000,
+      maxTokens: 4096,
+    };
+    const requestMessages: Message[][] = [];
+
+    const buildProviderStream = (context: Context) => {
+      requestMessages.push(structuredClone(context.messages));
+      const stream = createAssistantMessageEventStream();
+      const finalMessage = fauxAssistantMessage("done");
+
+      queueMicrotask(() => {
+        stream.push({ type: "done", reason: "stop", message: finalMessage });
+        stream.end(finalMessage);
+      });
+
+      return stream;
+    };
+
+    registerApiProvider(
+      {
+        api,
+        stream: (_model, context) => buildProviderStream(context),
+        streamSimple: (_model, context) => buildProviderStream(context),
+      },
+      sourceId,
+    );
+
+    try {
+      const session = createSession(db, { cwd: tmp });
+      const userMsg = makeUser("describe the screenshot");
+      const turn = appendMessage(db, session.id, userMsg);
+      const messages: Message[] = [userMsg, makeImageToolResultMessage(1)];
+
+      await runAgentLoop({
+        db,
+        sessionId: session.id,
+        turn,
+        model,
+        systemPrompt: "Test",
+        tools: [],
+        toolHandlers: new Map(),
+        messages,
+        cwd: tmp,
+      });
+
+      expect(requestMessages).toHaveLength(1);
+      const imageResult = requestMessages[0]?.[1];
+      if (
+        !imageResult ||
+        imageResult.role !== "toolResult" ||
+        !Array.isArray(imageResult.content)
+      ) {
+        throw new Error("Expected the image tool result in context");
+      }
+
+      expect(imageResult.content).toEqual([
+        {
+          type: "text",
+          text: "[Image omitted from model context because the active model does not support image input.]",
+        },
+      ]);
+    } finally {
+      unregisterApiProviders(sourceId);
+    }
   });
 
   test("stopReason 'length' returns without looping", async () => {

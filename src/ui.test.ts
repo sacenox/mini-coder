@@ -107,6 +107,10 @@ function startUiViewport(
   });
 }
 
+const VALID_TEST_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR4nGNgAAAAAgABSK+kcQAAAABJRU5ErkJggg==",
+  "base64",
+);
 const tempDirs: string[] = [];
 
 function createTempDir(): string {
@@ -1095,7 +1099,7 @@ describe("ui rendering", () => {
     const originalPath = process.env.PATH;
     const cwd = createTempDir();
     const imagePath = join(cwd, "diagram.png");
-    writeFileSync(imagePath, Buffer.from("fake-png-data"));
+    writeFileSync(imagePath, VALID_TEST_PNG);
     process.env.PATH = `${process.env.PATH ?? ""}:/usr/bin:/bin`;
     state.cwd = cwd;
     state.canonicalCwd = cwd;
@@ -1127,7 +1131,7 @@ describe("ui rendering", () => {
         { type: "text", text: "diagram.png" },
         {
           type: "image",
-          data: Buffer.from("fake-png-data").toString("base64"),
+          data: VALID_TEST_PNG.toString("base64"),
           mimeType: "image/png",
         },
       ]);

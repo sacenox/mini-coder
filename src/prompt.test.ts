@@ -10,7 +10,11 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { canonicalizePath } from "./paths.ts";
-import { discoverAgentsMd, resolveAgentsScanRoot } from "./prompt.ts";
+import {
+  buildSystemPrompt,
+  discoverAgentsMd,
+  resolveAgentsScanRoot,
+} from "./prompt.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -192,5 +196,29 @@ describe("resolveAgentsScanRoot", () => {
 });
 
 // ---------------------------------------------------------------------------
-// formatGitLine
+// buildSystemPrompt
 // ---------------------------------------------------------------------------
+
+describe("buildSystemPrompt", () => {
+  test("emphasizes delivering the live end state and re-checking explicit deliverables", () => {
+    const prompt = buildSystemPrompt({
+      cwd: "/tmp/project",
+      modelLabel: "openai-codex/gpt-5.4",
+      os: "linux",
+      shell: "bash",
+    });
+
+    expect(prompt).toContain(
+      "Prefer the smallest path that leaves the requested end state already true; do not stop at helper scripts, instructions, or half-finished setup when the user asked for the live result itself.",
+    );
+    expect(prompt).toContain(
+      "Before you finish, re-check the explicit deliverables and current state. If the user named files, paths, ports, services, commands, or output values, make sure they already exist and work now.",
+    );
+    expect(prompt).toContain(
+      "If a check or tool result contradicts your expectation, trust the evidence and resolve the mismatch before you answer.",
+    );
+    expect(prompt).toContain(
+      "When multiple outputs or end states seem plausible, do not guess or swap in a cleaner alternative after verification. Run the smallest check that distinguishes them, and if you change the state later, verify again.",
+    );
+  });
+});

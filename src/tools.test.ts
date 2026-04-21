@@ -9,6 +9,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { crc32, deflateSync } from "node:zlib";
 import type { Message } from "@mariozechner/pi-ai";
 import {
   createTodoWriteToolHandler,
@@ -51,6 +52,49 @@ function todoSnapshot(r: ToolExecResult) {
     }>;
   };
 }
+
+function pngChunk(type: string, payload: Buffer): Buffer {
+  const typeBytes = Buffer.from(type, "ascii");
+  const checksum = crc32(Buffer.concat([typeBytes, payload]));
+  return Buffer.concat([
+    Buffer.from([
+      (payload.length >>> 24) & 0xff,
+      (payload.length >>> 16) & 0xff,
+      (payload.length >>> 8) & 0xff,
+      payload.length & 0xff,
+    ]),
+    typeBytes,
+    payload,
+    Buffer.from([
+      (checksum >>> 24) & 0xff,
+      (checksum >>> 16) & 0xff,
+      (checksum >>> 8) & 0xff,
+      checksum & 0xff,
+    ]),
+  ]);
+}
+
+function createPng(width: number, height: number, rawData: Buffer): Buffer {
+  const header = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8;
+  ihdr[9] = 0;
+  ihdr[10] = 0;
+  ihdr[11] = 0;
+  ihdr[12] = 0;
+
+  return Buffer.concat([
+    header,
+    pngChunk("IHDR", ihdr),
+    pngChunk("IDAT", deflateSync(rawData)),
+    pngChunk("IEND", Buffer.alloc(0)),
+  ]);
+}
+
+const VALID_TEST_PNG = createPng(1, 1, Buffer.from([0x00, 0x00]));
+const INVALID_DIMENSION_PNG = createPng(1, 1, Buffer.from([0x00]));
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -772,17 +816,24 @@ describe("todo tools", () => {
 // ---------------------------------------------------------------------------
 
 describe("readImage", () => {
-  test("reads a PNG file and returns base64 with correct mime type", () => {
-    const data = Buffer.from("fake png data");
-    writeFileSync(join(tmp, "test.png"), data);
+  test("reads a valid PNG file and returns base64 with correct mime type", () => {
+    writeFileSync(join(tmp, "test.png"), VALID_TEST_PNG);
     const result = executeReadImage({ path: "test.png" }, tmp);
     expect(result.isError).toBe(false);
     expect(result.content).toHaveLength(1);
     expect(result.content[0]!.type).toBe("image");
     if (result.content[0]!.type === "image") {
       expect(result.content[0]!.mimeType).toBe("image/png");
-      expect(result.content[0]!.data).toBe(data.toString("base64"));
+      expect(result.content[0]!.data).toBe(VALID_TEST_PNG.toString("base64"));
     }
+  });
+
+  test("rejects structurally invalid PNG data", () => {
+    writeFileSync(join(tmp, "broken.png"), INVALID_DIMENSION_PNG);
+    const result = executeReadImage({ path: "broken.png" }, tmp);
+    expect(result.isError).toBe(true);
+    expect(resultText(result)).toContain("Invalid image file broken.png");
+    expect(resultText(result)).toContain("decoded PNG payload");
   });
 
   test("rejects unsupported image format", () => {
@@ -800,7 +851,7 @@ describe("readImage", () => {
 
   test("resolves relative paths against cwd", () => {
     mkdirSync(join(tmp, "sub"), { recursive: true });
-    writeFileSync(join(tmp, "sub", "img.png"), "png in sub");
+    writeFileSync(join(tmp, "sub", "img.png"), VALID_TEST_PNG);
     const result = executeReadImage({ path: "sub/img.png" }, tmp);
     expect(result.isError).toBe(false);
     expect(result.content[0]!.type).toBe("image");

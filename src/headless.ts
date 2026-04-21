@@ -174,6 +174,16 @@ function extractAssistantActivitySnippet(
   return text ? truncateText(text, HEADLESS_ACTIVITY_MAX_CHARS) : null;
 }
 
+function extractAssistantErrorText(
+  message: AssistantMessage | null,
+): string | null {
+  if (!message || message.stopReason !== "error" || !message.errorMessage) {
+    return null;
+  }
+
+  return collapseWhitespaceToNull(message.errorMessage) ?? null;
+}
+
 function shouldWriteHeadlessJsonEvent(event: AgentEvent): boolean {
   switch (event.type) {
     case "user_message":
@@ -317,7 +327,7 @@ export async function runHeadlessPrompt(
  * The raw input is parsed with the same rules as interactive input. Slash
  * commands are rejected in headless mode. The final assistant text is written
  * to stdout, while lightweight assistant commentary snippets from tool-use
- * turns are written to stderr.
+ * turns and terminal assistant error messages are written to stderr.
  *
  * @param state - Mutable application state for the run.
  * @param rawInput - Exact raw prompt text supplied by the user.
@@ -378,6 +388,12 @@ export async function runHeadlessPromptText(
     if (finalText.length > 0) {
       finalOutput.write(finalText);
     }
+
+    const terminalErrorText = extractAssistantErrorText(finalAssistantMessage);
+    if (terminalErrorText) {
+      activityOutput.write(`${terminalErrorText}\n`);
+    }
+
     const [finalStopReason, activityStopReason] = await Promise.all([
       finalOutput.finalize(stopReason),
       activityOutput.finalize(stopReason),
