@@ -1,15 +1,15 @@
-import { getOAuthApiKey } from "@mariozechner/pi-ai/oauth";
 import { handleArgv } from "./args.ts";
+import { streamHeadless } from "./headless.ts";
 import { initTUI } from "./tui.ts";
 
 export async function main(): Promise<void> {
   const options = await handleArgv(process.argv.slice(2));
-  let apiKeys = {};
 
   console.log(options);
 
   if (options.prompt) {
     // TODO: Headless mode/non-interactiv
+    await streamHeadless(options);
     process.exit(0);
   }
 

@@ -43,11 +43,12 @@ export async function loginOAuth(provider: OAuthProviderId) {
 }
 
 export async function getApiKey(options: CliOptions) {
+  const provider = options.model.provider;
   const auth = await readCreds();
-  const result = await getOAuthApiKey(options.provider, auth);
+  const result = await getOAuthApiKey(provider, auth);
   if (!result) throw new Error("Not logged in");
 
-  auth[options.provider] = { type: "oauth", ...result.newCredentials };
+  auth[provider] = { type: "oauth", ...result.newCredentials };
   await writeCreds(auth);
 
   return result.apiKey;

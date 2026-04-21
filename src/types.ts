@@ -1,13 +1,10 @@
-import type {
-  OAuthCredentials,
-  OAuthProviderId,
-} from "@mariozechner/pi-ai/oauth";
+import type { Model } from "@mariozechner/pi-ai";
+import type { OAuthCredentials } from "@mariozechner/pi-ai/oauth";
 
 export type CliOptions = {
   prompt?: string;
-  model: string;
+  model: Model<never>;
   effort: string;
-  provider: OAuthProviderId;
 };
 
 export type TUIOptions = {
