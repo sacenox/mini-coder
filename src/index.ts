@@ -1,6 +1,7 @@
 import { handleArgv } from "./args.ts";
 import { streamHeadless } from "./headless.ts";
 import { initTUI } from "./tui.ts";
+import type { TUIActiveState } from "./types.ts";
 
 function leave(msg: string) {
   console.log(msg);
@@ -15,9 +16,13 @@ export async function main(): Promise<void> {
     process.exit(0);
   }
 
-  initTUI({
-    onStop: () => {
-      leave("Done.");
-    },
-  });
+  const state = {
+    options,
+    prompt: "",
+    messages: [],
+    activeState: "idle" as TUIActiveState,
+    streaming: false,
+  };
+
+  initTUI(state, leave);
 }

@@ -33,9 +33,16 @@ export const bash: Tool = {
 };
 
 export async function runBashTool(command: string) {
-  const proc = Bun.spawn(["bash", "-c", command]);
+  const proc = Bun.spawn(["bash", "-c", command], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
   await proc.exited;
-  const result = await proc.stdout.text();
+  const out = await proc.stdout.text();
+  const errorOut = await proc.stderr?.text();
 
-  return result;
+  if (proc.exitCode === 0) {
+    return out;
+  }
+  return errorOut === "" ? `Exit code ${proc.exitCode}` : errorOut;
 }

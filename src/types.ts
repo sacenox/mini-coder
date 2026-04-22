@@ -1,4 +1,4 @@
-import type { Model, ThinkingLevel } from "@mariozechner/pi-ai";
+import type { Context, Model, ThinkingLevel } from "@mariozechner/pi-ai";
 import type { OAuthCredentials } from "@mariozechner/pi-ai/oauth";
 
 export type CliOptions = {
@@ -7,8 +7,23 @@ export type CliOptions = {
   effort: ThinkingLevel;
 };
 
-export type TUIOptions = {
-  onStop: () => void;
+export type TUIActiveState = "idle" | "thinking" | "answering" | "calling_tool";
+
+export type TUIMessage = {
+  content: string;
+  role: "agent" | "tool" | "reasoning" | "user";
+  durationMs?: number;
+  id?: string;
+  timestamp: number;
+};
+
+export type TUIState = {
+  options: CliOptions;
+  prompt: string;
+  messages: TUIMessage[];
+  context?: Context;
+  activeState: TUIActiveState;
+  streaming: boolean;
 };
 
 export type SavedOAuthAuth = OAuthCredentials & {
