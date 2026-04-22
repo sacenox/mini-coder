@@ -1,4 +1,4 @@
-import type { Context, Model, ThinkingLevel } from "@mariozechner/pi-ai";
+import type { Context, Model, ThinkingLevel, Tool } from "@mariozechner/pi-ai";
 import type { OAuthCredentials } from "@mariozechner/pi-ai/oauth";
 
 export type CliOptions = {
@@ -31,3 +31,8 @@ export type SavedOAuthAuth = OAuthCredentials & {
 };
 
 export type SavedOAuthCreds = Record<string, SavedOAuthAuth>;
+
+export type ToolAndRunner = {
+  tool: Tool;
+  runner: (args: Record<string, any>) => string | Promise<string>;
+};

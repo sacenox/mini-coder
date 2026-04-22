@@ -32,8 +32,8 @@ export const bash: Tool = {
   }),
 };
 
-export async function runBashTool(command: string) {
-  const proc = Bun.spawn(["bash", "-c", command], {
+export async function runBashTool(args: Record<string, any>) {
+  const proc = Bun.spawn(["bash", "-c", args.command], {
     stdout: "pipe",
     stderr: "pipe",
   });

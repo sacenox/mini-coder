@@ -206,16 +206,16 @@ export async function streamTUI(state: TUIState) {
               id: call.id,
               timestamp: Date.now(),
             };
-            let updated = false
+            let updated = false;
             state.messages = state.messages.map((msg) => {
               if (call.id === msg.id) {
-                updated = true
+                updated = true;
                 return toolMessage;
               }
               return msg;
             });
             if (!updated) {
-              state.messages.push(toolMessage)
+              state.messages.push(toolMessage);
             }
           }
 
@@ -271,7 +271,10 @@ export async function streamTUI(state: TUIState) {
 
       state.messages = state.messages.map((msg) => {
         if (call.id === msg.id) {
-          let truncated = result.length > 6000 ? `${result.substring(0, 6000)}...\n\nTruncated at 6000 chars` : result
+          const truncated =
+            result.length > 6000
+              ? `${result.substring(0, 6000)}...\n\nTruncated at 6000 chars`
+              : result;
 
           return {
             ...msg,
