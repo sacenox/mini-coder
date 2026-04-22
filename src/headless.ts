@@ -1,8 +1,8 @@
 import {
   type Context,
-  type Tool,
   completeSimple,
   streamSimple,
+  type Tool,
 } from "@mariozechner/pi-ai";
 import { TASK_PROMPT } from "./agent";
 import { getApiKey } from "./oauth";
@@ -79,7 +79,9 @@ export async function streamHeadless(
     if (toolCalls.length > 0) {
       // TODO: Investigate why we get an error: `No output for tool call id XXXX...` when
       //       we add { apiKey } in this call. And how does it work without it?
-      const cont = await completeSimple(options.model, context, {reasoning: options.effort});
+      const cont = await completeSimple(options.model, context, {
+        reasoning: options.effort,
+      });
       context.messages.push(cont);
     }
 

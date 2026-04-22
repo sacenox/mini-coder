@@ -158,27 +158,76 @@ export async function streamTUI(state: TUIState) {
           state.activeState = "answering";
           cel.render();
           break;
+
         case "thinking_start":
           state.activeState = "thinking";
           cel.render();
           break;
-        case "toolcall_start":
+
+        case "toolcall_start": {
           state.activeState = "calling_tool";
+
+          // Collect tool calls state
+          const newToolCalls = ev.partial.content.filter(
+            (c) => c.type === "toolCall",
+          );
+
+          for (const call of newToolCalls) {
+            const toolMessage: TUIMessage = {
+              role: "tool",
+              content: `${call.name}: ${JSON.stringify(call.arguments, null, 4)}`,
+              id: call.id,
+              timestamp: Date.now(),
+            };
+            state.messages = state.messages.map((msg) => {
+              if (call.id === msg.id) {
+                return toolMessage;
+              }
+              return msg;
+            });
+          }
+
           cel.render();
-          // TODO: tool call id? So I can update the right state.
-          // TUImessages.push({
-          //   role: "tool",
-          //   content: "Calling tool...",
-          // });
-          // cel.render()
           break;
-        case "toolcall_end":
-          // TODO: find pending tool call, update it's entry in TUImessages.
+        }
+
+        case "toolcall_end": {
+          state.activeState = "idle";
+
+          // Collect tool calls state
+          const finishedToolCalls = ev.partial.content.filter(
+            (c) => c.type === "toolCall",
+          );
+
+          for (const call of finishedToolCalls) {
+            const toolMessage: TUIMessage = {
+              role: "tool",
+              content: `${call.name}: ${JSON.stringify(call.arguments, null, 4)}`,
+              id: call.id,
+              timestamp: Date.now(),
+            };
+            let updated = false
+            state.messages = state.messages.map((msg) => {
+              if (call.id === msg.id) {
+                updated = true
+                return toolMessage;
+              }
+              return msg;
+            });
+            if (!updated) {
+              state.messages.push(toolMessage)
+            }
+          }
+
+          cel.render();
           break;
+        }
+
         case "done":
           state.activeState = "idle";
           cel.render();
           break;
+
         case "error":
           state.messages.push({
             role: "tool",
@@ -188,7 +237,6 @@ export async function streamTUI(state: TUIState) {
           });
           state.activeState = "idle";
           cel.render();
-          // TODO: find matching tool call if any and update that, or push the new error message.
           break;
       }
     }
@@ -220,12 +268,20 @@ export async function streamTUI(state: TUIState) {
         isError: false,
         timestamp: Date.now(),
       });
-      state.messages.push({
-        role: "tool",
-        content: result.substring(0, result.length > 6000 ? 6000 : undefined),
-        timestamp: Date.now(),
+
+      state.messages = state.messages.map((msg) => {
+        if (call.id === msg.id) {
+          let truncated = result.length > 6000 ? `${result.substring(0, 6000)}...\n\nTruncated at 6000 chars` : result
+
+          return {
+            ...msg,
+            content: `${call.name}\n${JSON.stringify(call.arguments, null, 4)}\n\n${truncated}`,
+            timestamp: Date.now(),
+          };
+        }
+        return msg;
       });
-      cel.render()
+      cel.render();
     }
 
     if (toolCalls.length > 0) {
