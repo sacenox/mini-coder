@@ -1,10 +1,10 @@
-import type { Model } from "@mariozechner/pi-ai";
+import type { Model, ThinkingLevel } from "@mariozechner/pi-ai";
 import type { OAuthCredentials } from "@mariozechner/pi-ai/oauth";
 
 export type CliOptions = {
   prompt?: string;
   model: Model<never>;
-  effort: string;
+  effort: ThinkingLevel;
 };
 
 export type TUIOptions = {

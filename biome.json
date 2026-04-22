@@ -14,19 +14,7 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true,
-      "style": {
-        "noNonNullAssertion": "off"
-      },
-      "complexity": {
-        "noExcessiveCognitiveComplexity": {
-          "level": "error",
-          "options": {
-            "maxAllowedComplexity": 10
-          }
-        },
-        "noExcessiveNestedTestSuites": "error"
-      }
+      "recommended": true
     }
   },
   "files": {

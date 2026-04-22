@@ -11,7 +11,7 @@
     "check": "bun run lint && bun run typecheck",
     "lint": "bun run biome check --write .",
     "typecheck": "bun run tsc -p tsconfig.json --noEmit",
-    "format": "bun run prettier --write *.md && bunx biome format --write ."
+    "format": "bun run prettier --write *.md && bun run biome format --write ."
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.12",

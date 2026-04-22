@@ -1,4 +1,8 @@
-import { getModels, KnownProvider } from "@mariozechner/pi-ai";
+import {
+  getModels,
+  type KnownProvider,
+  type ThinkingLevel,
+} from "@mariozechner/pi-ai";
 import { loginOAuth } from "./oauth";
 import type { CliOptions } from "./types.ts";
 
@@ -12,11 +16,17 @@ function getModelConfig(modelName: string, provider: KnownProvider) {
   return model;
 }
 
+// TODO: For when the user set's thinking value.
+// function _isThinkingLevel(value: string): value is ThinkingLevel {
+//   const THINKING_LEVELS = ["low", "medium", "minimal", "high", "xhigh"]
+//   return (THINKING_LEVELS as readonly string[]).includes(value);
+// }
+
 export async function handleArgv(argv: string[]): Promise<CliOptions> {
   // TODO: Fetch defaults from settings file
   let options: CliOptions = {
     model: getModelConfig("gpt-5.4", "openai-codex"),
-    effort: "xhigh",
+    effort: "xhigh" as ThinkingLevel,
   };
 
   for (let i = 0; i < argv.length; i++) {

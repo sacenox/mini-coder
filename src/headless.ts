@@ -1,5 +1,12 @@
-import { complete, Context, stream, Tool, Type } from "@mariozechner/pi-ai";
+import {
+  type Context,
+  completeSimple,
+  streamSimple,
+  type Tool,
+} from "@mariozechner/pi-ai";
+import { TASK_PROMPT } from "./agent";
 import { getApiKey } from "./oauth";
+import { bash, runBashTool } from "./tool-bash";
 import type { CliOptions } from "./types";
 
 export async function streamHeadless(
@@ -7,25 +14,9 @@ export async function streamHeadless(
   leave: (s: string) => void,
 ) {
   const apiKey = await getApiKey(options);
-
-  const tools: Tool[] = [
-    {
-      name: "bash",
-      description:
-        "This is your command line, runs commands in your user's environment.",
-      parameters: Type.Object({
-        command: Type.String({
-          description:
-            "The command you want to run, ex: `ls`, `fd`, `find`, `grep`, `rg`, `cat`, `sed`, `bun`, etc",
-        }),
-      }),
-    },
-  ];
-
+  const tools: Tool[] = [bash];
   const context: Context = {
-    // TODO: Centralize prompts
-    systemPrompt:
-      "You are friendly coding assistant, answer user questions and complete given tasks with accuracy.",
+    systemPrompt: TASK_PROMPT,
     messages: [
       { content: options.prompt ?? "", role: "user", timestamp: Date.now() },
     ],
@@ -36,7 +27,7 @@ export async function streamHeadless(
   console.log("-------------------");
 
   while (true) {
-    const s = stream(options.model, context, {
+    const s = streamSimple(options.model, context, {
       apiKey,
       reasoning: options.effort,
     });
@@ -44,17 +35,17 @@ export async function streamHeadless(
     for await (const ev of s) {
       switch (ev.type) {
         case "text_start":
-          console.log("Answering...");
+          console.log("> Answering...");
           break;
         case "thinking_start":
-          console.log("Thinking...");
+          console.log("> Thinking...");
           break;
         case "toolcall_start":
-          console.log(`Calling tool...`);
+          console.log(`> Calling tool...`);
           break;
         case "toolcall_end":
           console.log(
-            `${ev.toolCall.name}:\n\t${ev.toolCall.arguments.command}`,
+            `> ${ev.toolCall.name}: ${ev.toolCall.arguments.command}`,
           );
           break;
         case "error":
@@ -73,9 +64,7 @@ export async function streamHeadless(
 
     const toolCalls = finalMessage.content.filter((b) => b.type === "toolCall");
     for (const call of toolCalls) {
-      const proc = Bun.spawn(["bash", "-c", call.arguments.command]);
-      await proc.exited;
-      const result = await proc.stdout.text();
+      const result = await runBashTool(call.arguments.command);
 
       context.messages.push({
         role: "toolResult",
@@ -88,7 +77,7 @@ export async function streamHeadless(
     }
 
     if (toolCalls.length > 0) {
-      const cont = await complete(options.model, context);
+      const cont = await completeSimple(options.model, context);
       context.messages.push(cont);
     }
 
