@@ -26,7 +26,11 @@ export async function streamAgent(
   options: CliOptions,
   streamFn?: (ev: AssistantMessageEvent) => void,
   toolsFn?: (tool: ToolResultMessage) => void,
-  completeFn?: (msg: AssistantMessage, duration: number) => void,
+  completeFn?: (
+    msg: AssistantMessage,
+    context: Context,
+    duration: number,
+  ) => void,
 ) {
   const startTs = Date.now();
   const context: Context = {
@@ -79,7 +83,7 @@ export async function streamAgent(
 
     if (["stop", "error", "aborted"].includes(finalMessage.stopReason)) {
       // TODO: Reason?
-      completeFn?.(finalMessage, Date.now() - startTs);
+      completeFn?.(finalMessage, context, Date.now() - startTs);
       return;
     }
   }

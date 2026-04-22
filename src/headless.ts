@@ -45,7 +45,7 @@ export async function streamHeadless(
       }
     },
     undefined,
-    (msg, dur) => {
+    (msg, _, dur) => {
       const text = msg.content
         .filter((c) => c.type === "text")
         .map((c) => c.text)

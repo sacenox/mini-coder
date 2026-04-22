@@ -1,18 +1,12 @@
 import { basename } from "node:path";
 import type { Color } from "@cel-tui/core";
 import { cel, HStack, ProcessTerminal, Text, VStack } from "@cel-tui/core";
-import {
-  type Context,
-  completeSimple,
-  type Message,
-  streamSimple,
-  type Tool,
-} from "@mariozechner/pi-ai";
-import { TASK_PROMPT } from "./agent";
+import type { Message } from "@mariozechner/pi-ai";
+import { streamAgent, TASK_PROMPT } from "./agent";
 import { getApiKey } from "./oauth";
 import { bash, runBashTool } from "./tool-bash";
 import { Editor } from "./tui-editor";
-import type { TUIMessage, TUIState } from "./types";
+import type { ToolAndRunner, TUIMessage, TUIState } from "./types";
 
 const theme = {
   black: "color00" as Color,
@@ -121,38 +115,25 @@ export async function streamTUI(state: TUIState) {
   if (state.streaming) return;
   state.streaming = true;
 
-  cel.render();
-
   const apiKey = await getApiKey(state.options);
-  const tools: Tool[] = [bash];
-
-  let context: Context;
-  if (state.context) context = state.context;
-  else {
-    context = state.context = {
-      systemPrompt: TASK_PROMPT,
-      messages: [],
-      tools,
-    };
-  }
-  const message = {
-    content: state.prompt,
+  const tools: ToolAndRunner[] = [{ tool: bash, runner: runBashTool }];
+  const userPrompt = {
     role: "user",
+    content: state.prompt || "",
     timestamp: Date.now(),
   };
-  context.messages.push(message as Message);
-
-  state.messages.push(message as TUIMessage);
+  const messages: Message[] = [userPrompt as Message];
+  state.messages.push(userPrompt as TUIMessage);
   state.prompt = "";
   cel.render();
 
-  while (true) {
-    const s = streamSimple(state.options.model, context, {
-      apiKey,
-      reasoning: state.options.effort,
-    });
-
-    for await (const ev of s) {
+  await streamAgent(
+    apiKey,
+    tools,
+    TASK_PROMPT,
+    messages,
+    state.options,
+    (ev) => {
       switch (ev.type) {
         case "text_start":
           state.activeState = "answering";
@@ -229,48 +210,16 @@ export async function streamTUI(state: TUIState) {
           break;
 
         case "error":
-          state.messages.push({
-            role: "tool",
-            content:
-              (ev.error.errorMessage as string) ?? ev.error.content ?? "",
-            timestamp: Date.now(),
-          });
-          state.activeState = "idle";
-          cel.render();
-          break;
       }
-    }
+    },
 
-    const finalMessage = await s.result();
-    context.messages.push(finalMessage);
-    const finalContent = finalMessage.content
-      .map((m) => m.type === "text" && m.text)
-      .filter((m) => Boolean(m));
-
-    if (finalContent.length > 0) {
-      state.messages.push({
-        role: "agent",
-        content: finalContent.join("\n"),
-        timestamp: Date.now(),
-      });
-      cel.render();
-    }
-
-    const toolCalls = finalMessage.content.filter((b) => b.type === "toolCall");
-    for (const call of toolCalls) {
-      const result = await runBashTool(call.arguments.command);
-
-      context.messages.push({
-        role: "toolResult",
-        toolCallId: call.id,
-        toolName: call.name,
-        content: [{ type: "text", text: result }],
-        isError: false,
-        timestamp: Date.now(),
-      });
-
+    (tool) => {
       state.messages = state.messages.map((msg) => {
-        if (call.id === msg.id) {
+        if (tool.toolCallId === msg.id) {
+          const result = tool.content
+            .map((c) => (c.type === "text" ? c.text : ""))
+            .filter((c) => Boolean(c))
+            .join("\n");
           const truncated =
             result.length > 6000
               ? `${result.substring(0, 6000)}...\n\nTruncated at 6000 chars`
@@ -278,37 +227,29 @@ export async function streamTUI(state: TUIState) {
 
           return {
             ...msg,
-            content: `${call.name}\n${JSON.stringify(call.arguments, null, 4)}\n\n${truncated}`,
+            content: `${tool.toolName}:\n\n${truncated}`,
             timestamp: Date.now(),
           };
         }
         return msg;
       });
       cel.render();
-    }
+    },
 
-    if (toolCalls.length > 0) {
-      // TODO: Investigate why we get an error: `No output for tool call id XXXX...` when
-      //       we add { apiKey } in this call. And how does it work without it?
-      const cont = await completeSimple(state.options.model, context, {
-        reasoning: state.options.effort,
+    (msg, context, dur) => {
+      const text = msg.content
+        .filter((c) => c.type === "text")
+        .map((c) => c.text)
+        .join("\n");
+      state.messages.push({
+        role: "agent",
+        content: text,
+        timestamp: Date.now(),
+        durationMs: dur,
       });
-      context.messages.push(cont);
-    }
-
-    // TODO: Update TUIMessages to include usage, so we can show in the UI?
-    // console.log(
-    //   `Total tokens: ${finalMessage.usage.input} in, ${finalMessage.usage.output} out`,
-    // );
-    // console.log(`Cost: $${finalMessage.usage.cost.total.toFixed(4)}`);
-
-    if (["stop", "error", "aborted"].includes(finalMessage.stopReason)) {
       state.streaming = false;
-      return;
-      // TODO: Update TUIMessages to include duration
-      // console.log(`Reason for stopping: "${finalMessage.stopReason}"`);
-      // const dur = Date.now() - context.messages[0].timestamp;
-      // console.log(`Done. Took ${dur / 1000}s`);
-    }
-  }
+      state.context = context;
+      cel.render();
+    },
+  );
 }
