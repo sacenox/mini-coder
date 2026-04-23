@@ -1,5 +1,6 @@
 import { type Tool, Type } from "@mariozechner/pi-ai";
 
+const OUTPUT_TRESHOLD = 10000;
 const description = `## Bash CLI tool
 
 Best practices using this tool:
@@ -38,11 +39,48 @@ export async function runBashTool(args: Record<string, any>) {
     stderr: "pipe",
   });
   await proc.exited;
-  const out = await proc.stdout.text();
-  const errorOut = await proc.stderr?.text();
+  const stdout = await proc.stdout.text();
+  const stderr = await proc.stderr?.text();
+  let out =
+    proc.exitCode === 0
+      ? (stdout ?? "Exit 0")
+      : (stderr ?? `Exit ${proc.exitCode}`);
 
-  if (proc.exitCode === 0) {
-    return out;
+  // If `out` is too big, more than ~10KB, write it to a temp file
+  // And add that to the truncation label for the agent to be able
+  // to continue the read with scans. This is to protect context,
+  // not a general read guard. The hint is for the agent, not the TUI
+  if (out.length > OUTPUT_TRESHOLD) {
+    const key = `${Date.now()}-${secureRandomString(4)}`;
+    const pathname = `/tmp/bash_result_${key}.txt`;
+    await Bun.write(pathname, out);
+    out = `${out.substring(0, OUTPUT_TRESHOLD)}
+
+Truncated at ${OUTPUT_TRESHOLD}. Full ouput at ${pathname}`;
   }
-  return errorOut === "" ? `Exit code ${proc.exitCode}` : errorOut;
+
+  return out;
+}
+
+function secureRandomString(
+  length: number,
+  chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789",
+): string {
+  const result: string[] = [];
+  const charsLength = chars.length;
+  const maxValid = Math.floor(256 / charsLength) * charsLength;
+  const randomBytes = new Uint8Array(length * 2);
+
+  while (result.length < length) {
+    crypto.getRandomValues(randomBytes);
+
+    for (const byte of randomBytes) {
+      if (byte < maxValid) {
+        result.push(chars[byte % charsLength]);
+        if (result.length === length) break;
+      }
+    }
+  }
+
+  return result.join("");
 }

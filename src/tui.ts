@@ -1,56 +1,13 @@
 import { basename } from "node:path";
-import type { Color } from "@cel-tui/core";
-import { cel, HStack, ProcessTerminal, Text, VStack } from "@cel-tui/core";
+import { cel, HStack, ProcessTerminal, VStack } from "@cel-tui/core";
 import type { Message } from "@mariozechner/pi-ai";
 import { streamAgent, TASK_PROMPT } from "./agent";
 import { getApiKey } from "./oauth";
 import { bash, runBashTool } from "./tool-bash";
+import { TextPill, theme } from "./tui-components";
+import { Conversation } from "./tui-conversation";
 import { Editor } from "./tui-editor";
 import type { ToolAndRunner, TUIMessage, TUIState } from "./types";
-
-const theme = {
-  black: "color00" as Color,
-  bblack: "color08" as Color,
-
-  red: "color01" as Color,
-  bred: "color09" as Color,
-
-  green: "color02" as Color,
-  bgreen: "color10" as Color,
-
-  yellow: "color03" as Color,
-  byellow: "color11" as Color,
-
-  blue: "color04" as Color,
-  bblue: "color12" as Color,
-
-  magenta: "color05" as Color,
-  bmagenta: "color13" as Color,
-
-  cyan: "color06" as Color,
-  bcyan: "color14" as Color,
-
-  white: "color07" as Color,
-  bwhite: "color15" as Color,
-};
-
-// Examples:
-//
-// TextPill("mini-coder", theme.bblack, theme.black),
-// TextPill("mini-coder", theme.bred, theme.red),
-// TextPill("mini-coder", theme.bgreen, theme.green),
-// TextPill("mini-coder", theme.byellow, theme.yellow),
-// TextPill("mini-coder", theme.bblue, theme.blue),
-// TextPill("mini-coder", theme.bmagenta, theme.magenta),
-// TextPill("mini-coder", theme.bcyan, theme.cyan),
-// TextPill("mini-coder", theme.bwhite, theme.white),
-function TextPill(content: string, fgColor: Color, bgColor: Color) {
-  return HStack({ gap: 1 }, [
-    HStack({ bgColor, padding: { x: 1 } }, [
-      Text(content, { bold: true, fgColor }),
-    ]),
-  ]);
-}
 
 export function initTUI(state: TUIState, leave: (s: string) => void) {
   const cwd = basename(process.cwd());
@@ -72,14 +29,7 @@ export function initTUI(state: TUIState, leave: (s: string) => void) {
         },
       },
       [
-        VStack({ flex: 1, gap: 1, overflow: "scroll" }, [
-          ...state.messages.map((msg) => {
-            return VStack({ gap: 1 }, [
-              TextPill(msg.role, theme.bwhite, theme.bblack),
-              Text(msg.content, { wrap: "word" }),
-            ]);
-          }),
-        ]),
+        Conversation(state),
 
         HStack({ gap: 1 }, [
           TextPill(state.options.model.name, theme.bblack, theme.bwhite),
@@ -122,8 +72,11 @@ export async function streamTUI(state: TUIState) {
     content: state.prompt || "",
     timestamp: Date.now(),
   };
-  const messages: Message[] = [userPrompt as Message];
   state.messages.push(userPrompt as TUIMessage);
+  let messages: Message[] = [userPrompt as Message];
+  if (state.context) {
+    messages = [...state.context.messages, ...messages];
+  }
   state.prompt = "";
   cel.render();
 
@@ -148,7 +101,7 @@ export async function streamTUI(state: TUIState) {
         case "toolcall_start": {
           state.activeState = "calling_tool";
 
-          // Collect tool calls state
+          // Create initial tool tui messages
           const newToolCalls = ev.partial.content.filter(
             (c) => c.type === "toolCall",
           );
@@ -160,12 +113,15 @@ export async function streamTUI(state: TUIState) {
               id: call.id,
               timestamp: Date.now(),
             };
+            let found = false;
             state.messages = state.messages.map((msg) => {
               if (call.id === msg.id) {
+                found = true;
                 return toolMessage;
               }
               return msg;
             });
+            if (!found) state.messages.push(toolMessage);
           }
 
           cel.render();
@@ -180,6 +136,7 @@ export async function streamTUI(state: TUIState) {
             (c) => c.type === "toolCall",
           );
 
+          // Update tui messages with arguments
           for (const call of finishedToolCalls) {
             const toolMessage: TUIMessage = {
               role: "tool",
@@ -210,24 +167,31 @@ export async function streamTUI(state: TUIState) {
           break;
 
         case "error":
+          state.activeState = "idle";
+          break;
       }
     },
 
     (tool) => {
+      // Append the output to the existing TUI messages
       state.messages = state.messages.map((msg) => {
         if (tool.toolCallId === msg.id) {
+          // This truncation is TUI only. The file is also
+          // truncated at tool level to avoid big files being
+          // sent to the llm. We truncate that even further.
+          const truncateLimit = 1000;
           const result = tool.content
             .map((c) => (c.type === "text" ? c.text : ""))
             .filter((c) => Boolean(c))
             .join("\n");
           const truncated =
-            result.length > 6000
-              ? `${result.substring(0, 6000)}...\n\nTruncated at 6000 chars`
+            result.length > truncateLimit
+              ? `${result.substring(0, truncateLimit)}...\n\nTruncated at ${truncateLimit} of ${result.length} chars`
               : result;
 
           return {
             ...msg,
-            content: `${tool.toolName}:\n\n${truncated}`,
+            content: `${msg.content}\n\n${truncated}`,
             timestamp: Date.now(),
           };
         }
@@ -237,16 +201,25 @@ export async function streamTUI(state: TUIState) {
     },
 
     (msg, context, dur) => {
-      const text = msg.content
-        .filter((c) => c.type === "text")
-        .map((c) => c.text)
-        .join("\n");
-      state.messages.push({
-        role: "agent",
-        content: text,
-        timestamp: Date.now(),
-        durationMs: dur,
-      });
+      if (msg.errorMessage) {
+        state.messages.push({
+          role: "agent",
+          content: `Error (${msg.stopReason}): ${msg.errorMessage}`,
+          timestamp: Date.now(),
+        });
+      } else {
+        const text = msg.content
+          .filter((c) => c.type === "text")
+          .map((c) => c.text)
+          .join("\n");
+        state.messages.push({
+          role: "agent",
+          content: text,
+          timestamp: Date.now(),
+          durationMs: dur,
+        });
+      }
+
       state.streaming = false;
       state.context = context;
       cel.render();

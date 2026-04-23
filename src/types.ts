@@ -24,6 +24,8 @@ export type TUIState = {
   context?: Context;
   activeState: TUIActiveState;
   streaming: boolean;
+  stickToBottom: boolean;
+  scrollOffset: number;
 };
 
 export type SavedOAuthAuth = OAuthCredentials & {
