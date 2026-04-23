@@ -20,6 +20,7 @@
     "typescript": "^6.0.3"
   },
   "dependencies": {
+    "@cel-tui/components": "^0.8.1",
     "@cel-tui/core": "^0.8.1",
     "@mariozechner/pi-ai": "^0.68.1"
   }

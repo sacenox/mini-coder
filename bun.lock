@@ -5,6 +5,7 @@
     "": {
       "name": "mini-coder-next",
       "dependencies": {
+        "@cel-tui/components": "^0.8.1",
         "@cel-tui/core": "^0.8.1",
         "@mariozechner/pi-ai": "^0.68.1",
       },
@@ -110,6 +111,10 @@
     "@biomejs/cli-win32-arm64": ["@biomejs/cli-win32-arm64@2.4.12", "", { "os": "win32", "cpu": "arm64" }, "sha512-B0DLnx0vA9ya/3v7XyCaP+/lCpnbWbMOfUFFve+xb5OxyYvdHaS55YsSddr228Y+JAFk58agCuZTsqNiw2a6ig=="],
 
     "@biomejs/cli-win32-x64": ["@biomejs/cli-win32-x64@2.4.12", "", { "os": "win32", "cpu": "x64" }, "sha512-yMckRzTyZ83hkk8iDFWswqSdU8tvZxspJKnYNh7JZr/zhZNOlzH13k4ecboU6MurKExCe2HUkH75pGI/O2JwGA=="],
+
+    "@cel-tui/clew": ["@cel-tui/clew@0.8.1", "", { "peerDependencies": { "typescript": ">=5.0.0" } }, "sha512-4X021mpOQYSPR2HzmSMoxSX3wn6zoGpCgUPePdJPTy/IQe0N0vRLooDVZr74uVaUt8UxHLYUrH4WN7DuJq/YqA=="],
+
+    "@cel-tui/components": ["@cel-tui/components@0.8.1", "", { "dependencies": { "@cel-tui/clew": "0.8.1", "@cel-tui/core": "0.8.1", "@cel-tui/types": "0.8.1", "yoctomarkdown": "^0.1.0" }, "peerDependencies": { "typescript": ">=5.0.0" } }, "sha512-lAtTk0ECLTrcQrXEtRCrY2/o+nRNP3ygItRcBe1TSa4Je4saAW5FjBRzqbOO/lQ0zhdhaxoWugMdKMRZHcc/Ww=="],
 
     "@cel-tui/core": ["@cel-tui/core@0.8.1", "", { "dependencies": { "@cel-tui/types": "0.8.1", "get-east-asian-width": "^1.5.0" }, "peerDependencies": { "typescript": ">=5.0.0" } }, "sha512-ShYX/p7YaD4gCOEEZA7wKxOUQn0NblB1YGEvxqvrZi2TxgA3arUh/+o287RnPYJN5idDNHr0Obe3Aaio6YaJkQ=="],
 
@@ -245,6 +250,8 @@
 
     "ajv-formats": ["ajv-formats@3.0.1", "", { "dependencies": { "ajv": "^8.0.0" } }, "sha512-8iUql50EUR+uUcdRQ3HDqa6EVyo3docL8g5WJ3FNcWmu62IbkGUue/pEyLBW8VGKKucTPgqeks4fIU1DA4yowQ=="],
 
+    "ansi-regex": ["ansi-regex@6.2.2", "", {}, "sha512-Bq3SmSpyFHaWjPk8If9yc6svM8c56dB5BAtW4Qbw5jHTwwXXcTLoRMkpDJp6VL0XzlWaCHTXrkFURMYmD0sLqg=="],
+
     "ast-types": ["ast-types@0.13.4", "", { "dependencies": { "tslib": "^2.0.1" } }, "sha512-x1FCFnFifvYDDzTaLII71vG5uvDwgtmDTEVWAxrgeiR8VjMONcCXJx7E+USjDtHlwFmt9MysbqgF9b9Vjr6w+w=="],
 
     "base64-js": ["base64-js@1.5.1", "", {}, "sha512-AKpaYlHn8t4SVbOHCy+b5+KKgvR4vrsD8vbvrbiQJps7fKDTkjkDry6ji0rUJjC0kzbNePLwzxq8iypo41qeWA=="],
@@ -365,6 +372,10 @@
 
     "source-map": ["source-map@0.6.1", "", {}, "sha512-UjgapumWlbMhkBgzT7Ykc5YXUT46F0iKu8SGXq0bcwP5dz/h0Plj6enJqjz1Zbq2l5WaqYnrVbwWOWMyF3F47g=="],
 
+    "string-width": ["string-width@8.2.0", "", { "dependencies": { "get-east-asian-width": "^1.5.0", "strip-ansi": "^7.1.2" } }, "sha512-6hJPQ8N0V0P3SNmP6h2J99RLuzrWz2gvT7VnK5tKvrNqJoyS9W4/Fb8mo31UiPvy00z7DQXkP2hnKBVav76thw=="],
+
+    "strip-ansi": ["strip-ansi@7.2.0", "", { "dependencies": { "ansi-regex": "^6.2.2" } }, "sha512-yDPMNjp4WyfYBkHnjIRLfca1i6KMyGCtsVgoKe/z1+6vukgaENdgGBZt+ZmKPc4gavvEZ5OgHfHdrazhgNyG7w=="],
+
     "strnum": ["strnum@2.2.3", "", {}, "sha512-oKx6RUCuHfT3oyVjtnrmn19H1SiCqgJSg+54XqURKp5aCMbrXrhLjRN9TjuwMjiYstZ0MzDrHqkGZ5dFTKd+zg=="],
 
     "ts-algebra": ["ts-algebra@2.0.0", "", {}, "sha512-FPAhNPFMrkwz76P7cdjdmiShwMynZYN6SgOujD1urY4oNm80Ou9oMdmbR45LotcKOXoy7wSmHkRFE6Mxbrhefw=="],
@@ -380,6 +391,10 @@
     "web-streams-polyfill": ["web-streams-polyfill@3.3.3", "", {}, "sha512-d2JWLCivmZYTSIoge9MsgFCZrt571BikcWGYkjC1khllbTeDlGqZ2D8vD8E/lJa8WGWbb7Plm8/XJYV7IJHZZw=="],
 
     "ws": ["ws@8.20.0", "", { "peerDependencies": { "bufferutil": "^4.0.1", "utf-8-validate": ">=5.0.2" }, "optionalPeers": ["bufferutil", "utf-8-validate"] }, "sha512-sAt8BhgNbzCtgGbt2OxmpuryO63ZoDk/sqaB/znQm94T4fCEsy/yV+7CdC1kJhOU9lboAEU7R3kquuycDoibVA=="],
+
+    "yoctocolors": ["yoctocolors@2.1.2", "", {}, "sha512-CzhO+pFNo8ajLM2d2IW/R93ipy99LWjtwblvC1RsoSUMZgyLbYFr221TnSNT7GjGdYui6P459mw9JH/g/zW2ug=="],
+
+    "yoctomarkdown": ["yoctomarkdown@0.1.0", "", { "dependencies": { "string-width": "^8.2.0", "strip-ansi": "^7.2.0", "yoctocolors": "^2.1.2" }, "peerDependencies": { "typescript": "^5.9.3" }, "bin": { "yoctomarkdown": "src/cli.ts" } }, "sha512-N5ccZ2dQA3ZJSbImSeSxqfDHC/aBcyPWc5WI57corl4gB2Vsr4W11jswPhVNNI6R49ajFDNBNLLIqJTp5KtcQA=="],
 
     "zod": ["zod@4.3.6", "", {}, "sha512-rftlrkhHZOcjDwkGlnUtZZkvaPHCsDATp4pGpuOOMDaTdDDXF91wuVDJoWoPsKX/3YPQ5fHuF3STjcYyKr+Qhg=="],
 
