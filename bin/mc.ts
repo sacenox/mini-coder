@@ -1,3 +1,4 @@
+#!/usr/bin/env bun
 import { main } from "../src/index.ts";
 
 if (import.meta.main) {

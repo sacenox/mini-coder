@@ -5,9 +5,10 @@ import {
   loginOpenAICodex,
   type OAuthProviderId,
 } from "@mariozechner/pi-ai/oauth";
+import { AUTH_PATH as AUTH_FILE } from "./shared";
 import type { CliOptions, SavedOAuthCreds } from "./types";
 
-const AUTH_FILE = "./.auth.json";
+// const AUTH_FILE = "./.auth.json";
 
 export async function loginOAuth(provider: OAuthProviderId) {
   const rl = readline.createInterface({
@@ -56,9 +57,11 @@ export async function getApiKey(options: CliOptions) {
 
 export async function readCreds() {
   const file = Bun.file(AUTH_FILE);
-  const creds: SavedOAuthCreds = JSON.parse(await file.text());
+  if (await file.exists()) {
+    return JSON.parse(await file.text());
+  }
 
-  return creds;
+  return {};
 }
 
 async function writeCreds(creds: SavedOAuthCreds) {

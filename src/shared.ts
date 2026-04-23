@@ -1,3 +1,10 @@
+import { homedir } from "node:os";
+import { join } from "node:path";
+
+export const DATA_DIR = join(homedir(), ".config", "mini-coder");
+export const AUTH_PATH = join(DATA_DIR, "auth.json");
+export const SETTINGS_PATH = join(DATA_DIR, "settings.json");
+
 export function secureRandomString(
   length: number,
   chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789",
@@ -61,4 +68,8 @@ export function onceEvery<T extends unknown[]>(
       fn(...args);
     }
   };
+}
+
+export function takeTail<T>(arr: T[], x: number): T[] {
+  return x <= 0 ? [] : arr.slice(-x);
 }

@@ -60,7 +60,7 @@ export async function streamAgent(
     for (const call of toolCalls) {
       const toolDef = tools.find((i) => i.tool.name === call.name);
       const result = (await toolDef?.runner(call.arguments)) || "";
-      const msg: Message = {
+      const msg: ToolResultMessage = {
         role: "toolResult",
         toolCallId: call.id,
         toolName: call.name,
