@@ -5,6 +5,7 @@ import { streamAgent, TASK_PROMPT } from "./agent";
 import { getApiKey } from "./oauth";
 import { onceEvery, secureRandomString, takeTail } from "./shared";
 import { bash, runBashTool } from "./tool-bash";
+import { edit, runEditTool } from "./tool-edit";
 import { TextPill, theme } from "./tui-components";
 import { Conversation } from "./tui-conversation";
 import { Editor } from "./tui-editor";
@@ -54,10 +55,10 @@ export function initTUI(state: TUIState, leave: (s: string) => void) {
           TextPill(state.options.model.name, theme.bblack, theme.bwhite),
           TextPill(`../${cwd}`, theme.bwhite, theme.bblack),
           VStack({ flex: 1 }, []),
+          TextPill(state.activeState, theme.bwhite, theme.bblack),
           state.streaming
             ? TextPill(currentSpinner(), theme.bblack, theme.bwhite)
             : TextPill(currentSpinner(), theme.bwhite, theme.bblack),
-          TextPill(state.activeState, theme.bwhite, theme.bblack),
         ]),
 
         Editor(
@@ -141,8 +142,12 @@ export async function streamTUI(state: TUIState) {
   if (state.streaming) return;
   state.streaming = true;
 
+  const lastTs = Date.now();
   const apiKey = await getApiKey(state.options);
-  const tools: ToolAndRunner[] = [{ tool: bash, runner: runBashTool }];
+  const tools: ToolAndRunner[] = [
+    { tool: bash, runner: runBashTool },
+    { tool: edit, runner: runEditTool },
+  ];
   const userPrompt = {
     role: "user",
     content: state.prompt || "",
@@ -163,7 +168,7 @@ export async function streamTUI(state: TUIState) {
     TASK_PROMPT,
     messages,
     state.options,
-    (ev, dur) => {
+    (ev) => {
       switch (ev.type) {
         case "text_start":
           state.activeState = "answering";
@@ -184,9 +189,7 @@ export async function streamTUI(state: TUIState) {
           );
 
           for (const call of newToolCalls) {
-            const toolMessage = createTUIToolMessage(call, {
-              durationMs: dur,
-            });
+            const toolMessage = createTUIToolMessage(call);
             let found = false;
             state.messages = state.messages.map((msg) => {
               if (call.id === msg.id) {
@@ -216,14 +219,12 @@ export async function streamTUI(state: TUIState) {
             state.messages = state.messages.map((msg) => {
               if (call.id === msg.id) {
                 updated = true;
-                return createTUIToolMessage(call, { ...msg, durationMs: dur });
+                return createTUIToolMessage(call, msg);
               }
               return msg;
             });
             if (!updated) {
-              state.messages.push(
-                createTUIToolMessage(call, { durationMs: dur }),
-              );
+              state.messages.push(createTUIToolMessage(call));
             }
           }
 
@@ -242,18 +243,23 @@ export async function streamTUI(state: TUIState) {
       }
     },
 
-    (tool, dur) => {
+    (tool) => {
       // Append the output to the existing TUI messages
       state.messages = state.messages.map((msg) => {
         if (tool.toolCallId === msg.id) {
-          return createTUIToolMessage(tool, { ...msg, durationMs: dur });
+          return createTUIToolMessage(tool, {
+            ...msg,
+            durationMs: Date.now() - msg.timestamp,
+          });
         }
         return msg;
       });
       cel.render();
     },
 
-    (msg, context, dur) => {
+    (msg, context) => {
+      const dur = Date.now() - lastTs;
+
       if (msg.errorMessage) {
         state.messages.push({
           id: secureRandomString(8),

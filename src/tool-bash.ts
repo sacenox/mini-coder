@@ -42,10 +42,20 @@ export async function runBashTool(args: Record<string, any>) {
   await proc.exited;
   const stdout = (await proc.stdout.text()).trim();
   const stderr = (await proc.stderr?.text())?.trim();
-  let out =
-    proc.exitCode === 0
-      ? (stdout ?? "Exit 0")
-      : stderr || stdout || `Exit ${proc.exitCode}`;
+
+  let out = `# EXIT CODE: ${proc.exitCode}`;
+  if (stderr.length) {
+    out += `
+# STDERR:
+
+${stderr}`;
+  }
+  if (stdout.length) {
+    out += `
+# STDOUT:
+
+${stdout}`;
+  }
 
   // If `out` is too big, more than ~10KB, write it to a temp file
   // And add that to the truncation label for the agent to be able

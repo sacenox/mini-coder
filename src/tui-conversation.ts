@@ -43,6 +43,7 @@ function toolMessageNode(msg: TUIMessage) {
 export function Conversation(state: TUIState) {
   // TODO: use scroll callbacks to make the conversation a virtual list,
   //       only showing a 12 messages window based the scroll position.
+  //       currently we just don't show earlier messages :(
   return VStack(
     {
       flex: 1,
@@ -56,7 +57,7 @@ export function Conversation(state: TUIState) {
       },
     },
     [
-      ...state.messages.map((msg) => {
+      ...state.messages.slice(-12).map((msg) => {
         const dur = msg.durationMs
           ? `Took ${elapsedTime(msg.durationMs / 1000)}`
           : "-";

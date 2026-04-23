@@ -2,14 +2,19 @@ import type { Message } from "@mariozechner/pi-ai";
 import { streamAgent, TASK_PROMPT } from "./agent";
 import { getApiKey } from "./oauth";
 import { bash, runBashTool } from "./tool-bash";
+import { edit, runEditTool } from "./tool-edit";
 import type { CliOptions, ToolAndRunner } from "./types";
 
 export async function streamHeadless(
   options: CliOptions,
   leave: (s: string) => void,
 ) {
+  const lastTs = Date.now();
   const apiKey = await getApiKey(options);
-  const tools: ToolAndRunner[] = [{ tool: bash, runner: runBashTool }];
+  const tools: ToolAndRunner[] = [
+    { tool: bash, runner: runBashTool },
+    { tool: edit, runner: runEditTool },
+  ];
   const messages: Message[] = [
     { role: "user", content: options.prompt || "", timestamp: Date.now() },
   ];
@@ -45,7 +50,7 @@ export async function streamHeadless(
       }
     },
     undefined,
-    (msg, _, dur) => {
+    (msg) => {
       const text = msg.content
         .filter((c) => c.type === "text")
         .map((c) => c.text)
@@ -58,7 +63,7 @@ export async function streamHeadless(
 
       if (["stop", "error", "aborted"].includes(msg.stopReason)) {
         console.log(`Reason for stopping: "${msg.stopReason}"`);
-        leave(`Done. Took ${dur / 1000}s`);
+        leave(`Done. Took ${(Date.now() - lastTs) / 1000}s`);
       }
     },
   );

@@ -26,15 +26,10 @@ export async function streamAgent(
   systemPrompt: string,
   messages: Message[],
   options: CliOptions,
-  streamFn?: (ev: AssistantMessageEvent, dur: number) => void,
-  toolsFn?: (tool: ToolResultMessage, dur: number) => void,
-  completeFn?: (
-    msg: AssistantMessage,
-    context: Context,
-    duration: number,
-  ) => void,
+  streamFn?: (ev: AssistantMessageEvent) => void,
+  toolsFn?: (tool: ToolResultMessage) => void,
+  completeFn?: (msg: AssistantMessage, context: Context) => void,
 ) {
-  const startTs = Date.now();
   const context: Context = {
     systemPrompt,
     messages,
@@ -48,7 +43,7 @@ export async function streamAgent(
     });
 
     for await (const ev of s) {
-      streamFn?.(ev, Date.now() - startTs);
+      streamFn?.(ev);
     }
 
     const finalMessage = await s.result();
@@ -69,7 +64,7 @@ export async function streamAgent(
         timestamp: Date.now(),
       };
       context.messages.push(msg);
-      toolsFn?.(msg, Date.now() - startTs);
+      toolsFn?.(msg);
     }
 
     if (toolCalls.length > 0) {
@@ -82,7 +77,7 @@ export async function streamAgent(
     }
 
     if (["stop", "error", "aborted"].includes(finalMessage.stopReason)) {
-      completeFn?.(finalMessage, context, Date.now() - startTs);
+      completeFn?.(finalMessage, context);
       return;
     }
   }
