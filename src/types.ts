@@ -15,6 +15,8 @@ export type TUIMessage = {
   durationMs?: number;
   id?: string;
   timestamp: number;
+  label?: string;
+  header?: string; // Not a great name, this is used for arguments in tool calls.
 };
 
 export type TUIState = {

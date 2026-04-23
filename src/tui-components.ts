@@ -43,26 +43,3 @@ export function TextPill(content: string, fgColor: Color, bgColor: Color) {
     ]),
   ]);
 }
-
-// const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-// let spinnerTick = 0;
-// let spinnerTimer: ReturnType<typeof setInterval> | null = null;
-
-// function startSpinner() {
-//   stopSpinner();
-//   spinnerTimer = setInterval(() => {
-//     spinnerTick++;
-//     cel.render();
-//   }, 80);
-// }
-
-// function stopSpinner() {
-//   if (spinnerTimer) {
-//     clearInterval(spinnerTimer);
-//     spinnerTimer = null;
-//   }
-// }
-
-// function currentSpinner(): string {
-//   return spinnerFrames[spinnerTick % spinnerFrames.length]!;
-// }

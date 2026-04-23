@@ -3,6 +3,7 @@ import { cel, HStack, ProcessTerminal, VStack } from "@cel-tui/core";
 import type { Message } from "@mariozechner/pi-ai";
 import { streamAgent, TASK_PROMPT } from "./agent";
 import { getApiKey } from "./oauth";
+import { onceEvery, secureRandomString } from "./shared";
 import { bash, runBashTool } from "./tool-bash";
 import { TextPill, theme } from "./tui-components";
 import { Conversation } from "./tui-conversation";
@@ -11,6 +12,23 @@ import type { ToolAndRunner, TUIMessage, TUIState } from "./types";
 
 export function initTUI(state: TUIState, leave: (s: string) => void) {
   const cwd = basename(process.cwd());
+
+  // TODO: move to components, have a function return the everyFn and current spinner
+  const spinnerFrames = ["⠤", "⠆", "⠒", "⠰"];
+  let spinnerTick = 0;
+  const spinnerEvery = onceEvery(5, () => spinnerTick++);
+  const currentSpinner = () =>
+    spinnerFrames[spinnerTick % spinnerFrames.length];
+
+  // Because we don't render often, the ui feels unresponsive at times.
+  // This ensure 60fps, and excessive calls get coalesced in cel-tui.
+  const fps = 60;
+  const baseFramerateIntervalId = setInterval(() => {
+    if (state.streaming) {
+      spinnerEvery();
+    }
+    cel.render();
+  }, 1000 / fps);
 
   cel.init(new ProcessTerminal());
   cel.setTitle(`mc | ${cwd}`);
@@ -23,6 +41,7 @@ export function initTUI(state: TUIState, leave: (s: string) => void) {
         padding: { x: 1, y: 1 },
         onKeyPress: (key) => {
           if (key === "ctrl+q" || key === "ctrl+c" || key === "ctrl+d") {
+            clearInterval(baseFramerateIntervalId);
             cel.stop();
             leave("Done.");
           }
@@ -35,6 +54,9 @@ export function initTUI(state: TUIState, leave: (s: string) => void) {
           TextPill(state.options.model.name, theme.bblack, theme.bwhite),
           TextPill(`../${cwd}`, theme.bwhite, theme.bblack),
           VStack({ flex: 1 }, []),
+          state.streaming
+            ? TextPill(currentSpinner(), theme.bblack, theme.bwhite)
+            : TextPill(currentSpinner(), theme.bwhite, theme.bblack),
           TextPill(state.activeState, theme.bwhite, theme.bblack),
         ]),
 
@@ -71,6 +93,7 @@ export async function streamTUI(state: TUIState) {
     role: "user",
     content: state.prompt || "",
     timestamp: Date.now(),
+    id: secureRandomString(8),
   };
   state.messages.push(userPrompt as TUIMessage);
   let messages: Message[] = [userPrompt as Message];
@@ -86,7 +109,7 @@ export async function streamTUI(state: TUIState) {
     TASK_PROMPT,
     messages,
     state.options,
-    (ev) => {
+    (ev, dur) => {
       switch (ev.type) {
         case "text_start":
           state.activeState = "answering";
@@ -109,9 +132,14 @@ export async function streamTUI(state: TUIState) {
           for (const call of newToolCalls) {
             const toolMessage: TUIMessage = {
               role: "tool",
-              content: `${call.name}: ${JSON.stringify(call.arguments, null, 4)}`,
+              label: call.name.toLocaleUpperCase(),
+              header: call.arguments.command
+                ? call.arguments.command
+                : `Calling ${call.name}...`,
+              content: "",
               id: call.id,
               timestamp: Date.now(),
+              durationMs: dur,
             };
             let found = false;
             state.messages = state.messages.map((msg) => {
@@ -140,9 +168,14 @@ export async function streamTUI(state: TUIState) {
           for (const call of finishedToolCalls) {
             const toolMessage: TUIMessage = {
               role: "tool",
-              content: `${call.name}: ${JSON.stringify(call.arguments, null, 4)}`,
+              label: call.name.toLocaleUpperCase(),
+              header: call.arguments.command
+                ? call.arguments.command
+                : `"Calling ${call.name}..."`,
+              content: "",
               id: call.id,
               timestamp: Date.now(),
+              durationMs: dur,
             };
             let updated = false;
             state.messages = state.messages.map((msg) => {
@@ -172,7 +205,7 @@ export async function streamTUI(state: TUIState) {
       }
     },
 
-    (tool) => {
+    (tool, dur) => {
       // Append the output to the existing TUI messages
       state.messages = state.messages.map((msg) => {
         if (tool.toolCallId === msg.id) {
@@ -191,8 +224,9 @@ export async function streamTUI(state: TUIState) {
 
           return {
             ...msg,
-            content: `${msg.content}\n\n${truncated}`,
+            content: truncated,
             timestamp: Date.now(),
+            durationMs: dur,
           };
         }
         return msg;
@@ -203,9 +237,11 @@ export async function streamTUI(state: TUIState) {
     (msg, context, dur) => {
       if (msg.errorMessage) {
         state.messages.push({
+          id: secureRandomString(8),
           role: "agent",
           content: `Error (${msg.stopReason}): ${msg.errorMessage}`,
           timestamp: Date.now(),
+          durationMs: dur,
         });
       } else {
         const text = msg.content
@@ -213,6 +249,7 @@ export async function streamTUI(state: TUIState) {
           .map((c) => c.text)
           .join("\n");
         state.messages.push({
+          id: secureRandomString(8),
           role: "agent",
           content: text,
           timestamp: Date.now(),

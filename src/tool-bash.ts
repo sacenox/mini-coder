@@ -1,4 +1,5 @@
 import { type Tool, Type } from "@mariozechner/pi-ai";
+import { secureRandomString } from "./shared";
 
 const OUTPUT_TRESHOLD = 10000;
 const description = `## Bash CLI tool
@@ -39,12 +40,12 @@ export async function runBashTool(args: Record<string, any>) {
     stderr: "pipe",
   });
   await proc.exited;
-  const stdout = await proc.stdout.text();
-  const stderr = await proc.stderr?.text();
+  const stdout = (await proc.stdout.text()).trim();
+  const stderr = (await proc.stderr?.text())?.trim();
   let out =
     proc.exitCode === 0
       ? (stdout ?? "Exit 0")
-      : (stderr ?? `Exit ${proc.exitCode}`);
+      : stderr || stdout || `Exit ${proc.exitCode}`;
 
   // If `out` is too big, more than ~10KB, write it to a temp file
   // And add that to the truncation label for the agent to be able
@@ -60,27 +61,4 @@ Truncated at ${OUTPUT_TRESHOLD}. Full ouput at ${pathname}`;
   }
 
   return out;
-}
-
-function secureRandomString(
-  length: number,
-  chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789",
-): string {
-  const result: string[] = [];
-  const charsLength = chars.length;
-  const maxValid = Math.floor(256 / charsLength) * charsLength;
-  const randomBytes = new Uint8Array(length * 2);
-
-  while (result.length < length) {
-    crypto.getRandomValues(randomBytes);
-
-    for (const byte of randomBytes) {
-      if (byte < maxValid) {
-        result.push(chars[byte % charsLength]);
-        if (result.length === length) break;
-      }
-    }
-  }
-
-  return result.join("");
 }

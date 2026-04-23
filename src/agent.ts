@@ -18,14 +18,16 @@ Behaviour guidelines:
 - Tone: use a jovial but motivated colleague persona. Be less verbose and more concise. You are working with software engineers, act appropriate, no fluff, only direct talk.
 `;
 
+// TODO: `AGENTS.md` support: find it in current folder and a global one. (`.agents/AGENTS.md` || ~/.AGENTS.md)
+
 export async function streamAgent(
   apiKey: string,
   tools: ToolAndRunner[],
   systemPrompt: string,
   messages: Message[],
   options: CliOptions,
-  streamFn?: (ev: AssistantMessageEvent) => void,
-  toolsFn?: (tool: ToolResultMessage) => void,
+  streamFn?: (ev: AssistantMessageEvent, dur: number) => void,
+  toolsFn?: (tool: ToolResultMessage, dur: number) => void,
   completeFn?: (
     msg: AssistantMessage,
     context: Context,
@@ -46,7 +48,7 @@ export async function streamAgent(
     });
 
     for await (const ev of s) {
-      streamFn?.(ev);
+      streamFn?.(ev, Date.now() - startTs);
     }
 
     const finalMessage = await s.result();
@@ -67,7 +69,7 @@ export async function streamAgent(
         timestamp: Date.now(),
       };
       context.messages.push(msg);
-      toolsFn?.(msg);
+      toolsFn?.(msg, Date.now() - startTs);
     }
 
     if (toolCalls.length > 0) {
@@ -79,10 +81,7 @@ export async function streamAgent(
       context.messages.push(cont);
     }
 
-    // TODO: usageFn?
-
     if (["stop", "error", "aborted"].includes(finalMessage.stopReason)) {
-      // TODO: Reason?
       completeFn?.(finalMessage, context, Date.now() - startTs);
       return;
     }
