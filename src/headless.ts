@@ -33,6 +33,7 @@ export async function streamHeadless(
     TASK_PROMPT,
     messages,
     options,
+    undefined,
     (ev) => {
       switch (ev.type) {
         case "text_start":

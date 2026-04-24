@@ -16,6 +16,9 @@ export async function main(): Promise<void> {
     process.exit(0);
   }
 
+
+  const abortController = new AbortController();
+
   const state: TUIState = {
     options,
     prompt: "",
@@ -24,6 +27,7 @@ export async function main(): Promise<void> {
     streaming: false,
     stickToBottom: true,
     scrollOffset: 0,
+    abortController
   };
 
   initTUI(state, leave);

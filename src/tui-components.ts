@@ -1,5 +1,6 @@
 import { type Color, HStack, Text } from "@cel-tui/core";
 import { onceEvery } from "./shared";
+import { TUIState } from "./types";
 
 export const theme = {
   black: "color00" as Color,
@@ -87,4 +88,17 @@ export function Spinner() {
     spinnerFrames[spinnerTick % spinnerFrames.length];
 
   return { spinnerEvery, currentSpinner };
+}
+
+export function ActivityPill(state: TUIState, spinnerFrame: string) {
+  let label = state.activeState.replaceAll("_", " ");
+  const fg = state.streaming ? theme.bblack : theme.bwhite;
+  const bg = state.streaming ? theme.bwhite : theme.bblack;
+  const frame = state.streaming ? spinnerFrame : ""
+  
+  if (frame) {
+    label += ` ${frame}`
+  }
+
+  return TextPill(label, fg, bg)
 }

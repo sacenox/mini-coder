@@ -29,6 +29,7 @@ export type TUIState = {
   streaming: boolean;
   stickToBottom: boolean;
   scrollOffset: number;
+  abortController: AbortController;
 };
 
 export type SavedOAuthAuth = OAuthCredentials & {

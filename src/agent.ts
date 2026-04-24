@@ -22,8 +22,8 @@ Behaviour guidelines:
 - Once you've gathered enough information to complete the request, stop exploring and complete the task.
 - When completing a task, ensure that you fulfill the contract **exactly**.
 - Use temp directory for temp files, scripts or anything that doesn't match the requested output.
-- Be careful with existing changes and destructive commands, they could be your user's changes.
-- Tone: use a jovial but motivated colleague persona. Be less verbose and more concise. You are working with software engineers, act appropriate, no fluff, only direct talk.
+- Be careful with existing changes and destructive commands, they could harm your user's changes.
+- Tone: use a jovial but motivated colleague persona. Be less verbose and more concise. You are working with software engineers, act appropriately, no fluff, only direct talk.
 `;
 
 // `AGENTS.md` support: find it in current folder (./AGENTS.md) and a global one. (`.agents/AGENTS.md`)
@@ -122,6 +122,7 @@ export async function streamAgent(
   systemPrompt: string,
   messages: Message[],
   options: CliOptions,
+  abortController?: AbortController,
   streamFn?: (ev: AssistantMessageEvent) => void,
   toolsFn?: (tool: ToolResultMessage) => void,
   completeFn?: (msg: AssistantMessage, context: Context) => void,
@@ -132,10 +133,17 @@ export async function streamAgent(
     tools: tools.map((t) => t.tool),
   };
 
+  let controller: AbortController
+  const onAbort = () => { controller?.abort(); }
+  // Wire the global abort signal to each turn http requests
+  abortController?.signal.addEventListener('abort', onAbort)
+
   while (true) {
+    controller = new AbortController()
     const s = streamSimple(options.model, context, {
       apiKey,
       reasoning: options.effort,
+      signal: controller.signal
     });
 
     for await (const ev of s) {
@@ -163,17 +171,19 @@ export async function streamAgent(
       toolsFn?.(msg);
     }
 
-    if (toolCalls.length > 0) {
+    if (toolCalls.length > 0 && !["error", "aborted"].includes(finalMessage.stopReason)) {
       // TODO: Investigate why we get an error: `No output for tool call id XXXX...` when
       //       we add { apiKey } in this call. And how does it work without it?
       const cont = await completeSimple(options.model, context, {
         reasoning: options.effort,
+        signal: controller.signal
       });
       context.messages.push(cont);
     }
 
     if (["stop", "error", "aborted"].includes(finalMessage.stopReason)) {
       completeFn?.(finalMessage, context);
+      abortController?.signal.removeEventListener('abort', onAbort)
       return;
     }
   }

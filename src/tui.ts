@@ -1,16 +1,29 @@
 import { basename } from "node:path";
-import { cel, HStack, ProcessTerminal, VStack } from "@cel-tui/core";
+import { cel, HStack, ProcessTerminal, Text, VStack } from "@cel-tui/core";
 import type { Message } from "@mariozechner/pi-ai";
 import { streamAgent, TASK_PROMPT } from "./agent";
 import { getApiKey } from "./oauth";
 import { secureRandomString } from "./shared";
 import { bash, runBashTool } from "./tool-bash";
 import { edit, runEditTool } from "./tool-edit";
-import { Spinner, TextPill, theme } from "./tui-components";
+import { ActivityPill, Spinner, TextPill, theme } from "./tui-components";
 import { Conversation } from "./tui-conversation";
 import { Editor } from "./tui-editor";
 import { createTUIToolMessage } from "./tui-state";
 import type { ToolAndRunner, TUIMessage, TUIState } from "./types";
+
+function clearOrAbort(state: TUIState) {
+  // Are we mid stream? Abort it.
+  if (state.streaming) {
+    state.abortController.abort()
+    state.abortController = new AbortController();
+  }
+
+  // Is the user clearing a state prompt?
+  if (state.prompt?.length) {
+    state.prompt = ""
+  }
+}
 
 export function initTUI(state: TUIState, leave: (s: string) => void) {
   const cwd = basename(process.cwd());
@@ -37,9 +50,13 @@ export function initTUI(state: TUIState, leave: (s: string) => void) {
         padding: { x: 1, y: 1 },
         onKeyPress: (key) => {
           if (key === "ctrl+q" || key === "ctrl+c" || key === "ctrl+d") {
+            // Quit
             clearInterval(baseFramerateIntervalId);
             cel.stop();
             leave("Done.");
+          } else if (key === 'escape') {
+            // Abort or clear prompt
+            clearOrAbort(state)
           }
         },
       },
@@ -50,10 +67,7 @@ export function initTUI(state: TUIState, leave: (s: string) => void) {
           TextPill(state.options.model.name, theme.bblack, theme.bwhite),
           TextPill(`../${cwd}`, theme.bwhite, theme.bblack),
           VStack({ flex: 1 }, []),
-          TextPill(state.activeState, theme.bwhite, theme.bblack),
-          state.streaming
-            ? TextPill(currentSpinner(), theme.black, theme.white)
-            : TextPill(currentSpinner(), theme.bwhite, theme.bblack),
+          ActivityPill(state, currentSpinner())
         ]),
 
         Editor(
@@ -66,6 +80,11 @@ export function initTUI(state: TUIState, leave: (s: string) => void) {
           (key: string) => {
             // onKeyPress
             if (key === "enter") {
+              if (state.prompt === ':q') {
+                clearInterval(baseFramerateIntervalId)
+                cel.stop()
+                leave("Done. I like vim too.")
+              }
               const submit = async () => {
                 await streamTUI(state);
               };
@@ -109,6 +128,7 @@ export async function streamTUI(state: TUIState) {
     TASK_PROMPT,
     messages,
     state.options,
+    state.abortController,
     (ev) => {
       switch (ev.type) {
         case "text_start":
