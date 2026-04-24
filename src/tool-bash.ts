@@ -21,6 +21,8 @@ Best practices using this tool:
 - Avoid overly complex one-liners, readability matters.
 - Quote filenames: use \`"$file"\` not \`$file\`
 - Be careful with spaces in filenames
+
+Current working directory: ${process.cwd()}
 `;
 
 export const bash: Tool = {

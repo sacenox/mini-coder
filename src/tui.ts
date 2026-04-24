@@ -15,15 +15,51 @@ export function initTUI(state: TUIState, leave: (s: string) => void) {
   const cwd = basename(process.cwd());
 
   // TODO: move to components, have a function return the everyFn and current spinner
-  const spinnerFrames = ["⠤", "⠆", "⠒", "⠰"];
+  const spinnerFrames = [
+    "⠁",
+    "⠂",
+    "⠄",
+    "⡀",
+    "⡈",
+    "⡐",
+    "⡠",
+    "⣀",
+    "⣁",
+    "⣂",
+    "⣄",
+    "⣌",
+    "⣔",
+    "⣤",
+    "⣥",
+    "⣦",
+    "⣮",
+    "⣶",
+    "⣷",
+    "⣿",
+    "⡿",
+    "⠿",
+    "⢟",
+    "⠟",
+    "⡛",
+    "⠛",
+    "⠫",
+    "⢋",
+    "⠋",
+    "⠍",
+    "⡉",
+    "⠉",
+    "⠑",
+    "⠡",
+    "⢁",
+  ];
   let spinnerTick = 0;
-  const spinnerEvery = onceEvery(5, () => spinnerTick++);
+  const spinnerEvery = onceEvery(4, () => spinnerTick++);
   const currentSpinner = () =>
     spinnerFrames[spinnerTick % spinnerFrames.length];
 
   // Because we don't render often, the ui feels unresponsive at times.
-  // This ensure 60fps, and excessive calls get coalesced in cel-tui.
-  const fps = 60;
+  // This ensure Xfps, and excessive calls get coalesced in cel-tui.
+  const fps = 30;
   const baseFramerateIntervalId = setInterval(() => {
     if (state.streaming) {
       spinnerEvery();
@@ -57,7 +93,7 @@ export function initTUI(state: TUIState, leave: (s: string) => void) {
           VStack({ flex: 1 }, []),
           TextPill(state.activeState, theme.bwhite, theme.bblack),
           state.streaming
-            ? TextPill(currentSpinner(), theme.bblack, theme.bwhite)
+            ? TextPill(currentSpinner(), theme.black, theme.white)
             : TextPill(currentSpinner(), theme.bwhite, theme.bblack),
         ]),
 

@@ -11,8 +11,9 @@ type CacheEntry = {
   node: ContainerNode;
 };
 
+// We don't care about cache size for now. When we have sessions
+// We need to clear cache between sessions.
 const cache = new Map<string, CacheEntry>();
-const MAX_ENTRIES = 200;
 
 function getThemeKey(props?: SyntaxHighlightProps): string {
   return JSON.stringify(props?.theme ?? null);
@@ -44,14 +45,6 @@ export function memoizedSyntaxHighlight(
     themeKey,
     node,
   });
-
-  // tiny FIFO cap so cache doesn't grow forever
-  if (cache.size > MAX_ENTRIES) {
-    const oldestKey = cache.keys().next().value;
-    if (oldestKey !== undefined) {
-      cache.delete(oldestKey);
-    }
-  }
 
   return node;
 }

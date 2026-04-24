@@ -73,3 +73,7 @@ export function onceEvery<T extends unknown[]>(
 export function takeTail<T>(arr: T[], x: number): T[] {
   return x <= 0 ? [] : arr.slice(-x);
 }
+
+export function extimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
