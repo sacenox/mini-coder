@@ -1,4 +1,5 @@
 import { type Color, HStack, Text } from "@cel-tui/core";
+import { onceEvery } from "./shared";
 
 export const theme = {
   black: "color00" as Color,
@@ -26,8 +27,6 @@ export const theme = {
   bwhite: "color15" as Color,
 };
 
-// Examples:
-//
 // TextPill("mini-coder", theme.bblack, theme.black),
 // TextPill("mini-coder", theme.bred, theme.red),
 // TextPill("mini-coder", theme.bgreen, theme.green),
@@ -42,4 +41,50 @@ export function TextPill(content: string, fgColor: Color, bgColor: Color) {
       Text(content, { bold: true, fgColor }),
     ]),
   ]);
+}
+
+export function Spinner() {
+  const spinnerFrames = [
+    "⠁",
+    "⠂",
+    "⠄",
+    "⡀",
+    "⡈",
+    "⡐",
+    "⡠",
+    "⣀",
+    "⣁",
+    "⣂",
+    "⣄",
+    "⣌",
+    "⣔",
+    "⣤",
+    "⣥",
+    "⣦",
+    "⣮",
+    "⣶",
+    "⣷",
+    "⣿",
+    "⡿",
+    "⠿",
+    "⢟",
+    "⠟",
+    "⡛",
+    "⠛",
+    "⠫",
+    "⢋",
+    "⠋",
+    "⠍",
+    "⡉",
+    "⠉",
+    "⠑",
+    "⠡",
+    "⢁",
+  ];
+  let spinnerTick = 0;
+  const spinnerEvery = onceEvery(4, () => spinnerTick++);
+  const currentSpinner = () =>
+    spinnerFrames[spinnerTick % spinnerFrames.length];
+
+  return { spinnerEvery, currentSpinner };
 }

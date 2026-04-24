@@ -5,6 +5,11 @@ Version `mini-coder@0.5.x` is currently stable and mostly complete, thats our re
 Benchmarking from the start, keep the agent dumb, build the plugin-library-first architecture, then
 run a an automated benchmarking loop to shape/hone the harness.
 
+## Dog-fooding
+
+Be aware that your are mini-coder, running the dev version of this repository while editing it.
+We are dog-fooding the code: changes to prompts, tools, context building, streaming, or runtime behavior may affect the agent we are actively using during the same development session.
+
 ## Core dependencies
 
 **https://github.com/badlogic/pi-mono/tree/main/packages/ai**

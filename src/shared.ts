@@ -1,5 +1,8 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { parseDocument } from "yaml";
+
+// Mixed bag of helpers that can be shared accross the codebase
 
 export const DATA_DIR = join(homedir(), ".config", "mini-coder");
 export const AUTH_PATH = join(DATA_DIR, "auth.json");
@@ -76,4 +79,30 @@ export function takeTail<T>(arr: T[], x: number): T[] {
 
 export function extimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
+}
+
+export function parseSkillFrontmatter(content: string) {
+  const match = /^---\s*\n([\s\S]*?)\n---/.exec(content);
+
+  if (!match) {
+    return undefined;
+  }
+
+  const doc = parseDocument(match[1]);
+  const data = doc.toJS() as unknown;
+
+  if (!data || typeof data !== "object") {
+    return undefined;
+  }
+
+  const record = data as Record<string, unknown>;
+  const name = typeof record.name === "string" ? record.name.trim() : "";
+  const description =
+    typeof record.description === "string" ? record.description.trim() : "";
+
+  if (!name || !description) {
+    return undefined;
+  }
+
+  return { name, description };
 }

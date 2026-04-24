@@ -1,65 +1,24 @@
 import { basename } from "node:path";
 import { cel, HStack, ProcessTerminal, VStack } from "@cel-tui/core";
-import type { Message, ToolCall, ToolResultMessage } from "@mariozechner/pi-ai";
+import type { Message } from "@mariozechner/pi-ai";
 import { streamAgent, TASK_PROMPT } from "./agent";
 import { getApiKey } from "./oauth";
-import { onceEvery, secureRandomString, takeTail } from "./shared";
+import { secureRandomString } from "./shared";
 import { bash, runBashTool } from "./tool-bash";
 import { edit, runEditTool } from "./tool-edit";
-import { TextPill, theme } from "./tui-components";
+import { Spinner, TextPill, theme } from "./tui-components";
 import { Conversation } from "./tui-conversation";
 import { Editor } from "./tui-editor";
+import { createTUIToolMessage } from "./tui-state";
 import type { ToolAndRunner, TUIMessage, TUIState } from "./types";
 
 export function initTUI(state: TUIState, leave: (s: string) => void) {
   const cwd = basename(process.cwd());
-
-  // TODO: move to components, have a function return the everyFn and current spinner
-  const spinnerFrames = [
-    "⠁",
-    "⠂",
-    "⠄",
-    "⡀",
-    "⡈",
-    "⡐",
-    "⡠",
-    "⣀",
-    "⣁",
-    "⣂",
-    "⣄",
-    "⣌",
-    "⣔",
-    "⣤",
-    "⣥",
-    "⣦",
-    "⣮",
-    "⣶",
-    "⣷",
-    "⣿",
-    "⡿",
-    "⠿",
-    "⢟",
-    "⠟",
-    "⡛",
-    "⠛",
-    "⠫",
-    "⢋",
-    "⠋",
-    "⠍",
-    "⡉",
-    "⠉",
-    "⠑",
-    "⠡",
-    "⢁",
-  ];
-  let spinnerTick = 0;
-  const spinnerEvery = onceEvery(4, () => spinnerTick++);
-  const currentSpinner = () =>
-    spinnerFrames[spinnerTick % spinnerFrames.length];
+  const { spinnerEvery, currentSpinner } = Spinner();
 
   // Because we don't render often, the ui feels unresponsive at times.
   // This ensure Xfps, and excessive calls get coalesced in cel-tui.
-  const fps = 30;
+  const fps = 60;
   const baseFramerateIntervalId = setInterval(() => {
     if (state.streaming) {
       spinnerEvery();
@@ -118,60 +77,6 @@ export function initTUI(state: TUIState, leave: (s: string) => void) {
       ],
     ),
   );
-}
-
-// Create the TUIState message for context tool call and result.
-function createTUIToolMessage(
-  source: ToolCall | ToolResultMessage,
-  existing?: Partial<TUIMessage>,
-): TUIMessage {
-  // This truncation is TUI only. The file is also
-  // truncated at tool level to avoid big files being
-  // sent to the llm. We truncate that even further for the user.
-  // We only show the tail of the file, which includes if the file
-  // was truncated at tool level to the user.
-
-  // Join text if there is more than one block.
-  const showLines = 6;
-  const content = "content" in source ? source.content : [];
-  const text = content.length
-    ? content
-        .map((c) => (c.type === "text" ? c.text : ""))
-        .filter((c) => Boolean(c))
-        .join("\n")
-    : (existing?.content ?? "");
-  // Grab the tail
-  let tail = takeTail(text.split("\n"), showLines).join("\n");
-  // Some commands output without newlines tons of chars.
-  // if needed to take roughly 6 lines at 100 chars worth of tail.
-  if (tail.length > showLines * 100) {
-    tail = tail.slice(showLines * 100 * -1);
-  }
-
-  // Now the similar cut is needed in arguments, but here we care about
-  // seeing the start of the command, like `cd bla/ && cat ...`
-  const argsMaxLength = 600; // estimaded by 100 char line width x 10 lines.
-  let args = existing?.header ?? "Writting...";
-  if ("arguments" in source && "command" in source.arguments) {
-    args =
-      source.arguments?.command?.length > argsMaxLength
-        ? source.arguments.command.substring(0, argsMaxLength)
-        : source.arguments.command;
-  }
-
-  const msg: TUIMessage = {
-    id: "id" in source ? source.id : (existing?.id ?? secureRandomString(8)),
-    timestamp:
-      "timestamp" in source
-        ? source.timestamp
-        : (existing?.timestamp ?? Date.now()),
-    role: "tool",
-    label: "name" in source ? source.name : (existing?.label ?? ""),
-    header: args,
-    content: tail,
-    durationMs: existing?.durationMs ? existing.durationMs : 0,
-  };
-  return msg;
 }
 
 export async function streamTUI(state: TUIState) {

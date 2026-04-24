@@ -19,13 +19,13 @@ function getModelConfig(modelName: string, provider: KnownProvider) {
 // TODO: For when the user set's thinking value.
 // function _isThinkingLevel(value: string): value is ThinkingLevel {
 //   const THINKING_LEVELS = ["low", "medium", "minimal", "high", "xhigh"]
-//   return (THINKING_LEVELS as readonly string[]).includes(value);
+//   return (THINKING_LEVELS as readkonly string[]).includes(value);
 // }
 
 export async function handleArgv(argv: string[]): Promise<CliOptions> {
   // TODO: Fetch defaults from settings file
   let options: CliOptions = {
-    model: getModelConfig("gpt-5.4", "openai-codex"),
+    model: getModelConfig("gpt-5.5", "openai-codex"),
     effort: "xhigh" as ThinkingLevel,
   };
 

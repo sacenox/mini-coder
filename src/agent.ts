@@ -1,3 +1,4 @@
+import { readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import {
@@ -9,6 +10,7 @@ import {
   streamSimple,
   type ToolResultMessage,
 } from "@mariozechner/pi-ai";
+import { parseSkillFrontmatter } from "./shared";
 import type { CliOptions, ToolAndRunner } from "./types";
 
 export const TASK_PROMPT = `# You are "mini-coder", an elite coding agent.
@@ -40,7 +42,76 @@ export async function getAGENTSFiles() {
     content.push(await localFile.text());
   }
 
-  return content.join("\n\n");
+  return content.join("\n\n").trim();
+}
+
+// `SKILLS.md` discovery from [~.]/agents/skills/*/SKILL.md
+export async function getSkills(): Promise<string> {
+  let skillsBlock: string = "";
+  const skillRoots = [
+    join(homedir(), ".agents", "skills"),
+    join(process.cwd(), ".agents", "skills"),
+  ];
+
+  for (const root of skillRoots) {
+    let entries: string[];
+
+    try {
+      entries = await readdir(root);
+    } catch {
+      continue;
+    }
+
+    for (const entry of entries) {
+      const path = join(root, entry, "SKILL.md");
+      const file = Bun.file(path);
+
+      if (!(await file.exists())) {
+        continue;
+      }
+
+      const parsed = parseSkillFrontmatter(await file.text());
+
+      if (!parsed) {
+        continue;
+      }
+
+      skillsBlock += `## ${parsed.name}
+
+> File: ${path}
+
+${parsed.description}
+
+`;
+    }
+  }
+
+  if (!skillsBlock.length) return "";
+
+  const skills = `# Skills
+
+The following skills provide specialized instructions for specific tasks.
+Use the shell tool to read a skill's file when the task matches its description.
+
+${skillsBlock}`;
+
+  return skills.trim();
+}
+
+export async function buildSystemPrompt(systemPrompt: string) {
+  const agentsContent = await getAGENTSFiles();
+  const skillsContent = await getSkills();
+  let complete = systemPrompt;
+
+  if (skillsContent) {
+    complete += `\n${skillsContent}`;
+  }
+
+  if (agentsContent) {
+    complete += `\n${agentsContent}`;
+  }
+
+  return complete;
 }
 
 export async function streamAgent(
@@ -53,11 +124,8 @@ export async function streamAgent(
   toolsFn?: (tool: ToolResultMessage) => void,
   completeFn?: (msg: AssistantMessage, context: Context) => void,
 ) {
-  const agentsContent = await getAGENTSFiles();
-  const completeSystemPrompt = `${systemPrompt}\n${agentsContent}`;
-
   const context: Context = {
-    systemPrompt: completeSystemPrompt,
+    systemPrompt: await buildSystemPrompt(systemPrompt),
     messages,
     tools: tools.map((t) => t.tool),
   };
