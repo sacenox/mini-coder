@@ -43,6 +43,14 @@ export function createTUIToolMessage(
         : source.arguments.command;
   }
 
+  // Task tool call
+  if ("arguments" in source && "prompt" in source.arguments) {
+    args =
+      source.arguments?.prompt?.length > argsMaxLength
+        ? source.arguments.prompt.substring(0, argsMaxLength)
+        : source.arguments.prompt;
+  }
+
   // Edit tool call
   if ("arguments" in source && "path" in source.arguments) {
     const before = source.arguments.oldText;

@@ -13,17 +13,28 @@ import {
 import { parseSkillFrontmatter } from "./shared";
 import type { CliOptions, ToolAndRunner } from "./types";
 
-export const TASK_PROMPT = `# You are "mini-coder", an elite coding agent.
+const IDENTITY_PROMPT = `# You are "mini-coder", an elite coding agent.
 
 Behaviour guidelines:
 
+- Tone: use a jovial but motivated colleague persona. Be less verbose and more concise. You are working with software engineers, act appropriately, no fluff, only direct talk.`;
+
+export const MAIN_PROMPT = `${IDENTITY_PROMPT}
 - Answer all user questions without guessing, or assuming.
+- Use recent online information, the current environment, and your training data combined for a complete answer.
+- Once you've gathered enough information to complete the request, stop exploring and complete it.
+- Use the \`task()\` tool to complete your work. Define a plan with the user, break it down into tasks, and use the tool.
+- Be careful with overlapping work when using \`task()\` in parallel.
+- Be careful with existing changes and destructive commands, they could harm your user's changes.
+`;
+
+export const TASK_PROMPT = `${IDENTITY_PROMPT}
 - Use recent online information, the current environment, and your training data combined for a complete answer.
 - Once you've gathered enough information to complete the request, stop exploring and complete the task.
 - When completing a task, ensure that you fulfill the contract **exactly**.
+- Always verify your changes using compilation, testing, and manual verification when possible.
 - Use temp directory for temp files, scripts or anything that doesn't match the requested output.
 - Be careful with existing changes and destructive commands, they could harm your user's changes.
-- Tone: use a jovial but motivated colleague persona. Be less verbose and more concise. You are working with software engineers, act appropriately, no fluff, only direct talk.
 `;
 
 // `AGENTS.md` support: find it in current folder (./AGENTS.md) and a global one. (`.agents/AGENTS.md`)
@@ -123,8 +134,8 @@ export async function streamAgent(
   messages: Message[],
   options: CliOptions,
   abortController?: AbortController,
-  streamFn?: (ev: AssistantMessageEvent) => void,
-  toolsFn?: (tool: ToolResultMessage) => void,
+  streamFn?: (ev: AssistantMessageEvent, context: Context) => void,
+  toolsFn?: (tool: ToolResultMessage, context: Context) => void,
   completeFn?: (msg: AssistantMessage, context: Context) => void,
 ) {
   const context: Context = {
@@ -133,21 +144,23 @@ export async function streamAgent(
     tools: tools.map((t) => t.tool),
   };
 
-  let controller: AbortController
-  const onAbort = () => { controller?.abort(); }
+  let controller: AbortController;
+  const onAbort = () => {
+    controller?.abort();
+  };
   // Wire the global abort signal to each turn http requests
-  abortController?.signal.addEventListener('abort', onAbort)
+  abortController?.signal.addEventListener("abort", onAbort);
 
   while (true) {
-    controller = new AbortController()
+    controller = new AbortController();
     const s = streamSimple(options.model, context, {
       apiKey,
       reasoning: options.effort,
-      signal: controller.signal
+      signal: controller.signal,
     });
 
     for await (const ev of s) {
-      streamFn?.(ev);
+      streamFn?.(ev, context);
     }
 
     const finalMessage = await s.result();
@@ -155,7 +168,7 @@ export async function streamAgent(
 
     if (["stop", "error", "aborted"].includes(finalMessage.stopReason)) {
       completeFn?.(finalMessage, context);
-      abortController?.signal.removeEventListener('abort', onAbort)
+      abortController?.signal.removeEventListener("abort", onAbort);
       return;
     }
 
@@ -175,7 +188,7 @@ export async function streamAgent(
         timestamp: Date.now(),
       };
       context.messages.push(msg);
-      toolsFn?.(msg);
+      toolsFn?.(msg, context);
     }
 
     if (toolCalls.length > 0) {
@@ -183,7 +196,7 @@ export async function streamAgent(
       //       we add { apiKey } in this call. And how does it work without it?
       const cont = await completeSimple(options.model, context, {
         reasoning: options.effort,
-        signal: controller.signal
+        signal: controller.signal,
       });
       context.messages.push(cont);
     }

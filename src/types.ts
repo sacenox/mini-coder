@@ -8,7 +8,12 @@ export type CliOptions = {
   jsonOutput?: boolean;
 };
 
-export type TUIActiveState = "idle" | "thinking" | "answering" | "calling_tool";
+export type TUIActiveState =
+  | "idle"
+  | "waiting"
+  | "thinking"
+  | "answering"
+  | "calling_tool";
 
 export type TUIMessage = {
   content: string;
@@ -29,7 +34,7 @@ export type TUIState = {
   streaming: boolean;
   stickToBottom: boolean;
   scrollOffset: number;
-  abortController: AbortController;
+  abortController?: AbortController;
 };
 
 export type SavedOAuthAuth = OAuthCredentials & {

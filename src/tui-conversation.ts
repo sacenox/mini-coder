@@ -53,7 +53,7 @@ function toolMessageNode(msg: TUIMessage): Node {
     memoizedSyntaxHighlight(
       msg.id ?? String(msg.timestamp),
       msg.header ?? "",
-      "bash",
+      msg.label === "bash" ? "bash" : "markdown",
     ),
     Text(msg.content, { wrap: "word", fgColor: theme.bblack }),
   ]);

@@ -2,7 +2,7 @@
 
 A new version of mini-coder, written from the ground up as library first, plugins.
 Version `mini-coder@0.5.x` is currently stable and mostly complete, that's our reference implementation.
-Benchmarking from the start, keep the agent dumb, build the plugin-library-first architecture, then
+Benchmarking from the start, keep the agent dumb, build the library-first architecture, then
 run an automated benchmarking loop to shape/hone the harness.
 
 ## Dog-fooding

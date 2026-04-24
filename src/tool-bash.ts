@@ -27,11 +27,10 @@ Current working directory: ${process.cwd()}
 
 export const bash: Tool = {
   name: "bash",
-  description:
-    "This is your command line, run commands in your user's environment.",
+  description,
   parameters: Type.Object({
     command: Type.String({
-      description,
+      description: "The command you want to run on the user's environment.",
     }),
   }),
 };
