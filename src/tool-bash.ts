@@ -41,9 +41,9 @@ export async function runBashTool(args: Record<string, any>) {
     stdout: "pipe",
     stderr: "pipe",
   });
-  await proc.exited;
   const stdout = (await proc.stdout.text()).trim();
   const stderr = (await proc.stderr?.text())?.trim();
+  await proc.exited;
 
   let out = `# EXIT CODE: ${proc.exitCode}`;
   if (stderr.length) {

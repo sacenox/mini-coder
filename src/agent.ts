@@ -152,6 +152,13 @@ export async function streamAgent(
 
     const finalMessage = await s.result();
     context.messages.push(finalMessage);
+
+    if (["stop", "error", "aborted"].includes(finalMessage.stopReason)) {
+      completeFn?.(finalMessage, context);
+      abortController?.signal.removeEventListener('abort', onAbort)
+      return;
+    }
+
     const toolCalls = finalMessage.content.filter(
       (msg) => msg.type === "toolCall",
     );
@@ -171,7 +178,7 @@ export async function streamAgent(
       toolsFn?.(msg);
     }
 
-    if (toolCalls.length > 0 && !["error", "aborted"].includes(finalMessage.stopReason)) {
+    if (toolCalls.length > 0) {
       // TODO: Investigate why we get an error: `No output for tool call id XXXX...` when
       //       we add { apiKey } in this call. And how does it work without it?
       const cont = await completeSimple(options.model, context, {
@@ -179,12 +186,6 @@ export async function streamAgent(
         signal: controller.signal
       });
       context.messages.push(cont);
-    }
-
-    if (["stop", "error", "aborted"].includes(finalMessage.stopReason)) {
-      completeFn?.(finalMessage, context);
-      abortController?.signal.removeEventListener('abort', onAbort)
-      return;
     }
   }
 }

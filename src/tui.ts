@@ -3,7 +3,7 @@ import { cel, HStack, ProcessTerminal, Text, VStack } from "@cel-tui/core";
 import type { Message } from "@mariozechner/pi-ai";
 import { streamAgent, TASK_PROMPT } from "./agent";
 import { getApiKey } from "./oauth";
-import { secureRandomString } from "./shared";
+import { estimateTokens, secureRandomString } from "./shared";
 import { bash, runBashTool } from "./tool-bash";
 import { edit, runEditTool } from "./tool-edit";
 import { ActivityPill, Spinner, TextPill, theme } from "./tui-components";
@@ -23,6 +23,20 @@ function clearOrAbort(state: TUIState) {
   if (state.prompt?.length) {
     state.prompt = ""
   }
+}
+
+function ContextPill(state: TUIState) {
+  let text = ""
+  if (!state.context) {
+    text = "0%"
+  } else {
+    const current = estimateTokens(JSON.stringify(state.context))
+    const max = state.options.model.maxTokens
+    const percent = Math.round((current/max)*100)
+    text = `~${percent}%`
+  }
+
+  return TextPill(text, theme.bblack, theme.bwhite)
 }
 
 export function initTUI(state: TUIState, leave: (s: string) => void) {
@@ -67,7 +81,8 @@ export function initTUI(state: TUIState, leave: (s: string) => void) {
           TextPill(state.options.model.name, theme.bblack, theme.bwhite),
           TextPill(`../${cwd}`, theme.bwhite, theme.bblack),
           VStack({ flex: 1 }, []),
-          ActivityPill(state, currentSpinner())
+          ActivityPill(state, currentSpinner()),
+          ContextPill(state),
         ]),
 
         Editor(

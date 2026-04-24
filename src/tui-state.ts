@@ -14,7 +14,7 @@ export function createTUIToolMessage(
   // was truncated at tool level to the user.
 
   // Join text if there is more than one block.
-  const showLines = 6;
+  const showLines = 10;
   const content = "content" in source ? source.content : [];
   const text = content.length
     ? content

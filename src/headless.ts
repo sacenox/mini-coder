@@ -42,9 +42,6 @@ export async function streamHeadless(
         case "thinking_start":
           log("> Thinking...");
           break;
-        case "toolcall_start":
-          log(`> Calling tool...`);
-          break;
         case "toolcall_end":
           log(`> ${ev.toolCall.name}: ${ev.toolCall.arguments.command}`);
           break;
@@ -65,7 +62,7 @@ export async function streamHeadless(
       log(`Cost: $${msg.usage.cost.total.toFixed(4)}`);
 
       if (options.jsonOutput) {
-        console.log(JSON.stringify(msg, null, 4));
+        console.log(JSON.stringify(messages, null, 4));
       }
 
       if (["stop", "error", "aborted"].includes(msg.stopReason)) {
