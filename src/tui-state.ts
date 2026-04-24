@@ -1,5 +1,5 @@
 import type { ToolCall, ToolResultMessage } from "@mariozechner/pi-ai";
-import { extimateTokens, secureRandomString, takeTail } from "./shared";
+import { estimateTokens, secureRandomString, takeTail } from "./shared";
 import type { TUIMessage } from "./types";
 
 // Create the TUIState message for context tool call and result.
@@ -32,8 +32,8 @@ export function createTUIToolMessage(
 
   // Now the similar cut is needed in arguments, but here we care about
   // seeing the start of the command, like `cd bla/ && cat ...`
-  const argsMaxLength = 100 * showLines; // estimaded by 100 char line width times X lines.
-  let args = existing?.header ?? "Writting...";
+  const argsMaxLength = 100 * showLines; // estimated by 100 char line width times X lines.
+  let args = existing?.header ?? "Writing...";
 
   // Shell tool call
   if ("arguments" in source && "command" in source.arguments) {
@@ -47,10 +47,10 @@ export function createTUIToolMessage(
   if ("arguments" in source && "path" in source.arguments) {
     const before = source.arguments.oldText;
     const after = source.arguments.newText;
-    const tokensWritten = extimateTokens(
+    const tokensWritten = estimateTokens(
       [source.arguments.path, before, after].join(""),
     );
-    args = `Wrote ~${tokensWritten}t`;
+    args = `Wrote ~${tokensWritten} tokens.`;
   }
 
   const msg: TUIMessage = {

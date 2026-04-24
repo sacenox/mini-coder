@@ -2,7 +2,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { parseDocument } from "yaml";
 
-// Mixed bag of helpers that can be shared accross the codebase
+// Mixed bag of helpers that can be shared across the codebase
 
 export const DATA_DIR = join(homedir(), ".config", "mini-coder");
 export const AUTH_PATH = join(DATA_DIR, "auth.json");
@@ -77,7 +77,7 @@ export function takeTail<T>(arr: T[], x: number): T[] {
   return x <= 0 ? [] : arr.slice(-x);
 }
 
-export function extimateTokens(text: string): number {
+export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 

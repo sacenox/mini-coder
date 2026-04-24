@@ -1,10 +1,11 @@
 import { isAbsolute, join } from "node:path";
 import { type Tool, Type } from "@mariozechner/pi-ai";
+import { createPatch } from "diff";
 
 export const edit: Tool = {
   name: `edit`,
   description:
-    "This is your edit tool, use it to create or edit files safely. Always prefer this tool over bash editting methods.",
+    "This is your edit tool, use it to create or edit files safely. Always prefer this tool over bash editing methods.",
   parameters: Type.Object({
     path: Type.String({
       description: "File path (absolute or relative to cwd)",
@@ -47,7 +48,7 @@ export async function runEditTool(args: Record<string, any>) {
     }
 
     await Bun.write(file, args.newText);
-    return `File written: ${filePath}`;
+    return `File written: ${filePath}\n\n${args.newText}`;
   }
 
   if (!exists) {
@@ -62,7 +63,7 @@ export async function runEditTool(args: Record<string, any>) {
   }
 
   if (matches.length > 1) {
-    return `Multiple matches found in ${filePath}: ${matches.length} matches`;
+    return `Multiple matches found in ${filePath}: ${matches.length} matches, be more specific and try again`;
   }
 
   const idx = matches[0];
@@ -72,5 +73,7 @@ export async function runEditTool(args: Record<string, any>) {
     content.slice(idx + args.oldText.length);
 
   await file.write(updated);
-  return `Edited: ${filePath}`;
+  const patch = createPatch(filePath, content, updated);
+
+  return `File edited: ${filePath}\n\n${patch}`;
 }

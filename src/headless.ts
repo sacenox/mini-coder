@@ -7,7 +7,7 @@ import type { CliOptions, ToolAndRunner } from "./types";
 
 export async function streamHeadless(
   options: CliOptions,
-  leave: (s: string) => void,
+  leave: (s?: string) => void,
 ) {
   const lastTs = Date.now();
   const apiKey = await getApiKey(options);
@@ -19,8 +19,13 @@ export async function streamHeadless(
     { role: "user", content: options.prompt || "", timestamp: Date.now() },
   ];
 
-  console.log("mini-coder headless");
-  console.log("-------------------");
+  function log(msg: string) {
+    if (options.jsonOutput) return;
+    console.log(msg);
+  }
+
+  log("mini-coder headless");
+  log("-------------------");
 
   await streamAgent(
     apiKey,
@@ -31,21 +36,19 @@ export async function streamHeadless(
     (ev) => {
       switch (ev.type) {
         case "text_start":
-          console.log("> Answering...");
+          log("> Answering...");
           break;
         case "thinking_start":
-          console.log("> Thinking...");
+          log("> Thinking...");
           break;
         case "toolcall_start":
-          console.log(`> Calling tool...`);
+          log(`> Calling tool...`);
           break;
         case "toolcall_end":
-          console.log(
-            `> ${ev.toolCall.name}: ${ev.toolCall.arguments.command}`,
-          );
+          log(`> ${ev.toolCall.name}: ${ev.toolCall.arguments.command}`);
           break;
         case "error":
-          console.log(`Error ${ev.reason}\n${ev.error.content}`);
+          log(`Error ${ev.reason}\n${ev.error.content}`);
           break;
       }
     },
@@ -55,15 +58,22 @@ export async function streamHeadless(
         .filter((c) => c.type === "text")
         .map((c) => c.text)
         .join("\n");
-      console.log(`\n${text}`);
-      console.log(
-        `\nTotal tokens: ${msg.usage.input} in, ${msg.usage.output} out`,
-      );
-      console.log(`Cost: $${msg.usage.cost.total.toFixed(4)}`);
+
+      log(`\n${text}`);
+      log(`\nTotal tokens: ${msg.usage.input} in, ${msg.usage.output} out`);
+      log(`Cost: $${msg.usage.cost.total.toFixed(4)}`);
+
+      if (options.jsonOutput) {
+        console.log(JSON.stringify(msg, null, 4));
+      }
 
       if (["stop", "error", "aborted"].includes(msg.stopReason)) {
-        console.log(`Reason for stopping: "${msg.stopReason}"`);
-        leave(`Done. Took ${(Date.now() - lastTs) / 1000}s`);
+        log(`Reason for stopping: "${msg.stopReason}"`);
+        leave(
+          !options.jsonOutput
+            ? `Done. Took ${(Date.now() - lastTs) / 1000}s`
+            : undefined,
+        );
       }
     },
   );

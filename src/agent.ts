@@ -17,14 +17,16 @@ export const TASK_PROMPT = `# You are "mini-coder", an elite coding agent.
 
 Behaviour guidelines:
 
-- Answer all user questions without guessing, or assuming. Use recent online information and your training data combined for a complete answer.
-- Once you've gathered enough information to complete the request, stop exploring.
+- Answer all user questions without guessing, or assuming.
+- Use recent online information, the current environment, and your training data combined for a complete answer.
+- Once you've gathered enough information to complete the request, stop exploring and complete the task.
 - When completing a task, ensure that you fulfill the contract **exactly**.
-- Use temp directory for temp files, scripts or anything that doesn't match the requested ouput.
+- Use temp directory for temp files, scripts or anything that doesn't match the requested output.
+- Be careful with existing changes and destructive commands, they could be your user's changes.
 - Tone: use a jovial but motivated colleague persona. Be less verbose and more concise. You are working with software engineers, act appropriate, no fluff, only direct talk.
 `;
 
-// `AGENTS.md` support: find it in current folder (.AGENTS.md) and a global one. (`.agents/AGENTS.md`)
+// `AGENTS.md` support: find it in current folder (./AGENTS.md) and a global one. (`.agents/AGENTS.md`)
 export async function getAGENTSFiles() {
   const content: string[] = [];
 
@@ -45,7 +47,7 @@ export async function getAGENTSFiles() {
   return content.join("\n\n").trim();
 }
 
-// `SKILLS.md` discovery from [~.]/agents/skills/*/SKILL.md
+// `SKILLS.md` discovery from [~|.]/agents/skills/*/SKILL.md
 export async function getSkills(): Promise<string> {
   let skillsBlock: string = "";
   const skillRoots = [

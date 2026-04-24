@@ -2,7 +2,7 @@
 
 Harbor is installed in this system with `pipx harbor`.
 You will need to create a custom agent for your implementation.
-keep the benchmark jobs in `benchmark-jobs/*` folder at the root of the repo.
+keep the benchmark jobs in `benchmarks/jobs/*` folder at the root of the repo.
 Never run harbor evals with more than 2 concurrent evals, be aware of rate limits.
 
 ---
@@ -30,7 +30,7 @@ harbor run \
 
 ## Testing your own agent
 
-See our docs on [agents](/docs/agents) (pasted bellow) for more information on how to test your own agent on Terminal-Bench.
+See our docs on [agents](/docs/agents) (pasted below) for more information on how to test your own agent on Terminal-Bench.
 
 ## Submitting to the Terminal-Bench leaderboard
 

@@ -2,9 +2,10 @@ import type { Context, Model, ThinkingLevel, Tool } from "@mariozechner/pi-ai";
 import type { OAuthCredentials } from "@mariozechner/pi-ai/oauth";
 
 export type CliOptions = {
-  prompt?: string;
   model: Model<never>;
   effort: ThinkingLevel;
+  prompt?: string;
+  jsonOutput?: boolean;
 };
 
 export type TUIActiveState = "idle" | "thinking" | "answering" | "calling_tool";

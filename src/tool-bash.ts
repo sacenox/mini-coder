@@ -1,7 +1,7 @@
 import { type Tool, Type } from "@mariozechner/pi-ai";
 import { secureRandomString } from "./shared";
 
-const OUTPUT_TRESHOLD = 10000;
+const OUTPUT_THRESHOLD = 10000;
 const description = `## Bash CLI tool
 
 Best practices using this tool:
@@ -63,13 +63,13 @@ ${stdout}`;
   // And add that to the truncation label for the agent to be able
   // to continue the read with scans. This is to protect context,
   // not a general read guard. The hint is for the agent, not the TUI
-  if (out.length > OUTPUT_TRESHOLD) {
+  if (out.length > OUTPUT_THRESHOLD) {
     const key = `${Date.now()}-${secureRandomString(4)}`;
     const pathname = `/tmp/bash_result_${key}.txt`;
     await Bun.write(pathname, out);
-    out = `${out.substring(0, OUTPUT_TRESHOLD)}
+    out = `${out.substring(0, OUTPUT_THRESHOLD)}
 
-Truncated at ${OUTPUT_TRESHOLD}. Full ouput at ${pathname}`;
+Truncated at ${OUTPUT_THRESHOLD}. Full output at ${pathname}`;
   }
 
   return out;

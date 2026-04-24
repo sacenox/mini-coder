@@ -3,13 +3,13 @@ import { streamHeadless } from "./headless.ts";
 import { initTUI } from "./tui.ts";
 import type { TUIActiveState, TUIState } from "./types.ts";
 
-function leave(msg: string) {
-  console.log(msg);
-  process.exit(0);
-}
-
 export async function main(): Promise<void> {
   const options = await handleArgv(process.argv.slice(2));
+
+  function leave(msg?: string) {
+    if (msg) console.log(msg);
+    process.exit(0);
+  }
 
   if (options.prompt) {
     await streamHeadless(options, leave);

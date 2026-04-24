@@ -11,7 +11,7 @@
     "check": "bun run lint && bun run typecheck",
     "lint": "bun run biome check --write .",
     "typecheck": "bun run tsc -p tsconfig.json --noEmit",
-    "format": "bun run prettier --write *.md && bun run biome format --write ."
+    "format": "bun run prettier --write *.md && bun run biome format --write . && bun run biome check --write ."
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.12",
@@ -23,6 +23,7 @@
     "@cel-tui/components": "^0.8.1",
     "@cel-tui/core": "^0.8.1",
     "@mariozechner/pi-ai": "^0.70.0",
+    "diff": "^9.0.0",
     "yaml": "^2.8.3"
   }
 }

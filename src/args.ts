@@ -16,10 +16,10 @@ function getModelConfig(modelName: string, provider: KnownProvider) {
   return model;
 }
 
-// TODO: For when the user set's thinking value.
+// TODO: For when the user sets thinking value.
 // function _isThinkingLevel(value: string): value is ThinkingLevel {
 //   const THINKING_LEVELS = ["low", "medium", "minimal", "high", "xhigh"]
-//   return (THINKING_LEVELS as readkonly string[]).includes(value);
+//   return (THINKING_LEVELS as readonly string[]).includes(value);
 // }
 
 export async function handleArgv(argv: string[]): Promise<CliOptions> {
@@ -34,6 +34,10 @@ export async function handleArgv(argv: string[]): Promise<CliOptions> {
 
     if (flag === "--prompt" || flag === "-p") {
       options = { ...options, prompt: argv[i + 1] };
+    }
+
+    if (flag === "--json" || flag === "-j") {
+      options = { ...options, jsonOutput: true };
     }
 
     if (flag === "--login" || flag === "-l") {
