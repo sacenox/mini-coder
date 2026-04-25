@@ -20,8 +20,8 @@
     "typescript": "^6.0.3"
   },
   "dependencies": {
-    "@cel-tui/components": "^0.8.1",
-    "@cel-tui/core": "^0.8.1",
+    "@cel-tui/components": "^0.8.2",
+    "@cel-tui/core": "^0.8.2",
     "@mariozechner/pi-ai": "^0.70.2",
     "diff": "^9.0.0",
     "simple-git": "^3.36.0",

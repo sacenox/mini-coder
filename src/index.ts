@@ -1,7 +1,7 @@
 import { handleArgv } from "./args.ts";
 import { streamHeadless } from "./headless.ts";
 import { initTUI } from "./tui.ts";
-import type { TUIActiveState, TUIState } from "./types.ts";
+import type { TUIState } from "./types.ts";
 
 export async function main(): Promise<void> {
   const options = await handleArgv(process.argv.slice(2));
@@ -20,7 +20,6 @@ export async function main(): Promise<void> {
     options,
     prompt: "",
     messages: [],
-    activeState: "idle" as TUIActiveState,
     streaming: false,
     stickToBottom: true,
     scrollOffset: 0,

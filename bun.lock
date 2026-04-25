@@ -115,13 +115,13 @@
 
     "@biomejs/cli-win32-x64": ["@biomejs/cli-win32-x64@2.4.13", "", { "os": "win32", "cpu": "x64" }, "sha512-tTcMkXyBrmHi9BfrD2VNHs/5rYIUKETqsBlYOvSAABwBkJhSDVb5e7wPukftsQbO3WzQkXe6kaztC6WtUOXSoQ=="],
 
-    "@cel-tui/clew": ["@cel-tui/clew@0.8.1", "", { "peerDependencies": { "typescript": ">=5.0.0" } }, "sha512-4X021mpOQYSPR2HzmSMoxSX3wn6zoGpCgUPePdJPTy/IQe0N0vRLooDVZr74uVaUt8UxHLYUrH4WN7DuJq/YqA=="],
+    "@cel-tui/clew": ["@cel-tui/clew@0.8.2", "", { "peerDependencies": { "typescript": ">=5.0.0" } }, "sha512-7IYKc8Pe+CCUngw9jpgNDc6LgJoPEDUr0Pqu1uNrTdwFMBaiGirV8b5Z/UbQ7/CtIyPnVDyNO2qAY/wOJNGidg=="],
 
-    "@cel-tui/components": ["@cel-tui/components@0.8.1", "", { "dependencies": { "@cel-tui/clew": "0.8.1", "@cel-tui/core": "0.8.1", "@cel-tui/types": "0.8.1", "yoctomarkdown": "^0.1.0" }, "peerDependencies": { "typescript": ">=5.0.0" } }, "sha512-lAtTk0ECLTrcQrXEtRCrY2/o+nRNP3ygItRcBe1TSa4Je4saAW5FjBRzqbOO/lQ0zhdhaxoWugMdKMRZHcc/Ww=="],
+    "@cel-tui/components": ["@cel-tui/components@0.8.2", "", { "dependencies": { "@cel-tui/clew": "0.8.2", "@cel-tui/core": "0.8.2", "@cel-tui/types": "0.8.2", "yoctomarkdown": "^0.1.0" }, "peerDependencies": { "typescript": ">=5.0.0" } }, "sha512-mc1CLy/EzPIpK8kxTw4CSH8XMKoXOcqTdoUx158wfFyGNO/rROEjs941Qo/D5k+VhodUlzFMj+PMzQQjrdgpeg=="],
 
-    "@cel-tui/core": ["@cel-tui/core@0.8.1", "", { "dependencies": { "@cel-tui/types": "0.8.1", "get-east-asian-width": "^1.5.0" }, "peerDependencies": { "typescript": ">=5.0.0" } }, "sha512-ShYX/p7YaD4gCOEEZA7wKxOUQn0NblB1YGEvxqvrZi2TxgA3arUh/+o287RnPYJN5idDNHr0Obe3Aaio6YaJkQ=="],
+    "@cel-tui/core": ["@cel-tui/core@0.8.2", "", { "dependencies": { "@cel-tui/types": "0.8.2", "get-east-asian-width": "^1.5.0" }, "peerDependencies": { "typescript": ">=5.0.0" } }, "sha512-VMrPiqYHJKpqj1cCgUni8aM4etzG5y60tmsTBcDrhGisbS02GUpv6pmXp95U0O6VVLLYzmHtoXIwAyOTfWNRjA=="],
 
-    "@cel-tui/types": ["@cel-tui/types@0.8.1", "", { "peerDependencies": { "typescript": ">=5.0.0" } }, "sha512-Z0ehxq2f0nnV5Ia4af7xs0WgqTp9/okfmNVusTG+G5/tfcnH7bTMKbLECLmokx/MqF+a4Gcw0wwpBz3obghFeA=="],
+    "@cel-tui/types": ["@cel-tui/types@0.8.2", "", { "peerDependencies": { "typescript": ">=5.0.0" } }, "sha512-OwaX9IZHnJO0QJ9TtKx/9LhUG/E9lWds40fkq8kgLOxcb4DHBs2xRKCBoQKOh98zsitD5NLXl7125C6Dlbk+FA=="],
 
     "@google/genai": ["@google/genai@1.50.1", "", { "dependencies": { "google-auth-library": "^10.3.0", "p-retry": "^4.6.2", "protobufjs": "^7.5.4", "ws": "^8.18.0" }, "peerDependencies": { "@modelcontextprotocol/sdk": "^1.25.2" }, "optionalPeers": ["@modelcontextprotocol/sdk"] }, "sha512-YbkX7H9+1Pt8wOt7DDREy8XSoiL6fRDzZQRyaVBarFf8MR3zHGqVdvM4cLbDXqPhxqvegZShgfxb8kw9C7YhAQ=="],
 

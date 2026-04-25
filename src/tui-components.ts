@@ -91,14 +91,25 @@ export function Spinner() {
 }
 
 export function ActivityPill(state: TUIState, spinnerFrame: string) {
-  let label = state.activeState.replaceAll("_", " ");
-  const fg = state.streaming ? theme.bblack : theme.bwhite;
-  const bg = state.streaming ? theme.bwhite : theme.bblack;
+  let label = "idle";
   const frame = state.streaming ? spinnerFrame : "";
 
   if (frame) {
-    label += ` ${frame}`;
+    label = frame;
   }
 
-  return TextPill(label, fg, bg);
+  return Text(label);
+}
+
+export function ContextPill(state: TUIState) {
+  let text = "";
+  if (!state.contextSize) {
+    text = "0%";
+  } else {
+    const max = state.options.model.contextWindow;
+    const percent = Math.floor((state.contextSize / max) * 100);
+    text = `~${percent}%`;
+  }
+
+  return TextPill(text, theme.bblack, theme.bwhite);
 }
