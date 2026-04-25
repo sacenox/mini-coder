@@ -41,7 +41,9 @@ export async function streamHeadless(
         break;
       case "toolcall_end":
         // TODO: other tools output
-        log({ msg: `> ${ev.toolCall.name}: ${ev.toolCall.arguments.command}` });
+        log({
+          msg: `> ${ev.toolCall.name}: ${JSON.stringify(ev.toolCall.arguments)}`,
+        });
         break;
       case "error":
         log({ msg: `> Error ${ev.reason}\n${ev.error.content}` });
@@ -58,14 +60,15 @@ export async function streamHeadless(
     let text = tool.content
       .filter((c) => c.type === "text")
       .map((c) => c.text)
-      .join("\n").slice(-400);
+      .join("\n")
+      .slice(-400);
 
     if (text.length === 400) {
-      text += `...${text}`
+      text = `...${text}`;
     }
 
     log({
-      msg: `> ${tool.toolName} output:\n---\n${text}\n---\n`,
+      msg: `> ${tool.toolName} output:\n---\n${text}\n---`,
       json: JSON.stringify(tool),
     });
   };
@@ -74,7 +77,7 @@ export async function streamHeadless(
     log({
       msg: `\nTotal tokens: ${msg.usage.input} in, ${msg.usage.output} out`,
     });
-    log({ msg: `Cost: $${msg.usage.cost.total.toFixed(4)}` });
+    log({ msg: `Cost: $${msg.usage.cost.total.toFixed(4)}\n` });
 
     if (["stop", "error", "aborted"].includes(msg.stopReason)) {
       log({ msg: `Reason for stopping: "${msg.stopReason}"` });

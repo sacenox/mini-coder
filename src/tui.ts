@@ -28,6 +28,7 @@ function clearOrAbort(state: TUIState) {
   // Is the user clearing a state prompt?
   if (state.prompt?.length) {
     state.prompt = "";
+    cel.render();
   }
 }
 
@@ -38,7 +39,7 @@ function ContextPill(state: TUIState) {
   } else {
     const current = estimateTokens(JSON.stringify(state.context));
     const max = state.options.model.contextWindow;
-    const percent = Math.round((current / max) * 100);
+    const percent = Math.floor((current / max) * 100);
     text = `~${percent}%`;
   }
 
@@ -49,14 +50,14 @@ export function initTUI(state: TUIState, leave: (s: string) => void) {
   const cwd = basename(process.cwd());
   const { spinnerEvery, currentSpinner } = Spinner();
 
-  // Because we don't render often, the ui feels unresponsive at times.
+  // Spinner and animations timer.
   // This ensure Xfps, and excessive calls get coalesced in cel-tui.
-  const fps = 60;
+  const fps = 30;
   const baseFramerateIntervalId = setInterval(() => {
     if (state.streaming) {
       spinnerEvery();
+      cel.render();
     }
-    cel.render();
   }, 1000 / fps);
 
   cel.init(new ProcessTerminal());

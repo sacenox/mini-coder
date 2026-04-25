@@ -1,5 +1,3 @@
-# TODO: `LocalMiniCoderAgent` so we can run terminal bench with our current local modified code.
-
 from __future__ import annotations
 
 import json

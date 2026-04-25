@@ -1,7 +1,7 @@
 import { type Tool, Type } from "@mariozechner/pi-ai";
 import { secureRandomString } from "./shared";
 
-const OUTPUT_THRESHOLD = 10000;
+const OUTPUT_THRESHOLD = 16000;
 const description = `## Bash CLI tool
 
 Best practices using this tool:
@@ -39,26 +39,33 @@ export async function runBashTool(args: Record<string, any>) {
   const proc = Bun.spawn(["bash", "-c", args.command], {
     stdout: "pipe",
     stderr: "pipe",
+    env: {
+      ...Bun.env,
+      NO_COLOR: "1",
+    },
   });
-  const stdout = (await proc.stdout.text()).trim();
-  const stderr = (await proc.stderr?.text())?.trim();
-  await proc.exited;
 
-  let out = `# EXIT CODE: ${proc.exitCode}`;
+  const [stdout, stderr, exitCode] = await Promise.all([
+    proc.stdout.text(),
+    proc.stderr.text(),
+    proc.exited,
+  ]);
+
+  let out = `# EXIT CODE: ${exitCode}`;
   if (stderr.length) {
     out += `
 # STDERR:
 
-${stderr}`;
+${Bun.stripANSI(stderr)}`;
   }
   if (stdout.length) {
     out += `
 # STDOUT:
 
-${stdout}`;
+${Bun.stripANSI(stdout)}`;
   }
 
-  // If `out` is too big, more than ~10KB, write it to a temp file
+  // If `out` is too big, more than ~XXKB, write it to a temp file
   // And add that to the truncation label for the agent to be able
   // to continue the read with scans. This is to protect context,
   // not a general read guard. The hint is for the agent, not the TUI
@@ -68,7 +75,7 @@ ${stdout}`;
     await Bun.write(pathname, out);
     out = `${out.substring(0, OUTPUT_THRESHOLD)}
 
-Truncated at ${OUTPUT_THRESHOLD}. Full output at ${pathname}`;
+Truncated at ~${OUTPUT_THRESHOLD / 1000}KB. Full output at ${pathname}`;
   }
 
   return out;

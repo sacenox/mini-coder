@@ -5,12 +5,11 @@ import {
   type AssistantMessage,
   type AssistantMessageEvent,
   type Context,
-  completeSimple,
   type Message,
   streamSimple,
   type ToolResultMessage,
 } from "@mariozechner/pi-ai";
-import { simpleGit, type StatusResult } from "simple-git";
+import { type StatusResult, simpleGit } from "simple-git";
 import { parseSkillFrontmatter } from "./shared";
 import type { CliOptions, ToolAndRunner } from "./types";
 
@@ -76,11 +75,11 @@ export const TASK_PROMPT = `${IDENTITY_PROMPT}
 
 async function getEnvPrompt() {
   // TODO: What else do the agents always check before answering every time?
-  let gitStatus: StatusResult | {nogit: string};
+  let gitStatus: StatusResult | { nogit: string };
   try {
     gitStatus = await simpleGit().status();
   } catch (_) {
-    gitStatus = {nogit: "No git repo in this folder."};
+    gitStatus = { nogit: "No git repo in this folder." };
   }
   const envStatus = JSON.stringify(
     {
@@ -216,6 +215,7 @@ export async function streamAgent(
   const onAbort = () => {
     controller?.abort();
   };
+
   // Wire the global abort signal to each turn http requests
   abortController?.signal.addEventListener("abort", onAbort);
 
@@ -237,11 +237,12 @@ export async function streamAgent(
 
       // Check if the agent is done, or an error/abort happened before moving
       // on towards tool calling.
-      if (["stop", "error", "aborted"].includes(finalMessage.stopReason)) {
+      if (
+        ["stop", "error", "aborted", "length"].includes(finalMessage.stopReason)
+      ) {
         // Agent is done, send the final message, and current context.
         completeFn?.(finalMessage, context);
-        abortController?.signal.removeEventListener("abort", onAbort);
-        return;
+        break;
       }
 
       // Call tolls and per tool result callback.
@@ -250,29 +251,33 @@ export async function streamAgent(
       );
 
       for (const call of toolCalls) {
+        let output = "";
+        let isError = false;
         const toolDef = tools.find((i) => i.tool.name === call.name);
-        const result = (await toolDef?.runner(call.arguments)) || "";
+        if (toolDef) {
+          try {
+            output = await toolDef.runner(call.arguments);
+          } catch (err) {
+            const error = err instanceof Error ? err.message : "Unknown error";
+            output = `Tool call failed: ${error}`;
+            isError = true;
+          }
+        } else {
+          output = `Unknown tool: ${call.name}`;
+        }
+
         const msg: ToolResultMessage = {
           role: "toolResult",
           toolCallId: call.id,
           toolName: call.name,
-          content: [{ type: "text", text: result }],
-          isError: false,
+          content: [{ type: "text", text: output }],
+          isError,
           timestamp: Date.now(),
         };
         context.messages.push(msg);
 
         // Update with tool results.
         toolsFn?.(msg, context);
-      }
-
-      if (toolCalls.length > 0) {
-        const cont = await completeSimple(options.model, context, {
-          apiKey,
-          reasoning: options.effort,
-          signal: controller.signal,
-        });
-        context.messages.push(cont);
       }
     }
   } finally {
