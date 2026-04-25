@@ -16,12 +16,16 @@ const description = `## Task tool
 Best practices using this tool:
 
 - Use detailed prompts, be specific about the expected output and guardrails.
-- Task tool doesn't know your context, make sure include all relevant details.
+- Task tool doesn't know your context, make sure you include all relevant details.
 - Break your work down into small tasks, one small job for each task call.
-- Always prefer using this tool before any other specific tool.
 - Use this tool to explore directories, codebases and the web.
 - Use this tool to perform edits, run verifications, and review changes.
-- When describing edits, include detailed descriptions and validation requirements.`;
+- When describing edits, include detailed descriptions and validation requirements.
+- Always use it whenever more than one follow-up step is likely.
+- Always include all context, scope, constraints, and expected output.
+- Be careful with overlapping work when using \`task()\` in parallel.
+- Trust but verify the the task's output.
+`;
 
 export const task: Tool = {
   name: "task",
@@ -78,6 +82,8 @@ export async function runTaskTool(
     undefined,
     onComplete,
   );
+
+  // TODO: Structured footer for output and edit diffs.
 
   return output.trim();
 }

@@ -4,6 +4,8 @@ import type { Message } from "@mariozechner/pi-ai";
 import { MAIN_PROMPT, streamAgent } from "./agent";
 import { getApiKey } from "./oauth";
 import { estimateTokens, secureRandomString } from "./shared";
+import { bash, runBashTool } from "./tool-bash";
+import { edit, runEditTool } from "./tool-edit";
 import { runTaskTool, task } from "./tool-task";
 import { ActivityPill, Spinner, TextPill, theme } from "./tui-components";
 import { Conversation } from "./tui-conversation";
@@ -120,13 +122,14 @@ export async function streamTUI(state: TUIState) {
   const abortController = new AbortController();
   state.abortController = abortController;
 
-  const lastTs = Date.now();
   const apiKey = await getApiKey(state.options);
   const tools: ToolAndRunner[] = [
+    { tool: bash, runner: runBashTool },
+    { tool: edit, runner: runEditTool },
     {
       tool: task,
       runner: async (args: Record<string, any>) => {
-        return runTaskTool({...state.options, abortController}, args);
+        return runTaskTool({ ...state.options, abortController }, args);
       },
     },
   ];
@@ -244,14 +247,14 @@ export async function streamTUI(state: TUIState) {
     },
 
     (msg, context) => {
-      const dur = Date.now() - lastTs;
+      const dur = Date.now() - msg.timestamp;
 
       if (msg.errorMessage) {
         state.messages.push({
           id: secureRandomString(8),
           role: "agent",
           content: `Error (${msg.stopReason}): ${msg.errorMessage}`,
-          timestamp: Date.now(),
+          timestamp: msg.timestamp,
           durationMs: dur,
         });
       } else {
@@ -263,7 +266,7 @@ export async function streamTUI(state: TUIState) {
           id: secureRandomString(8),
           role: "agent",
           content: text,
-          timestamp: Date.now(),
+          timestamp: msg.timestamp,
           durationMs: dur,
         });
       }

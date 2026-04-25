@@ -1,8 +1,9 @@
 import type { Message } from "@mariozechner/pi-ai";
-import { streamAgent, TASK_PROMPT } from "./agent";
+import { MAIN_PROMPT, streamAgent } from "./agent";
 import { getApiKey } from "./oauth";
 import { bash, runBashTool } from "./tool-bash";
 import { edit, runEditTool } from "./tool-edit";
+import { runTaskTool, task } from "./tool-task";
 import type { CliOptions, ToolAndRunner } from "./types";
 
 export async function streamHeadless(
@@ -14,6 +15,7 @@ export async function streamHeadless(
   const tools: ToolAndRunner[] = [
     { tool: bash, runner: runBashTool },
     { tool: edit, runner: runEditTool },
+    { tool: task, runner: (args) => runTaskTool(options, args) },
   ];
   const messages: Message[] = [
     { role: "user", content: options.prompt || "", timestamp: Date.now() },
@@ -30,7 +32,7 @@ export async function streamHeadless(
   await streamAgent(
     apiKey,
     tools,
-    TASK_PROMPT,
+    MAIN_PROMPT,
     messages,
     options,
     undefined,
@@ -43,6 +45,7 @@ export async function streamHeadless(
           log("> Thinking...");
           break;
         case "toolcall_end":
+          // TODO: other tools output
           log(`> ${ev.toolCall.name}: ${ev.toolCall.arguments.command}`);
           break;
         case "error":
