@@ -1,5 +1,5 @@
 import { readdir } from "node:fs/promises";
-import { homedir } from "node:os";
+import { homedir, platform } from "node:os";
 import { join } from "node:path";
 import {
   type AssistantMessage,
@@ -10,35 +10,97 @@ import {
   streamSimple,
   type ToolResultMessage,
 } from "@mariozechner/pi-ai";
+import { simpleGit, type StatusResult } from "simple-git";
 import { parseSkillFrontmatter } from "./shared";
 import type { CliOptions, ToolAndRunner } from "./types";
 
-// TODO: Add environment information section (including git status)
-const IDENTITY_PROMPT = `# You are "mini-coder", an elite coding agent.
+const IDENTITY_PROMPT = `# You are "mini-coder", an efficient, elite coding agent.
 
-Behaviour guidelines:
+## Behaviour rules:
 
-- Summaries must match the diff.
-- Do not overstate what changed or what was verified.
-- Do not over-scope your work, focus on the requirements to answer only.
-- Once you've gathered enough information to complete the request, stop exploring and complete it.
+**IMPORTANT**: This is your default behaviour, breaking these rules is unacceptable.
+
+- Answer all user requests without guessing, or assuming.
+- Use recent online information, the current environment, and your training data combined for a complete answer.
 - Be defensive with existing changes and destructive commands, they could harm your user's changes.
+- Be efficient, don't get lost with tangents or satisfying your curiosity, root yourself on the user request.
+- Narrate your edits with small commentary messages during long tasks.
+- Do not over-scope your work, or add more scope during implementation.
+- Focus on the user's request requirements to answer accurately and efficiently.
+- Once you've gathered enough information to complete the request, stop exploring and complete it.
+- Ensure that you fulfill the user's expectation, requirements and contract **exactly**.
+- Use temp directory for temp files, scripts, plan files, or anything that doesn't match the requested output.
+- Always verify your changes using compilation, testing, and manual verification when possible.
+- Do not overstate what changed or what was verified. Never make unverified claims.
+- Summaries must match the diff.
 - Tone: use a jovial but motivated colleague persona. Be less verbose and more concise. You are working with software engineers, act appropriately, no fluff, only direct talk.`;
 
 export const MAIN_PROMPT = `${IDENTITY_PROMPT}
-- Answer all user questions without guessing, or assuming.
-- Use recent online information, the current environment, and your training data combined for a complete answer.
-- **Use the \`task()\` tool to do most your work**. Define a plan with the user, break it down into tasks, and use the tool.
-- If a task requires more than 1 or 2 other tool calls, or follow up calls, **always** use the \`task()\` tool instead.
+
+## Workflow:
+
+- Use this if the user did not specify a workflow.
+
+1. Read the user's message, understand the request.
+2. Gather context from the local environment, local code, docs and online related references to the request as needed.
+3. Plan your changes by breaking down the request into small tasks, resolve open questions with the user to complete your plan with accuracy and detail.
+4. Use the appropriate tools to execute the plan. Keep the plan up to date and follow it accurately.
+5. Validate your changes without adding more scope to your work.
+6. Summarize your changes and completed plan in your final message.
+
+## Tool selection heuristic:
+
+**Always** follow this logic when deciding your tool usage:
+
+- You have limitted context size, the task tool compresses tool loops for you, keeping your context pressure low.
+- Before **every tool call** consider if you are doing too much in your context window, and favor using the task tool.
+- If the user's request requires **less** than 3 to 4 shell/edit/read tool calls, use them and complete the request.
+- Else, the request requires **more** than 4 shell/edit tool calls, use the \`task()\` tool.
+- This is not optional, if you fill your context with exploration, excessive tool calls, then you have none left to help the user. This is unacceptable.
+
+**IMPORTANT: Always make sure you are not falling into a shell tool calling loop!**
+
+- This is a clear sign you should be using the task tool. Stop the loop and use the task tool.
 `;
 
 export const TASK_PROMPT = `${IDENTITY_PROMPT}
-- Use recent online information, the current environment, and your training data combined for a complete answer.
-- When completing a task, ensure that you fulfill the contract **exactly**.
-- Always verify your changes using compilation, testing, and manual verification when possible.
-- Use temp directory for temp files, scripts or anything that doesn't match the requested output.
-- Your final message should include a summary of your actions and any diffs from your edits.
+
+## Workflow:
+
+1. Read the user message, understand the request. Gather context as needed to complete the request.
+2. Plan your changes by breaking down the request into smaller tasks as needed.
+3. Execute your plan with the appropriate tools.
+4. Validate your changes without adding scope, and ensuring the user's request is met **exactly** with no deviations.
+5. Your final message should include a summary of your actions and any diffs from your edits.
 `;
+
+async function getEnvPrompt() {
+  // TODO: What else do the agents always check before answering every time?
+  let gitStatus: StatusResult | {nogit: string};
+  try {
+    gitStatus = await simpleGit().status();
+  } catch (_) {
+    gitStatus = {nogit: "No git repo in this folder."};
+  }
+  const envStatus = JSON.stringify(
+    {
+      cwd: process.cwd(),
+      os: platform(),
+      git: gitStatus,
+    },
+    null,
+    4,
+  );
+
+  const text = `### Environment status and information
+
+\`\`\`json
+  ${envStatus}
+\`\`\`
+`;
+
+  return text;
+}
 
 // `AGENTS.md` support: find it in current folder (./AGENTS.md) and a global one. (`.agents/AGENTS.md`)
 export async function getAGENTSFiles() {
@@ -94,7 +156,7 @@ export async function getSkills(): Promise<string> {
 
       skillsBlock += `## ${parsed.name}
 
-> File: ${path}
+> Absolute file path to read: ${path}
 
 ${parsed.description}
 
@@ -106,8 +168,10 @@ ${parsed.description}
 
   const skills = `# Skills
 
-The following skills provide specialized instructions for specific tasks.
-Use the shell tool to read a skill's file when the task matches its description.
+- The following skills provide specialized instructions for specific tasks.
+- Use the shell tool to read a skill's file when the task matches its description.
+- Use the skill provided absolute file path instead of guessing or constructing one.
+- Skills can be global (in ~/.agents/skills) or locat to the directory (./agents/skills)
 
 ${skillsBlock}`;
 
@@ -117,7 +181,8 @@ ${skillsBlock}`;
 export async function buildSystemPrompt(systemPrompt: string) {
   const agentsContent = await getAGENTSFiles();
   const skillsContent = await getSkills();
-  let complete = systemPrompt;
+  const envStatus = await getEnvPrompt();
+  let complete = systemPrompt + envStatus;
 
   if (skillsContent) {
     complete += `\n${skillsContent}`;
@@ -154,55 +219,63 @@ export async function streamAgent(
   // Wire the global abort signal to each turn http requests
   abortController?.signal.addEventListener("abort", onAbort);
 
-  while (true) {
-    controller = new AbortController();
-    const s = streamSimple(options.model, context, {
-      apiKey,
-      reasoning: options.effort,
-      signal: controller.signal,
-    });
-
-    for await (const ev of s) {
-      streamFn?.(ev, context);
-    }
-
-    const finalMessage = await s.result();
-    context.messages.push(finalMessage);
-
-    if (["stop", "error", "aborted"].includes(finalMessage.stopReason)) {
-      completeFn?.(finalMessage, context);
-      abortController?.signal.removeEventListener("abort", onAbort);
-      return;
-    }
-
-    const toolCalls = finalMessage.content.filter(
-      (msg) => msg.type === "toolCall",
-    );
-
-    for (const call of toolCalls) {
-      const toolDef = tools.find((i) => i.tool.name === call.name);
-      const result = (await toolDef?.runner(call.arguments)) || "";
-      const msg: ToolResultMessage = {
-        role: "toolResult",
-        toolCallId: call.id,
-        toolName: call.name,
-        content: [{ type: "text", text: result }],
-        isError: false,
-        timestamp: Date.now(),
-      };
-      context.messages.push(msg);
-      toolsFn?.(msg, context);
-    }
-
-    if (toolCalls.length > 0) {
-      // TODO: Investigate why we get an error: `No output for tool call id XXXX...` when
-      //       we add { apiKey } in this call. And how does it work without it?
-      const cont = await completeSimple(options.model, context, {
+  try {
+    while (true) {
+      controller = new AbortController();
+      const s = streamSimple(options.model, context, {
         apiKey,
         reasoning: options.effort,
         signal: controller.signal,
       });
-      context.messages.push(cont);
+
+      for await (const ev of s) {
+        streamFn?.(ev, context);
+      }
+
+      const finalMessage = await s.result();
+      context.messages.push(finalMessage);
+
+      // Check if the agent is done, or an error/abort happened before moving
+      // on towards tool calling.
+      if (["stop", "error", "aborted"].includes(finalMessage.stopReason)) {
+        // Agent is done, send the final message, and current context.
+        completeFn?.(finalMessage, context);
+        abortController?.signal.removeEventListener("abort", onAbort);
+        return;
+      }
+
+      // Call tolls and per tool result callback.
+      const toolCalls = finalMessage.content.filter(
+        (msg) => msg.type === "toolCall",
+      );
+
+      for (const call of toolCalls) {
+        const toolDef = tools.find((i) => i.tool.name === call.name);
+        const result = (await toolDef?.runner(call.arguments)) || "";
+        const msg: ToolResultMessage = {
+          role: "toolResult",
+          toolCallId: call.id,
+          toolName: call.name,
+          content: [{ type: "text", text: result }],
+          isError: false,
+          timestamp: Date.now(),
+        };
+        context.messages.push(msg);
+
+        // Update with tool results.
+        toolsFn?.(msg, context);
+      }
+
+      if (toolCalls.length > 0) {
+        const cont = await completeSimple(options.model, context, {
+          apiKey,
+          reasoning: options.effort,
+          signal: controller.signal,
+        });
+        context.messages.push(cont);
+      }
     }
+  } finally {
+    abortController?.signal.removeEventListener("abort", onAbort);
   }
 }

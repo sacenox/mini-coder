@@ -1,4 +1,9 @@
-import type { Message } from "@mariozechner/pi-ai";
+import type {
+  AssistantMessage,
+  AssistantMessageEvent,
+  Message,
+  ToolResultMessage,
+} from "@mariozechner/pi-ai";
 import { MAIN_PROMPT, streamAgent } from "./agent";
 import { getApiKey } from "./oauth";
 import { bash, runBashTool } from "./tool-bash";
@@ -21,13 +26,68 @@ export async function streamHeadless(
     { role: "user", content: options.prompt || "", timestamp: Date.now() },
   ];
 
-  function log(msg: string) {
-    if (options.jsonOutput) return;
-    console.log(msg);
+  function log(args: { msg?: string; json?: string }) {
+    if ("json" in args && options.jsonOutput) console.log(args.json);
+    if ("msg" in args && !options.jsonOutput) console.log(args.msg);
   }
 
-  log("mini-coder headless");
-  log("-------------------");
+  const onStream = (ev: AssistantMessageEvent) => {
+    switch (ev.type) {
+      case "text_end":
+        log({ msg: `> ${ev.content}` });
+        break;
+      case "thinking_start":
+        log({ msg: "> Thinking..." });
+        break;
+      case "toolcall_end":
+        // TODO: other tools output
+        log({ msg: `> ${ev.toolCall.name}: ${ev.toolCall.arguments.command}` });
+        break;
+      case "error":
+        log({ msg: `> Error ${ev.reason}\n${ev.error.content}` });
+        break;
+    }
+
+    // Log all non-delta events:
+    if (!ev.type.includes("delta")) {
+      log({ json: JSON.stringify(ev) });
+    }
+  };
+
+  const onTool = (tool: ToolResultMessage) => {
+    let text = tool.content
+      .filter((c) => c.type === "text")
+      .map((c) => c.text)
+      .join("\n").slice(-400);
+
+    if (text.length === 400) {
+      text += `...${text}`
+    }
+
+    log({
+      msg: `> ${tool.toolName} output:\n---\n${text}\n---\n`,
+      json: JSON.stringify(tool),
+    });
+  };
+
+  const onComplete = (msg: AssistantMessage) => {
+    log({
+      msg: `\nTotal tokens: ${msg.usage.input} in, ${msg.usage.output} out`,
+    });
+    log({ msg: `Cost: $${msg.usage.cost.total.toFixed(4)}` });
+
+    if (["stop", "error", "aborted"].includes(msg.stopReason)) {
+      log({ msg: `Reason for stopping: "${msg.stopReason}"` });
+      leave(
+        !options.jsonOutput
+          ? `Done. Took ${(Date.now() - lastTs) / 1000}s`
+          : undefined,
+      );
+    }
+  };
+
+  log({ msg: "mini-coder headless" });
+  log({ msg: "-------------------" });
 
   await streamAgent(
     apiKey,
@@ -36,47 +96,9 @@ export async function streamHeadless(
     messages,
     options,
     undefined,
-    (ev) => {
-      switch (ev.type) {
-        case "text_start":
-          log("> Answering...");
-          break;
-        case "thinking_start":
-          log("> Thinking...");
-          break;
-        case "toolcall_end":
-          // TODO: other tools output
-          log(`> ${ev.toolCall.name}: ${ev.toolCall.arguments.command}`);
-          break;
-        case "error":
-          log(`Error ${ev.reason}\n${ev.error.content}`);
-          break;
-      }
-    },
-    undefined,
-    (msg) => {
-      const text = msg.content
-        .filter((c) => c.type === "text")
-        .map((c) => c.text)
-        .join("\n");
-
-      log(`\n${text}`);
-      log(`\nTotal tokens: ${msg.usage.input} in, ${msg.usage.output} out`);
-      log(`Cost: $${msg.usage.cost.total.toFixed(4)}`);
-
-      if (options.jsonOutput) {
-        console.log(JSON.stringify(messages, null, 4));
-      }
-
-      if (["stop", "error", "aborted"].includes(msg.stopReason)) {
-        log(`Reason for stopping: "${msg.stopReason}"`);
-        leave(
-          !options.jsonOutput
-            ? `Done. Took ${(Date.now() - lastTs) / 1000}s`
-            : undefined,
-        );
-      }
-    },
+    onStream,
+    onTool,
+    onComplete,
   );
 
   leave("Done.");

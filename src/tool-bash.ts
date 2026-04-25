@@ -17,12 +17,12 @@ Best practices using this tool:
 - Use development tools, like \`git\`, \`gh\`, \`jq\`, etc, when appropriate.
 - Prefer \`cp -i\`, \`mv -i\`, \`rm -i\` when learning
 - Be careful with destructive actions, and overwriting existing unsaved work.
-- Chain commands only when failure should stop the flow.
+- Chain commands **only** when failure should stop the flow. Avoid long chains of command, **2 to 3 maximum**.
 - Avoid overly complex one-liners, readability matters.
 - Quote filenames: use \`"$file"\` not \`$file\`
 - Be careful with spaces in filenames
 
-Current working directory: ${process.cwd()}
+Commands run in: ${process.cwd()}
 `;
 
 export const bash: Tool = {

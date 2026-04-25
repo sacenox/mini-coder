@@ -2,10 +2,16 @@ import { isAbsolute, join } from "node:path";
 import { type Tool, Type } from "@mariozechner/pi-ai";
 import { createPatch } from "diff";
 
+const description = `## Edit tool
+
+- This is your edit tool, use it to create or edit files safely. Always prefer this tool over bash editing methods.
+- The tool will refuse to edit on multiple matches of \`oldText\` so be specific with your matching.
+- Avoid reproducing whole files, use shell file operations for that instead (\`cp\`, \`mv\`, etc)
+`;
+
 export const edit: Tool = {
   name: `edit`,
-  description:
-    "This is your edit tool, use it to create or edit files safely. Always prefer this tool over bash editing methods.",
+  description,
   parameters: Type.Object({
     path: Type.String({
       description: "File path (absolute or relative to cwd)",

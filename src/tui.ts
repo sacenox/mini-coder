@@ -1,6 +1,12 @@
 import { basename } from "node:path";
 import { cel, HStack, ProcessTerminal, VStack } from "@cel-tui/core";
-import type { Message } from "@mariozechner/pi-ai";
+import type {
+  AssistantMessage,
+  AssistantMessageEvent,
+  Context,
+  Message,
+  ToolResultMessage,
+} from "@mariozechner/pi-ai";
 import { MAIN_PROMPT, streamAgent } from "./agent";
 import { getApiKey } from "./oauth";
 import { estimateTokens, secureRandomString } from "./shared";
@@ -17,7 +23,6 @@ function clearOrAbort(state: TUIState) {
   // Are we mid stream? Abort it.
   if (state.streaming) {
     state.abortController?.abort();
-    state.abortController = new AbortController();
   }
 
   // Is the user clearing a state prompt?
@@ -147,6 +152,133 @@ export async function streamTUI(state: TUIState) {
   state.prompt = "";
   cel.render();
 
+  const onStream = (ev: AssistantMessageEvent, context: Context) => {
+    state.context = context;
+
+    // TODO: Improve `src/tui-state.ts` so we can progressively build the ui
+    // as the data comes in, instead of relying on the final message.
+    // We can do this with the base stream events and our tool callback.
+    // onComplete should be only cleanup at that point, no messages state updates.
+    switch (ev.type) {
+      case "text_start":
+        state.activeState = "answering";
+        cel.render();
+        break;
+
+      case "thinking_start":
+        state.activeState = "thinking";
+        cel.render();
+        break;
+
+      case "toolcall_start": {
+        state.activeState = "calling_tool";
+
+        // Create initial tool tui messages
+        const newToolCalls = ev.partial.content.filter(
+          (c) => c.type === "toolCall",
+        );
+
+        for (const call of newToolCalls) {
+          const toolMessage = createTUIToolMessage(call);
+          let found = false;
+          state.messages = state.messages.map((msg) => {
+            if (call.id === msg.id) {
+              found = true;
+              return toolMessage;
+            }
+            return msg;
+          });
+          if (!found) state.messages.push(toolMessage);
+        }
+
+        cel.render();
+        break;
+      }
+
+      case "toolcall_end": {
+        state.activeState = "waiting";
+
+        // Collect tool calls state
+        const finishedToolCalls = ev.partial.content.filter(
+          (c) => c.type === "toolCall",
+        );
+
+        // Update tui messages with arguments
+        for (const call of finishedToolCalls) {
+          let updated = false;
+          state.messages = state.messages.map((msg) => {
+            if (call.id === msg.id) {
+              updated = true;
+              return createTUIToolMessage(call, msg);
+            }
+            return msg;
+          });
+          if (!updated) {
+            state.messages.push(createTUIToolMessage(call));
+          }
+        }
+
+        cel.render();
+        break;
+      }
+
+      case "done":
+        state.activeState = "waiting";
+        cel.render();
+        break;
+
+      case "error":
+        state.activeState = "idle";
+        break;
+    }
+  };
+
+  const onTool = (tool: ToolResultMessage, context: Context) => {
+    // Append the output to the existing TUI messages
+    state.messages = state.messages.map((msg) => {
+      if (tool.toolCallId === msg.id) {
+        return createTUIToolMessage(tool, {
+          ...msg,
+          durationMs: Date.now() - msg.timestamp,
+        });
+      }
+      return msg;
+    });
+    state.context = context;
+    cel.render();
+  };
+
+  const onComplete = (msg: AssistantMessage, context: Context) => {
+    const dur = Date.now() - msg.timestamp;
+
+    if (msg.errorMessage) {
+      state.messages.push({
+        id: secureRandomString(8),
+        role: "agent",
+        content: `Error (${msg.stopReason}): ${msg.errorMessage}`,
+        timestamp: msg.timestamp,
+        durationMs: dur,
+      });
+    } else {
+      const text = msg.content
+        .filter((c) => c.type === "text")
+        .map((c) => c.text)
+        .join("\n");
+      state.messages.push({
+        id: secureRandomString(8),
+        role: "agent",
+        content: text,
+        timestamp: msg.timestamp,
+        durationMs: dur,
+      });
+    }
+
+    state.streaming = false;
+    state.activeState = "idle";
+    state.context = context;
+    cel.render();
+  };
+
   await streamAgent(
     apiKey,
     tools,
@@ -154,127 +286,8 @@ export async function streamTUI(state: TUIState) {
     messages,
     state.options,
     state.abortController,
-    (ev, context) => {
-      state.context = context;
-
-      switch (ev.type) {
-        case "text_start":
-          state.activeState = "answering";
-          cel.render();
-          break;
-
-        case "thinking_start":
-          state.activeState = "thinking";
-          cel.render();
-          break;
-
-        case "toolcall_start": {
-          state.activeState = "calling_tool";
-
-          // Create initial tool tui messages
-          const newToolCalls = ev.partial.content.filter(
-            (c) => c.type === "toolCall",
-          );
-
-          for (const call of newToolCalls) {
-            const toolMessage = createTUIToolMessage(call);
-            let found = false;
-            state.messages = state.messages.map((msg) => {
-              if (call.id === msg.id) {
-                found = true;
-                return toolMessage;
-              }
-              return msg;
-            });
-            if (!found) state.messages.push(toolMessage);
-          }
-
-          cel.render();
-          break;
-        }
-
-        case "toolcall_end": {
-          state.activeState = "waiting";
-
-          // Collect tool calls state
-          const finishedToolCalls = ev.partial.content.filter(
-            (c) => c.type === "toolCall",
-          );
-
-          // Update tui messages with arguments
-          for (const call of finishedToolCalls) {
-            let updated = false;
-            state.messages = state.messages.map((msg) => {
-              if (call.id === msg.id) {
-                updated = true;
-                return createTUIToolMessage(call, msg);
-              }
-              return msg;
-            });
-            if (!updated) {
-              state.messages.push(createTUIToolMessage(call));
-            }
-          }
-
-          cel.render();
-          break;
-        }
-
-        case "done":
-          state.activeState = "waiting";
-          cel.render();
-          break;
-
-        case "error":
-          state.activeState = "idle";
-          break;
-      }
-    },
-
-    (tool, context) => {
-      // Append the output to the existing TUI messages
-      state.messages = state.messages.map((msg) => {
-        if (tool.toolCallId === msg.id) {
-          return createTUIToolMessage(tool, {
-            ...msg,
-            durationMs: Date.now() - msg.timestamp,
-          });
-        }
-        return msg;
-      });
-      state.context = context;
-      cel.render();
-    },
-
-    (msg, context) => {
-      const dur = Date.now() - msg.timestamp;
-
-      if (msg.errorMessage) {
-        state.messages.push({
-          id: secureRandomString(8),
-          role: "agent",
-          content: `Error (${msg.stopReason}): ${msg.errorMessage}`,
-          timestamp: msg.timestamp,
-          durationMs: dur,
-        });
-      } else {
-        const text = msg.content
-          .filter((c) => c.type === "text")
-          .map((c) => c.text)
-          .join("\n");
-        state.messages.push({
-          id: secureRandomString(8),
-          role: "agent",
-          content: text,
-          timestamp: msg.timestamp,
-          durationMs: dur,
-        });
-      }
-
-      state.streaming = false;
-      state.activeState = "idle";
-      state.context = context;
-      cel.render();
-    },
+    onStream,
+    onTool,
+    onComplete,
   );
 }
