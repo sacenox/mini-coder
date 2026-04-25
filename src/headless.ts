@@ -71,6 +71,8 @@ export async function streamHeadless(
       msg: `> ${tool.toolName} output:\n---\n${text}\n---`,
       json: JSON.stringify(tool),
     });
+
+    return tool;
   };
 
   const onComplete = (msg: AssistantMessage) => {

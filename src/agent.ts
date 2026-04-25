@@ -7,6 +7,7 @@ import {
   type Context,
   type Message,
   streamSimple,
+  type ToolCall,
   type ToolResultMessage,
 } from "@mariozechner/pi-ai";
 import { type StatusResult, simpleGit } from "simple-git";
@@ -194,6 +195,51 @@ export async function buildSystemPrompt(systemPrompt: string) {
   return complete;
 }
 
+export function insertToolUsageReminder(
+  messages: Message[],
+  toolMessage: ToolResultMessage,
+) {
+  // check for the last 5 tool call assistant messages
+  // if they are non-`task` tool calls insert the reminder
+  // as a prefix.
+  let output = toolMessage.content
+    .filter((b) => b.type === "text")
+    .map((b) => b.text)
+    .join("\n");
+
+  const budget = 5;
+  const toolCalls: ToolCall[] = [];
+  messages.forEach((m) => {
+    if (m.role === "assistant") {
+      const toolCalls = m.content.filter((b) => b.type === "toolCall");
+      toolCalls.push(...toolCalls);
+    }
+  });
+
+  let taskSeen = 0;
+  let idx = toolCalls.length;
+
+  while (idx--) {
+    const name = toolCalls[idx].name;
+    if (name === "task") taskSeen++;
+    if (idx > budget && taskSeen < 1) break;
+  }
+
+  if (taskSeen < 1) {
+    output = `# System reminder:
+    
+    > You are in a tool loop. Stop and use the task tool instead.
+
+    ---
+    
+    ${output}`;
+  }
+
+  toolMessage.content = [{ type: "text", text: output }];
+
+  return toolMessage;
+}
+
 export async function streamAgent(
   apiKey: string,
   tools: ToolAndRunner[],
@@ -202,7 +248,7 @@ export async function streamAgent(
   options: CliOptions,
   abortController?: AbortController,
   streamFn?: (ev: AssistantMessageEvent, context: Context) => void,
-  toolsFn?: (tool: ToolResultMessage, context: Context) => void,
+  toolsFn?: (tool: ToolResultMessage, context: Context) => ToolResultMessage,
   completeFn?: (msg: AssistantMessage, context: Context) => void,
 ) {
   const context: Context = {
@@ -266,7 +312,7 @@ export async function streamAgent(
           output = `Unknown tool: ${call.name}`;
         }
 
-        const msg: ToolResultMessage = {
+        let msg: ToolResultMessage = {
           role: "toolResult",
           toolCallId: call.id,
           toolName: call.name,
@@ -274,10 +320,13 @@ export async function streamAgent(
           isError,
           timestamp: Date.now(),
         };
-        context.messages.push(msg);
 
-        // Update with tool results.
-        toolsFn?.(msg, context);
+        // Update with tool results. let the user make changes if they want
+        if (toolsFn) {
+          msg = toolsFn(msg, context);
+        }
+
+        context.messages.push(msg);
       }
     }
   } finally {

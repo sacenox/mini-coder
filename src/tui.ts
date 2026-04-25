@@ -7,7 +7,7 @@ import type {
   Message,
   ToolResultMessage,
 } from "@mariozechner/pi-ai";
-import { MAIN_PROMPT, streamAgent } from "./agent";
+import { insertToolUsageReminder, MAIN_PROMPT, streamAgent } from "./agent";
 import { getApiKey } from "./oauth";
 import { estimateTokens } from "./shared";
 import { bash, runBashTool } from "./tool-bash";
@@ -169,8 +169,10 @@ export async function streamTUI(state: TUIState) {
   };
 
   const onTool = (tool: ToolResultMessage, ctx: Context) => {
+    tool = insertToolUsageReminder(state.messages, tool);
     state.messages.push(tool);
     state.contextSize = estimateTokens(JSON.stringify(ctx));
+    return tool;
   };
 
   const onComplete = (msg: AssistantMessage, ctx: Context) => {

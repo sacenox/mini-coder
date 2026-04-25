@@ -1,14 +1,12 @@
 # Mini coder next
 
-A new version of mini-coder, written from the ground up as library first, plugins.
+A new version of mini-coder, written from the ground up as library first.
 Version `mini-coder@0.5.x` is currently stable and mostly complete, that's our reference implementation.
-Benchmarking from the start, keep the agent dumb, build the library-first architecture, then
-run an automated benchmarking loop to shape/hone the harness.
 
 ## Dog-fooding
 
-Be aware that you are mini-coder, running the dev version of this repository while editing it.
-We are dog-fooding the code: changes to prompts, tools, context building, streaming, or runtime behavior may affect the agent we are actively using during the same development session.
+if this is in your context window, you are using the current repo's harness `mini-coder`. Be aware of this when
+debugging and testing live with your user.
 
 ## Core dependencies
 
@@ -45,5 +43,7 @@ Plain text readme file: https://raw.githubusercontent.com/badlogic/pi-mono/refs/
 - Format typescript files: `bunx biome format --write`
 
 Then lint with: `bunx biome check` and `tsc --noEmit`.
+
+**Do not use the `package.json` commands/scripts they are for the users.** Use the commands above instead.
 
 > Always fix any warnings or errors even if they were not introduced by you, prefer non destructive fixes.
