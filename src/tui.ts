@@ -17,6 +17,7 @@ import {
   ActivityPill,
   ContextPill,
   GitPill,
+  ModelPill,
   Spinner,
   TextPill,
   theme,
@@ -77,7 +78,7 @@ export function initTUI(state: TUIState, leave: (s: string) => void) {
         Conversation(state),
 
         HStack({ gap: 1 }, [
-          TextPill(state.options.model.name, theme.bblack, theme.bwhite),
+          ModelPill(state),
           TextPill(`../${state.cwd}`, theme.bwhite, theme.bblack),
           GitPill(state),
           VStack({ flex: 1 }, []),

@@ -73,14 +73,6 @@ export const theme = {
 //   return memoized;
 // }
 
-// TextPill("mini-coder", theme.bblack, theme.black),
-// TextPill("mini-coder", theme.bred, theme.red),
-// TextPill("mini-coder", theme.bgreen, theme.green),
-// TextPill("mini-coder", theme.byellow, theme.yellow),
-// TextPill("mini-coder", theme.bblue, theme.blue),
-// TextPill("mini-coder", theme.bmagenta, theme.magenta),
-// TextPill("mini-coder", theme.bcyan, theme.cyan),
-// TextPill("mini-coder", theme.bwhite, theme.white),
 export function TextPill(content: string, fgColor: Color, bgColor: Color) {
   return HStack({ gap: 1 }, [
     HStack({ bgColor, padding: { x: 1 } }, [
@@ -148,17 +140,43 @@ export function ActivityPill(state: TUIState, spinnerFrame: string) {
 
 export function ContextPill(state: TUIState) {
   let text = "";
+  let bg = theme.bwhite;
   if (!state.contextSize) {
     text = "0%";
   } else {
     const max = state.options.model.contextWindow;
     const percent = Math.floor((state.contextSize / max) * 100);
+    if (percent > 90) {
+      bg = theme.bred;
+    } else if (percent > 75) {
+      bg = theme.red;
+    } else if (percent > 60) {
+      bg = theme.yellow;
+    } else if (percent > 40) {
+      bg = theme.byellow;
+    }
     text = `~${percent}%`;
   }
 
-  return TextPill(text, theme.bblack, theme.bwhite);
+  return TextPill(text, theme.bblack, bg);
 }
 
 export function GitPill(state: TUIState) {
   return TextPill(state.gitBranch ?? "No git.", theme.bwhite, theme.bblack);
+}
+
+export function ModelPill(state: TUIState) {
+  // Like loot: Gold/purple/blue/green/white -> xhigh/high/medium/low/minimal
+  switch (state.options.effort) {
+    case "xhigh":
+      return TextPill(state.options.model.name, theme.white, theme.yellow);
+    case "high":
+      return TextPill(state.options.model.name, theme.white, theme.magenta);
+    case "medium":
+      return TextPill(state.options.model.name, theme.white, theme.blue);
+    case "low":
+      return TextPill(state.options.model.name, theme.white, theme.green);
+  }
+  // Minimal
+  return TextPill(state.options.model.name, theme.bwhite, theme.bblack);
 }
