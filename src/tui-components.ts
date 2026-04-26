@@ -1,4 +1,4 @@
-import { type Color, HStack, Text } from "@cel-tui/core";
+import { type Color, HStack, type Node, Text } from "@cel-tui/core";
 import { onceEvery } from "./shared";
 import type { TUIState } from "./types";
 
@@ -27,6 +27,51 @@ export const theme = {
   white: "color07" as Color,
   bwhite: "color15" as Color,
 };
+
+// Momoization helper for cel-tui
+type NodeMemoKey = string | number | symbol;
+
+type MemoizedNodeRenderer<T> = ((value: T) => Node) & {
+  clear: () => void;
+  delete: (value: T) => boolean;
+};
+
+export function memoNodeByKey<T>(
+  keyOf: (value: T) => NodeMemoKey,
+  render: (value: T) => Node,
+  options: { maxEntries?: number } = {},
+): MemoizedNodeRenderer<T> {
+  const maxEntries = options.maxEntries ?? 1000;
+  const cache = new Map<NodeMemoKey, Node>();
+
+  const memoized = ((value: T): Node => {
+    const key = keyOf(value);
+    const cached = cache.get(key);
+
+    if (cached) {
+      // Move to the end: simple LRU-ish behavior.
+      cache.delete(key);
+      cache.set(key, cached);
+      return cached;
+    }
+
+    const node = render(value);
+    cache.set(key, node);
+
+    while (cache.size > maxEntries) {
+      const oldest = cache.keys().next();
+      if (oldest.done) break;
+      cache.delete(oldest.value);
+    }
+
+    return node;
+  }) as MemoizedNodeRenderer<T>;
+
+  memoized.clear = () => cache.clear();
+  memoized.delete = (value: T) => cache.delete(keyOf(value));
+
+  return memoized;
+}
 
 // TextPill("mini-coder", theme.bblack, theme.black),
 // TextPill("mini-coder", theme.bred, theme.red),

@@ -1,5 +1,6 @@
 import { type Tool, Type } from "@mariozechner/pi-ai";
 import { secureRandomString } from "./shared";
+import type { ToolRunnerEvent } from "./types";
 
 const OUTPUT_THRESHOLD = 16000;
 const description = `## Bash CLI tool
@@ -35,48 +36,73 @@ export const bash: Tool = {
   }),
 };
 
-export async function runBashTool(args: Record<string, any>) {
-  const proc = Bun.spawn(["bash", "-c", args.command], {
+export async function* runBashTool(
+  args: Record<string, any>,
+  signal?: AbortSignal,
+): AsyncGenerator<ToolRunnerEvent> {
+  // Redirect stderr into stdout for the whole shell session.
+  const proc = Bun.spawn(["bash", "-c", `exec 2>&1; ${args.command}`], {
     stdout: "pipe",
     stderr: "pipe",
     env: {
       ...Bun.env,
       NO_COLOR: "1",
     },
+    signal,
   });
 
-  const [stdout, stderr, exitCode] = await Promise.all([
-    proc.stdout.text(),
-    proc.stderr.text(),
-    proc.exited,
-  ]);
+  const decoder = new TextDecoder();
+  const reader = proc.stdout.getReader();
 
-  let out = `# EXIT CODE: ${exitCode}`;
-  if (stderr.length) {
-    out += `
-# STDERR:
+  let output = "";
+  while (true) {
+    const { done, value } = await reader.read();
 
-${Bun.stripANSI(stderr)}`;
+    if (done) {
+      const remaining = Bun.stripANSI(decoder.decode());
+
+      if (remaining.length) {
+        output += remaining;
+        yield { type: "output", text: remaining };
+      }
+      break;
+    }
+
+    const text = Bun.stripANSI(decoder.decode(value, { stream: true }));
+
+    if (text.length) {
+      output += text;
+      yield { type: "output", text: text };
+    }
   }
-  if (stdout.length) {
-    out += `
-# STDOUT:
 
-${Bun.stripANSI(stdout)}`;
+  const exitCode = await proc.exited;
+
+  let result = `# EXIT CODE: ${exitCode}`;
+  if (output.length) {
+    result += `
+# OUTPUT:
+
+${output}`;
   }
 
   // If `out` is too big, more than ~XXKB, write it to a temp file
   // And add that to the truncation label for the agent to be able
   // to continue the read with scans. This is to protect context,
   // not a general read guard. The hint is for the agent, not the TUI
-  if (out.length > OUTPUT_THRESHOLD) {
+  if (result.length > OUTPUT_THRESHOLD) {
     const key = `${Date.now()}-${secureRandomString(4)}`;
     const pathname = `/tmp/bash_result_${key}.txt`;
-    await Bun.write(pathname, out);
-    out = `${out.substring(0, OUTPUT_THRESHOLD)}
+    await Bun.write(pathname, result);
+    result = `${result.substring(0, OUTPUT_THRESHOLD)}
 
 Truncated at ~${OUTPUT_THRESHOLD / 1000}KB. Full output at ${pathname}`;
   }
 
-  return out;
+  yield {
+    type: "result",
+    text: result,
+  };
+
+  return result;
 }

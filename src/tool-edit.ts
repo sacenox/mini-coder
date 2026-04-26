@@ -1,6 +1,7 @@
 import { isAbsolute, join } from "node:path";
 import { type Tool, Type } from "@mariozechner/pi-ai";
 import { createPatch } from "diff";
+import type { ToolRunnerEvent } from "./types";
 
 const description = `## Edit tool
 
@@ -41,7 +42,10 @@ function findAllIndexes(text: string, sub: string): number[] {
   return indexes;
 }
 
-export async function runEditTool(args: Record<string, any>) {
+export async function* runEditTool(
+  args: Record<string, any>,
+  signal?: AbortSignal,
+): AsyncGenerator<ToolRunnerEvent> {
   const filePath = isAbsolute(args.path)
     ? args.path
     : join(process.cwd(), args.path);
@@ -50,26 +54,37 @@ export async function runEditTool(args: Record<string, any>) {
 
   if (args.oldText === "") {
     if (exists) {
-      return `File already exists: ${filePath}`;
+      yield { type: "result", text: `File already exists: ${filePath}` };
+      return;
     }
 
     await Bun.write(file, args.newText);
-    return `File written: ${filePath}\n\n${args.newText}`;
+    yield {
+      type: "result",
+      text: `File written: ${filePath}\n\n${args.newText}`,
+    };
+    return;
   }
 
   if (!exists) {
-    return `File not found: ${filePath}`;
+    yield { type: "result", text: `File not found: ${filePath}` };
+    return;
   }
 
   const content = await file.text();
   const matches = findAllIndexes(content, args.oldText);
 
   if (matches.length === 0) {
-    return `Old text not found in: ${filePath}`;
+    yield { type: "result", text: `Old text not found in: ${filePath}` };
+    return;
   }
 
   if (matches.length > 1) {
-    return `Multiple matches found in ${filePath}: ${matches.length} matches, be more specific and try again`;
+    yield {
+      type: "result",
+      text: `Multiple matches found in ${filePath}: ${matches.length} matches, be more specific and try again`,
+    };
+    return;
   }
 
   const idx = matches[0];
@@ -78,8 +93,18 @@ export async function runEditTool(args: Record<string, any>) {
     args.newText +
     content.slice(idx + args.oldText.length);
 
+  if (signal?.aborted) {
+    yield { type: "result", text: "Aborted before write." };
+    return;
+  }
+
   await file.write(updated);
   const patch = createPatch(filePath, content, updated);
 
-  return `File edited: ${filePath}\n\n${patch}`;
+  yield {
+    type: "result",
+    text: `File edited: ${filePath}\n\n${patch}`,
+  };
+
+  return;
 }

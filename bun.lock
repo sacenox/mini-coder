@@ -5,8 +5,8 @@
     "": {
       "name": "mini-coder-next",
       "dependencies": {
-        "@cel-tui/components": "^0.8.1",
-        "@cel-tui/core": "^0.8.1",
+        "@cel-tui/components": "^0.8.2",
+        "@cel-tui/core": "^0.8.2",
         "@mariozechner/pi-ai": "^0.70.2",
         "diff": "^9.0.0",
         "simple-git": "^3.36.0",
@@ -115,13 +115,13 @@
 
     "@biomejs/cli-win32-x64": ["@biomejs/cli-win32-x64@2.4.13", "", { "os": "win32", "cpu": "x64" }, "sha512-tTcMkXyBrmHi9BfrD2VNHs/5rYIUKETqsBlYOvSAABwBkJhSDVb5e7wPukftsQbO3WzQkXe6kaztC6WtUOXSoQ=="],
 
-    "@cel-tui/clew": ["@cel-tui/clew@0.8.2", "", { "peerDependencies": { "typescript": ">=5.0.0" } }, "sha512-7IYKc8Pe+CCUngw9jpgNDc6LgJoPEDUr0Pqu1uNrTdwFMBaiGirV8b5Z/UbQ7/CtIyPnVDyNO2qAY/wOJNGidg=="],
+    "@cel-tui/clew": ["@cel-tui/clew@0.8.3", "", { "peerDependencies": { "typescript": ">=5.0.0" } }, "sha512-7OFUe8ECleXjq9+vv2EvDcTXsiWNSQqVALD1LC/Gi9DzVp1aw0S6SloJuAv1KUVkwjZxil+mvYlk2LoC28mETQ=="],
 
-    "@cel-tui/components": ["@cel-tui/components@0.8.2", "", { "dependencies": { "@cel-tui/clew": "0.8.2", "@cel-tui/core": "0.8.2", "@cel-tui/types": "0.8.2", "yoctomarkdown": "^0.1.0" }, "peerDependencies": { "typescript": ">=5.0.0" } }, "sha512-mc1CLy/EzPIpK8kxTw4CSH8XMKoXOcqTdoUx158wfFyGNO/rROEjs941Qo/D5k+VhodUlzFMj+PMzQQjrdgpeg=="],
+    "@cel-tui/components": ["@cel-tui/components@0.8.3", "", { "dependencies": { "@cel-tui/clew": "0.8.3", "@cel-tui/core": "0.8.3", "@cel-tui/types": "0.8.3", "yoctomarkdown": "^0.1.0" }, "peerDependencies": { "typescript": ">=5.0.0" } }, "sha512-FF3WTw9XxapNabb205U0uqu6fu3uRCsbuc3pQr/yixa5/amTWsqrcMvIM8ndC7q3dEJsQk4D5rfyOMVNnmKfnA=="],
 
-    "@cel-tui/core": ["@cel-tui/core@0.8.2", "", { "dependencies": { "@cel-tui/types": "0.8.2", "get-east-asian-width": "^1.5.0" }, "peerDependencies": { "typescript": ">=5.0.0" } }, "sha512-VMrPiqYHJKpqj1cCgUni8aM4etzG5y60tmsTBcDrhGisbS02GUpv6pmXp95U0O6VVLLYzmHtoXIwAyOTfWNRjA=="],
+    "@cel-tui/core": ["@cel-tui/core@0.8.3", "", { "dependencies": { "@cel-tui/types": "0.8.3", "get-east-asian-width": "^1.5.0" }, "peerDependencies": { "typescript": ">=5.0.0" } }, "sha512-rC6nqza70HTvJGoY5cm86nwBMRnfim3g4Ysns+HebYkjwXv4a0VIcLmRNQFATNq4R/Xtg7+ba/qzsqJvTY22IA=="],
 
-    "@cel-tui/types": ["@cel-tui/types@0.8.2", "", { "peerDependencies": { "typescript": ">=5.0.0" } }, "sha512-OwaX9IZHnJO0QJ9TtKx/9LhUG/E9lWds40fkq8kgLOxcb4DHBs2xRKCBoQKOh98zsitD5NLXl7125C6Dlbk+FA=="],
+    "@cel-tui/types": ["@cel-tui/types@0.8.3", "", { "peerDependencies": { "typescript": ">=5.0.0" } }, "sha512-yEKXCY16U/W4A4JaVysv2/x/IBEHQAfb93CzL6HugN+N15ETB3Vn8tZrQwdyrOT/9WdlCQkeBH8Vj7BJHs4Hkw=="],
 
     "@google/genai": ["@google/genai@1.50.1", "", { "dependencies": { "google-auth-library": "^10.3.0", "p-retry": "^4.6.2", "protobufjs": "^7.5.4", "ws": "^8.18.0" }, "peerDependencies": { "@modelcontextprotocol/sdk": "^1.25.2" }, "optionalPeers": ["@modelcontextprotocol/sdk"] }, "sha512-YbkX7H9+1Pt8wOt7DDREy8XSoiL6fRDzZQRyaVBarFf8MR3zHGqVdvM4cLbDXqPhxqvegZShgfxb8kw9C7YhAQ=="],
 

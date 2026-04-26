@@ -2,8 +2,6 @@ import { readdir } from "node:fs/promises";
 import { homedir, platform } from "node:os";
 import { join } from "node:path";
 import {
-  type AssistantMessage,
-  type AssistantMessageEvent,
   type Context,
   type Message,
   streamSimple,
@@ -12,7 +10,7 @@ import {
 } from "@mariozechner/pi-ai";
 import { type StatusResult, simpleGit } from "simple-git";
 import { parseSkillFrontmatter } from "./shared";
-import type { CliOptions, ToolAndRunner } from "./types";
+import type { AgentStreamEvent, CliOptions, ToolAndRunner } from "./types";
 
 const IDENTITY_PROMPT = `# You are "mini-coder", an efficient, elite coding agent.
 
@@ -26,6 +24,7 @@ const IDENTITY_PROMPT = `# You are "mini-coder", an efficient, elite coding agen
 - Be efficient, don't get lost with tangents or satisfying your curiosity, root yourself on the user request.
 - Narrate your edits with small commentary messages during long tasks.
 - Do not over-scope your work, or add more scope during implementation.
+- Avoid over-enginnering, hacks or creative solutions. The boring, simple and repliable is always preffered.
 - Focus on the user's request requirements to answer accurately and efficiently.
 - Once you've gathered enough information to complete the request, stop exploring and complete it.
 - Ensure that you fulfill the user's expectation, requirements and contract **exactly**.
@@ -211,28 +210,26 @@ export function insertToolUsageReminder(
   const toolCalls: ToolCall[] = [];
   messages.forEach((m) => {
     if (m.role === "assistant") {
-      const toolCalls = m.content.filter((b) => b.type === "toolCall");
-      toolCalls.push(...toolCalls);
+      const toolCallsBlocks = m.content.filter((b) => b.type === "toolCall");
+      toolCalls.push(...toolCallsBlocks);
     }
   });
+  const recentToolCalls = toolCalls.slice(-budget);
+  const taskSeen = recentToolCalls.some((call) => call.name === "task");
 
-  let taskSeen = 0;
-  let idx = toolCalls.length;
-
-  while (idx--) {
-    const name = toolCalls[idx].name;
-    if (name === "task") taskSeen++;
-    if (idx > budget && taskSeen < 1) break;
-  }
-
-  if (taskSeen < 1) {
+  if (toolCalls.length >= budget && !taskSeen) {
     output = `# System reminder:
     
-    > You are in a tool loop. Stop and use the task tool instead.
+> You are in a shell or edit tool calling loop poluting your context.
 
-    ---
+- Remember your tool choice heuristic.
+- Plan your next actions, and use the task tool to continue.
+- If you have completed the user request, complete your answer.
+
+---
     
-    ${output}`;
+${output}
+`;
   }
 
   toolMessage.content = [{ type: "text", text: output }];
@@ -240,96 +237,113 @@ export function insertToolUsageReminder(
   return toolMessage;
 }
 
-export async function streamAgent(
+export async function* streamAgent(
   apiKey: string,
   tools: ToolAndRunner[],
   systemPrompt: string,
   messages: Message[],
   options: CliOptions,
   abortController?: AbortController,
-  streamFn?: (ev: AssistantMessageEvent, context: Context) => void,
-  toolsFn?: (tool: ToolResultMessage, context: Context) => ToolResultMessage,
-  completeFn?: (msg: AssistantMessage, context: Context) => void,
-) {
+): AsyncGenerator<AgentStreamEvent> {
   const context: Context = {
     systemPrompt: await buildSystemPrompt(systemPrompt),
     messages,
     tools: tools.map((t) => t.tool),
   };
 
-  let controller: AbortController;
-  const onAbort = () => {
-    controller?.abort();
-  };
+  while (true) {
+    const s = streamSimple(options.model, context, {
+      apiKey,
+      reasoning: options.effort,
+      signal: abortController?.signal,
+    });
 
-  // Wire the global abort signal to each turn http requests
-  abortController?.signal.addEventListener("abort", onAbort);
-
-  try {
-    while (true) {
-      controller = new AbortController();
-      const s = streamSimple(options.model, context, {
-        apiKey,
-        reasoning: options.effort,
-        signal: controller.signal,
-      });
-
-      for await (const ev of s) {
-        streamFn?.(ev, context);
-      }
-
-      const finalMessage = await s.result();
-      context.messages.push(finalMessage);
-
-      // Check if the agent is done, or an error/abort happened before moving
-      // on towards tool calling.
-      if (
-        ["stop", "error", "aborted", "length"].includes(finalMessage.stopReason)
-      ) {
-        // Agent is done, send the final message, and current context.
-        completeFn?.(finalMessage, context);
-        break;
-      }
-
-      // Call tolls and per tool result callback.
-      const toolCalls = finalMessage.content.filter(
-        (msg) => msg.type === "toolCall",
-      );
-
-      for (const call of toolCalls) {
-        let output = "";
-        let isError = false;
-        const toolDef = tools.find((i) => i.tool.name === call.name);
-        if (toolDef) {
-          try {
-            output = await toolDef.runner(call.arguments);
-          } catch (err) {
-            const error = err instanceof Error ? err.message : "Unknown error";
-            output = `Tool call failed: ${error}`;
-            isError = true;
-          }
-        } else {
-          output = `Unknown tool: ${call.name}`;
-        }
-
-        let msg: ToolResultMessage = {
-          role: "toolResult",
-          toolCallId: call.id,
-          toolName: call.name,
-          content: [{ type: "text", text: output }],
-          isError,
-          timestamp: Date.now(),
-        };
-
-        // Update with tool results. let the user make changes if they want
-        if (toolsFn) {
-          msg = toolsFn(msg, context);
-        }
-
-        context.messages.push(msg);
-      }
+    for await (const ev of s) {
+      yield { type: "assistant", event: ev, context };
     }
-  } finally {
-    abortController?.signal.removeEventListener("abort", onAbort);
+
+    const finalMessage = await s.result();
+    context.messages.push(finalMessage);
+
+    // Check if the agent is done, or an error/abort happened before moving
+    // on towards tool calling.
+    if (
+      ["stop", "error", "aborted", "length"].includes(finalMessage.stopReason)
+    ) {
+      // Agent is done, send the final message, and current context.
+      yield { type: "complete", message: finalMessage, context };
+      break;
+    }
+
+    // TODO: Extract into it's own function
+    // Call tolls and per tool result callback.
+    const toolCalls = finalMessage.content.filter(
+      (msg) => msg.type === "toolCall",
+    );
+
+    for (const call of toolCalls) {
+      let output = "";
+      let isError = false;
+
+      const toolDef = tools.find((item) => item.tool.name === call.name);
+      let msg: ToolResultMessage = {
+        role: "toolResult",
+        toolCallId: call.id,
+        toolName: call.name,
+        content: [{ type: "text", text: output }],
+        isError,
+        timestamp: Date.now(),
+      };
+
+      if (!toolDef) {
+        output = `Unknown tool: ${call.name}`;
+        isError = true;
+      } else {
+        try {
+          for await (const event of toolDef.runner(call.arguments)) {
+            switch (event.type) {
+              case "output":
+                output += event.text;
+                msg = {
+                  ...msg,
+                  content: [{ type: "text", text: event.text }],
+                };
+                yield {
+                  type: "tool_output",
+                  message: msg,
+                  context,
+                };
+                break;
+
+              case "result":
+                output = event.text;
+                break;
+            }
+          }
+        } catch (err) {
+          const error = err instanceof Error ? err.message : "Unknown error";
+          output = `Tool call failed: ${error}`;
+          isError = true;
+        }
+      }
+
+      msg = {
+        role: "toolResult",
+        toolCallId: call.id,
+        toolName: call.name,
+        content: [{ type: "text", text: output }],
+        isError,
+        timestamp: Date.now(),
+      };
+
+      // Update with tool results. let the user make changes if they want
+      context.messages.push(msg);
+
+      yield {
+        type: "tool_result",
+        message: msg,
+        context,
+      };
+    }
   }
 }

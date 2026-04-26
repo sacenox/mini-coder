@@ -94,17 +94,33 @@ export async function streamHeadless(
   log({ msg: "mini-coder headless" });
   log({ msg: "-------------------" });
 
-  await streamAgent(
+  for await (const event of streamAgent(
     apiKey,
     tools,
     MAIN_PROMPT,
     messages,
     options,
     undefined,
-    onStream,
-    onTool,
-    onComplete,
-  );
+  )) {
+    switch (event.type) {
+      case "assistant":
+        onStream(event.event);
+        break;
+
+      case "tool_output":
+        // TODO:
+        //  onToolOutput(event);
+        break;
+
+      case "tool_result":
+        onTool(event.message);
+        break;
+
+      case "complete":
+        onComplete(event.message);
+        break;
+    }
+  }
 
   leave("Done.");
 }

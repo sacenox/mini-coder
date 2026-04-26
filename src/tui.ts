@@ -119,13 +119,18 @@ export async function streamTUI(state: TUIState) {
 
   const apiKey = await getApiKey(state.options);
   const tools: ToolAndRunner[] = [
-    { tool: bash, runner: runBashTool },
-    { tool: edit, runner: runEditTool },
+    {
+      tool: bash,
+      runner: (args) => runBashTool(args, state.abortController?.signal),
+    },
+    {
+      tool: edit,
+      runner: (args) => runEditTool(args, state.abortController?.signal),
+    },
     {
       tool: task,
-      runner: async (args: Record<string, any>) => {
-        return runTaskTool({ ...state.options, abortController }, args);
-      },
+      runner: (args) =>
+        runTaskTool({ ...state.options, abortController }, args),
     },
   ];
 
@@ -168,11 +173,45 @@ export async function streamTUI(state: TUIState) {
     }
   };
 
-  const onTool = (tool: ToolResultMessage, ctx: Context) => {
-    tool = insertToolUsageReminder(state.messages, tool);
-    state.messages.push(tool);
+  const onToolOutput = (msg: ToolResultMessage, ctx: Context) => {
+    const existingIdx = state.messages.findIndex(
+      (m) => m.role === "toolResult" && msg.toolCallId === m.toolCallId,
+    );
+    const existing = state.messages[existingIdx];
+
+    if (!existing) {
+      state.messages.push(msg);
+    } else {
+      state.messages[existingIdx] = {
+        ...existing,
+        content: [...existing.content, ...msg.content],
+        isError: msg.isError,
+      } as ToolResultMessage;
+    }
+
     state.contextSize = estimateTokens(JSON.stringify(ctx));
-    return tool;
+  };
+
+  const onTool = (tool: ToolResultMessage, ctx: Context) => {
+    const existingIdx = state.messages.findIndex(
+      (m) => m.role === "toolResult" && tool.toolCallId === m.toolCallId,
+    );
+    const existing = state.messages[existingIdx];
+
+    tool = insertToolUsageReminder(state.messages, tool);
+    ctx.messages[ctx.messages.length - 1] = tool;
+
+    if (!existing) {
+      state.messages.push(tool);
+    } else {
+      state.messages[existingIdx] = {
+        ...existing,
+        content: tool.content,
+        isError: tool.isError,
+      } as ToolResultMessage;
+    }
+
+    state.contextSize = estimateTokens(JSON.stringify(ctx));
   };
 
   const onComplete = (msg: AssistantMessage, ctx: Context) => {
@@ -185,17 +224,30 @@ export async function streamTUI(state: TUIState) {
   };
 
   try {
-    await streamAgent(
+    for await (const ev of streamAgent(
       apiKey,
       tools,
       MAIN_PROMPT,
       existingMessages,
       state.options,
       state.abortController,
-      onStream,
-      onTool,
-      onComplete,
-    );
+    )) {
+      switch (ev.type) {
+        case "assistant":
+          onStream(ev.event, ev.context);
+          break;
+        case "tool_output":
+          // TODO:
+          onToolOutput(ev.message, ev.context);
+          break;
+        case "tool_result":
+          onTool(ev.message, ev.context);
+          break;
+        case "complete":
+          onComplete(ev.message, ev.context);
+          break;
+      }
+    }
   } finally {
     state.streaming = false;
   }

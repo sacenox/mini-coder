@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "bun run bin/mc.ts",
     "check": "bun run lint && bun run typecheck",
-    "lint": "bun run biome check --write .",
+    "lint": "bun run biome check .",
     "typecheck": "bun run tsc -p tsconfig.json --noEmit",
     "format": "bun run prettier --write *.md && bun run biome format --write . && bun run biome check --write ."
   },
@@ -20,8 +20,8 @@
     "typescript": "^6.0.3"
   },
   "dependencies": {
-    "@cel-tui/components": "^0.8.2",
-    "@cel-tui/core": "^0.8.2",
+    "@cel-tui/components": "^0.8.3",
+    "@cel-tui/core": "^0.8.3",
     "@mariozechner/pi-ai": "^0.70.2",
     "diff": "^9.0.0",
     "simple-git": "^3.36.0",

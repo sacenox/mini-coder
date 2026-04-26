@@ -1,4 +1,13 @@
-import type { Message, Model, ThinkingLevel, Tool } from "@mariozechner/pi-ai";
+import type {
+  AssistantMessage,
+  AssistantMessageEvent,
+  Context,
+  Message,
+  Model,
+  ThinkingLevel,
+  Tool,
+  ToolResultMessage,
+} from "@mariozechner/pi-ai";
 import type { OAuthCredentials } from "@mariozechner/pi-ai/oauth";
 
 export type CliOptions = {
@@ -25,7 +34,33 @@ export type SavedOAuthAuth = OAuthCredentials & {
 
 export type SavedOAuthCreds = Record<string, SavedOAuthAuth>;
 
+export type AgentStreamEvent =
+  | {
+      type: "assistant";
+      event: AssistantMessageEvent;
+      context: Context;
+    }
+  | {
+      type: "tool_output";
+      message: ToolResultMessage;
+      context: Context;
+    }
+  | {
+      type: "tool_result";
+      message: ToolResultMessage;
+      context: Context;
+    }
+  | {
+      type: "complete";
+      message: AssistantMessage;
+      context: Context;
+    };
+
+export type ToolRunnerEvent =
+  | { type: "output"; text: string }
+  | { type: "result"; text: string };
+
 export type ToolAndRunner = {
   tool: Tool;
-  runner: (args: Record<string, any>) => string | Promise<string>;
+  runner: (args: Record<string, any>) => AsyncGenerator<ToolRunnerEvent>;
 };

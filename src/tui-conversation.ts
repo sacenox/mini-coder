@@ -20,13 +20,10 @@ function agentMessageNode(msg: AssistantMessage): Node {
 
       const tokens = estimateTokens(block.thinking);
 
-      return HStack({}, [
-        HStack({ width: 4 }, []),
-        Text(`Thinking... (~${tokens} tokens)`, {
-          fgColor: theme.bblack,
-          italic: true,
-        }),
-      ]);
+      return Text(`Thinking... (~${tokens} tokens)`, {
+        fgColor: theme.bblack,
+        italic: true,
+      });
     }
 
     let text = "";
@@ -41,7 +38,8 @@ function agentMessageNode(msg: AssistantMessage): Node {
       text = block.arguments.prompt;
       node = SyntaxHighlight(text, "markdown");
     } else {
-      node = Text("Unknown tool");
+      text = JSON.stringify(block.arguments);
+      node = Text(text);
     }
 
     return VStack({ padding: { x: 4 } }, [
@@ -61,7 +59,7 @@ function userMessageNode(msg: UserMessage): Node {
     text = msg.content
       .filter((b) => b.type === "text")
       .map((b) => b.text)
-      .join("\n");
+      .join("");
   }
 
   return VStack(
@@ -75,25 +73,22 @@ function userMessageNode(msg: UserMessage): Node {
 }
 
 function toolMessageNode(msg: ToolResultMessage): Node {
-  let textBlocks = msg.content
-    .filter((b) => b.type === "text")
-    .map((b) => b.text)
-    .join("\n");
-
-  const newlines = textBlocks.split("\n");
-  const max = 4;
-  if (newlines.length > max) {
-    textBlocks = `...\n${newlines.slice(-max).join("\n")}`;
-  }
-
-  const charsPerLine = 100;
-  if (textBlocks.length > max * charsPerLine) {
-    textBlocks = `...${textBlocks.slice(-(max * charsPerLine))}`;
-  }
-
-  return VStack({ gap: 1 }, [
-    Text(textBlocks, { wrap: "word", fgColor: theme.bblack }),
-  ]);
+  // Output only shows last 10 lines of scroll.
+  return VStack(
+    {
+      height: 10,
+      padding: { x:4 },
+      overflow: "scroll",
+      scrollOffset: Infinity,
+      onScroll: () => false,
+    },
+    msg.content.map((block) => {
+      if (block.type === "text") {
+        return Text(block.text, { wrap: "word", fgColor: theme.bblack });
+      }
+      return Text(""); // TODO: image case needs attention
+    }),
+  );
 }
 
 function conversationMessageNode(msg: Message): Node {
