@@ -85,8 +85,8 @@ export async function* runTaskTool(
       }
 
       if (ev.type === "tool_result") {
-        const estimate = estimateTokens(JSON.stringify(ev.message.content))
-        const elapsed = elapsedTime(Date.now() - ev.message.timestamp)
+        const estimate = estimateTokens(JSON.stringify(ev.message.content));
+        const elapsed = elapsedTime(Date.now() - ev.message.timestamp);
         const text = `Called ${ev.message.toolName}. ~(${estimate} tokens). ${elapsed} ago`;
         output += text;
         yield {

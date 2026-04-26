@@ -42,7 +42,7 @@ function agentMessageNode(msg: AssistantMessage): Node {
       node = Text(text);
     }
 
-    return VStack({ padding: { x: 4 } }, [
+    return VStack({ padding: { x: 4 }, gap: 1 }, [
       TextPill(block.name, theme.white, theme.bblack),
       node,
     ]);
@@ -77,7 +77,7 @@ function toolMessageNode(msg: ToolResultMessage): Node {
   return VStack(
     {
       height: 10,
-      padding: { x:4 },
+      padding: { x: 4 },
       overflow: "scroll",
       scrollOffset: Infinity,
       onScroll: () => false,

@@ -1,4 +1,3 @@
-import { basename } from "node:path";
 import { cel, HStack, ProcessTerminal, VStack } from "@cel-tui/core";
 import type {
   AssistantMessage,
@@ -7,6 +6,7 @@ import type {
   Message,
   ToolResultMessage,
 } from "@mariozechner/pi-ai";
+import simpleGit from "simple-git";
 import { insertToolUsageReminder, MAIN_PROMPT, streamAgent } from "./agent";
 import { getApiKey } from "./oauth";
 import { estimateTokens } from "./shared";
@@ -16,6 +16,7 @@ import { runTaskTool, task } from "./tool-task";
 import {
   ActivityPill,
   ContextPill,
+  GitPill,
   Spinner,
   TextPill,
   theme,
@@ -37,7 +38,6 @@ function clearOrAbort(state: TUIState) {
 }
 
 export function initTUI(state: TUIState, leave: (s: string) => void) {
-  const cwd = basename(process.cwd());
   const { spinnerEvery, currentSpinner } = Spinner();
 
   // Stable 60fps rendering.
@@ -47,11 +47,13 @@ export function initTUI(state: TUIState, leave: (s: string) => void) {
     if (state.streaming) {
       spinnerEvery();
     }
+    cel.setTitle(
+      `mc ${state.streaming ? currentSpinner() : ">"} ../${state.cwd}`,
+    );
     cel.render();
   }, 1000 / fps);
 
   cel.init(new ProcessTerminal());
-  cel.setTitle(`mc | ${cwd}`);
 
   cel.viewport(() =>
     VStack(
@@ -76,7 +78,8 @@ export function initTUI(state: TUIState, leave: (s: string) => void) {
 
         HStack({ gap: 1 }, [
           TextPill(state.options.model.name, theme.bblack, theme.bwhite),
-          TextPill(`../${cwd}`, theme.bwhite, theme.bblack),
+          TextPill(`../${state.cwd}`, theme.bwhite, theme.bblack),
+          GitPill(state),
           VStack({ flex: 1 }, []),
           ActivityPill(state, currentSpinner()),
           ContextPill(state),
@@ -144,6 +147,8 @@ export async function streamTUI(state: TUIState) {
 
   state.prompt = "";
   cel.render();
+
+  const git = simpleGit();
 
   let partial: AssistantMessage | null = null;
 
@@ -250,5 +255,8 @@ export async function streamTUI(state: TUIState) {
     }
   } finally {
     state.streaming = false;
+    const gitStatus = (await git.status()).isClean() ? "" : "*";
+    const gitBranch = (await git.branch()).current;
+    state.gitBranch = `${gitBranch}${gitStatus}`;
   }
 }

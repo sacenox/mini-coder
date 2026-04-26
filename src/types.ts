@@ -1,7 +1,9 @@
 import type {
+  Api,
   AssistantMessage,
   AssistantMessageEvent,
   Context,
+  KnownProvider,
   Message,
   Model,
   ThinkingLevel,
@@ -10,8 +12,15 @@ import type {
 } from "@mariozechner/pi-ai";
 import type { OAuthCredentials } from "@mariozechner/pi-ai/oauth";
 
+export type Settings = {
+  provider: KnownProvider;
+  model: string;
+  effort: ThinkingLevel;
+};
+
 export type CliOptions = {
-  model: Model<never>;
+  provider: KnownProvider;
+  model: Model<Api>;
   effort: ThinkingLevel;
   prompt?: string;
   jsonOutput?: boolean;
@@ -26,6 +35,8 @@ export type TUIState = {
   scrollOffset: number;
   streaming: boolean;
   abortController?: AbortController;
+  cwd: string;
+  gitBranch?: string;
 };
 
 export type SavedOAuthAuth = OAuthCredentials & {
