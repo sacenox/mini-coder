@@ -1,15 +1,15 @@
-import {
-  type Message,
-  type ThinkingLevel,
-  type Tool,
-  Type,
-} from "@mariozechner/pi-ai";
-import { streamAgent, TASK_PROMPT } from "./agent";
-import { getApiKey } from "./oauth";
-import { elapsedTime, estimateTokens } from "./shared";
+import { type Message, type Tool, Type } from "@mariozechner/pi-ai";
+import { streamAgent } from "./agent";
+import { buildSystemPrompt, TASK_PROMPT } from "./prompt";
+import { estimateTokens, formatTimestamp } from "./shared";
 import { bash, runBashTool } from "./tool-bash";
 import { edit, runEditTool } from "./tool-edit";
-import type { CliOptions, ToolAndRunner, ToolRunnerEvent } from "./types";
+import type {
+  AgentContex,
+  CliOptions,
+  ToolAndRunner,
+  ToolRunnerEvent,
+} from "./types";
 
 const description = `## Task tool
 
@@ -38,89 +38,81 @@ export const task: Tool = {
 };
 
 export async function* runTaskTool(
-  options: CliOptions & { abortController?: AbortController },
+  options: CliOptions,
   args: Record<string, any>,
+  signal?: AbortSignal,
 ): AsyncGenerator<ToolRunnerEvent> {
-  const apiKey = await getApiKey(options);
   const tools: ToolAndRunner[] = [
-    {
-      tool: bash,
-      runner: (args) => runBashTool(args, options.abortController?.signal),
-    },
-    {
-      tool: edit,
-      runner: (args) => runEditTool(args, options.abortController?.signal),
-    },
+    { tool: bash, runner: runBashTool },
+    { tool: edit, runner: runEditTool },
   ];
   const messages: Message[] = [
-    { role: "user", content: args.prompt, timestamp: Date.now() },
+    { role: "user", content: args.prompt || "", timestamp: Date.now() },
   ];
 
-  // For custom effort for speed and less surprises. Consider even using a `taskModel` config value.
-  // Also remove the piggy backed abortController
-  const taskOptions = {
-    ...options,
-    effort: "medium" as ThinkingLevel,
-    abortController: undefined,
+  const systemPrompt = await buildSystemPrompt(TASK_PROMPT);
+  const ctx: AgentContex = {
+    systemPrompt,
+    tools,
+    messages,
+    options,
+    signal,
   };
 
   let output = "";
-
-  // We actually wrap this in case of exceptions, this breaks the let exceptions bubble
-  // overall model at first glance, but it makes sense when you look at this like other
-  // tools, if a tool fails it doesn't break the top level conversation, tool failures
-  // are common.
-  try {
-    for await (const ev of streamAgent(
-      apiKey,
-      tools,
-      TASK_PROMPT,
-      messages,
-      taskOptions,
-      options.abortController,
-    )) {
-      if (ev.type === "assistant" && ev.event.type === "text_end") {
-        output += ev.event.content;
-        yield { type: "output", text: ev.event.content };
-      }
-
-      if (ev.type === "assistant" && ev.event.type === "error") {
-        yield {
-          type: "output",
-          text: `\n\nStopped: ${ev.event.error.errorMessage ?? "Unknown error."}`,
-        };
-      }
-
-      if (ev.type === "tool_result") {
-        const estimate = estimateTokens(JSON.stringify(ev.message.content));
-        const elapsed = elapsedTime(Date.now() - ev.message.timestamp);
-        const text = `Called ${ev.message.toolName}. ~(${estimate} tokens). ${elapsed} ago`;
+  const agent = streamAgent(ctx);
+  for await (const ev of agent) {
+    switch (ev.type) {
+      case "message_start": {
+        const text = `[${formatTimestamp(ev.partial.timestamp)}] Working...`;
         output += text;
-        yield {
-          type: "output",
-          text,
-        };
+        yield { type: "output", text };
+        break;
       }
+      case "message_end": {
+        const thinking = ev.message.content
+          .filter((b) => b.type === "thinking")
+          .map((b) => b.thinking)
+          .join("");
+        const messageText = ev.message.content
+          .filter((b) => b.type === "text")
+          .map((b) => b.text)
+          .join("");
+        const calls = ev.message.content
+          .filter((b) => b.type === "toolCall")
+          .map((b) => b.name);
 
-      if (ev.type === "complete") {
-        if (["stop", "error", "aborted"].includes(ev.message.stopReason)) {
-          if (ev.message.errorMessage)
-            output += `\n\nStopped: ${ev.message.stopReason}, message:\n${ev.message.errorMessage}`;
+        let text = `[${formatTimestamp(ev.message.timestamp)}]`;
+        if (thinking.length > 0) {
+          const thinkingTokens = estimateTokens(thinking);
+          text += `Thinking... (${thinkingTokens} tokens)`;
         }
+        if (messageText.length > 0) {
+          text += `\n\n${messageText}\n`;
+        }
+        if (calls.length > 0) {
+          text += ` \nTool calls:`;
+          for (const c of calls) {
+            text += `\n${c}`;
+          }
+        }
+
+        output += text;
+        yield { type: "output", text };
+        break;
+      }
+      case "tool_message_end": {
+        const ts = formatTimestamp(ev.message.timestamp);
+        const name = ev.message.toolName;
+        const symbol = !ev.message.isError ? "✓ " : "✗ ";
+        const text = `[${ts}] ${name} ${symbol}`;
+
+        output += text;
+        yield { type: "output", text };
+        break;
       }
     }
-  } catch (err) {
-    let errorText = "Unknown error.";
-    if (err instanceof Error) {
-      errorText = `Stopped: ${err.message}\n\n${err.stack ?? ""}`;
-    }
-
-    yield { type: "result", text: `${output}\n\n${errorText}` };
-
-    return errorText;
   }
 
-  // TODO: Structured footer for output and edit diffs.
   yield { type: "result", text: output };
-  return output.trim();
 }

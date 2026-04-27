@@ -111,7 +111,6 @@ export async function handleArgv(argv: string[]): Promise<CliOptions> {
   let modelId = settingsModelId;
   let effort = settingsEffort;
   let prompt: string | undefined;
-  let jsonOutput: boolean | undefined;
   let providerChanged = false;
   let explicitModel = false;
 
@@ -146,11 +145,6 @@ export async function handleArgv(argv: string[]): Promise<CliOptions> {
       continue;
     }
 
-    if (flag === "--json" || flag === "-j") {
-      jsonOutput = true;
-      continue;
-    }
-
     if (flag === "--login" || flag === "-l") {
       await loginOAuth(requireValue(argv, i, flag));
       i++;
@@ -166,7 +160,6 @@ export async function handleArgv(argv: string[]): Promise<CliOptions> {
     model,
     effort,
     prompt,
-    jsonOutput,
   };
   const nextSettings: Settings = {
     provider,

@@ -1,8 +1,6 @@
 import type {
   Api,
   AssistantMessage,
-  AssistantMessageEvent,
-  Context,
   KnownProvider,
   Message,
   Model,
@@ -23,8 +21,12 @@ export type CliOptions = {
   model: Model<Api>;
   effort: ThinkingLevel;
   prompt?: string;
-  jsonOutput?: boolean;
 };
+
+type SavedOAuthAuth = OAuthCredentials & {
+  type: "oauth";
+};
+export type SavedOAuthCreds = Record<string, SavedOAuthAuth>;
 
 export type TUIState = {
   options: CliOptions;
@@ -39,32 +41,40 @@ export type TUIState = {
   gitBranch?: string;
 };
 
-export type SavedOAuthAuth = OAuthCredentials & {
-  type: "oauth";
+export type AgentContex = {
+  systemPrompt: string;
+  tools: ToolAndRunner[];
+  messages: Message[];
+  options: CliOptions;
+  signal?: AbortSignal | undefined;
 };
 
-export type SavedOAuthCreds = Record<string, SavedOAuthAuth>;
-
-export type AgentStreamEvent =
+export type AgentEvent =
   | {
-      type: "assistant";
-      event: AssistantMessageEvent;
-      context: Context;
+      type: "message_start" | "message_update";
+      partial: AssistantMessage;
     }
   | {
-      type: "tool_output";
+      type: "message_end";
+      message: AssistantMessage;
+    }
+  | {
+      type: "tool_message_start" | "tool_message_update";
+      partial: ToolResultMessage;
+    }
+  | {
+      type: "tool_message_end";
       message: ToolResultMessage;
-      context: Context;
+    };
+
+export type AgentToolEvent =
+  | {
+      type: "tool_update";
+      partial: ToolResultMessage;
     }
   | {
       type: "tool_result";
       message: ToolResultMessage;
-      context: Context;
-    }
-  | {
-      type: "complete";
-      message: AssistantMessage;
-      context: Context;
     };
 
 export type ToolRunnerEvent =
@@ -73,5 +83,8 @@ export type ToolRunnerEvent =
 
 export type ToolAndRunner = {
   tool: Tool;
-  runner: (args: Record<string, any>) => AsyncGenerator<ToolRunnerEvent>;
+  runner: (
+    args: Record<string, any>,
+    signal?: AbortSignal,
+  ) => AsyncGenerator<ToolRunnerEvent>;
 };

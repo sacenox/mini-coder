@@ -106,3 +106,12 @@ export function parseSkillFrontmatter(content: string) {
 
   return { name, description };
 }
+
+export function formatTimestamp(timestampMs: number): string {
+  return new Date(timestampMs).toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+}

@@ -1,14 +1,11 @@
 import { cel, HStack, ProcessTerminal, VStack } from "@cel-tui/core";
-import type {
-  AssistantMessage,
-  AssistantMessageEvent,
-  Context,
-  Message,
-  ToolResultMessage,
-} from "@mariozechner/pi-ai";
 import simpleGit from "simple-git";
-import { insertToolUsageReminder, MAIN_PROMPT, streamAgent } from "./agent";
-import { getApiKey } from "./oauth";
+import { streamAgent } from "./agent";
+import {
+  buildSystemPrompt,
+  insertToolUsageReminder,
+  MAIN_PROMPT,
+} from "./prompt";
 import { estimateTokens } from "./shared";
 import { bash, runBashTool } from "./tool-bash";
 import { edit, runEditTool } from "./tool-edit";
@@ -24,7 +21,9 @@ import {
 } from "./tui-components";
 import { Conversation } from "./tui-conversation";
 import { Editor } from "./tui-editor";
-import type { ToolAndRunner, TUIState } from "./types";
+import type { AgentContex, ToolAndRunner, TUIState } from "./types";
+
+const git = simpleGit();
 
 function clearOrAbort(state: TUIState) {
   // Are we mid stream? Abort it.
@@ -102,9 +101,9 @@ export function initTUI(state: TUIState, leave: (s: string) => void) {
                 return false;
               }
               const submit = async () => {
-                await streamTUI(state);
+                await streamAgentTUI(state);
               };
-              submit();
+              if (state.prompt && !state.streaming) submit();
               return false;
             }
           },
@@ -114,151 +113,81 @@ export function initTUI(state: TUIState, leave: (s: string) => void) {
   );
 }
 
-export async function streamTUI(state: TUIState) {
-  if (state.streaming) return;
+async function streamAgentTUI(state: TUIState) {
   state.streaming = true;
 
   const abortController = new AbortController();
   state.abortController = abortController;
 
-  const apiKey = await getApiKey(state.options);
   const tools: ToolAndRunner[] = [
-    {
-      tool: bash,
-      runner: (args) => runBashTool(args, state.abortController?.signal),
-    },
-    {
-      tool: edit,
-      runner: (args) => runEditTool(args, state.abortController?.signal),
-    },
+    { tool: bash, runner: runBashTool },
+    { tool: edit, runner: runEditTool },
     {
       tool: task,
-      runner: (args) =>
-        runTaskTool({ ...state.options, abortController }, args),
+      runner: (args, signal) => runTaskTool(state.options, args, signal),
     },
   ];
 
-  const userMessage: Message = {
+  state.messages.push({
     role: "user",
-    content: state.prompt || "",
+    content: state.prompt,
     timestamp: Date.now(),
-  };
-  state.messages.push(userMessage);
-  const existingMessages: Message[] = [...state.messages];
-
+  });
   state.prompt = "";
-  cel.render();
 
-  const git = simpleGit();
+  const systemPrompt = await buildSystemPrompt(MAIN_PROMPT);
+  const ctx: AgentContex = {
+    systemPrompt,
+    tools,
+    messages: state.messages,
+    options: state.options,
+    signal: state.abortController?.signal,
+  };
 
-  let partial: AssistantMessage | null = null;
+  // We send a reference to state.messages, so things just render.
+  // We just need to react to some updates.
+  const agent = streamAgent(ctx);
+  try {
+    for await (const ev of agent) {
+      switch (ev.type) {
+        case "message_start":
+        case "message_update":
+          break;
 
-  const onStream = (ev: AssistantMessageEvent, ctx: Context) => {
-    switch (ev.type) {
-      case "start":
-        partial = ev.partial;
-        state.messages.push(partial);
-        state.contextSize = estimateTokens(JSON.stringify(ctx));
-        break;
+        case "message_end":
+          state.contextSize = estimateTokens(JSON.stringify(ctx));
+          break;
 
-      case "text_start":
-      case "text_delta":
-      case "text_end":
-      case "thinking_start":
-      case "thinking_delta":
-      case "thinking_end":
-      case "toolcall_start":
-      case "toolcall_delta":
-      case "toolcall_end":
-        if (partial) {
-          partial = ev.partial;
-          state.messages[state.messages.length - 1] = partial;
+        case "tool_message_start":
+        case "tool_message_update":
+          break;
+
+        case "tool_message_end": {
+          const withReminder = insertToolUsageReminder(
+            state.messages,
+            ev.message,
+          );
+
+          const idx = state.messages.findIndex(
+            (m) =>
+              m.role === "toolResult" &&
+              m.toolCallId === withReminder.toolCallId,
+          );
+          if (idx >= 0) {
+            state.messages[idx] = withReminder;
+          }
+
           state.contextSize = estimateTokens(JSON.stringify(ctx));
         }
-        break;
-    }
-  };
-
-  const onToolOutput = (msg: ToolResultMessage, ctx: Context) => {
-    const existingIdx = state.messages.findIndex(
-      (m) => m.role === "toolResult" && msg.toolCallId === m.toolCallId,
-    );
-    const existing = state.messages[existingIdx];
-
-    if (!existing) {
-      state.messages.push(msg);
-    } else {
-      state.messages[existingIdx] = {
-        ...existing,
-        content: [...existing.content, ...msg.content],
-        isError: msg.isError,
-      } as ToolResultMessage;
-    }
-
-    state.contextSize = estimateTokens(JSON.stringify(ctx));
-  };
-
-  const onTool = (tool: ToolResultMessage, ctx: Context) => {
-    const existingIdx = state.messages.findIndex(
-      (m) => m.role === "toolResult" && tool.toolCallId === m.toolCallId,
-    );
-    const existing = state.messages[existingIdx];
-
-    tool = insertToolUsageReminder(state.messages, tool);
-    ctx.messages[ctx.messages.length - 1] = tool;
-
-    if (!existing) {
-      state.messages.push(tool);
-    } else {
-      state.messages[existingIdx] = {
-        ...existing,
-        content: tool.content,
-        isError: tool.isError,
-      } as ToolResultMessage;
-    }
-
-    state.contextSize = estimateTokens(JSON.stringify(ctx));
-  };
-
-  const onComplete = (msg: AssistantMessage, ctx: Context) => {
-    if (partial) {
-      state.messages[state.messages.length - 1] = msg;
-    } else {
-      state.messages.push(msg);
-    }
-    state.contextSize = estimateTokens(JSON.stringify(ctx));
-  };
-
-  try {
-    for await (const ev of streamAgent(
-      apiKey,
-      tools,
-      MAIN_PROMPT,
-      existingMessages,
-      state.options,
-      state.abortController,
-    )) {
-      switch (ev.type) {
-        case "assistant":
-          onStream(ev.event, ev.context);
-          break;
-        case "tool_output":
-          onToolOutput(ev.message, ev.context);
-          break;
-        case "tool_result":
-          onTool(ev.message, ev.context);
-          break;
-        case "complete":
-          onComplete(ev.message, ev.context);
-          break;
       }
     }
   } finally {
     state.streaming = false;
-    try {
-      const gitStatus = (await git.status()).isClean() ? "" : "*";
-      const gitBranch = (await git.branch()).current;
-      state.gitBranch = `${gitBranch}${gitStatus}`;
-    } catch (_) {}
   }
+
+  try {
+    const gitStatus = (await git.status()).isClean() ? "" : "*";
+    const gitBranch = (await git.branch()).current;
+    state.gitBranch = `${gitBranch}${gitStatus}`;
+  } catch (_) {}
 }
