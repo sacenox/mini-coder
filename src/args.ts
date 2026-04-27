@@ -2,25 +2,58 @@ import { mkdir } from "node:fs/promises";
 import {
   type Api,
   getModels,
-  getProviders,
   type KnownProvider,
   type Model,
   type ThinkingLevel,
 } from "@mariozechner/pi-ai";
+import { Value } from "typebox/value";
 import { loginOAuth } from "./oauth";
 import { DATA_DIR, SETTINGS_PATH } from "./shared.ts";
-import type { CliOptions, Settings } from "./types.ts";
+import {
+  type CliOptions,
+  CliOptionsSchema,
+  type Settings,
+  SettingsSchema,
+} from "./types.ts";
 
 const DEFAULT_PROVIDER: KnownProvider = "openai-codex";
 const DEFAULT_MODEL_ID = "gpt-5.5";
 const DEFAULT_EFFORT: ThinkingLevel = "xhigh";
-const VALID_EFFORTS: ThinkingLevel[] = [
-  "low",
-  "medium",
-  "minimal",
-  "high",
-  "xhigh",
-];
+
+function formatValidationError(
+  label: string,
+  error: ReturnType<typeof Value.Errors>[number] | undefined,
+) {
+  if (!error) {
+    return `Invalid ${label}`;
+  }
+
+  const path = error.instancePath || "/";
+  return `Invalid ${label}: ${path} ${error.message}`;
+}
+
+function parseSettings(value: unknown, label: string): Settings {
+  if (Value.Check(SettingsSchema, value)) {
+    return value;
+  }
+
+  throw new Error(
+    formatValidationError(label, Value.Errors(SettingsSchema, value)[0]),
+  );
+}
+
+function parseCliOptions(value: unknown): CliOptions {
+  if (Value.Check(CliOptionsSchema, value)) {
+    return value;
+  }
+
+  throw new Error(
+    formatValidationError(
+      "CLI options",
+      Value.Errors(CliOptionsSchema, value)[0],
+    ),
+  );
+}
 
 async function getSettings(): Promise<Settings | undefined> {
   const file = Bun.file(SETTINGS_PATH);
@@ -30,9 +63,9 @@ async function getSettings(): Promise<Settings | undefined> {
   }
 
   const jsonText = await file.text();
-  const settings: Settings = JSON.parse(jsonText);
+  const settings = JSON.parse(jsonText) as unknown;
 
-  return settings;
+  return parseSettings(settings, "settings");
 }
 
 async function saveSettings(s: Settings) {
@@ -49,27 +82,6 @@ function requireValue(argv: string[], index: number, flag: string) {
   }
 
   return value;
-}
-
-function getKnownProvider(provider: string): KnownProvider {
-  const providers = getProviders();
-  const knownProvider = providers.find((p) => p === provider);
-
-  if (!knownProvider) {
-    throw new Error(`Unknown provider: ${provider}`);
-  }
-
-  return knownProvider;
-}
-
-function getThinkingLevel(effort: string): ThinkingLevel {
-  const thinkingLevel = VALID_EFFORTS.find((level) => level === effort);
-
-  if (!thinkingLevel) {
-    throw new Error(`Invalid effort: ${effort}`);
-  }
-
-  return thinkingLevel;
 }
 
 function findModelConfig(modelId: string, provider: KnownProvider) {
@@ -107,9 +119,9 @@ export async function handleArgv(argv: string[]): Promise<CliOptions> {
   const settingsProvider = settings?.provider ?? DEFAULT_PROVIDER;
   const settingsModelId = settings?.model ?? DEFAULT_MODEL_ID;
   const settingsEffort = settings?.effort ?? DEFAULT_EFFORT;
-  let provider = settingsProvider;
+  let provider: string = settingsProvider;
   let modelId = settingsModelId;
-  let effort = settingsEffort;
+  let effort: string = settingsEffort;
   let prompt: string | undefined;
   let providerChanged = false;
   let explicitModel = false;
@@ -119,7 +131,14 @@ export async function handleArgv(argv: string[]): Promise<CliOptions> {
 
     // Settings
     if (flag === "--provider") {
-      provider = getKnownProvider(requireValue(argv, i, flag));
+      provider = parseSettings(
+        {
+          provider: requireValue(argv, i, flag),
+          model: modelId,
+          effort,
+        },
+        "CLI settings",
+      ).provider;
       providerChanged = provider !== settingsProvider;
       i++;
       continue;
@@ -133,7 +152,14 @@ export async function handleArgv(argv: string[]): Promise<CliOptions> {
     }
 
     if (flag === "--effort") {
-      effort = getThinkingLevel(requireValue(argv, i, flag));
+      effort = parseSettings(
+        {
+          provider,
+          model: modelId,
+          effort: requireValue(argv, i, flag),
+        },
+        "CLI settings",
+      ).effort;
       i++;
       continue;
     }
@@ -151,21 +177,36 @@ export async function handleArgv(argv: string[]): Promise<CliOptions> {
     }
   }
 
-  const selectedModel = findModelConfig(modelId, provider);
+  const cliSettings = parseSettings(
+    {
+      provider,
+      model: modelId,
+      effort,
+    },
+    "CLI settings",
+  );
+  const selectedModel = findModelConfig(
+    cliSettings.model,
+    cliSettings.provider,
+  );
   const model =
-    selectedModel ?? getFallbackModel(provider, explicitModel, providerChanged);
+    selectedModel ??
+    getFallbackModel(cliSettings.provider, explicitModel, providerChanged);
 
-  const options: CliOptions = {
-    provider,
+  const options = parseCliOptions({
+    provider: cliSettings.provider,
     model,
-    effort,
+    effort: cliSettings.effort,
     prompt,
-  };
-  const nextSettings: Settings = {
-    provider,
-    model: model.id,
-    effort,
-  };
+  });
+  const nextSettings = parseSettings(
+    {
+      provider: options.provider,
+      model: options.model.id,
+      effort: options.effort,
+    },
+    "settings",
+  );
 
   await saveSettings(nextSettings);
   return options;

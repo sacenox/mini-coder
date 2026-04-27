@@ -1,27 +1,70 @@
-import type {
-  Api,
-  AssistantMessage,
-  KnownProvider,
-  Message,
-  Model,
-  ThinkingLevel,
-  Tool,
-  ToolResultMessage,
+import {
+  type Api,
+  type AssistantMessage,
+  getProviders,
+  type KnownProvider,
+  type Message,
+  type Model,
+  type Static,
+  type ThinkingLevel,
+  type Tool,
+  type ToolResultMessage,
+  Type,
 } from "@mariozechner/pi-ai";
 import type { OAuthCredentials } from "@mariozechner/pi-ai/oauth";
 
-export type Settings = {
-  provider: KnownProvider;
-  model: string;
-  effort: ThinkingLevel;
-};
+const KnownProviderSchema = Type.Unsafe<KnownProvider>(
+  Type.Union(getProviders().map((provider) => Type.Literal(provider))),
+);
 
-export type CliOptions = {
-  provider: KnownProvider;
-  model: Model<Api>;
-  effort: ThinkingLevel;
-  prompt?: string;
-};
+const ThinkingLevelSchema = Type.Unsafe<ThinkingLevel>(
+  Type.Union([
+    Type.Literal("minimal"),
+    Type.Literal("low"),
+    Type.Literal("medium"),
+    Type.Literal("high"),
+    Type.Literal("xhigh"),
+  ]),
+);
+
+const ModelSchema = Type.Unsafe<Model<Api>>(
+  Type.Object({
+    id: Type.String(),
+    name: Type.String(),
+    api: Type.String(),
+    provider: Type.String(),
+    baseUrl: Type.String(),
+    reasoning: Type.Boolean(),
+    input: Type.Array(
+      Type.Union([Type.Literal("text"), Type.Literal("image")]),
+    ),
+    cost: Type.Object({
+      input: Type.Number(),
+      output: Type.Number(),
+      cacheRead: Type.Number(),
+      cacheWrite: Type.Number(),
+    }),
+    contextWindow: Type.Number(),
+    maxTokens: Type.Number(),
+    headers: Type.Optional(Type.Record(Type.String(), Type.String())),
+    compat: Type.Optional(Type.Unknown()),
+  }),
+);
+
+export const SettingsSchema = Type.Object({
+  provider: KnownProviderSchema,
+  model: Type.String(),
+  effort: ThinkingLevelSchema,
+});
+export type Settings = Static<typeof SettingsSchema>;
+
+export const CliOptionsSchema = Type.Object({
+  provider: KnownProviderSchema,
+  model: ModelSchema,
+  effort: ThinkingLevelSchema,
+  prompt: Type.Optional(Type.String()),
+});
+export type CliOptions = Static<typeof CliOptionsSchema>;
 
 type SavedOAuthAuth = OAuthCredentials & {
   type: "oauth";
