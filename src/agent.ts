@@ -364,21 +364,21 @@ type AgentContex = {
 
 type AgentEvent =
   | {
-      type: "message_start" | "message_update";
-      partial: AssistantMessage;
-    }
+    type: "message_start" | "message_update";
+    partial: AssistantMessage;
+  }
   | {
-      type: "message_end";
-      message: AssistantMessage;
-    }
+    type: "message_end";
+    message: AssistantMessage;
+  }
   | {
-      type: "tool_message_start" | "tool_message_update";
-      partial: ToolResultMessage;
-    }
+    type: "tool_message_start" | "tool_message_update";
+    partial: ToolResultMessage;
+  }
   | {
-      type: "tool_message_end";
-      message: ToolResultMessage;
-    };
+    type: "tool_message_end";
+    message: ToolResultMessage;
+  };
 
 export async function* _streamAgent(
   agentCtx: AgentContex,
@@ -459,8 +459,34 @@ export async function* _streamAgent(
       break;
     }
 
+    const toolMessagesMap = new Map<string, ToolResultMessage>()
     if (toolCalls.length > 0) {
+      const ts = toolRunner(toolCalls, agentCtx.tools)
+
       // Append toolResultMessges
+      for await (const toolMsg of ts) {
+        if (toolMessagesMap.has(toolMsg.toolCallId)) {
+          // Already seen, just update
+          toolMessagesMap.set(toolMsg.toolCallId, toolMsg);
+          llmCtx.messages = llmCtx.messages.map(m => {
+            if (m.role === 'toolResult' && m.toolCallId === toolMsg.toolCallId) {
+              return toolMsg
+            }
+            return m
+          })
+          yield { type: "tool_message_update", partial: toolMsg }
+        } else {
+          // New, add to context and map.
+          toolMessagesMap.set(toolMsg.toolCallId, toolMsg);
+          llmCtx.messages.push(toolMsg)
+          yield { type: "tool_message_start", partial: toolMsg }
+        }
+      }
+
+      // Updates done, yield final tool results
+      for (const item of toolMessagesMap.values()) {
+        yield { type: "tool_message_end", message: item }
+      }
     }
   }
 }
@@ -468,4 +494,6 @@ export async function* _streamAgent(
 async function* toolRunner(
   toolCall: ToolCall[],
   tools: ToolAndRunner[],
-): AsyncGenerator<ToolResultMessage> {}
+): AsyncGenerator<ToolResultMessage> {
+  return;
+}
