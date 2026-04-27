@@ -84,6 +84,13 @@ export async function* runTaskTool(
         yield { type: "output", text: ev.event.content };
       }
 
+      if (ev.type === "assistant" && ev.event.type === "error") {
+        yield {
+          type: "output",
+          text: `\n\nStopped: ${ev.event.error.errorMessage ?? "Unknown error."}`,
+        };
+      }
+
       if (ev.type === "tool_result") {
         const estimate = estimateTokens(JSON.stringify(ev.message.content));
         const elapsed = elapsedTime(Date.now() - ev.message.timestamp);

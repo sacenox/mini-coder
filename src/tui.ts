@@ -243,7 +243,6 @@ export async function streamTUI(state: TUIState) {
           onStream(ev.event, ev.context);
           break;
         case "tool_output":
-          // TODO:
           onToolOutput(ev.message, ev.context);
           break;
         case "tool_result":
@@ -256,8 +255,10 @@ export async function streamTUI(state: TUIState) {
     }
   } finally {
     state.streaming = false;
-    const gitStatus = (await git.status()).isClean() ? "" : "*";
-    const gitBranch = (await git.branch()).current;
-    state.gitBranch = `${gitBranch}${gitStatus}`;
+    try {
+      const gitStatus = (await git.status()).isClean() ? "" : "*";
+      const gitBranch = (await git.branch()).current;
+      state.gitBranch = `${gitBranch}${gitStatus}`;
+    } catch (_) {}
   }
 }

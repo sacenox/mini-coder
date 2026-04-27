@@ -2,6 +2,7 @@ import { readdir } from "node:fs/promises";
 import { homedir, platform } from "node:os";
 import { join } from "node:path";
 import {
+  type AssistantMessage,
   type Context,
   type Message,
   streamSimple,
@@ -9,8 +10,14 @@ import {
   type ToolResultMessage,
 } from "@mariozechner/pi-ai";
 import { type StatusResult, simpleGit } from "simple-git";
+import { getApiKey } from "./oauth";
 import { parseSkillFrontmatter } from "./shared";
-import type { AgentStreamEvent, CliOptions, ToolAndRunner } from "./types";
+import type {
+  AgentStreamEvent,
+  CliOptions,
+  ToolAndRunner,
+  ToolRunnerEvent,
+} from "./types";
 
 const IDENTITY_PROMPT = `# You are "mini-coder", an efficient, elite coding agent.
 
@@ -267,9 +274,7 @@ export async function* streamAgent(
 
     // Check if the agent is done, or an error/abort happened before moving
     // on towards tool calling.
-    if (
-      ["stop", "error", "aborted", "length"].includes(finalMessage.stopReason)
-    ) {
+    if (finalMessage.stopReason !== "toolUse") {
       // Agent is done, send the final message, and current context.
       yield { type: "complete", message: finalMessage, context };
       break;
@@ -347,3 +352,120 @@ export async function* streamAgent(
     }
   }
 }
+
+// CONTINUE: exploring a cleaner api for the core. It's a mess of bugs between this and the consumers: task, tui and headless, they all do things slighty different :/ my bad. this will bring some consistency.
+type AgentContex = {
+  systemPrompt: string;
+  tools: ToolAndRunner[];
+  messages: Message[];
+  options: CliOptions;
+  signal: AbortSignal | undefined;
+};
+
+type AgentEvent =
+  | {
+      type: "message_start" | "message_update";
+      partial: AssistantMessage;
+    }
+  | {
+      type: "message_end";
+      message: AssistantMessage;
+    }
+  | {
+      type: "tool_message_start" | "tool_message_update";
+      partial: ToolResultMessage;
+    }
+  | {
+      type: "tool_message_end";
+      message: ToolResultMessage;
+    };
+
+export async function* _streamAgent(
+  agentCtx: AgentContex,
+): AsyncGenerator<AgentEvent> {
+  const llmCtx: Context = {
+    systemPrompt: agentCtx.systemPrompt,
+    tools: agentCtx.tools.map((t) => t.tool),
+    messages: agentCtx.messages,
+  };
+
+  // Important for refreshing tokens.
+  const apiKey = await getApiKey(agentCtx.options);
+
+  // Main agent loop, continues until llm sends a response other than toolCall or has no tool calls.
+  while (true) {
+    const s = streamSimple(agentCtx.options.model, llmCtx, {
+      signal: agentCtx.signal,
+      apiKey,
+    });
+
+    let partial: AssistantMessage | null = null;
+    let added = false;
+
+    for await (const e of s) {
+      switch (e.type) {
+        case "start":
+          partial = e.partial;
+          llmCtx.messages.push(e.partial);
+          added = true;
+          yield { type: "message_start", partial };
+          break;
+
+        case "text_start":
+        case "text_delta":
+        case "text_end":
+        case "thinking_start":
+        case "thinking_delta":
+        case "thinking_end":
+        case "toolcall_start":
+        case "toolcall_delta":
+        case "toolcall_end":
+          if (partial) {
+            partial = e.partial;
+            llmCtx.messages[llmCtx.messages.length - 1] = partial;
+            yield { type: "message_update", partial };
+          }
+          break;
+
+        case "done":
+        case "error": {
+          const finalMessage = await s.result();
+          if (added) {
+            llmCtx.messages[llmCtx.messages.length - 1] = finalMessage;
+          } else {
+            llmCtx.messages.push(finalMessage);
+            yield { type: "message_start", partial: { ...finalMessage } };
+          }
+
+          yield { type: "message_end", message: finalMessage };
+          return;
+        }
+      }
+    }
+
+    const message = await s.result();
+    if (added) {
+      llmCtx.messages[llmCtx.messages.length - 1] = message;
+    } else {
+      llmCtx.messages.push(message);
+      yield { type: "message_start", partial: { ...message } };
+    }
+
+    const toolCalls = message.content.filter((c) => c.type === "toolCall");
+
+    // Stop on errors or no tools to call.
+    if (message.stopReason !== "toolUse" || toolCalls.length === 0) {
+      yield { type: "message_end", message };
+      break;
+    }
+
+    if (toolCalls.length > 0) {
+      // Append toolResultMessges
+    }
+  }
+}
+
+async function* toolRunner(
+  toolCall: ToolCall[],
+  tools: ToolAndRunner[],
+): AsyncGenerator<ToolResultMessage> {}

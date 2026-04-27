@@ -48,6 +48,18 @@ function agentMessageNode(msg: AssistantMessage): Node {
     ]);
   });
 
+  const error =
+    ((msg.stopReason === "error" || msg.stopReason === "aborted") &&
+      msg.errorMessage) ??
+    "Unknown error.";
+  if (error) {
+    textBlocks.push(
+      VStack({ padding: { x: 4 }, gap: 1 }, [
+        TextPill(msg.stopReason, theme.white, theme.bblack),
+        Text(error),
+      ]),
+    );
+  }
   return VStack({ gap: 1 }, textBlocks);
 }
 
