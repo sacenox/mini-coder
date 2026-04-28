@@ -12,7 +12,6 @@ Best practices using this tool:
 - Use \`rg\` or \`grep\` to search inside files for matching patterns.
 - Use \`cat -n\` or \`nl\` to read small files, or when you need the whole file.
 - Use \`sed -n\` with ranges to read sections of files. Prefer targeted reads, avoid dumping very large (more than ~200 lines) files all at once.
-- Use \`sed -i\` for exact edits and \`cat\` with redirection for new files. Prefer patch-based edits for multi-line or semantic changes.
 - Use \`cp\`, \`mv\`, and \`mkdir\` for file and directory operations, and \`rm\` to remove files and directories.
 - Use \`curl\` for web access. Use redirection to temp files for targeted reads.
 - Use development tools, like \`git\`, \`gh\`, \`jq\`, etc, when appropriate.

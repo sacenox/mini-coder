@@ -7,7 +7,8 @@ const description = `## Edit tool
 
 - This is your edit tool, use it to create or edit files safely. Always prefer this tool over bash editing methods.
 - The tool will refuse to edit on multiple matches of \`oldText\` so be specific with your matching.
-- Avoid reproducing whole files, use shell file operations for that instead (\`cp\`, \`mv\`, etc)
+- Prefer patch-based edits for multi-line or semantic changes.
+- Avoid reproducing whole files, use shell file operations for that instead (\`cp\`, \`mv\`, etc).
 `;
 
 export const edit: Tool = {

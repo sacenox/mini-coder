@@ -15,16 +15,11 @@ const description = `## Task tool
 
 Best practices using this tool:
 
-- Use detailed and specific prompts, be explicit about the expected output and guardrails.
-- Task tool doesn't know your context, make sure you include all relevant context and details.
-- Break your work down into small tasks, one small job for each task call.
-- Use this tool for breaking down large reading tasks, like reviews, audits, reading docs or doing data research.
-- Use this tool to break down large tasks into smaller steps, like implementing plans, editing a large number
-of files, addressing large fixes.
-- When describing edits, include detailed descriptions and validation requirements.
-- Always include all context, scope, constraints, and expected output.
-- Be careful with overlapping work when using \`task()\` in parallel.
-- Trust but verify the task tool output.
+To explore the web, the local system, or codebase, use an eploration task, specify what you are looking for, and be explicit about the expected output, for example: "Explore the current git repo, find all files relevant to tests. Return the exact paths of the matching files and a description of each file and their contents.
+
+For edits, you should specify a collection of exact diffs that you want to apply and the file you want them applied to.
+
+For anything else, use a specific and detailed set of instructions and your expected results.
 `;
 
 export const task: Tool = {
