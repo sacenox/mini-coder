@@ -1,6 +1,6 @@
 # Mini coder next
 
-A new version of mini-coder, written from the ground up as library first.
+A new version of mini-coder, written from the ground up.
 Version `mini-coder@0.5.x` is currently stable and mostly complete, that's our reference implementation.
 
 ## Dog-fooding

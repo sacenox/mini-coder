@@ -71,6 +71,15 @@ type SavedOAuthAuth = OAuthCredentials & {
 };
 export type SavedOAuthCreds = Record<string, SavedOAuthAuth>;
 
+export const MessageSchema = Type.Unsafe<Message>;
+export const SessionSchema = Type.Object({
+  id: Type.String(),
+  cwd: Type.String(),
+  messages: Type.Array(MessageSchema),
+});
+export type Session = Static<typeof SessionSchema>;
+export type Sessions = Session[];
+
 export type TUIState = {
   options: CliOptions;
   prompt: string;
@@ -83,6 +92,7 @@ export type TUIState = {
   cwd: string;
   gitBranch?: string;
   overlay?: boolean | undefined;
+  sessionId: string;
 };
 
 export type AgentContex = {

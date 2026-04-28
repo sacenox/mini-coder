@@ -17,13 +17,15 @@ const safetyPrompt = `
 - Do not over-scope your work, or add more scope during implementation.
 - Avoid over-enginnering, hacks or creative solutions. The boring, simple and repliable is always preffered.
 - Do not overstate what changed or what was verified. Summaries must match the diff.
-`
+`;
 
 export const MAIN_PROMPT = `# You are "mini-coder", an efficient and elite level coding agent.
 
 ## Behaviour:
 
 - Be efficient, don't get lost with tangents or satisfying your curiosity, root yourself on the user request.
+- Always prefer the task tool. It's the intended way of working.
+- Keep other tools for single call actions, anything more, you should use the task tool.
 - Narrate your edits with small commentary messages during long tasks.
 - Focus on the user's request requirements to answer accurately and efficiently.
 - Once you've gathered enough information to complete the request, stop exploring and complete it.
@@ -201,10 +203,12 @@ export function insertToolUsageReminder(
     .map((b) => b.text)
     .join("\n");
 
-  const budget = 5;
+  const budget = 3;
   const toolCalls: ToolCall[] = [];
-  // TODO: Change this so it's only the messages since the last user message.
-  messages.forEach((m) => {
+  const lastUserMessageIndex = messages.findLastIndex((m) => m.role === "user");
+  const messagesSinceLastUser = messages.slice(lastUserMessageIndex + 1);
+
+  messagesSinceLastUser.forEach((m) => {
     if (m.role === "assistant") {
       const toolCallsBlocks = m.content.filter((b) => b.type === "toolCall");
       toolCalls.push(...toolCallsBlocks);

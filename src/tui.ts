@@ -6,7 +6,7 @@ import {
   insertToolUsageReminder,
   MAIN_PROMPT,
 } from "./prompt";
-import { estimateTokens } from "./shared";
+import { estimateTokens, secureRandomString } from "./shared";
 import { bash, runBashTool } from "./tool-bash";
 import { edit, runEditTool } from "./tool-edit";
 import { runTaskTool, task } from "./tool-task";
@@ -23,6 +23,7 @@ import { Conversation, emptyState } from "./tui-conversation";
 import { Editor } from "./tui-editor";
 import { mainMenu } from "./tui-overlay";
 import type { AgentContex, ToolAndRunner, TUIState } from "./types";
+import { updateSession } from "./session";
 
 // TODO: move all git things to `git.ts`
 const git = simpleGit();
@@ -40,6 +41,8 @@ function clearOrAbort(state: TUIState) {
 }
 
 export function initTUI(state: TUIState, leave: (s: string) => void) {
+  // TODO: Cleanup accumulated sessions for this cwd.
+
   const { spinnerEvery, currentSpinner } = Spinner();
 
   // Stable 60fps rendering.
@@ -195,6 +198,11 @@ async function streamAgentTUI(state: TUIState) {
     }
   } finally {
     state.streaming = false;
+    if (!state.sessionId) {
+      const id = secureRandomString(10);
+      state.sessionId = id;
+    }
+    await updateSession(state.sessionId, state.messages)
   }
 
   try {

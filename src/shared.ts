@@ -5,6 +5,7 @@ import { parseDocument } from "yaml";
 // Mixed bag of helpers that can be shared across the codebase
 
 export const DATA_DIR = join(homedir(), ".config", "mini-coder");
+export const SESSIONS_DIR = join(DATA_DIR, "sessions");
 export const AUTH_PATH = join(DATA_DIR, "auth.json");
 export const SETTINGS_PATH = join(DATA_DIR, "settings.json");
 
