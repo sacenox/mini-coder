@@ -85,6 +85,12 @@ export function initTUI(state: TUIState, leave: (s: string) => void) {
         leave("Done. I like vim too.");
         return false;
       }
+      if (state.prompt === ":n" || state.prompt === "/new") {
+        state.sessionId = undefined;
+        state.messages = [];
+        state.prompt = ""
+        return false;
+      }
       const submit = async () => {
         await streamAgentTUI(state);
       };

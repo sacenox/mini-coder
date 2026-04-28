@@ -92,7 +92,7 @@ export type TUIState = {
   cwd: string;
   gitBranch?: string;
   overlay?: boolean | undefined;
-  sessionId: string;
+  sessionId?: string | undefined;
 };
 
 export type AgentContex = {
