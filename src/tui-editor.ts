@@ -6,7 +6,7 @@ export function Editor(
   onChange: (value: string) => void,
   onKeyPress: (key: string) => void,
 ) {
-  let isEditorFocused = true;
+  let isEditorFocused = !state.overlay;
   return TextInput({
     value: state.prompt,
     minHeight: 3,

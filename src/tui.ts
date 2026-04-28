@@ -19,8 +19,9 @@ import {
   TextPill,
   theme,
 } from "./tui-components";
-import { Conversation } from "./tui-conversation";
+import { Conversation, emptyState } from "./tui-conversation";
 import { Editor } from "./tui-editor";
+import { SelectOverlay } from "./tui-overlay";
 import type { AgentContex, ToolAndRunner, TUIState } from "./types";
 
 const git = simpleGit();
@@ -55,62 +56,74 @@ export function initTUI(state: TUIState, leave: (s: string) => void) {
 
   cel.init(new ProcessTerminal());
 
-  cel.viewport(() =>
-    VStack(
-      {
-        height: "100%",
-        gap: 1,
-        padding: { x: 1, y: 1 },
-        onKeyPress: (key) => {
-          if (key === "ctrl+q" || key === "ctrl+c" || key === "ctrl+d") {
-            // Quit
-            clearInterval(baseFramerateIntervalId);
-            cel.stop();
-            leave("Done.");
-          } else if (key === "escape") {
-            // Abort or clear prompt
-            clearOrAbort(state);
-          }
+  const onWindowKeyPress = (key: string) => {
+    if (key === "ctrl+q" || key === "ctrl+c" || key === "ctrl+d") {
+      // Quit
+      clearInterval(baseFramerateIntervalId);
+      cel.stop();
+      leave("Done.");
+    } else if (key === "escape") {
+      // Abort or clear prompt
+      clearOrAbort(state);
+    } else if (key === "ctrl+p") {
+      state.overlay = true;
+    }
+  };
+
+  const onChange = (value: string) => {
+    state.prompt = value;
+  };
+
+  const onEditorKeyPress = (key: string) => {
+    // onKeyPress
+    if (key === "enter") {
+      if (state.prompt === ":q") {
+        clearInterval(baseFramerateIntervalId);
+        cel.stop();
+        leave("Done. I like vim too.");
+        return false;
+      }
+      const submit = async () => {
+        await streamAgentTUI(state);
+      };
+      if (state.prompt && !state.streaming) submit();
+      return false;
+    }
+  };
+
+  cel.viewport(() => {
+    const layers = [
+      VStack(
+        {
+          height: "100%",
+          gap: 1,
+          padding: { x: 1, y: 1 },
+          onKeyPress: onWindowKeyPress,
         },
-      },
-      [
-        Conversation(state),
+        [
+          state.messages.length ? Conversation(state) : emptyState(),
+          HStack({ gap: 1 }, [
+            ModelPill(state),
+            TextPill(`../${state.cwd}`, theme.bwhite, theme.bblack),
+            GitPill(state),
+            VStack({ flex: 1 }, []),
+            ActivityPill(state, currentSpinner()),
+            ContextPill(state),
+          ]),
 
-        HStack({ gap: 1 }, [
-          ModelPill(state),
-          TextPill(`../${state.cwd}`, theme.bwhite, theme.bblack),
-          GitPill(state),
-          VStack({ flex: 1 }, []),
-          ActivityPill(state, currentSpinner()),
-          ContextPill(state),
-        ]),
+          Editor(state, onChange, onEditorKeyPress),
+        ],
+      ),
+    ];
+    if (state.overlay) {
+      // TODO: Use the new select overlay for menus
+      layers.push(SelectOverlay(state, state.prompt, [
+        "> Models", "Effort"
+      ]));
+    }
 
-        Editor(
-          state,
-          (value: string) => {
-            // onChange
-            state.prompt = value;
-          },
-          (key: string) => {
-            // onKeyPress
-            if (key === "enter") {
-              if (state.prompt === ":q") {
-                clearInterval(baseFramerateIntervalId);
-                cel.stop();
-                leave("Done. I like vim too.");
-                return false;
-              }
-              const submit = async () => {
-                await streamAgentTUI(state);
-              };
-              if (state.prompt && !state.streaming) submit();
-              return false;
-            }
-          },
-        ),
-      ],
-    ),
-  );
+    return layers;
+  });
 }
 
 async function streamAgentTUI(state: TUIState) {

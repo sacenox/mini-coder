@@ -82,6 +82,7 @@ export type TUIState = {
   abortController?: AbortController;
   cwd: string;
   gitBranch?: string;
+  overlay?: boolean | undefined;
 };
 
 export type AgentContex = {

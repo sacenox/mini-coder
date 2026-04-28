@@ -11,43 +11,61 @@ import { TextPill, theme } from "./tui-components";
 import type { TUIState } from "./types";
 
 function agentMessageNode(msg: AssistantMessage): Node {
-  const textBlocks: Node[] = msg.content.map((block) => {
-    if (block.type === "text") {
-      return SyntaxHighlight(block.text, "markdown");
+  let thinking = "";
+  let text = "";
+  const toolCalls: Node[] = [];
+
+  for (const block of msg.content) {
+    if (block.type === "thinking" && block.thinking.length > 0) {
+      thinking += block.thinking;
     }
-    if (block.type === "thinking") {
-      if (!block.thinking.length) return Text("");
 
-      const tokens = estimateTokens(block.thinking);
+    if (block.type === "text" && block.text.length > 0) {
+      text += block.text;
+    }
 
-      return Text(`Thinking... (~${tokens} tokens)`, {
+    if (block.type === "toolCall" && block.arguments && block.name) {
+      let text = "";
+      let node: Node | undefined;
+      if ("path" in block.arguments) {
+        text = block.arguments.path;
+        node = Text(text);
+      } else if ("command" in block.arguments) {
+        text = block.arguments.command;
+        node = SyntaxHighlight(text, "bash");
+      } else if ("prompt" in block.arguments) {
+        text = block.arguments.prompt;
+        node = SyntaxHighlight(text, "markdown");
+      } else {
+        text = JSON.stringify(block.arguments);
+        node = Text(text);
+      }
+
+      toolCalls.push(
+        VStack({ padding: { x: 4 }, gap: 1 }, [
+          TextPill(block.name, theme.white, theme.bblack),
+          node,
+        ]),
+      );
+    }
+  }
+  const textBlocks: Node[] = [];
+  if (thinking.length > 0) {
+    const tokens = estimateTokens(thinking);
+
+    textBlocks.push(
+      Text(`Thinking... (~${tokens} tokens)`, {
         fgColor: theme.bblack,
         italic: true,
-      });
-    }
-
-    let text = "";
-    let node: Node | undefined;
-    if ("path" in block.arguments) {
-      text = block.arguments.path;
-      node = Text(text);
-    } else if ("command" in block.arguments) {
-      text = block.arguments.command;
-      node = SyntaxHighlight(text, "bash");
-    } else if ("prompt" in block.arguments) {
-      text = block.arguments.prompt;
-      node = SyntaxHighlight(text, "markdown");
-    } else {
-      text = JSON.stringify(block.arguments);
-      node = Text(text);
-    }
-
-    return VStack({ padding: { x: 4 }, gap: 1 }, [
-      TextPill(block.name, theme.white, theme.bblack),
-      node,
-    ]);
-  });
-
+      }),
+    );
+  }
+  if (text.length > 0) {
+    textBlocks.push(SyntaxHighlight(text, "markdown"));
+  }
+  if (toolCalls.length > 0) {
+    textBlocks.push(...toolCalls);
+  }
   const error =
     ((msg.stopReason === "error" || msg.stopReason === "aborted") &&
       msg.errorMessage) ??
@@ -60,6 +78,16 @@ function agentMessageNode(msg: AssistantMessage): Node {
       ]),
     );
   }
+
+  if (textBlocks.length === 0) {
+    textBlocks.push(
+      Text("Loading...", {
+        fgColor: theme.bblack,
+        italic: true,
+      }),
+    );
+  }
+
   return VStack({ gap: 1 }, textBlocks);
 }
 
@@ -121,6 +149,27 @@ function conversationMessageNode(msg: Message): Node {
         italic: true,
       }),
       TextPill(msg.role, theme.bwhite, theme.bblack),
+    ]),
+  ]);
+}
+
+const colors = [
+  theme.bgreen,
+  theme.byellow,
+  theme.bblue,
+  theme.bcyan,
+  theme.bmagenta,
+  theme.bred,
+];
+const randColor = colors[Math.floor(Math.random() * colors.length)];
+
+export function emptyState(): Node {
+  return HStack({ flex: 1, alignItems: "center" }, [
+    VStack({ flex: 1, alignItems: "center" }, [
+      HStack({ gap: 1 }, [
+        Text("mini"),
+        TextPill("coder", theme.black, randColor),
+      ]),
     ]),
   ]);
 }

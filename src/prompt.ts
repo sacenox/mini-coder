@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { Message, ToolCall, ToolResultMessage } from "@mariozechner/pi-ai";
 import simpleGit, { type StatusResult } from "simple-git";
 import { parseSkillFrontmatter } from "./shared";
+import { promises } from "node:fs";
 
 const IDENTITY_PROMPT = `# You are "mini-coder", an efficient, elite coding agent.
 
@@ -66,6 +67,21 @@ export const TASK_PROMPT = `${IDENTITY_PROMPT}
 5. Your final message should include a summary of your actions and any diffs from your edits.
 `;
 
+async function getDir() {
+  const ignoreFile = Bun.file(".gitignore")
+  let ignoreContent = ""
+  if (await ignoreFile.exists()) {
+    ignoreContent = await ignoreFile.text()
+  }
+  const ignored = ignoreContent.split("\n")
+  let dir = []
+  const glob = promises.glob(["*", "*/*"], {exclude: ignored})
+  for await (const file of glob) {
+    dir.push(file)
+  }
+  return dir;
+}
+
 async function getEnvPrompt() {
   // TODO: What else do the agents always check before answering every time?
   let gitStatus: StatusResult | { nogit: string };
@@ -76,8 +92,9 @@ async function getEnvPrompt() {
   }
   const envStatus = JSON.stringify(
     {
-      cwd: process.cwd(),
       os: platform(),
+      cwd: process.cwd(),
+      dir: await getDir(),
       git: gitStatus,
     },
     null,
@@ -163,7 +180,7 @@ ${parsed.description}
 - The following skills provide specialized instructions for specific tasks.
 - Use the shell tool to read a skill's file when the task matches its description.
 - Use the skill provided absolute file path instead of guessing or constructing one.
-- Skills can be global (in ~/.agents/skills) or locat to the directory (./agents/skills)
+- Skills can be global (in ~/.agents/skills) or local to the directory (./agents/skills)
 
 ${skillsBlock}`;
 

@@ -28,51 +28,6 @@ export const theme = {
   bwhite: "color15" as Color,
 };
 
-// Momoization helper for cel-tui
-// type NodeMemoKey = string | number | symbol;
-
-// type MemoizedNodeRenderer<T> = ((value: T) => Node) & {
-//   clear: () => void;
-//   delete: (value: T) => boolean;
-// };
-
-// export function memoNodeByKey<T>(
-//   keyOf: (value: T) => NodeMemoKey,
-//   render: (value: T) => Node,
-//   options: { maxEntries?: number } = {},
-// ): MemoizedNodeRenderer<T> {
-//   const maxEntries = options.maxEntries ?? 1000;
-//   const cache = new Map<NodeMemoKey, Node>();
-
-//   const memoized = ((value: T): Node => {
-//     const key = keyOf(value);
-//     const cached = cache.get(key);
-
-//     if (cached) {
-//       // Move to the end: simple LRU-ish behavior.
-//       cache.delete(key);
-//       cache.set(key, cached);
-//       return cached;
-//     }
-
-//     const node = render(value);
-//     cache.set(key, node);
-
-//     while (cache.size > maxEntries) {
-//       const oldest = cache.keys().next();
-//       if (oldest.done) break;
-//       cache.delete(oldest.value);
-//     }
-
-//     return node;
-//   }) as MemoizedNodeRenderer<T>;
-
-//   memoized.clear = () => cache.clear();
-//   memoized.delete = (value: T) => cache.delete(keyOf(value));
-
-//   return memoized;
-// }
-
 export function TextPill(content: string, fgColor: Color, bgColor: Color) {
   return HStack({ gap: 1 }, [
     HStack({ bgColor, padding: { x: 1 } }, [
@@ -157,6 +112,8 @@ export function ContextPill(state: TUIState) {
     }
     text = `~${percent}%`;
   }
+
+  text += ` (${state.options.model.contextWindow / 1000}k)`;
 
   return TextPill(text, theme.bblack, bg);
 }
