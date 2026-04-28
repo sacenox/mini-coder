@@ -132,3 +132,23 @@ export type ToolAndRunner = {
     signal?: AbortSignal,
   ) => AsyncGenerator<ToolRunnerEvent>;
 };
+
+export type SelectListItem = {
+  label: string;
+  value: string;
+};
+
+export type SelectState = {
+  value: string;
+  selected: string;
+  label: string;
+  list: SelectListItem[];
+};
+
+export type SelectOptions = {
+  filter: string;
+  list: { label: string; value: string }[];
+  label?: string | undefined;
+  onSelect: (s: SelectState) => void;
+  onCancel: () => void;
+};

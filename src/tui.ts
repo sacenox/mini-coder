@@ -21,9 +21,10 @@ import {
 } from "./tui-components";
 import { Conversation, emptyState } from "./tui-conversation";
 import { Editor } from "./tui-editor";
-import { SelectOverlay } from "./tui-overlay";
+import { mainMenu } from "./tui-overlay";
 import type { AgentContex, ToolAndRunner, TUIState } from "./types";
 
+// TODO: move all git things to `git.ts`
 const git = simpleGit();
 
 function clearOrAbort(state: TUIState) {
@@ -53,8 +54,6 @@ export function initTUI(state: TUIState, leave: (s: string) => void) {
     );
     cel.render();
   }, 1000 / fps);
-
-  cel.init(new ProcessTerminal());
 
   const onWindowKeyPress = (key: string) => {
     if (key === "ctrl+q" || key === "ctrl+c" || key === "ctrl+d") {
@@ -91,6 +90,9 @@ export function initTUI(state: TUIState, leave: (s: string) => void) {
     }
   };
 
+  const menu = mainMenu(state);
+
+  cel.init(new ProcessTerminal());
   cel.viewport(() => {
     const layers = [
       VStack(
@@ -116,10 +118,7 @@ export function initTUI(state: TUIState, leave: (s: string) => void) {
       ),
     ];
     if (state.overlay) {
-      // TODO: Use the new select overlay for menus
-      layers.push(SelectOverlay(state, state.prompt, [
-        "> Models", "Effort"
-      ]));
+      layers.push(menu());
     }
 
     return layers;

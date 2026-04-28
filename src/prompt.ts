@@ -1,10 +1,10 @@
+import { promises } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { homedir, platform } from "node:os";
 import { join } from "node:path";
 import type { Message, ToolCall, ToolResultMessage } from "@mariozechner/pi-ai";
 import simpleGit, { type StatusResult } from "simple-git";
 import { parseSkillFrontmatter } from "./shared";
-import { promises } from "node:fs";
 
 const IDENTITY_PROMPT = `# You are "mini-coder", an efficient, elite coding agent.
 
@@ -68,16 +68,16 @@ export const TASK_PROMPT = `${IDENTITY_PROMPT}
 `;
 
 async function getDir() {
-  const ignoreFile = Bun.file(".gitignore")
-  let ignoreContent = ""
+  const ignoreFile = Bun.file(".gitignore");
+  let ignoreContent = "";
   if (await ignoreFile.exists()) {
-    ignoreContent = await ignoreFile.text()
+    ignoreContent = await ignoreFile.text();
   }
-  const ignored = ignoreContent.split("\n")
-  let dir = []
-  const glob = promises.glob(["*", "*/*"], {exclude: ignored})
+  const ignored = ignoreContent.split("\n");
+  const dir = [];
+  const glob = promises.glob(["*", "*/*"], { exclude: ignored });
   for await (const file of glob) {
-    dir.push(file)
+    dir.push(file);
   }
   return dir;
 }
@@ -90,9 +90,20 @@ async function getEnvPrompt() {
   } catch (_) {
     gitStatus = { nogit: "No git repo in this folder." };
   }
+  const envKeys = ["PATH", "USER", "LANG", "HOME", "SHELL", "BUN_INSTALL"];
+  const env: Record<string, string> = {};
+  for (const key of envKeys) {
+    const v = Bun.env[key];
+
+    if (v !== undefined) {
+      env[key] = v;
+    }
+  }
+
   const envStatus = JSON.stringify(
     {
       os: platform(),
+      env,
       cwd: process.cwd(),
       dir: await getDir(),
       git: gitStatus,
