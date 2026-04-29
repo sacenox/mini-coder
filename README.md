@@ -16,7 +16,7 @@
 
 <p align="center">
   <picture>
-    <img src="assets/preview-0-6-0.png" alt="mini-coder terminal session preview" width="960" style="border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.35);" />
+    <img src="assets/preview.gif" alt="mini-coder terminal session preview" width="960" style="border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.35);" />
   </picture>
 </p>
 

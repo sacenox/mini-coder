@@ -1,5 +1,5 @@
 {
-  "name": "mini-coder-next",
+  "name": "mini-coder",
   "version": "0.6.0",
   "type": "module",
   "packageManager": "bun@1.3.12",
