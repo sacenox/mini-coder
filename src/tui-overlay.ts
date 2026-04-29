@@ -5,6 +5,7 @@ import {
   type ThinkingLevel,
 } from "@mariozechner/pi-ai";
 import { getOAuthProviders } from "@mariozechner/pi-ai/oauth";
+import { getAvailableProviders } from "./oauth";
 import { listSessionsForCwd } from "./session";
 import { TextPill, theme } from "./tui-components";
 import type { SelectOptions, SelectState, Session, TUIState } from "./types";
@@ -201,10 +202,9 @@ export function mainMenu(state: TUIState) {
   type MenuPane = Omit<SelectOptions, "onCancel" | "onSelect">;
 
   const oauthProviders = getOAuthProviders();
-  const providers = oauthProviders.map((v) => ({
-    label: v.name,
-    value: v.id,
-  }));
+  const getProviderLabel = (provider: KnownProvider) =>
+    oauthProviders.find((oauthProvider) => oauthProvider.id === provider)
+      ?.name ?? provider;
   const reasoningEfforts: ThinkingLevel[] = [
     "minimal",
     "low",
@@ -219,7 +219,20 @@ export function mainMenu(state: TUIState) {
       value: v.id,
     }));
 
+  let currentProviders: KnownProvider[] = [];
   let currentSessions: Session[] = [];
+
+  const providersPane = async (): Promise<MenuPane> => {
+    currentProviders = await getAvailableProviders();
+    return {
+      label: "providers",
+      filter: "",
+      list: currentProviders.map((provider) => ({
+        label: getProviderLabel(provider),
+        value: provider,
+      })),
+    };
+  };
 
   const sessionsPane = async (): Promise<MenuPane> => {
     currentSessions = await listSessionsForCwd();
@@ -242,17 +255,12 @@ export function mainMenu(state: TUIState) {
       { label: "sessions", value: "sessions" },
     ],
   };
-  const providersPane: MenuPane = {
-    label: "providers",
-    filter: "",
-    list: providers,
-  };
   const effortPane: MenuPane = {
     label: "effort",
     filter: "",
     list: efforts,
   };
-  const panes: MenuPane[] = [mainPane, providersPane, effortPane];
+  const panes: MenuPane[] = [effortPane];
   let currentPane = mainPane;
   let selectedProvider: KnownProvider | undefined;
 
@@ -267,6 +275,7 @@ export function mainMenu(state: TUIState) {
   const resetMenu = (s: SelectState) => {
     currentPane = mainPane;
     selectedProvider = undefined;
+    currentProviders = [];
     currentSessions = [];
     s.value = "";
     s.label = mainPane.label ? mainPane.label.toUpperCase() : "SELECT";
@@ -285,6 +294,12 @@ export function mainMenu(state: TUIState) {
       if (!s.selected) return;
 
       if (currentPane.label === "main") {
+        if (s.selected === "providers") {
+          return providersPane().then((pane) => {
+            openPane(s, pane);
+          });
+        }
+
         if (s.selected === "sessions") {
           return sessionsPane().then((pane) => {
             openPane(s, pane);
@@ -310,10 +325,10 @@ export function mainMenu(state: TUIState) {
       }
 
       if (currentPane.label === "providers") {
-        const provider = oauthProviders.find((v) => v.id === s.selected);
+        const provider = currentProviders.find((v) => v === s.selected);
         if (!provider) return;
 
-        selectedProvider = provider.id as KnownProvider;
+        selectedProvider = provider;
         openPane(s, {
           label: "models",
           filter: "",
@@ -347,6 +362,7 @@ export function mainMenu(state: TUIState) {
     onCancel: () => {
       currentPane = mainPane;
       selectedProvider = undefined;
+      currentProviders = [];
       currentSessions = [];
       state.overlay = false;
     },

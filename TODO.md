@@ -4,6 +4,15 @@
 
 ## TODO: Better prompts, tools descriptions and reminder prompt engineering.
 
+Raw notes, references:
+
+> good lessons from claude and general advice, seems good and grounded on real experience. Matches with learnings.
+https://www.indiehackers.com/post/the-complete-guide-to-writing-agent-system-prompts-lessons-from-reverse-engineering-claude-code-6e18d54294
+
+> How pi coding agent does it, minimal and structured, a good approach, but we can be even more focused and minimal.
+https://raw.githubusercontent.com/badlogic/pi-mono/refs/heads/main/packages/coding-agent/src/core/system-prompt.ts
+
+> Key sentence to add:
 ```
 Prioritize technical accuracy and truthfulness over validating the user's beliefs.
 Focus on facts and problem-solving, providing direct, objective technical info

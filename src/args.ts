@@ -7,7 +7,7 @@ import {
   type ThinkingLevel,
 } from "@mariozechner/pi-ai";
 import { Value } from "typebox/value";
-import { loginOAuth } from "./oauth";
+import { getAvailableProviders, isOAuthProvider, loginOAuth } from "./oauth";
 import { DATA_DIR, SETTINGS_PATH } from "./shared.ts";
 import {
   type CliOptions,
@@ -116,14 +116,21 @@ function getFallbackModel(
 
 export async function handleArgv(argv: string[]): Promise<CliOptions> {
   const settings = await getSettings();
-  const settingsProvider = settings?.provider ?? DEFAULT_PROVIDER;
-  const settingsModelId = settings?.model ?? DEFAULT_MODEL_ID;
+  let availableProviders = await getAvailableProviders();
+  const defaultProvider = availableProviders[0] ?? DEFAULT_PROVIDER;
+  const settingsProvider = settings?.provider ?? defaultProvider;
+  const settingsModelId =
+    settings?.model ??
+    (settingsProvider === DEFAULT_PROVIDER
+      ? DEFAULT_MODEL_ID
+      : getFirstModelConfig(settingsProvider).id);
   const settingsEffort = settings?.effort ?? DEFAULT_EFFORT;
   let provider: string = settingsProvider;
   let modelId = settingsModelId;
   let effort: string = settingsEffort;
   let prompt: string | undefined;
   let providerChanged = false;
+  let explicitProvider = false;
   let explicitModel = false;
 
   for (let i = 0; i < argv.length; i++) {
@@ -140,6 +147,7 @@ export async function handleArgv(argv: string[]): Promise<CliOptions> {
         "CLI settings",
       ).provider;
       providerChanged = provider !== settingsProvider;
+      explicitProvider = true;
       i++;
       continue;
     }
@@ -173,11 +181,12 @@ export async function handleArgv(argv: string[]): Promise<CliOptions> {
 
     if (flag === "--login" || flag === "-l") {
       await loginOAuth(requireValue(argv, i, flag));
+      availableProviders = await getAvailableProviders();
       i++;
     }
   }
 
-  const cliSettings = parseSettings(
+  let cliSettings = parseSettings(
     {
       provider,
       model: modelId,
@@ -185,6 +194,32 @@ export async function handleArgv(argv: string[]): Promise<CliOptions> {
     },
     "CLI settings",
   );
+  const providerAvailable = availableProviders.includes(cliSettings.provider);
+
+  if (explicitProvider) {
+    if (!providerAvailable && !isOAuthProvider(cliSettings.provider)) {
+      throw new Error(
+        `Provider "${cliSettings.provider}" is not logged in and no API key was found`,
+      );
+    }
+  } else if (!providerAvailable && availableProviders.length) {
+    const fallbackProvider = availableProviders[0];
+    provider = fallbackProvider;
+    providerChanged = provider !== settingsProvider;
+    if (!explicitModel) {
+      modelId = getFirstModelConfig(fallbackProvider).id;
+    }
+
+    cliSettings = parseSettings(
+      {
+        provider,
+        model: modelId,
+        effort,
+      },
+      "CLI settings",
+    );
+  }
+
   const selectedModel = findModelConfig(
     cliSettings.model,
     cliSettings.provider,
