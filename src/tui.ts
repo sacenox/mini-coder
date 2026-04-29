@@ -1,6 +1,6 @@
 import { cel, HStack, ProcessTerminal, VStack } from "@cel-tui/core";
 import simpleGit from "simple-git";
-import { streamAgent } from "./agent";
+import { compactContext, streamAgent } from "./agent";
 import {
   buildSystemPrompt,
   injectEnvReminder,
@@ -217,7 +217,15 @@ async function streamAgentTUI(state: TUIState) {
       const id = secureRandomString(10);
       state.sessionId = id;
     }
+    // TODO: Should we make this delta only so compaction doesn;t affect saves?
+    //        I'm not sure since it we do, there is no trace in logs about compaction
+    //        and that would mean the logs don't repesent the truth. Confusing decision.
     await updateSession(state.sessionId, state.messages);
+
+    // Compact after saving, if the next turn fails because of compaction, the session is recoverable.
+    // Compact at 80k tokens, the dumb zone threshold.
+    if (estimateTokens(JSON.stringify(state.messages)) > 80000)
+      compactContext(state.messages);
   }
 
   try {

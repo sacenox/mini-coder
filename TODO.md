@@ -6,6 +6,10 @@
 
 Raw notes, references:
 
+### JetBrains Junie: Observation Masking
+
+Published research found that **simply hiding old tool outputs** matched the quality of full LLM summarization with **zero extra compute**:
+
 > good lessons from claude and general advice, seems good and grounded on real experience. Matches with learnings.
 > https://www.indiehackers.com/post/the-complete-guide-to-writing-agent-system-prompts-lessons-from-reverse-engineering-claude-code-6e18d54294
 

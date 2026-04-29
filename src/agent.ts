@@ -1,9 +1,11 @@
 import {
   type AssistantMessage,
   type Context,
+  type Message,
   streamSimple,
   type TextContent,
   type ToolCall,
+  type ToolResultMessage,
 } from "@mariozechner/pi-ai";
 import { getApiKey } from "./oauth";
 import type {
@@ -12,6 +14,48 @@ import type {
   AgentToolEvent,
   ToolAndRunner,
 } from "./types";
+
+// ### JetBrains Junie: Observation Masking
+// Published research found that **simply hiding old tool outputs** matched the quality of full LLM summarization with **zero extra compute**:
+// https://blog.jetbrains.com/research/2025/12/efficient-context-management/
+export function compactContext(messages: Message[]) {
+  const KEEP_OBSERVATIONS = 10;
+
+  const toolResultIndices: number[] = [];
+  for (let i = 0; i < messages.length; i++) {
+    if (messages[i].role !== "toolResult") continue;
+    const content = (messages[i] as ToolResultMessage).content;
+    if (
+      content.length === 1 &&
+      content[0].type === "text" &&
+      content[0].text.startsWith("Old environment output:")
+    ) {
+      continue;
+    }
+    toolResultIndices.push(i);
+  }
+
+  if (toolResultIndices.length <= KEEP_OBSERVATIONS) return;
+
+  for (let i = 0; i < toolResultIndices.length - KEEP_OBSERVATIONS; i++) {
+    const idx = toolResultIndices[i];
+    const msg = messages[idx] as ToolResultMessage;
+    let lines = 0;
+    let images = 0;
+    for (const c of msg.content) {
+      if (c.type === "text") {
+        lines += c.text.split(/\r?\n/).length;
+      } else if (c.type === "image") {
+        images++;
+      }
+    }
+    let text = `Old environment output: (${lines} lines omitted)`;
+    if (images > 0) {
+      text += ` (${images} image${images > 1 ? "s" : ""} omitted)`;
+    }
+    msg.content = [{ type: "text", text }];
+  }
+}
 
 export async function* streamAgent(
   agentCtx: AgentContex,
