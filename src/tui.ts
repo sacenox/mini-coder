@@ -89,6 +89,7 @@ export function initTUI(state: TUIState, leave: (s: string) => void) {
         state.sessionId = undefined;
         state.messages = [];
         state.prompt = "";
+        state.contextSize = 0;
         state.scrollOffset = 0;
         state.stickToBottom = true;
         return false;

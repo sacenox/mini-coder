@@ -5,10 +5,31 @@ import type { ToolRunnerEvent } from "./types";
 
 const description = `## Edit tool
 
-- This is your edit tool, use it to create or edit files safely. Always prefer this tool over bash editing methods.
-- The tool will refuse to edit on multiple matches of \`oldText\` so be specific with your matching.
-- Prefer patch-based edits for multi-line or semantic changes.
-- Avoid reproducing whole files, use shell file operations for that instead (\`cp\`, \`mv\`, etc).
+A find-and-replace file editor. Use it to create new files or modify existing ones safely. Always prefer this tool over bash editing methods (sed, awk, etc).
+
+### Rules
+- The tool refuses to edit on multiple matches of \`oldText\`. Be specific with your matching text.
+- Prefer patch-based edits (small targeted replacements) for multi-line or semantic changes.
+- Do NOT reproduce entire files. Use shell file operations (\`cp\`, \`mv\`, etc) for wholesale file replacement instead.
+
+### Failure modes
+- If \`oldText\` is not found, the edit fails. Verify the exact text first.
+- If \`oldText\` matches multiple locations, the edit fails. Narrow your match and retry.
+- If the file does not exist and \`oldText\` is non-empty, the edit fails.
+
+<example>
+Edit a single line:
+path: src/utils.ts
+oldText: const MAX_RETRIES = 3;
+newText: const MAX_RETRIES = 5;
+</example>
+
+<example>
+Patch-based edit (preferred for multi-line changes):
+path: src/utils.ts
+oldText: function oldHelper() {\n  return 1;\n}
+newText: function newHelper() {\n  return 2;\n}\n\nfunction oldHelper() {\n  return 1;\n}
+</example>
 `;
 
 export const edit: Tool = {
@@ -16,7 +37,8 @@ export const edit: Tool = {
   description,
   parameters: Type.Object({
     path: Type.String({
-      description: "File path (absolute or relative to cwd)",
+      description:
+        "File path. Absolute or relative to the current working directory.",
     }),
     oldText: Type.String({
       description:

@@ -9,6 +9,7 @@ import { getAvailableProviders } from "./oauth";
 import { listSessionsForCwd } from "./session";
 import { TextPill, theme } from "./tui-components";
 import type { SelectOptions, SelectState, Session, TUIState } from "./types";
+import { estimateTokens } from "./shared";
 
 export function SelectOverlay(
   value: string,
@@ -318,6 +319,7 @@ export function mainMenu(state: TUIState) {
         state.sessionId = session.id;
         state.messages = session.messages;
         state.prompt = "";
+        state.contextSize = estimateTokens(JSON.stringify(state.messages))
         state.scrollOffset = 0;
         state.stickToBottom = true;
         closeMenu(s);

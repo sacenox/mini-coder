@@ -71,7 +71,7 @@ export async function saveSession(s: Session) {
 export async function updateSession(id: string, messages: Message[]) {
   const existing = await getSession(id);
   if (existing) {
-    existing.messages = [...existing.messages, ...messages];
+    existing.messages = messages;
     await saveSession(existing);
     return;
   }

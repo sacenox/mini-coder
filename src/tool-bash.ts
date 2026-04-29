@@ -5,22 +5,24 @@ import type { ToolRunnerEvent } from "./types";
 const OUTPUT_THRESHOLD = 16000;
 const description = `## Bash CLI tool
 
-Best practices using this tool:
+Execute shell commands on the user's environment.
+
+Best practices:
 
 - Use \`ls\` to list files.
 - Use \`fd\` or \`find\` to locate files/directories by name, type, size, time, permissions, etc.
 - Use \`rg\` or \`grep\` to search inside files for matching patterns.
 - Use \`cat -n\` or \`nl\` to read small files, or when you need the whole file.
-- Use \`sed -n\` with ranges to read sections of files. Prefer targeted reads, avoid dumping very large (more than ~200 lines) files all at once.
+- Use \`sed -n\` with ranges to read sections of files. Prefer targeted reads. Avoid dumping very large (more than ~200 lines) files all at once.
 - Use \`cp\`, \`mv\`, and \`mkdir\` for file and directory operations, and \`rm\` to remove files and directories.
 - Use \`curl\` for web access. Use redirection to temp files for targeted reads.
-- Use development tools, like \`git\`, \`gh\`, \`jq\`, etc, when appropriate.
-- Prefer \`cp -i\`, \`mv -i\`, \`rm -i\` when learning
-- Be careful with destructive actions, and overwriting existing unsaved work.
-- Chain commands **only** when failure should stop the flow. Avoid long chains of command, **2 to 3 maximum**.
-- Avoid overly complex one-liners, readability matters.
-- Quote filenames: use \`"$file"\` not \`$file\`
-- Be careful with spaces in filenames
+- Use development tools like \`git\`, \`gh\`, \`jq\`, etc, when appropriate.
+- Prefer \`cp -i\`, \`mv -i\`, \`rm -i\` when learning.
+- NEVER run destructive commands (\`rm -rf\`, \`git reset --hard\`, overwriting files) without confirming the target first.
+- Chain commands **only** when failure should stop the flow. Avoid long chains, **2 to 3 maximum**.
+- Avoid overly complex one-liners; readability matters.
+- Quote filenames: use \`"$file"\` not \`$file\`.
+- Be careful with spaces in filenames.
 
 Commands run in: ${process.cwd()}
 `;
@@ -30,7 +32,8 @@ export const bash: Tool = {
   description,
   parameters: Type.Object({
     command: Type.String({
-      description: "The command you want to run on the user's environment.",
+      description:
+        "Shell command to execute. Prefer simple, focused commands over complex one-liners.",
     }),
   }),
 };

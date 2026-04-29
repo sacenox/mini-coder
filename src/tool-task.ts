@@ -13,13 +13,13 @@ import type {
 
 const description = `## Task tool
 
-Best practices using this tool:
+Use this tool for multi-step work that would otherwise require multiple individual tool calls. The tool executes a detailed plan and returns results.
 
-To explore the web, the local system, or codebase, use an eploration task, specify what you are looking for, and be explicit about the expected output, for example: "Explore the current git repo, find all files relevant to tests. Return the exact paths of the matching files and a description of each file and their contents.
+Best practices:
 
-For edits, you should specify a collection of exact diffs that you want to apply and the file you want them applied to.
-
-For anything else, use a specific and detailed set of instructions and your expected results.
+- For exploration (codebase, filesystem, web), specify exactly what you are looking for and the expected output format. For example: "Find all files relevant to tests. Return the exact paths and a description of each file."
+- For edits, specify exact diffs and the target file for each change.
+- For anything else, provide a specific, detailed set of instructions and your expected results.
 `;
 
 export const task: Tool = {
@@ -27,7 +27,8 @@ export const task: Tool = {
   description,
   parameters: Type.Object({
     prompt: Type.String({
-      description: "The detailed description of the task you want complete.",
+      description:
+        "Detailed description of the work to perform. Be specific about expected outputs and any constraints.",
     }),
   }),
 };

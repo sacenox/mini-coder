@@ -19,6 +19,10 @@ Focus on facts and problem-solving, providing direct, objective technical info
 without any unnecessary superlatives, praise, or emotional validation.
 ```
 
+More reading material:
+
+- https://arxiv.org/html/2601.16507v1#S3
+- 
 ---
 
 # [Agent Name] Agent Prompt
