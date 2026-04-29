@@ -1,8 +1,6 @@
 import {
   type Api,
   type AssistantMessage,
-  getProviders,
-  type KnownProvider,
   type Message,
   type Model,
   type Static,
@@ -12,10 +10,6 @@ import {
   Type,
 } from "@mariozechner/pi-ai";
 import type { OAuthCredentials } from "@mariozechner/pi-ai/oauth";
-
-const KnownProviderSchema = Type.Unsafe<KnownProvider>(
-  Type.Union(getProviders().map((provider) => Type.Literal(provider))),
-);
 
 const ThinkingLevelSchema = Type.Unsafe<ThinkingLevel>(
   Type.Union([
@@ -52,17 +46,19 @@ const ModelSchema = Type.Unsafe<Model<Api>>(
 );
 
 export const SettingsSchema = Type.Object({
-  provider: KnownProviderSchema,
+  provider: Type.String(),
   model: Type.String(),
   effort: ThinkingLevelSchema,
+  customProviders: Type.Optional(Type.Array(ModelSchema)),
 });
 export type Settings = Static<typeof SettingsSchema>;
 
 export const CliOptionsSchema = Type.Object({
-  provider: KnownProviderSchema,
+  provider: Type.String(),
   model: ModelSchema,
   effort: ThinkingLevelSchema,
   prompt: Type.Optional(Type.String()),
+  customProviders: Type.Optional(Type.Array(ModelSchema)),
 });
 export type CliOptions = Static<typeof CliOptionsSchema>;
 

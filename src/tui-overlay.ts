@@ -1,9 +1,5 @@
 import { HStack, Text, TextInput, VStack } from "@cel-tui/core";
-import {
-  getModels,
-  type KnownProvider,
-  type ThinkingLevel,
-} from "@mariozechner/pi-ai";
+import { getModels, type ThinkingLevel } from "@mariozechner/pi-ai";
 import { getOAuthProviders } from "@mariozechner/pi-ai/oauth";
 import { saveSettings } from "./args";
 import { getAvailableProviders } from "./oauth";
@@ -208,7 +204,7 @@ export function mainMenu(state: TUIState) {
   type MenuPane = Omit<SelectOptions, "onCancel" | "onSelect">;
 
   const oauthProviders = getOAuthProviders();
-  const getProviderLabel = (provider: KnownProvider) =>
+  const getProviderLabel = (provider: string) =>
     oauthProviders.find((oauthProvider) => oauthProvider.id === provider)
       ?.name ?? provider;
   const reasoningEfforts: ThinkingLevel[] = [
@@ -219,17 +215,29 @@ export function mainMenu(state: TUIState) {
     "xhigh",
   ];
   const efforts = reasoningEfforts.map((v) => ({ label: v, value: v }));
-  const getProviderModels = (provider: KnownProvider) =>
-    getModels(provider).map((v) => ({
+  const getProviderModels = (provider: string) => {
+    const builtIn = getModels(provider as any).map((v) => ({
       label: v.name,
       value: v.id,
     }));
+    const custom =
+      state.options.customProviders
+        ?.filter((m) => m.provider === provider)
+        .map((v) => ({
+          label: v.name,
+          value: v.id,
+        })) ?? [];
+    return [...builtIn, ...custom];
+  };
 
-  let currentProviders: KnownProvider[] = [];
+  let currentProviders: string[] = [];
   let currentSessions: Session[] = [];
 
   const providersPane = async (): Promise<MenuPane> => {
-    currentProviders = await getAvailableProviders();
+    const builtIn = await getAvailableProviders();
+    const custom =
+      state.options.customProviders?.map((cp) => cp.provider) ?? [];
+    currentProviders = [...new Set([...builtIn, ...custom])];
     return {
       label: "providers",
       filter: "",
@@ -268,7 +276,7 @@ export function mainMenu(state: TUIState) {
   };
   const panes: MenuPane[] = [effortPane];
   let currentPane = mainPane;
-  let selectedProvider: KnownProvider | undefined;
+  let selectedProvider: string | undefined;
 
   const openPane = (s: SelectState, pane: MenuPane) => {
     currentPane = pane;
@@ -347,9 +355,13 @@ export function mainMenu(state: TUIState) {
       if (currentPane.label === "models") {
         if (!selectedProvider) return;
 
-        const model = getModels(selectedProvider).find(
+        const builtIn = getModels(selectedProvider as any).find(
           (v) => v.id === s.selected,
         );
+        const custom = state.options.customProviders?.find(
+          (v) => v.provider === selectedProvider && v.id === s.selected,
+        );
+        const model = builtIn ?? custom;
         if (!model) return;
 
         state.options.provider = selectedProvider;
@@ -358,6 +370,7 @@ export function mainMenu(state: TUIState) {
           provider: selectedProvider,
           model: model.id,
           effort: state.options.effort,
+          customProviders: state.options.customProviders,
         });
         closeMenu(s);
         return;
@@ -372,6 +385,7 @@ export function mainMenu(state: TUIState) {
           provider: state.options.provider,
           model: state.options.model.id,
           effort: effort,
+          customProviders: state.options.customProviders,
         });
         closeMenu(s);
       }

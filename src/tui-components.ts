@@ -111,7 +111,7 @@ export function ContextPill(state: TUIState) {
     const max = state.options.model.contextWindow;
     const smartMax = 80000;
     const percent = Math.floor((state.contextSize / max) * 100);
-    const smartPercent = Math.floor((state.contextSize / smartMax) * 100)
+    const smartPercent = Math.floor((state.contextSize / smartMax) * 100);
     if (smartPercent > 90) {
       bg = theme.bred;
     } else if (smartPercent > 80) {

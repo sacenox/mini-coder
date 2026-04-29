@@ -2,7 +2,7 @@ import { mkdir } from "node:fs/promises";
 import {
   type Api,
   getModels,
-  type KnownProvider,
+  getProviders,
   type Model,
   type ThinkingLevel,
 } from "@mariozechner/pi-ai";
@@ -16,7 +16,7 @@ import {
   SettingsSchema,
 } from "./types.ts";
 
-const DEFAULT_PROVIDER: KnownProvider = "openai-codex";
+const DEFAULT_PROVIDER = "openai-codex";
 const DEFAULT_MODEL_ID = "gpt-5.5";
 const DEFAULT_EFFORT: ThinkingLevel = "xhigh";
 
@@ -84,24 +84,41 @@ function requireValue(argv: string[], index: number, flag: string) {
   return value;
 }
 
-function findModelConfig(modelId: string, provider: KnownProvider) {
-  const models = getModels(provider);
-  if (models.length === 0) throw new Error("Provider has no models");
-
-  return models.find((m) => m.id === modelId);
+function findModelConfig(
+  modelId: string,
+  provider: string,
+  customProviders?: Model<Api>[],
+) {
+  const knownProviders = getProviders() as string[];
+  if (knownProviders.includes(provider)) {
+    const models = getModels(provider as any);
+    if (models.length === 0) throw new Error("Provider has no models");
+    return models.find((m) => m.id === modelId);
+  }
+  return customProviders?.find(
+    (m) => m.provider === provider && m.id === modelId,
+  );
 }
 
-function getFirstModelConfig(provider: KnownProvider): Model<Api> {
-  const model = getModels(provider)[0];
-  if (!model) throw new Error("Provider has no models");
-
-  return model;
+function getFirstModelConfig(
+  provider: string,
+  customProviders?: Model<Api>[],
+): Model<Api> {
+  const knownProviders = getProviders() as string[];
+  if (knownProviders.includes(provider)) {
+    const models = getModels(provider as any);
+    if (models.length > 0) return models[0];
+  }
+  const custom = customProviders?.find((m) => m.provider === provider);
+  if (custom) return custom;
+  throw new Error("Provider has no models");
 }
 
 function getFallbackModel(
-  provider: KnownProvider,
+  provider: string,
   explicitModel: boolean,
   providerChanged: boolean,
+  customProviders?: Model<Api>[],
 ): Model<Api> {
   if (explicitModel) {
     throw new Error("Model not found");
@@ -111,19 +128,26 @@ function getFallbackModel(
     throw new Error("Model not found");
   }
 
-  return getFirstModelConfig(provider);
+  return getFirstModelConfig(provider, customProviders);
 }
 
 export async function handleArgv(argv: string[]): Promise<CliOptions> {
   const settings = await getSettings();
-  let availableProviders = await getAvailableProviders();
+  const customProviders = settings?.customProviders ?? [];
+  const builtInProviders = await getAvailableProviders();
+  const availableProviders = [
+    ...new Set([
+      ...builtInProviders,
+      ...customProviders.map((cp) => cp.provider),
+    ]),
+  ];
   const defaultProvider = availableProviders[0] ?? DEFAULT_PROVIDER;
   const settingsProvider = settings?.provider ?? defaultProvider;
   const settingsModelId =
     settings?.model ??
     (settingsProvider === DEFAULT_PROVIDER
       ? DEFAULT_MODEL_ID
-      : getFirstModelConfig(settingsProvider).id);
+      : getFirstModelConfig(settingsProvider, customProviders).id);
   const settingsEffort = settings?.effort ?? DEFAULT_EFFORT;
   let provider: string = settingsProvider;
   let modelId = settingsModelId;
@@ -181,7 +205,16 @@ export async function handleArgv(argv: string[]): Promise<CliOptions> {
 
     if (flag === "--login" || flag === "-l") {
       await loginOAuth(requireValue(argv, i, flag));
-      availableProviders = await getAvailableProviders();
+      // Rebuild available providers after login
+      const refreshedProviders = await getAvailableProviders();
+      availableProviders.splice(
+        0,
+        availableProviders.length,
+        ...new Set([
+          ...refreshedProviders,
+          ...customProviders.map((cp) => cp.provider),
+        ]),
+      );
       i++;
     }
   }
@@ -207,7 +240,7 @@ export async function handleArgv(argv: string[]): Promise<CliOptions> {
     provider = fallbackProvider;
     providerChanged = provider !== settingsProvider;
     if (!explicitModel) {
-      modelId = getFirstModelConfig(fallbackProvider).id;
+      modelId = getFirstModelConfig(fallbackProvider, customProviders).id;
     }
 
     cliSettings = parseSettings(
@@ -223,22 +256,30 @@ export async function handleArgv(argv: string[]): Promise<CliOptions> {
   const selectedModel = findModelConfig(
     cliSettings.model,
     cliSettings.provider,
+    customProviders,
   );
   const model =
     selectedModel ??
-    getFallbackModel(cliSettings.provider, explicitModel, providerChanged);
+    getFallbackModel(
+      cliSettings.provider,
+      explicitModel,
+      providerChanged,
+      customProviders,
+    );
 
   const options = parseCliOptions({
     provider: cliSettings.provider,
     model,
     effort: cliSettings.effort,
     prompt,
+    customProviders,
   });
   const nextSettings = parseSettings(
     {
       provider: options.provider,
       model: options.model.id,
       effort: options.effort,
+      customProviders,
     },
     "settings",
   );

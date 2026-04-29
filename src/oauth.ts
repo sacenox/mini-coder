@@ -1,10 +1,6 @@
 import readline from "node:readline";
 
-import {
-  getEnvApiKey,
-  getProviders,
-  type KnownProvider,
-} from "@mariozechner/pi-ai";
+import { getEnvApiKey, getProviders } from "@mariozechner/pi-ai";
 import {
   getOAuthApiKey,
   getOAuthProvider,
@@ -20,15 +16,15 @@ export function isOAuthProvider(provider: string): boolean {
   );
 }
 
-export async function getAvailableProviders(): Promise<KnownProvider[]> {
+export async function getAvailableProviders(): Promise<string[]> {
   const auth = await readCreds();
   const loggedInOAuthProviders = getOAuthProviders()
-    .map((provider) => provider.id as KnownProvider)
+    .map((provider) => provider.id)
     .filter((provider) => auth[provider]);
   const envKeyProviders = getProviders().filter(
     (provider) => !!getEnvApiKey(provider),
   );
-  const providers: KnownProvider[] = [];
+  const providers: string[] = [];
   const providerIds = new Set<string>();
 
   for (const provider of [...loggedInOAuthProviders, ...envKeyProviders]) {
@@ -88,6 +84,16 @@ export async function getApiKey(options: CliOptions) {
 
   const envApiKey = getEnvApiKey(provider);
   if (envApiKey) return envApiKey;
+
+  const knownProviders = getProviders() as string[];
+  if (!knownProviders.includes(provider)) {
+    if (options.model.api === "openai-completions") {
+      // pi-ai requires a truthy apiKey for OpenAI-compatible local providers like Ollama.
+      return "dummy";
+    }
+
+    return undefined;
+  }
 
   throw new Error("Not logged in");
 }
