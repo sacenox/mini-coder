@@ -100,19 +100,20 @@ export function ActivityPill(state: TUIState, spinnerFrame: string) {
 
 export function ContextPill(state: TUIState) {
   let text = "";
-  let bg = theme.bwhite;
+  let bg = theme.bgreen;
   if (!state.contextSize) {
     text = "0%";
+    bg = theme.bwhite;
   } else {
     const max = state.options.model.contextWindow;
     const percent = Math.floor((state.contextSize / max) * 100);
-    if (percent > 90) {
+    if (percent > 80) {
       bg = theme.bred;
-    } else if (percent > 75) {
-      bg = theme.red;
     } else if (percent > 60) {
-      bg = theme.yellow;
+      bg = theme.red;
     } else if (percent > 40) {
+      bg = theme.yellow;
+    } else if (percent > 30) {
       bg = theme.byellow;
     }
     text = `~${percent}%`;

@@ -68,7 +68,7 @@ async function getSettings(): Promise<Settings | undefined> {
   return parseSettings(settings, "settings");
 }
 
-async function saveSettings(s: Settings) {
+export async function saveSettings(s: Settings) {
   await mkdir(DATA_DIR, { recursive: true });
   const file = Bun.file(SETTINGS_PATH);
   await Bun.write(file, JSON.stringify(s, null, 4));

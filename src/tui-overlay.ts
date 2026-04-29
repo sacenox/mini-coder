@@ -1,5 +1,6 @@
 import { HStack, Text, TextInput, VStack } from "@cel-tui/core";
 import {
+  getModel,
   getModels,
   type KnownProvider,
   type ThinkingLevel,
@@ -10,6 +11,7 @@ import { listSessionsForCwd } from "./session";
 import { TextPill, theme } from "./tui-components";
 import type { SelectOptions, SelectState, Session, TUIState } from "./types";
 import { estimateTokens } from "./shared";
+import { saveSettings } from "./args";
 
 export function SelectOverlay(
   value: string,
@@ -349,6 +351,11 @@ export function mainMenu(state: TUIState) {
 
         state.options.provider = selectedProvider;
         state.options.model = model;
+        saveSettings({
+          provider: selectedProvider,
+          model: model.id,
+          effort: state.options.effort  
+        })
         closeMenu(s);
         return;
       }
@@ -358,6 +365,11 @@ export function mainMenu(state: TUIState) {
         if (!effort) return;
 
         state.options.effort = effort;
+        saveSettings({
+          provider: state.options.provider,
+          model: state.options.model.id,
+          effort: effort  
+        })
         closeMenu(s);
       }
     },
