@@ -6,6 +6,7 @@ import {
   insertToolUsageReminder,
   MAIN_PROMPT,
 } from "./prompt";
+import { updateSession } from "./session";
 import { estimateTokens, secureRandomString } from "./shared";
 import { bash, runBashTool } from "./tool-bash";
 import { edit, runEditTool } from "./tool-edit";
@@ -23,7 +24,6 @@ import { Conversation, emptyState } from "./tui-conversation";
 import { Editor } from "./tui-editor";
 import { mainMenu } from "./tui-overlay";
 import type { AgentContex, ToolAndRunner, TUIState } from "./types";
-import { updateSession } from "./session";
 
 // TODO: move all git things to `git.ts`
 const git = simpleGit();
@@ -88,7 +88,9 @@ export function initTUI(state: TUIState, leave: (s: string) => void) {
       if (state.prompt === ":n" || state.prompt === "/new") {
         state.sessionId = undefined;
         state.messages = [];
-        state.prompt = ""
+        state.prompt = "";
+        state.scrollOffset = 0;
+        state.stickToBottom = true;
         return false;
       }
       const submit = async () => {
@@ -208,7 +210,7 @@ async function streamAgentTUI(state: TUIState) {
       const id = secureRandomString(10);
       state.sessionId = id;
     }
-    await updateSession(state.sessionId, state.messages)
+    await updateSession(state.sessionId, state.messages);
   }
 
   try {

@@ -165,10 +165,32 @@ const randColor = colors[Math.floor(Math.random() * colors.length)];
 
 export function emptyState(): Node {
   return HStack({ flex: 1, alignItems: "center" }, [
-    VStack({ flex: 1, alignItems: "center" }, [
+    VStack({ flex: 1, alignItems: "center", gap: 1 }, [
       HStack({ gap: 1 }, [
         Text("mini"),
         TextPill("coder", theme.black, randColor),
+      ]),
+      VStack({ gap: 1 }, [
+        HStack({ gap: 1 }, [
+          TextPill("/new", randColor, theme.bblack, 13),
+          Text("Start a new session from the input box.", {
+            fgColor: theme.bblack,
+          }),
+        ]),
+        HStack({ gap: 1 }, [
+          TextPill("ctrl+p", randColor, theme.bblack, 13),
+          Text("Menu for session history, and settings.", {
+            fgColor: theme.bblack,
+          }),
+        ]),
+        HStack({ gap: 1 }, [
+          TextPill("ESC", randColor, theme.bblack, 13),
+          Text("Abort agent response.", { fgColor: theme.bblack }),
+        ]),
+        HStack({ gap: 1 }, [
+          TextPill("ctrl+c|d|q", randColor, theme.bblack, 13),
+          Text("Quit.", { fgColor: theme.bblack }),
+        ]),
       ]),
     ]),
   ]);

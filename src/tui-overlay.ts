@@ -5,8 +5,9 @@ import {
   type ThinkingLevel,
 } from "@mariozechner/pi-ai";
 import { getOAuthProviders } from "@mariozechner/pi-ai/oauth";
+import { listSessionsForCwd } from "./session";
 import { TextPill, theme } from "./tui-components";
-import type { SelectOptions, SelectState, TUIState } from "./types";
+import type { SelectOptions, SelectState, Session, TUIState } from "./types";
 
 export function SelectOverlay(
   value: string,
@@ -133,13 +134,24 @@ export function useSelectOverlay(initialOptions: SelectOptions) {
     if (key === "enter") {
       const previousList = s.list;
       const previousBaseList = baseList;
+      const applySelectionResult = () => {
+        if (s.list !== previousList) {
+          baseList = s.list;
+        } else {
+          s.list = previousBaseList;
+          s.selected = s.list.length ? s.list[0].value : "";
+        }
+      };
+
       s.value = "";
-      initialOptions.onSelect(s);
-      if (s.list !== previousList) {
-        baseList = s.list;
+      const result = initialOptions.onSelect(s);
+      if (result instanceof Promise) {
+        result.then(applySelectionResult).catch(() => {
+          s.list = previousBaseList;
+          s.selected = s.list.length ? s.list[0].value : "";
+        });
       } else {
-        s.list = previousBaseList;
-        s.selected = s.list.length ? s.list[0].value : "";
+        applySelectionResult();
       }
       return false;
     }
@@ -168,6 +180,23 @@ export function useSelectOverlay(initialOptions: SelectOptions) {
     );
 }
 
+function sessionLabel(session: Session): string {
+  const firstUserMessage = session.messages.find(
+    (message) => message.role === "user",
+  );
+  if (!firstUserMessage) return session.id;
+
+  const text =
+    typeof firstUserMessage.content === "string"
+      ? firstUserMessage.content
+      : firstUserMessage.content
+          .map((block) => (block.type === "text" ? block.text : ""))
+          .join(" ");
+  const snippet = text.trim().replace(/\s+/g, " ").slice(0, 80);
+
+  return snippet || session.id;
+}
+
 export function mainMenu(state: TUIState) {
   type MenuPane = Omit<SelectOptions, "onCancel" | "onSelect">;
 
@@ -190,12 +219,27 @@ export function mainMenu(state: TUIState) {
       value: v.id,
     }));
 
+  let currentSessions: Session[] = [];
+
+  const sessionsPane = async (): Promise<MenuPane> => {
+    currentSessions = await listSessionsForCwd();
+    return {
+      label: "sessions",
+      filter: "",
+      list: currentSessions.map((session) => ({
+        label: sessionLabel(session),
+        value: session.id,
+      })),
+    };
+  };
+
   const mainPane: MenuPane = {
     label: "main",
     filter: state.prompt.length ? state.prompt : "",
     list: [
       { label: "models and providers", value: "providers" },
       { label: "reasoning effort", value: "effort" },
+      { label: "sessions", value: "sessions" },
     ],
   };
   const providersPane: MenuPane = {
@@ -223,6 +267,7 @@ export function mainMenu(state: TUIState) {
   const resetMenu = (s: SelectState) => {
     currentPane = mainPane;
     selectedProvider = undefined;
+    currentSessions = [];
     s.value = "";
     s.label = mainPane.label ? mainPane.label.toUpperCase() : "SELECT";
     s.list = mainPane.list;
@@ -240,8 +285,27 @@ export function mainMenu(state: TUIState) {
       if (!s.selected) return;
 
       if (currentPane.label === "main") {
+        if (s.selected === "sessions") {
+          return sessionsPane().then((pane) => {
+            openPane(s, pane);
+          });
+        }
+
         const nextPane = panes.find((pane) => pane.label === s.selected);
         if (nextPane) openPane(s, nextPane);
+        return;
+      }
+
+      if (currentPane.label === "sessions") {
+        const session = currentSessions.find((v) => v.id === s.selected);
+        if (!session) return;
+
+        state.sessionId = session.id;
+        state.messages = session.messages;
+        state.prompt = "";
+        state.scrollOffset = 0;
+        state.stickToBottom = true;
+        closeMenu(s);
         return;
       }
 
@@ -283,6 +347,7 @@ export function mainMenu(state: TUIState) {
     onCancel: () => {
       currentPane = mainPane;
       selectedProvider = undefined;
+      currentSessions = [];
       state.overlay = false;
     },
   });

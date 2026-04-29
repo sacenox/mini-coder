@@ -71,7 +71,7 @@ type SavedOAuthAuth = OAuthCredentials & {
 };
 export type SavedOAuthCreds = Record<string, SavedOAuthAuth>;
 
-export const MessageSchema = Type.Unsafe<Message>;
+export const MessageSchema = Type.Unsafe<Message>({});
 export const SessionSchema = Type.Object({
   id: Type.String(),
   cwd: Type.String(),
@@ -159,6 +159,6 @@ export type SelectOptions = {
   filter: string;
   list: { label: string; value: string }[];
   label?: string | undefined;
-  onSelect: (s: SelectState) => void;
+  onSelect: (s: SelectState) => void | Promise<void>;
   onCancel: () => void;
 };

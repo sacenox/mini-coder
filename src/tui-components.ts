@@ -28,8 +28,13 @@ export const theme = {
   bwhite: "color15" as Color,
 };
 
-export function TextPill(content: string, fgColor: Color, bgColor: Color) {
-  return HStack({ gap: 1 }, [
+export function TextPill(
+  content: string,
+  fgColor: Color,
+  bgColor: Color,
+  size?: number | undefined,
+) {
+  return HStack({ gap: 1, width: size }, [
     HStack({ bgColor, padding: { x: 1 } }, [
       Text(content, { bold: true, fgColor }),
     ]),
