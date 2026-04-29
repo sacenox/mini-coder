@@ -1,6 +1,6 @@
 import type { Message } from "@mariozechner/pi-ai";
 import { streamAgent } from "./agent";
-import { buildSystemPrompt, MAIN_PROMPT } from "./prompt";
+import { buildSystemPrompt, injectEnvReminder, MAIN_PROMPT } from "./prompt";
 import { bash, runBashTool } from "./tool-bash";
 import { edit, runEditTool } from "./tool-edit";
 import { runTaskTool, task } from "./tool-task";
@@ -18,8 +18,13 @@ export async function streamHeadless(
       runner: (args) => runTaskTool(options, args),
     },
   ];
+  const envReminder = await injectEnvReminder();
   const messages: Message[] = [
-    { role: "user", content: options.prompt || "", timestamp: Date.now() },
+    {
+      role: "user",
+      content: `${envReminder}\n\n${options.prompt || ""}`,
+      timestamp: Date.now(),
+    },
   ];
   console.log(JSON.stringify(messages[0]));
 

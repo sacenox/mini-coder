@@ -3,6 +3,7 @@ import simpleGit from "simple-git";
 import { streamAgent } from "./agent";
 import {
   buildSystemPrompt,
+  injectEnvReminder,
   insertToolUsageReminder,
   MAIN_PROMPT,
 } from "./prompt";
@@ -152,9 +153,14 @@ async function streamAgentTUI(state: TUIState) {
     },
   ];
 
+  let userContent = state.prompt;
+  if (state.messages.length === 0) {
+    const envReminder = await injectEnvReminder();
+    userContent = `${envReminder}\n\n${userContent}`;
+  }
   state.messages.push({
     role: "user",
-    content: state.prompt,
+    content: userContent,
     timestamp: Date.now(),
   });
   state.prompt = "";

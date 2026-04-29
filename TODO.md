@@ -7,12 +7,13 @@
 Raw notes, references:
 
 > good lessons from claude and general advice, seems good and grounded on real experience. Matches with learnings.
-https://www.indiehackers.com/post/the-complete-guide-to-writing-agent-system-prompts-lessons-from-reverse-engineering-claude-code-6e18d54294
+> https://www.indiehackers.com/post/the-complete-guide-to-writing-agent-system-prompts-lessons-from-reverse-engineering-claude-code-6e18d54294
 
 > How pi coding agent does it, minimal and structured, a good approach, but we can be even more focused and minimal.
-https://raw.githubusercontent.com/badlogic/pi-mono/refs/heads/main/packages/coding-agent/src/core/system-prompt.ts
+> https://raw.githubusercontent.com/badlogic/pi-mono/refs/heads/main/packages/coding-agent/src/core/system-prompt.ts
 
 > Key sentence to add:
+
 ```
 Prioritize technical accuracy and truthfulness over validating the user's beliefs.
 Focus on facts and problem-solving, providing direct, objective technical info
@@ -22,33 +23,39 @@ without any unnecessary superlatives, praise, or emotional validation.
 More reading material:
 
 - https://arxiv.org/html/2601.16507v1#S3
-- 
----
+- ***
 
 # [Agent Name] Agent Prompt
 
 ## Role
+
 [Define the agent's role, persona, and objective concisely.]
 Example: You are an expert Data Analyst. You write SQL queries to answer questions from the marketing department.
 
 ## Tool Usage
+
 [Provide supplementary instructions on how/when to use specific tools.]
-*Note: Detailed technical specifications should be defined in the tool's description settings, but high-level logic goes here.*
+_Note: Detailed technical specifications should be defined in the tool's description settings, but high-level logic goes here._
 
 ## Input / Output
+
 ### Input Variables
+
 - `{{variable_name}}`: [Description of the variable]
 
 ### Output Goals
+
 - [Definition of the final deliverable]
 
 ## Task Flow
+
 1. [Task Name]
    - [Specific steps and decision criteria]
 2. [Task Name]
    - [Specific steps and decision criteria]
 
 ## Constraints & Rules
+
 - [Prohibitions and constraints]
 - [Tone and Manner instructions]
 

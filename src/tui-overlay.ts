@@ -1,17 +1,16 @@
 import { HStack, Text, TextInput, VStack } from "@cel-tui/core";
 import {
-  getModel,
   getModels,
   type KnownProvider,
   type ThinkingLevel,
 } from "@mariozechner/pi-ai";
 import { getOAuthProviders } from "@mariozechner/pi-ai/oauth";
+import { saveSettings } from "./args";
 import { getAvailableProviders } from "./oauth";
 import { listSessionsForCwd } from "./session";
+import { estimateTokens } from "./shared";
 import { TextPill, theme } from "./tui-components";
 import type { SelectOptions, SelectState, Session, TUIState } from "./types";
-import { estimateTokens } from "./shared";
-import { saveSettings } from "./args";
 
 export function SelectOverlay(
   value: string,
@@ -321,7 +320,7 @@ export function mainMenu(state: TUIState) {
         state.sessionId = session.id;
         state.messages = session.messages;
         state.prompt = "";
-        state.contextSize = estimateTokens(JSON.stringify(state.messages))
+        state.contextSize = estimateTokens(JSON.stringify(state.messages));
         state.scrollOffset = 0;
         state.stickToBottom = true;
         closeMenu(s);
@@ -354,8 +353,8 @@ export function mainMenu(state: TUIState) {
         saveSettings({
           provider: selectedProvider,
           model: model.id,
-          effort: state.options.effort  
-        })
+          effort: state.options.effort,
+        });
         closeMenu(s);
         return;
       }
@@ -368,8 +367,8 @@ export function mainMenu(state: TUIState) {
         saveSettings({
           provider: state.options.provider,
           model: state.options.model.id,
-          effort: effort  
-        })
+          effort: effort,
+        });
         closeMenu(s);
       }
     },

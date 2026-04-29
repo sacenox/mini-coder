@@ -102,6 +102,12 @@ function userMessageNode(msg: UserMessage): Node {
       .join("");
   }
 
+  // Remove any reminders we might have attached before render
+  // Keep this fast, it runs on the render cycle.
+  text = text
+    .replaceAll(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "")
+    .trimStart();
+
   return VStack(
     {
       padding: { x: 1, y: 1 },

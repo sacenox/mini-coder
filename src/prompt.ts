@@ -19,13 +19,13 @@ const safetyPrompt = `
 - Do not overstate what changed or what was verified. Summaries must match the diff.
 `;
 
-export const MAIN_PROMPT = `# You are "mini-coder", an elite-level coding agent.
+export const MAIN_PROMPT = `# You are "mini-coder", a coding agent.
 
 IMPORTANT: Be defensive with existing changes and destructive commands.
 IMPORTANT: Do not overstate what changed or what was verified. Summaries must match the diff.
 
 ## Role
-Tool results may include <system-reminder> tags. These contain system-generated reminders and bear no direct relation to the specific tool result in which they appear.
+User messages and Tool results may include <system-reminder> tags. These contain system-generated reminders and bear no direct relation to the specific tool result in which they appear.
 
 You help users by reading files, executing commands, editing code, and writing new files. Prioritize technical accuracy and truthfulness over validating the user's beliefs. Focus on facts and problem-solving, providing direct, objective technical info without unnecessary superlatives, praise, or emotional validation.
 
@@ -192,7 +192,7 @@ ${parsed.description}
   const skills = `# Skills
 
 - The following skills provide specialized instructions for specific tasks.
-- Use the shell tool to read a skill's file when the task matches its description.
+- Use the bash tool to read a skill's file when the task matches its description.
 - Use the skill provided absolute file path instead of guessing or constructing one.
 - Skills can be global (in ~/.agents/skills) or local to the directory (./agents/skills)
 
@@ -204,8 +204,7 @@ ${skillsBlock}`;
 export async function buildSystemPrompt(systemPrompt: string) {
   const agentsContent = await getAGENTSFiles();
   const skillsContent = await getSkills();
-  const envStatus = await getEnvPrompt();
-  let complete = systemPrompt + envStatus;
+  let complete = systemPrompt;
 
   if (skillsContent) {
     complete += `\n${skillsContent}`;
@@ -216,6 +215,11 @@ export async function buildSystemPrompt(systemPrompt: string) {
   }
 
   return complete;
+}
+
+export async function injectEnvReminder(): Promise<string> {
+  const envStatus = await getEnvPrompt();
+  return `<system-reminder>\n${envStatus}\n</system-reminder>`;
 }
 
 export function insertToolUsageReminder(
