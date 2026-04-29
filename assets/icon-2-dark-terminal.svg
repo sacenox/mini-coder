@@ -1,0 +1,48 @@
+<!-- Mini Coder Icon v2: Dark Terminal
+     Dark background, neon bolt and glowing brackets.
+     Inspired by: terminal aesthetic, ANSI colors, claude code dark UI -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <defs>
+    <radialGradient id="bgGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#0d1117"/>
+      <stop offset="100%" stop-color="#010409"/>
+    </radialGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="2.5" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background rounded square -->
+  <rect x="4" y="4" width="92" height="92" rx="18" fill="url(#bgGlow)"/>
+
+  <!-- Left bracket { — neon cyan -->
+  <path
+    d="M38 14 C29 14 26 19 26 27 L26 41 C26 47 22 49 18 51 C22 53 26 55 26 61 L26 74 C26 82 29 87 38 87"
+    fill="none"
+    stroke="#00d4ff"
+    stroke-width="4.5"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    filter="url(#glow)"
+  />
+  <!-- Right bracket } — neon cyan -->
+  <path
+    d="M62 14 C71 14 74 19 74 27 L74 41 C74 47 78 49 82 51 C78 53 74 55 74 61 L74 74 C74 82 71 87 62 87"
+    fill="none"
+    stroke="#00d4ff"
+    stroke-width="4.5"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    filter="url(#glow)"
+  />
+  <!-- Lightning bolt — electric yellow -->
+  <path
+    d="M57 20 L42 53 L52 53 L43 80 L63 45 L53 45 Z"
+    fill="#ffe600"
+    filter="url(#glow)"
+  />
+</svg>
