@@ -1,0 +1,42 @@
+{
+  "meta": {
+    "name": "mini-coder",
+    "version": "1.0.0",
+    "description": "Profile for mini-coder / mc, a Bun-based coding agent"
+  },
+  "extends": "default",
+  "workdir": {
+    "access": "readwrite"
+  },
+  "security": {
+    "groups": [
+      "node_runtime",
+      "git_config",
+      "user_caches_linux",
+      "linux_sysfs_read",
+      "unlink_protection"
+    ]
+  },
+  "filesystem": {
+    "allow": [
+      "$HOME/.config/mini-coder",
+      "$HOME/.bun",
+      "$TMPDIR"
+    ],
+    "read": [
+      "$HOME/.agents/"
+    ],
+    "write": [],
+    "allow_file": [
+      "$HOME/AGENTS.md"
+    ],
+    "read_file": [],
+    "write_file": []
+  },
+  "rollback": {
+    "exclude_patterns": [
+      "node_modules"
+    ],
+    "exclude_globs": []
+  }
+}

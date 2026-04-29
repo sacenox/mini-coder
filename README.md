@@ -36,6 +36,7 @@ $ mc
 - **Agent-first** — every decision serves the goal of reading code, making changes, and verifying them via the shell.
 - **Performance** — startup and turn latency matter more than features.
 - **Streaming end-to-end** — assistant text, reasoning, tool calls, and tool output show up as they happen.
+- **Isolation friendly**— works inside [nono](https://nono.sh/). Suggested profile in `nono-mini-coder.json`
 
 ## Settings
 
