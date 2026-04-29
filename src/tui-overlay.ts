@@ -195,7 +195,11 @@ function sessionLabel(session: Session): string {
       : firstUserMessage.content
           .map((block) => (block.type === "text" ? block.text : ""))
           .join(" ");
-  const snippet = text.trim().replace(/\s+/g, " ").slice(0, 80);
+  const snippet = text
+    .replaceAll(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .slice(0, 80);
 
   return snippet || session.id;
 }

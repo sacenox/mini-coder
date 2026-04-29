@@ -19,6 +19,11 @@ import type {
 // Published research found that **simply hiding old tool outputs** matched the quality of full LLM summarization with **zero extra compute**:
 // https://blog.jetbrains.com/research/2025/12/efficient-context-management/
 export function compactContext(messages: Message[]) {
+  // TODO: Preserve SKILL.md contents, and exclude them from compaction.
+  // Problem: How do we know? we need to check each message result againt it's arguments
+  // and then find if by chance it has a read skill command... This is a mess. We we.
+  // A better way would be to first add a read(path, lines, offset). And then we know
+  // which files are read using it, and can match by path if it's a SKILL.md ending.
   const KEEP_OBSERVATIONS = 10;
 
   const toolResultIndices: number[] = [];

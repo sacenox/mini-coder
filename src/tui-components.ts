@@ -105,15 +105,20 @@ export function ContextPill(state: TUIState) {
     text = "0%";
     bg = theme.bwhite;
   } else {
+    // Colors show the progress in the "smart window" or how much
+    // before the dumb zone. The user facing percentage is the model
+    // amount. An elegant way to show both :)
     const max = state.options.model.contextWindow;
+    const smartMax = 80000;
     const percent = Math.floor((state.contextSize / max) * 100);
-    if (percent > 80) {
+    const smartPercent = Math.floor((state.contextSize / smartMax) * 100)
+    if (smartPercent > 90) {
       bg = theme.bred;
-    } else if (percent > 60) {
+    } else if (smartPercent > 80) {
       bg = theme.red;
-    } else if (percent > 40) {
+    } else if (smartPercent > 70) {
       bg = theme.yellow;
-    } else if (percent > 30) {
+    } else if (smartPercent > 50) {
       bg = theme.byellow;
     }
     text = `~${percent}%`;

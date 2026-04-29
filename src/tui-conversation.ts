@@ -137,18 +137,61 @@ function toolMessageNode(msg: ToolResultMessage): Node {
   );
 }
 
-function conversationMessageNode(msg: Message): Node {
-  const body =
+const messageBodyCache = new WeakMap<Message, { key: number; node: Node }>();
+
+function messageCacheKey(msg: Message): number {
+  if (msg.role === "assistant") {
+    let key = 0;
+    for (const block of msg.content) {
+      if (block.type === "thinking") key += block.thinking.length;
+      if (block.type === "text") key += block.text.length;
+      if (block.type === "toolCall" && block.arguments)
+        key += JSON.stringify(block.arguments).length;
+    }
+    if (msg.stopReason) key += msg.stopReason.length;
+    if (msg.errorMessage) key += msg.errorMessage.length;
+    return key;
+  }
+  if (msg.role === "user") {
+    if (typeof msg.content === "string") return msg.content.length;
+    return msg.content.reduce(
+      (sum, b) => (b.type === "text" ? sum + b.text.length : sum),
+      0,
+    );
+  }
+  if (msg.role === "toolResult") {
+    return msg.content.reduce(
+      (sum, b) => (b.type === "text" ? sum + b.text.length : sum),
+      0,
+    );
+  }
+  return 0;
+}
+
+function cachedMessageBody(msg: Message): Node {
+  const key = messageCacheKey(msg);
+  const cached = messageBodyCache.get(msg);
+  if (cached && cached.key === key) {
+    return cached.node;
+  }
+  const node =
     msg.role === "assistant"
       ? agentMessageNode(msg)
       : msg.role === "user"
         ? userMessageNode(msg)
         : msg.role === "toolResult"
           ? toolMessageNode(msg)
-          : Text("Unknown message?", { wrap: "word", fgColor: theme.bwhite });
+          : Text("Unknown message?", {
+              wrap: "word",
+              fgColor: theme.bwhite,
+            });
+  messageBodyCache.set(msg, { key, node });
+  return node;
+}
 
+function conversationMessageNode(msg: Message): Node {
   return VStack({ gap: 1 }, [
-    body,
+    cachedMessageBody(msg),
     HStack({ gap: 1, justifyContent: "end" }, [
       Text(`${relativeTime(msg.timestamp)} ago.`, {
         fgColor: theme.bblack,

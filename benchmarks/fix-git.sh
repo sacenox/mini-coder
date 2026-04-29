@@ -4,6 +4,7 @@ PYTHONPATH="$PWD" harbor run -y \
    --dataset terminal-bench/terminal-bench-2 \
    --include-task-name terminal-bench/fix-git \
    --agent-import-path benchmarks.local-harbor-agent:LocalMiniCoderAgent \
+   --model openai-codex/gpt-5.5 \
    --n-attempts 4 \
    --n-concurrent 2 \
    --max-retries 0

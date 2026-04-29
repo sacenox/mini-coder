@@ -7,7 +7,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
 
-from harbor.agents.installed.base import BaseInstalledAgent, with_prompt_template
+from harbor.agents.installed.base import BaseInstalledAgent
 from harbor.environments.base import BaseEnvironment
 from harbor.models.agent.context import AgentContext
 from harbor.models.trial.paths import EnvironmentPaths
@@ -65,7 +65,6 @@ class LocalMiniCoderAgent(BaseInstalledAgent):
             ),
         )
 
-    @with_prompt_template
     async def run(
         self,
         instruction: str,
@@ -88,26 +87,32 @@ class LocalMiniCoderAgent(BaseInstalledAgent):
             f"{config_dir}/auth.json",
             required=True,
         )
-        await self._upload_config_file(
-            environment,
-            self.host_config_dir / "settings.json",
-            f"{config_dir}/settings.json",
-            required=False,
-        )
 
         stdout_path = (EnvironmentPaths.agent_dir / self.STDOUT_LOG).as_posix()
         stderr_path = (EnvironmentPaths.agent_dir / self.STDERR_LOG).as_posix()
 
-        await self.exec_as_agent(
-            environment,
-            command=(
-                f"export HOME={shlex.quote(home)}; "
-                f'export PATH="{home}/.bun/bin:$PATH"; '
-                f"bun {shlex.quote(self.CONTAINER_ROOT + '/bin/mc.ts')} "
-                f"--json -p {shlex.quote(instruction)} "
-                f"</dev/null >{shlex.quote(stdout_path)} 2>{shlex.quote(stderr_path)}"
-            ),
+        # Build CLI flags. Harbor's -m flag sets self.model_name as
+        # "provider/model" (e.g. "openai-codex/gpt-5.5").
+        cmd_parts = [
+            f"bun {shlex.quote(self.CONTAINER_ROOT + '/bin/mc.ts')}",
+            f"--prompt {shlex.quote(instruction)}",
+            "--effort xhigh",
+        ]
+
+        if self._parsed_model_provider and self._parsed_model_name:
+            cmd_parts.append(
+                f"--provider {shlex.quote(self._parsed_model_provider)}"
+            )
+            cmd_parts.append(f"--model {shlex.quote(self._parsed_model_name)}")
+
+        cmd = (
+            f"export HOME={shlex.quote(home)}; "
+            f'export PATH="{home}/.bun/bin:$PATH"; '
+            f"{' '.join(cmd_parts)} "
+            f"</dev/null >{shlex.quote(stdout_path)} 2>{shlex.quote(stderr_path)}"
         )
+
+        await self.exec_as_agent(environment, command=cmd)
 
     def populate_context_post_run(self, context: AgentContext) -> None:
         stdout_path = self.logs_dir / self.STDOUT_LOG
