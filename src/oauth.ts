@@ -7,14 +7,12 @@ import {
 } from "@mariozechner/pi-ai";
 import {
   getOAuthApiKey,
+  getOAuthProvider,
   getOAuthProviders,
-  loginOpenAICodex,
   type OAuthProviderId,
 } from "@mariozechner/pi-ai/oauth";
 import { AUTH_PATH as AUTH_FILE } from "./shared";
 import type { CliOptions, SavedOAuthCreds } from "./types";
-
-// const AUTH_FILE = "./.auth.json";
 
 export function isOAuthProvider(provider: string): boolean {
   return getOAuthProviders().some(
@@ -44,36 +42,34 @@ export async function getAvailableProviders(): Promise<KnownProvider[]> {
 }
 
 export async function loginOAuth(provider: OAuthProviderId) {
+  const oauthProvider = getOAuthProvider(provider);
+  if (!oauthProvider) throw new Error(`Unknown OAuth provider: ${provider}`);
+
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
   });
 
-  switch (provider) {
-    // TODO: other providers :)
-    case "openai-codex": {
-      const creds = await loginOpenAICodex({
-        onAuth: ({ url, instructions }) => {
-          console.log(`Open: ${url}`);
-          if (instructions) console.log(instructions);
-        },
-        onPrompt: async (prompt) => {
-          let answer: string = "";
-          await rl.question(prompt.message, (a) => (answer = a));
-          return answer;
-        },
-        onProgress: (message) => console.log(message),
-      });
+  try {
+    const creds = await oauthProvider.login({
+      onAuth: ({ url, instructions }) => {
+        console.log(`Open: ${url}`);
+        if (instructions) console.log(instructions);
+      },
+      onPrompt: async (prompt) => {
+        let answer: string = "";
+        await rl.question(prompt.message, (a) => (answer = a));
+        return answer;
+      },
+      onProgress: (message) => console.log(message),
+    });
 
-      await writeCreds({ "openai-codex": { type: "oauth", ...creds } });
-      break;
-    }
-    default:
-      throw new Error("Unknown provider");
+    await writeCreds({ [provider]: { type: "oauth", ...creds } });
+  } finally {
+    rl.close();
   }
 
-  const savedCreds = await readCreds();
-  return savedCreds;
+  return await readCreds();
 }
 
 export async function getApiKey(options: CliOptions) {
