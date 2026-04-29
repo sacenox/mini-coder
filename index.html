@@ -1,0 +1,500 @@
+<!doctype html>
+<html lang="en" class="scroll-smooth">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>mini-coder — terminal coding agent</title>
+    <meta
+      name="description"
+      content="mini-coder is a Bun/TypeScript terminal coding agent with streamed output, a small bash/edit/task tool surface, AGENTS.md and skills support, and settings plus sessions under ~/.config/mini-coder/."
+    />
+    <meta name="theme-color" content="#0a0e14" />
+    <link
+      rel="icon"
+      href="assets/icon-2-dark-terminal.svg"
+      type="image/svg+xml"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <style type="text/tailwindcss">
+      @theme {
+        --color-term-bg: #0a0e14;
+        --color-term-surface: #0d1117;
+        --color-term-panel: #161b22;
+        --color-term-border: #21262d;
+        --color-term-fg: #b2b9c2;
+        --color-term-bright: #e6edf3;
+        --color-term-muted: #545d68;
+        --color-term-accent: #00d4ff;
+        --color-term-green: #3fb950;
+        --color-term-yellow: #d29922;
+        --color-term-red: #f85149;
+        --color-term-magenta: #bc8cff;
+        --color-term-blue: #58a6ff;
+        --font-mono:
+          "JetBrains Mono", ui-monospace, "Cascadia Code", "Source Code Pro",
+          Menlo, Consolas, "DejaVu Sans Mono", monospace;
+      }
+
+      ::selection {
+        background: color-mix(
+          in srgb,
+          var(--color-term-accent) 30%,
+          transparent
+        );
+        color: var(--color-term-bright);
+      }
+
+      ::-webkit-scrollbar {
+        width: 6px;
+      }
+
+      ::-webkit-scrollbar-track {
+        background: var(--color-term-bg);
+      }
+
+      ::-webkit-scrollbar-thumb {
+        background: var(--color-term-border);
+        border-radius: 3px;
+      }
+
+      ::-webkit-scrollbar-thumb:hover {
+        background: var(--color-term-muted);
+      }
+
+      @keyframes blink {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0;
+        }
+      }
+
+      .cursor-blink {
+        animation: blink 1s step-end infinite;
+      }
+
+      .glow-accent {
+        text-shadow: 0 0 8px
+          color-mix(in srgb, var(--color-term-accent) 40%, transparent);
+      }
+
+      .manual h2 {
+        @apply mt-8 mb-4 flex items-center gap-2 text-lg font-semibold text-term-accent;
+      }
+
+      .manual h2::before {
+        content: "##";
+        @apply text-sm font-normal text-term-muted;
+      }
+
+      .manual h3 {
+        @apply mt-6 mb-2 text-base font-semibold text-term-bright;
+      }
+
+      .manual p {
+        @apply mb-4 leading-relaxed text-term-fg;
+      }
+
+      .manual ul,
+      .manual ol {
+        @apply mb-4 pl-6 text-term-fg;
+      }
+
+      .manual li {
+        @apply mb-1 leading-relaxed;
+      }
+
+      .manual ul li::marker {
+        @apply text-term-muted;
+      }
+
+      .manual strong {
+        @apply font-semibold text-term-bright;
+      }
+
+      .manual a {
+        @apply text-term-blue underline decoration-term-blue/30 underline-offset-2 transition-colors hover:decoration-term-blue/80;
+      }
+
+      .manual code {
+        @apply rounded bg-term-panel px-1.5 py-0.5 text-sm text-term-magenta;
+      }
+
+      .manual blockquote {
+        @apply my-4 border-l-2 border-term-accent/50 pl-4 italic text-term-muted;
+      }
+
+      kbd {
+        @apply rounded border border-term-border bg-term-panel px-1.5 py-0.5 text-xs text-term-bright;
+      }
+    </style>
+  </head>
+  <body class="bg-term-bg font-mono text-term-fg antialiased">
+    <!-- top bar -->
+    <nav
+      class="sticky top-0 z-40 border-b border-term-border bg-term-bg/90 backdrop-blur-sm"
+    >
+      <div
+        class="mx-auto flex h-10 max-w-4xl items-center justify-between px-4 sm:px-6"
+      >
+        <div class="flex items-center gap-3">
+          <img
+            src="assets/icon-2-dark-terminal.svg"
+            alt="mini-coder icon"
+            class="h-5 w-5 rounded-sm"
+          />
+          <span class="font-bold text-term-accent glow-accent">mini</span
+          ><span class="text-term-muted">-coder</span>
+          <span class="hidden text-xs text-term-muted sm:inline">&middot;</span>
+          <span class="hidden text-xs text-term-muted sm:inline"
+            >terminal coding agent</span
+          >
+        </div>
+        <div class="flex items-center gap-4 text-xs">
+          <a
+            class="text-term-muted transition-colors hover:text-term-accent"
+            href="#manual"
+            >manual</a
+          >
+          <a
+            class="text-term-muted transition-colors hover:text-term-accent"
+            href="#tools"
+            >tools</a
+          >
+          <a
+            class="text-term-muted transition-colors hover:text-term-accent"
+            href="https://github.com/sacenox/mini-coder"
+            >github</a
+          >
+        </div>
+      </div>
+    </nav>
+
+    <!-- hero -->
+    <header class="mx-auto max-w-4xl px-4 pt-16 pb-12 sm:px-6">
+      <div class="mb-6 flex items-start gap-4">
+        <img
+          src="assets/icon-2-dark-terminal.svg"
+          alt="mini-coder logo"
+          class="mt-1 hidden h-14 w-14 rounded-xl border border-term-border bg-term-panel p-2 shadow-[0_0_30px_rgba(0,212,255,0.06)] sm:block"
+        />
+        <div>
+          <h1 class="text-4xl font-bold tracking-tight sm:text-5xl">
+            <span class="text-term-accent glow-accent">mini</span
+            ><span class="text-term-bright">-coder</span>
+          </h1>
+          <p class="mt-2 text-sm text-term-muted sm:text-base">
+            Lightning fast coding agent for your terminal.
+          </p>
+        </div>
+      </div>
+
+      <!-- terminal prompt -->
+      <div
+        class="overflow-hidden rounded-lg border border-term-border bg-term-surface"
+      >
+        <div
+          class="flex items-center gap-2 border-b border-term-border bg-term-panel px-4 py-2"
+        >
+          <span class="h-3 w-3 rounded-full bg-term-red/80"></span>
+          <span class="h-3 w-3 rounded-full bg-term-yellow/80"></span>
+          <span class="h-3 w-3 rounded-full bg-term-green/80"></span>
+          <span class="ml-2 text-xs text-term-muted">~</span>
+        </div>
+        <div class="space-y-2 p-4 text-sm">
+          <div class="flex gap-2">
+            <span class="select-none text-term-accent">$</span>
+            <span class="text-term-bright">bun add -g mini-coder</span>
+          </div>
+          <div class="flex gap-2">
+            <span class="select-none text-term-accent">$</span>
+            <span class="text-term-bright">mc</span>
+            <span
+              class="inline-block h-[1.2em] w-2 self-center bg-term-accent/70 cursor-blink"
+            ></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- quick links -->
+      <div class="mt-6 flex flex-wrap gap-3 text-xs">
+        <a
+          class="rounded-md border border-term-border bg-term-panel px-3 py-1.5 text-term-fg transition-all hover:border-term-accent/50 hover:text-term-accent"
+          href="#why"
+          >Overview &rarr;</a
+        >
+        <a
+          class="rounded-md border border-term-border bg-term-panel px-3 py-1.5 text-term-fg transition-all hover:border-term-accent/50 hover:text-term-accent"
+          href="#workflow"
+          >Workflow &rarr;</a
+        >
+        <a
+          class="rounded-md border border-term-border bg-term-panel px-3 py-1.5 text-term-fg transition-all hover:border-term-accent/50 hover:text-term-accent"
+          href="#tools"
+          >Tools &rarr;</a
+        >
+        <a
+          class="rounded-md border border-term-border bg-term-panel px-3 py-1.5 text-term-fg transition-all hover:border-term-accent/50 hover:text-term-accent"
+          href="#interface"
+          >Interface &rarr;</a
+        >
+        <a
+          class="rounded-md border border-term-border bg-term-panel px-3 py-1.5 text-term-fg transition-all hover:border-term-accent/50 hover:text-term-accent"
+          href="#settings"
+          >Settings &rarr;</a
+        >
+        <a
+          class="rounded-md border border-term-border bg-term-panel px-3 py-1.5 text-term-fg transition-all hover:border-term-accent/50 hover:text-term-accent"
+          href="#headless"
+          >Headless &rarr;</a
+        >
+        <a
+          class="rounded-md border border-term-border bg-term-panel px-3 py-1.5 text-term-fg transition-all hover:border-term-accent/50 hover:text-term-accent"
+          href="https://github.com/sacenox/mini-coder"
+          >GitHub &rarr;</a
+        >
+      </div>
+
+      <!-- preview -->
+      <div
+        class="mt-8 overflow-hidden rounded-lg border border-term-border bg-term-surface"
+      >
+        <img
+          src="assets/preview.gif"
+          alt="mini-coder terminal session preview"
+          class="block w-full"
+        />
+      </div>
+    </header>
+
+    <!-- content -->
+    <main id="manual" class="manual mx-auto max-w-4xl px-4 pb-16 sm:px-6">
+      <section id="why">
+        <h2>mini-coder</h2>
+        <p>
+          mini-coder (<code>mc</code>) is a terminal coding agent. The current
+          <code>main</code> branch is a Bun/TypeScript implementation focused on
+          reading files, running shell commands, editing code, and writing new
+          files with a small core tool surface.
+        </p>
+        <ul>
+          <li>
+            <strong>Lean runtime.</strong> The project uses
+            <a href="https://github.com/badlogic/pi-mono/tree/main/packages/ai"
+              >pi-ai</a
+            >
+            for provider APIs, streaming, tool calling, usage tracking, and
+            OAuth, plus
+            <a href="https://github.com/sacenox/cel-tui">cel-tui</a> for the
+            terminal UI.
+          </li>
+          <li>
+            <strong>Streaming interface.</strong> Assistant text, reasoning,
+            tool calls, and tool output are rendered as they arrive.
+          </li>
+          <li>
+            <strong>Local state.</strong> Settings, OAuth credentials, and
+            sessions are stored under
+            <code>~/.config/mini-coder/</code>.
+          </li>
+        </ul>
+      </section>
+
+      <section id="tools">
+        <h2>Tools</h2>
+        <p>
+          The current built-in runtime tools are intentionally small. Multi-step
+          work is delegated to <code>task</code>; direct <code>bash</code> and
+          <code>edit</code> calls remain available for immediate actions.
+        </p>
+        <div class="mb-4 grid gap-4 md:grid-cols-3">
+          <article
+            class="rounded-lg border border-term-border bg-term-surface p-4"
+          >
+            <h3 class="mt-0 mb-2 font-semibold text-term-bright">bash</h3>
+            <p class="mb-0 text-sm leading-relaxed text-term-fg">
+              Executes shell commands in the current working directory, strips
+              ANSI output, reports the exit code, and writes very large results
+              to a temporary file after a short preview.
+            </p>
+          </article>
+          <article
+            class="rounded-lg border border-term-border bg-term-surface p-4"
+          >
+            <h3 class="mt-0 mb-2 font-semibold text-term-bright">edit</h3>
+            <p class="mb-0 text-sm leading-relaxed text-term-fg">
+              Performs exact-text replacement in one file, creates new files
+              when <code>oldText</code> is empty, and refuses missing or
+              ambiguous matches.
+            </p>
+          </article>
+          <article
+            class="rounded-lg border border-term-border bg-term-surface p-4"
+          >
+            <h3 class="mt-0 mb-2 font-semibold text-term-bright">task</h3>
+            <p class="mb-0 text-sm leading-relaxed text-term-fg">
+              Runs a bounded subagent with the same model and prompt context for
+              exploration or implementation work that needs more than one direct
+              tool call.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section id="interface">
+        <h2>Interface</h2>
+        <p>
+          The TUI is a scrollable conversation log with markdown rendering, tool
+          call blocks, a multiline input, and status pills for model, working
+          directory, git branch, activity, and context usage.
+        </p>
+        <div class="grid gap-4 md:grid-cols-2">
+          <article
+            class="rounded-lg border border-term-border bg-term-surface p-4"
+          >
+            <h3 class="mt-0 mb-2 font-semibold text-term-bright">Controls</h3>
+            <ul class="mb-0 text-sm">
+              <li><kbd>Enter</kbd> submits the current message.</li>
+              <li>
+                <kbd>Escape</kbd> aborts a running turn or clears a non-empty
+                draft.
+              </li>
+              <li>
+                <kbd>Ctrl+P</kbd> opens the menu for providers, models,
+                reasoning effort, and cwd-scoped sessions.
+              </li>
+              <li>
+                <kbd>Ctrl+C</kbd>, <kbd>Ctrl+D</kbd>, or <kbd>Ctrl+Q</kbd>
+                exits cleanly.
+              </li>
+              <li>
+                <code>:q</code> exits; <code>:n</code> or <code>/new</code>
+                starts a fresh session.
+              </li>
+              <li>Mouse wheel scrolling reviews conversation history.</li>
+            </ul>
+          </article>
+          <article
+            class="rounded-lg border border-term-border bg-term-surface p-4"
+          >
+            <h3 class="mt-0 mb-2 font-semibold text-term-bright">
+              Menu actions
+            </h3>
+            <ul class="mb-0 text-sm">
+              <li>Switch to an available API-key or OAuth-backed provider.</li>
+              <li>Choose a model from the selected provider.</li>
+              <li>
+                Set reasoning effort: minimal, low, medium, high, or xhigh.
+              </li>
+              <li>Resume saved sessions for the current working directory.</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section id="settings">
+        <h2>Settings, sessions, and context</h2>
+        <p>
+          Global settings live in
+          <code>~/.config/mini-coder/settings.json</code>. The current schema
+          stores <code>provider</code>, <code>model</code>,
+          <code>effort</code>, and optional <code>customProviders</code> entries
+          using the pi-ai model shape.
+        </p>
+        <ul>
+          <li>
+            <strong>Provider setup.</strong> mini-coder detects providers with
+            environment API keys, supports OAuth login with
+            <code>--login</code> for OAuth-capable providers, and accepts
+            <code>--provider</code>, <code>--model</code>, and
+            <code>--effort</code> overrides.
+          </li>
+          <li>
+            <strong>Sessions.</strong> Conversations are saved as JSON files in
+            <code>~/.config/mini-coder/sessions/</code> and listed only for the
+            working directory they came from.
+          </li>
+          <li>
+            <strong>Instructions.</strong> mini-coder loads global
+            <code>~/.agents/AGENTS.md</code> and local <code>./AGENTS.md</code>
+            content when present.
+          </li>
+          <li>
+            <strong>Skills.</strong> Skill metadata is discovered from
+            <code>~/.agents/skills/*/SKILL.md</code> and
+            <code>./.agents/skills/*/SKILL.md</code> and added to the prompt.
+          </li>
+        </ul>
+      </section>
+
+      <section id="headless">
+        <h2>Headless one-shot mode</h2>
+        <p>
+          For non-interactive use, pass a prompt with <code>-p</code> or
+          <code>--prompt</code>. Headless mode uses the same core agent loop and
+          tools, then writes completed user, assistant, and tool-result messages
+          as JSON lines.
+        </p>
+        <div class="rounded-lg border border-term-border bg-term-surface p-4">
+          <pre
+            class="overflow-x-auto text-sm text-term-bright"
+          ><code>$ mc -p "summarize this repo"
+$ mc --provider openai-codex --model gpt-5.5 --effort xhigh -p "fix the failing tests"</code></pre>
+        </div>
+      </section>
+
+      <section id="stack">
+        <h2>Built on proven parts</h2>
+        <p>
+          mini-coder uses
+          <a href="https://github.com/badlogic/pi-mono/tree/main/packages/ai"
+            >pi-ai</a
+          >
+          for provider support and streaming, and
+          <a href="https://github.com/sacenox/cel-tui">cel-tui</a> for the
+          terminal UI. The page is static HTML and intentionally stays close to
+          the current <code>main</code> branch behavior.
+        </p>
+      </section>
+    </main>
+
+    <!-- footer -->
+    <footer
+      class="mx-auto max-w-4xl border-t border-term-border px-4 pt-6 pb-8 sm:px-6"
+    >
+      <div
+        class="flex flex-col items-center justify-between gap-2 text-xs text-term-muted sm:flex-row"
+      >
+        <span
+          >MIT License &middot; Built with
+          <a href="https://bun.sh" class="text-term-blue hover:underline"
+            >Bun</a
+          ></span
+        >
+        <div class="flex items-center gap-4">
+          <a
+            class="transition-colors hover:text-term-accent"
+            href="https://github.com/sacenox/mini-coder"
+            >GitHub</a
+          >
+          <a
+            class="transition-colors hover:text-term-accent"
+            href="https://www.npmjs.com/package/mini-coder"
+            >npm</a
+          >
+          <a class="transition-colors hover:text-term-accent" href="#manual"
+            >Manual</a
+          >
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>
