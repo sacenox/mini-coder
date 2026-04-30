@@ -1,7 +1,12 @@
 import { cel, HStack, ProcessTerminal, VStack } from "@cel-tui/core";
 import simpleGit from "simple-git";
 import { compactContext, streamAgent } from "./agent";
-import { buildSystemPrompt, injectEnvReminder, MAIN_PROMPT } from "./prompt";
+import {
+  buildSystemPrompt,
+  injectEnvReminder,
+  insertToolUsageReminder,
+  MAIN_PROMPT,
+} from "./prompt";
 import { updateSession } from "./session";
 import { estimateTokens, secureRandomString } from "./shared";
 import { bash, runBashTool } from "./tool-bash";
@@ -184,20 +189,19 @@ async function streamAgentTUI(state: TUIState) {
           break;
 
         case "tool_message_end": {
-          // TODO: reminder needs to be refactored
-          // const withReminder = insertToolUsageReminder(
-          //   state.messages,
-          //   ev.message,
-          // );
+          const withReminder = insertToolUsageReminder(
+            state.messages,
+            ev.message,
+          );
 
-          // const idx = state.messages.findIndex(
-          //   (m) =>
-          //     m.role === "toolResult" &&
-          //     m.toolCallId === withReminder.toolCallId,
-          // );
-          // if (idx >= 0) {
-          //   state.messages[idx] = withReminder;
-          // }
+          const idx = state.messages.findIndex(
+            (m) =>
+              m.role === "toolResult" &&
+              m.toolCallId === withReminder.toolCallId,
+          );
+          if (idx >= 0) {
+            state.messages[idx] = withReminder;
+          }
 
           state.contextSize = estimateTokens(JSON.stringify(ctx));
         }

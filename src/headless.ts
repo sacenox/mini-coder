@@ -1,6 +1,11 @@
 import type { Message } from "@mariozechner/pi-ai";
 import { streamAgent } from "./agent";
-import { buildSystemPrompt, injectEnvReminder, MAIN_PROMPT } from "./prompt";
+import {
+  buildSystemPrompt,
+  injectEnvReminder,
+  insertToolUsageReminder,
+  MAIN_PROMPT,
+} from "./prompt";
 import { bash, runBashTool } from "./tool-bash";
 import { edit, runEditTool } from "./tool-edit";
 import { read, runReadTool } from "./tool-read";
@@ -37,9 +42,22 @@ export async function streamHeadless(
   for await (const ev of agent) {
     switch (ev.type) {
       case "message_end":
-      case "tool_message_end":
         console.log(JSON.stringify(ev.message));
         break;
+
+      case "tool_message_end": {
+        const withReminder = insertToolUsageReminder(messages, ev.message);
+        const idx = messages.findIndex(
+          (m) =>
+            m.role === "toolResult" && m.toolCallId === withReminder.toolCallId,
+        );
+        if (idx >= 0) {
+          messages[idx] = withReminder;
+        }
+
+        console.log(JSON.stringify(withReminder));
+        break;
+      }
     }
   }
 

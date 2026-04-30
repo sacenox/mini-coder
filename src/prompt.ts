@@ -2,7 +2,7 @@ import { promises } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { homedir, platform } from "node:os";
 import { join } from "node:path";
-import type { Message, ToolCall, ToolResultMessage } from "@mariozechner/pi-ai";
+import type { Message, ToolResultMessage } from "@mariozechner/pi-ai";
 import simpleGit, { type StatusResult } from "simple-git";
 import { parseSkillFrontmatter } from "./shared";
 
@@ -211,47 +211,68 @@ export async function injectEnvReminder(): Promise<string> {
   return `<system-reminder>\n${envStatus}\n</system-reminder>`;
 }
 
-// TODO: Needs to be updated since we are deprecating the task tool
-// for now. Needs to check for similar or identical tool calls, aka
-// Doom looping.
+const doomLoopReminder = `<system-reminder>
+You may be entering a tool-call doom loop: recent tool usage is repetitive or not clearly progressing.
+
+- Stop repeating the same or similar tool call unless new evidence requires it.
+- Re-read the user's request and summarize what is known, what failed, and what is still needed.
+- Change strategy before calling more tools: narrow the next check, use a different source of evidence, or ask the user if blocked.
+- If the request is complete, stop calling tools and provide the final answer.
+</system-reminder>`;
+
+// Checks recent tool usage for simple repeated-call patterns and inserts an
+// anti-doom-loop reminder when the agent appears stuck.
 export function insertToolUsageReminder(
   messages: Message[],
   toolMessage: ToolResultMessage,
-) {
-  // check for the last 5 tool call assistant messages
-  // if they are non-`task` tool calls insert the reminder
-  // as a prefix.
-  let output = toolMessage.content
-    .filter((b) => b.type === "text")
-    .map((b) => b.text)
-    .join("\n");
-
-  const budget = 5;
-  const toolCalls: ToolCall[] = [];
-  const lastUserMessageIndex = messages.findLastIndex((m) => m.role === "user");
-  const messagesSinceLastUser = messages.slice(lastUserMessageIndex + 1);
-
-  messagesSinceLastUser.forEach((m) => {
-    if (m.role === "assistant") {
-      const toolCallsBlocks = m.content.filter((b) => b.type === "toolCall");
-      toolCalls.push(...toolCallsBlocks);
-    }
+): ToolResultMessage {
+  const lastReminderIdx = messages.findLastIndex((m) => {
+    return (
+      m.role === "toolResult" &&
+      m.content.find(
+        (b) => b.type === "text" && b.text.includes(doomLoopReminder),
+      )
+    );
   });
-  const recentToolCalls = toolCalls.slice(-budget);
-  const taskSeen = recentToolCalls.some((call) => call.name === "task");
+  const lastUserMessageIdx = messages.findLastIndex((m) => {
+    return m.role === "user";
+  });
+  const messagesSinceLast = messages.slice(
+    Math.max(lastReminderIdx, lastUserMessageIdx) + 1,
+  );
+  const minMessagesForReminder = 4;
 
-  if (toolCalls.length >= budget && !taskSeen) {
-    output = `<system-reminder>
-You are currently making repeated individual tool calls. This fragments context and reduces efficiency.
+  if (messagesSinceLast.length < minMessagesForReminder) return toolMessage;
 
-- Stop and plan: consolidate remaining steps into a single **task** tool call.
-- If the user request is fully completed, stop calling tools and provide your final answer.
-</system-reminder>
+  let errorCount = 0;
+  let sameToolCount = 0;
+  const seenArgs = new Set<string>();
 
-${output}`;
+  for (const msg of messagesSinceLast) {
+    if (msg.role === "toolResult" && msg.isError) errorCount++;
+
+    if (msg.role === "assistant") {
+      const calls = msg.content.filter((b) => b.type === "toolCall");
+      for (const c of calls) {
+        const args = JSON.stringify(c.arguments);
+        if (seenArgs.has(args)) sameToolCount++;
+        seenArgs.add(args)
+      }
+    }
   }
 
-  toolMessage.content = [{ type: "text", text: output }];
+  if (
+    errorCount >= minMessagesForReminder ||
+    sameToolCount >= minMessagesForReminder
+  ) {
+    return {
+      ...toolMessage,
+      content: [
+        ...toolMessage.content,
+        { type: "text", text: doomLoopReminder },
+      ],
+    };
+  }
 
   return toolMessage;
 }

@@ -114,11 +114,11 @@ export function ContextPill(state: TUIState) {
     const smartPercent = Math.floor((state.contextSize / smartMax) * 100);
     if (smartPercent > 90) {
       bg = theme.bred;
-    } else if (smartPercent > 80) {
+    } else if (smartPercent > 85) {
       bg = theme.red;
-    } else if (smartPercent > 70) {
+    } else if (smartPercent > 80) {
       bg = theme.yellow;
-    } else if (smartPercent > 50) {
+    } else if (smartPercent > 60) {
       bg = theme.byellow;
     }
     text = `~${percent}%`;
@@ -126,7 +126,7 @@ export function ContextPill(state: TUIState) {
 
   text += ` (${state.options.model.contextWindow / 1000}k)`;
 
-  return TextPill(text, theme.bblack, bg);
+  return TextPill(text, theme.black, bg);
 }
 
 export function GitPill(state: TUIState) {
