@@ -137,13 +137,13 @@ export function ModelPill(state: TUIState) {
   // Like loot: Gold/purple/blue/green/white -> xhigh/high/medium/low/minimal
   switch (state.options.effort) {
     case "xhigh":
-      return TextPill(state.options.model.name, theme.white, theme.yellow);
+      return TextPill(state.options.model.name, theme.black, theme.yellow);
     case "high":
-      return TextPill(state.options.model.name, theme.white, theme.magenta);
+      return TextPill(state.options.model.name, theme.black, theme.magenta);
     case "medium":
-      return TextPill(state.options.model.name, theme.white, theme.blue);
+      return TextPill(state.options.model.name, theme.black, theme.blue);
     case "low":
-      return TextPill(state.options.model.name, theme.white, theme.green);
+      return TextPill(state.options.model.name, theme.black, theme.green);
   }
   // Minimal
   return TextPill(state.options.model.name, theme.bwhite, theme.bblack);

@@ -4,14 +4,12 @@ import { compactContext, streamAgent } from "./agent";
 import {
   buildSystemPrompt,
   injectEnvReminder,
-  insertToolUsageReminder,
   MAIN_PROMPT,
 } from "./prompt";
 import { updateSession } from "./session";
 import { estimateTokens, secureRandomString } from "./shared";
 import { bash, runBashTool } from "./tool-bash";
 import { edit, runEditTool } from "./tool-edit";
-import { runTaskTool, task } from "./tool-task";
 import {
   ActivityPill,
   ContextPill,
@@ -43,7 +41,6 @@ function clearOrAbort(state: TUIState) {
 
 export function initTUI(state: TUIState, leave: (s: string) => void) {
   // TODO: Cleanup accumulated sessions for this cwd.
-
   const { spinnerEvery, currentSpinner } = Spinner();
 
   // Stable 60fps rendering.
@@ -147,10 +144,6 @@ async function streamAgentTUI(state: TUIState) {
   const tools: ToolAndRunner[] = [
     { tool: bash, runner: runBashTool },
     { tool: edit, runner: runEditTool },
-    {
-      tool: task,
-      runner: (args, signal) => runTaskTool(state.options, args, signal),
-    },
   ];
 
   let userContent = state.prompt;
@@ -193,19 +186,20 @@ async function streamAgentTUI(state: TUIState) {
           break;
 
         case "tool_message_end": {
-          const withReminder = insertToolUsageReminder(
-            state.messages,
-            ev.message,
-          );
+          // TODO: reminder needs to be refactored
+          // const withReminder = insertToolUsageReminder(
+          //   state.messages,
+          //   ev.message,
+          // );
 
-          const idx = state.messages.findIndex(
-            (m) =>
-              m.role === "toolResult" &&
-              m.toolCallId === withReminder.toolCallId,
-          );
-          if (idx >= 0) {
-            state.messages[idx] = withReminder;
-          }
+          // const idx = state.messages.findIndex(
+          //   (m) =>
+          //     m.role === "toolResult" &&
+          //     m.toolCallId === withReminder.toolCallId,
+          // );
+          // if (idx >= 0) {
+          //   state.messages[idx] = withReminder;
+          // }
 
           state.contextSize = estimateTokens(JSON.stringify(ctx));
         }

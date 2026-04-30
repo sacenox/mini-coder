@@ -7,4 +7,5 @@ PYTHONPATH="$PWD" harbor run -y \
    --model openai-codex/gpt-5.5 \
    --n-attempts 4 \
    --n-concurrent 2 \
-   --max-retries 0
+   --max-retries 0 \
+   --mounts-json '[{"type":"bind","source":"/home/xonecas/.config/mini-coder","target":"/root/.config/mini-coder","bind":{"create_host_path":false}}]'

@@ -33,9 +33,6 @@ function agentMessageNode(msg: AssistantMessage): Node {
       } else if ("command" in block.arguments) {
         text = block.arguments.command;
         node = SyntaxHighlight(text, "bash");
-      } else if ("prompt" in block.arguments) {
-        text = block.arguments.prompt;
-        node = SyntaxHighlight(text, "markdown");
       } else {
         text = JSON.stringify(block.arguments);
         node = Text(text);

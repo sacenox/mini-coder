@@ -27,7 +27,6 @@ class LocalMiniCoderAgent(BaseInstalledAgent):
     def __init__(self, *args: Any, version: str = "local", **kwargs: Any) -> None:
         super().__init__(*args, version=version, **kwargs)
         self.repo_root = Path(__file__).resolve().parents[1]
-        self.host_config_dir = Path.home() / ".config" / "mini-coder"
 
     async def install(self, environment: BaseEnvironment) -> None:
         await self.exec_as_root(
@@ -74,19 +73,6 @@ class LocalMiniCoderAgent(BaseInstalledAgent):
         del context
 
         home = await self._container_home(environment)
-        config_dir = f"{home}/.config/mini-coder"
-
-        await self.exec_as_agent(
-            environment,
-            command=f"mkdir -p {shlex.quote(config_dir)}",
-        )
-
-        await self._upload_config_file(
-            environment,
-            self.host_config_dir / "auth.json",
-            f"{config_dir}/auth.json",
-            required=True,
-        )
 
         stdout_path = (EnvironmentPaths.agent_dir / self.STDOUT_LOG).as_posix()
         stderr_path = (EnvironmentPaths.agent_dir / self.STDERR_LOG).as_posix()
@@ -158,29 +144,6 @@ class LocalMiniCoderAgent(BaseInstalledAgent):
         if not home:
             raise RuntimeError("Could not determine container HOME")
         return home
-
-    async def _upload_config_file(
-        self,
-        environment: BaseEnvironment,
-        host_path: Path,
-        container_path: str,
-        *,
-        required: bool,
-    ) -> None:
-        if not host_path.exists():
-            if required:
-                raise FileNotFoundError(f"Missing mini-coder config file: {host_path}")
-            return
-
-        tmp_path = f"/tmp/{host_path.name}"
-        await environment.upload_file(host_path, tmp_path)
-        await self.exec_as_agent(
-            environment,
-            command=(
-                f"cp {shlex.quote(tmp_path)} {shlex.quote(container_path)} && "
-                f"chmod 600 {shlex.quote(container_path)}"
-            ),
-        )
 
     @staticmethod
     def _extract_usage(path: Path) -> dict[str, Any] | None:
