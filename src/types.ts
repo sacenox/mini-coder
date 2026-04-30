@@ -129,7 +129,11 @@ export type AgentToolEvent =
 
 export type ToolRunnerEvent =
   | { type: "output"; text: string }
-  | { type: "result"; text: string };
+  | {
+      type: "result";
+      text: string;
+      image?: { data: string; mimeType: string };
+    };
 
 export type ToolAndRunner = {
   tool: Tool;

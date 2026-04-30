@@ -1,6 +1,7 @@
 import {
   type AssistantMessage,
   type Context,
+  type ImageContent,
   type Message,
   streamSimple,
   type TextContent,
@@ -239,14 +240,19 @@ async function* toolRunner(
             },
           };
         } else if (e.type === "result") {
-          // handle final message
+          // handle final message, and check for images
+          let img: ImageContent | null = null;
+          if (e.image) {
+            img = { ...e.image, type: "image" };
+          }
+
           yield {
             type: "tool_result",
             message: {
               role: "toolResult",
               toolCallId: call.id,
               toolName: call.name,
-              content: [content],
+              content: img ? [content, img] : [content],
               isError: false,
               timestamp,
             },

@@ -116,6 +116,7 @@ function userMessageNode(msg: UserMessage): Node {
 }
 
 function toolMessageNode(msg: ToolResultMessage): Node {
+  // TODO: read tool image output
   // Output only shows last 10 lines of scroll.
   const text = msg.content
     .filter((c) => c.type === "text")

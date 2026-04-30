@@ -3,6 +3,7 @@ import { streamAgent } from "./agent";
 import { buildSystemPrompt, injectEnvReminder, MAIN_PROMPT } from "./prompt";
 import { bash, runBashTool } from "./tool-bash";
 import { edit, runEditTool } from "./tool-edit";
+import { read, runReadTool } from "./tool-read";
 import type { AgentContex, CliOptions, ToolAndRunner } from "./types";
 
 export async function streamHeadless(
@@ -12,6 +13,7 @@ export async function streamHeadless(
   const tools: ToolAndRunner[] = [
     { tool: bash, runner: runBashTool },
     { tool: edit, runner: runEditTool },
+    { tool: read, runner: runReadTool },
   ];
   const envReminder = await injectEnvReminder();
   const messages: Message[] = [

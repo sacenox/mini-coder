@@ -6,6 +6,7 @@ import { updateSession } from "./session";
 import { estimateTokens, secureRandomString } from "./shared";
 import { bash, runBashTool } from "./tool-bash";
 import { edit, runEditTool } from "./tool-edit";
+import { read, runReadTool } from "./tool-read";
 import {
   ActivityPill,
   ContextPill,
@@ -140,6 +141,7 @@ async function streamAgentTUI(state: TUIState) {
   const tools: ToolAndRunner[] = [
     { tool: bash, runner: runBashTool },
     { tool: edit, runner: runEditTool },
+    { tool: read, runner: runReadTool },
   ];
 
   let userContent = state.prompt;
