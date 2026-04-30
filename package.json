@@ -22,7 +22,7 @@
   "dependencies": {
     "@cel-tui/components": "^0.8.3",
     "@cel-tui/core": "^0.8.3",
-    "@mariozechner/pi-ai": "^0.70.2",
+    "@mariozechner/pi-ai": "^0.70.6",
     "diff": "^9.0.0",
     "simple-git": "^3.36.0",
     "yaml": "^2.8.3"

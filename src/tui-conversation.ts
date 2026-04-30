@@ -117,21 +117,31 @@ function userMessageNode(msg: UserMessage): Node {
 
 function toolMessageNode(msg: ToolResultMessage): Node {
   // Output only shows last 10 lines of scroll.
-  return VStack(
-    {
-      height: 10,
-      padding: { x: 4 },
-      overflow: "scroll",
-      scrollOffset: Infinity,
-      onScroll: () => false,
-    },
-    msg.content.map((block) => {
-      if (block.type === "text") {
-        return Text(block.text, { wrap: "word", fgColor: theme.bblack });
-      }
-      return Text(""); // TODO: image case needs attention
+  const text = msg.content
+    .filter((c) => c.type === "text")
+    .map((c) => c.text)
+    .join("")
+    .trim();
+
+  return VStack({ padding: { x: 4 }, gap: 1 }, [
+    Text(`~${estimateTokens(text)} tokens, ${text.split("\n").length} lines.`, {
+      fgColor: theme.bblack,
     }),
-  );
+    VStack(
+      {
+        flex: 1,
+        maxHeight: msg.toolName === "edit" ? 20 : 10,
+        overflow: "scroll",
+        scrollOffset: Infinity,
+        onScroll: () => false,
+      },
+      [
+        msg.toolName === "edit"
+          ? SyntaxHighlight(text, "diff")
+          : Text(text, { wrap: "word", fgColor: theme.white }),
+      ],
+    ),
+  ]);
 }
 
 const messageBodyCache = new WeakMap<Message, { key: number; node: Node }>();
@@ -187,6 +197,7 @@ function cachedMessageBody(msg: Message): Node {
 }
 
 function conversationMessageNode(msg: Message): Node {
+  const label = msg.role === "toolResult" ? `${msg.toolName} result` : msg.role;
   return VStack({ gap: 1 }, [
     cachedMessageBody(msg),
     HStack({ gap: 1, justifyContent: "end" }, [
@@ -194,7 +205,7 @@ function conversationMessageNode(msg: Message): Node {
         fgColor: theme.bblack,
         italic: true,
       }),
-      TextPill(msg.role, theme.bwhite, theme.bblack),
+      TextPill(label, theme.bwhite, theme.bblack),
     ]),
   ]);
 }
@@ -246,7 +257,7 @@ export function Conversation(state: TUIState) {
   return VStack(
     {
       flex: 1,
-      gap: 1,
+      gap: 3,
       overflow: "scroll",
       scrollOffset: state.stickToBottom ? Infinity : state.scrollOffset,
       onScroll(offset, maxOffset) {

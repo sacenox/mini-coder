@@ -1,11 +1,7 @@
 import { cel, HStack, ProcessTerminal, VStack } from "@cel-tui/core";
 import simpleGit from "simple-git";
 import { compactContext, streamAgent } from "./agent";
-import {
-  buildSystemPrompt,
-  injectEnvReminder,
-  MAIN_PROMPT,
-} from "./prompt";
+import { buildSystemPrompt, injectEnvReminder, MAIN_PROMPT } from "./prompt";
 import { updateSession } from "./session";
 import { estimateTokens, secureRandomString } from "./shared";
 import { bash, runBashTool } from "./tool-bash";

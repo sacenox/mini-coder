@@ -126,7 +126,7 @@ export async function* runEditTool(
 
   yield {
     type: "result",
-    text: `File edited: ${filePath}\n\n${patch}`,
+    text: patch,
   };
 
   return;
