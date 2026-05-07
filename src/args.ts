@@ -5,7 +5,7 @@ import {
   getProviders,
   type Model,
   type ThinkingLevel,
-} from "@mariozechner/pi-ai";
+} from "@earendil-works/pi-ai";
 import { Value } from "typebox/value";
 import { getAvailableProviders, isOAuthProvider, loginOAuth } from "./oauth";
 import { DATA_DIR, SETTINGS_PATH } from "./shared.ts";

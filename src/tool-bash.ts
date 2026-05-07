@@ -1,4 +1,4 @@
-import { type Tool, Type } from "@mariozechner/pi-ai";
+import { type Tool, Type } from "@earendil-works/pi-ai";
 import { secureRandomString } from "./shared";
 import type { ToolRunnerEvent } from "./types";
 

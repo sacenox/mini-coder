@@ -1,6 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import type { Message } from "@mariozechner/pi-ai";
+import type { Message } from "@earendil-works/pi-ai";
 import { Value } from "typebox/value";
 import { SESSIONS_DIR } from "./shared";
 import { type Session, SessionSchema } from "./types";

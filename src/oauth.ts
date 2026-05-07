@@ -1,12 +1,12 @@
 import readline from "node:readline";
 
-import { getEnvApiKey, getProviders } from "@mariozechner/pi-ai";
+import { getEnvApiKey, getProviders } from "@earendil-works/pi-ai";
 import {
   getOAuthApiKey,
   getOAuthProvider,
   getOAuthProviders,
   type OAuthProviderId,
-} from "@mariozechner/pi-ai/oauth";
+} from "@earendil-works/pi-ai/oauth";
 import { AUTH_PATH as AUTH_FILE } from "./shared";
 import type { CliOptions, SavedOAuthCreds } from "./types";
 

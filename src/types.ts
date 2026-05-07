@@ -8,8 +8,8 @@ import {
   type Tool,
   type ToolResultMessage,
   Type,
-} from "@mariozechner/pi-ai";
-import type { OAuthCredentials } from "@mariozechner/pi-ai/oauth";
+} from "@earendil-works/pi-ai";
+import type { OAuthCredentials } from "@earendil-works/pi-ai/oauth";
 
 const ThinkingLevelSchema = Type.Unsafe<ThinkingLevel>(
   Type.Union([

@@ -16,7 +16,7 @@ from harbor.models.trial.paths import EnvironmentPaths
 class LocalMiniCoderAgent(BaseInstalledAgent):
     """Minimal Harbor installed-agent wrapper for the local mini-coder checkout."""
 
-    CONTAINER_ROOT = "/tmp/mini-coder-next"
+    CONTAINER_ROOT = "/tmp/mini-coder"
     STDOUT_LOG = "mini-coder.ndjson"
     STDERR_LOG = "mini-coder.stderr.txt"
 
@@ -48,16 +48,16 @@ class LocalMiniCoderAgent(BaseInstalledAgent):
         )
 
         with TemporaryDirectory(prefix="mini-coder-harbor-") as tmp:
-            tarball = Path(tmp) / "mini-coder-next.tgz"
+            tarball = Path(tmp) / "mini-coder.tgz"
             self._make_source_tarball(tarball)
-            await environment.upload_file(tarball, "/tmp/mini-coder-next.tgz")
+            await environment.upload_file(tarball, "/tmp/mini-coder.tgz")
 
         await self.exec_as_agent(
             environment,
             command=(
                 f"rm -rf {shlex.quote(self.CONTAINER_ROOT)} && "
                 f"mkdir -p {shlex.quote(self.CONTAINER_ROOT)} && "
-                f"tar -xzf /tmp/mini-coder-next.tgz -C {shlex.quote(self.CONTAINER_ROOT)} && "
+                f"tar -xzf /tmp/mini-coder.tgz -C {shlex.quote(self.CONTAINER_ROOT)} && "
                 'export PATH="$HOME/.bun/bin:$PATH"; '
                 f"cd {shlex.quote(self.CONTAINER_ROOT)} && "
                 "bun install --frozen-lockfile"

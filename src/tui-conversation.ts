@@ -5,7 +5,7 @@ import type {
   Message,
   ToolResultMessage,
   UserMessage,
-} from "@mariozechner/pi-ai";
+} from "@earendil-works/pi-ai";
 import { estimateTokens, relativeTime } from "./shared";
 import { TextPill, theme } from "./tui-components";
 import type { TUIState } from "./types";

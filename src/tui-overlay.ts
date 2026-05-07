@@ -1,6 +1,6 @@
 import { HStack, Text, TextInput, VStack } from "@cel-tui/core";
-import { getModels, type ThinkingLevel } from "@mariozechner/pi-ai";
-import { getOAuthProviders } from "@mariozechner/pi-ai/oauth";
+import { getModels, type ThinkingLevel } from "@earendil-works/pi-ai";
+import { getOAuthProviders } from "@earendil-works/pi-ai/oauth";
 import { saveSettings } from "./args";
 import { getAvailableProviders } from "./oauth";
 import { listSessionsForCwd } from "./session";

@@ -1,5 +1,5 @@
 import { isAbsolute, join } from "node:path";
-import { type Tool, Type } from "@mariozechner/pi-ai";
+import { type Tool, Type } from "@earendil-works/pi-ai";
 import { createPatch } from "diff";
 import type { ToolRunnerEvent } from "./types";
 
