@@ -13,7 +13,7 @@ const imageMimeTypes: Record<string, string> = {
   ".webp": "image/webp",
 };
 
-const description = `## Read tool
+const description = `Read tool
 
 Read a file by path.
 
