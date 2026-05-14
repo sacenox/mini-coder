@@ -1,6 +1,6 @@
 import { basename } from "node:path";
-import simpleGit from "simple-git";
 import { handleArgv } from "./args.ts";
+import { getBranchLabel } from "./git.ts";
 import { streamHeadless } from "./headless.ts";
 import { initTUI } from "./tui.ts";
 import type { TUIState } from "./types.ts";
@@ -27,14 +27,8 @@ export async function main(): Promise<void> {
     stickToBottom: true,
     scrollOffset: 0,
     cwd,
+    gitBranch: await getBranchLabel(),
   };
-
-  const git = simpleGit();
-  try {
-    const gitStatus = (await git.status()).isClean() ? "" : "*";
-    const gitBranch = (await git.branch()).current;
-    state.gitBranch = `${gitBranch}${gitStatus}`;
-  } catch (_) {} // No git
 
   initTUI(state, leave);
 }

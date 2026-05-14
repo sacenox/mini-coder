@@ -1,12 +1,6 @@
 # Mini coder next
 
-A new version of mini-coder, written from the ground up.
-Version `mini-coder@0.5.x` is currently stable and mostly complete, that's our reference implementation.
-
-## Dog-fooding
-
-if this is in your context window, you are using the current repo's harness `mini-coder`. Be aware of this when
-debugging and testing live with your user.
+A barebones, fast coding agent
 
 ## Core dependencies
 

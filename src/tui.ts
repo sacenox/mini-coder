@@ -1,6 +1,6 @@
 import { cel, HStack, ProcessTerminal, VStack } from "@cel-tui/core";
-import simpleGit from "simple-git";
 import { compactContext, streamAgent } from "./agent";
+import { getBranchLabel } from "./git";
 import {
   buildSystemPrompt,
   injectEnvReminder,
@@ -25,9 +25,6 @@ import { Conversation, emptyState } from "./tui-conversation";
 import { Editor } from "./tui-editor";
 import { mainMenu } from "./tui-overlay";
 import type { AgentContex, ToolAndRunner, TUIState } from "./types";
-
-// TODO: move all git things to `git.ts`
-const git = simpleGit();
 
 function clearOrAbort(state: TUIState) {
   // Are we mid stream? Abort it.
@@ -161,6 +158,10 @@ async function streamAgentTUI(state: TUIState) {
   });
   state.prompt = "";
 
+  // Compact at 80k tokens, the dumb zone threshold.
+  if (estimateTokens(JSON.stringify(state.messages)) > 80000)
+    compactContext(state.messages);
+
   const systemPrompt = await buildSystemPrompt(MAIN_PROMPT);
   const ctx: AgentContex = {
     systemPrompt,
@@ -217,16 +218,7 @@ async function streamAgentTUI(state: TUIState) {
     //        I'm not sure since it we do, there is no trace in logs about compaction
     //        and that would mean the logs don't repesent the truth. Confusing decision.
     await updateSession(state.sessionId, state.messages);
-
-    // Compact after saving, if the next turn fails because of compaction, the session is recoverable.
-    // Compact at 80k tokens, the dumb zone threshold.
-    if (estimateTokens(JSON.stringify(state.messages)) > 80000)
-      compactContext(state.messages);
   }
 
-  try {
-    const gitStatus = (await git.status()).isClean() ? "" : "*";
-    const gitBranch = (await git.branch()).current;
-    state.gitBranch = `${gitBranch}${gitStatus}`;
-  } catch (_) {}
+  state.gitBranch = await getBranchLabel();
 }

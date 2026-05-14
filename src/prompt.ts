@@ -3,7 +3,7 @@ import { readdir } from "node:fs/promises";
 import { homedir, platform } from "node:os";
 import { join } from "node:path";
 import type { Message, ToolResultMessage } from "@earendil-works/pi-ai";
-import simpleGit, { type StatusResult } from "simple-git";
+import { getGitStatus } from "./git";
 import { parseSkillFrontmatter } from "./shared";
 
 export const MAIN_PROMPT = `You are a coding agent interacting with users via the mini-coder harness. You help users by reading files, executing commands, and editting code.
@@ -36,12 +36,7 @@ async function getDir() {
 
 async function getEnvPrompt() {
   // TODO: What else do the agents always check before answering every time?
-  let gitStatus: StatusResult | { nogit: string };
-  try {
-    gitStatus = await simpleGit().status();
-  } catch (_) {
-    gitStatus = { nogit: "No git repo in this folder." };
-  }
+  const gitStatus = await getGitStatus();
   const envKeys = ["PATH", "USER", "LANG", "HOME", "SHELL", "BUN_INSTALL"];
   const env: Record<string, string> = {};
   for (const key of envKeys) {
@@ -216,7 +211,7 @@ export function insertToolUsageReminder(
       for (const c of calls) {
         const args = JSON.stringify(c.arguments);
         if (seenArgs.has(args)) sameToolCount++;
-        seenArgs.add(args)
+        seenArgs.add(args);
       }
     }
   }
