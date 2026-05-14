@@ -9,6 +9,7 @@ import {
   type ToolResultMessage,
 } from "@earendil-works/pi-ai";
 import { getApiKey } from "./oauth";
+import { estimateTokens } from "./shared";
 import type {
   AgentContex,
   AgentEvent,
@@ -77,6 +78,10 @@ export async function* streamAgent(
 
   // Main agent loop, continues until llm sends a response other than toolCall or has no tool calls.
   while (true) {
+    let estimate = estimateTokens(JSON.stringify(llmCtx));
+    // 80k is the agreed uppon threshold to the DUMB ZONE
+    if (estimate > 80000) compactContext(llmCtx.messages);
+
     const s = streamSimple(agentCtx.options.model, llmCtx, {
       reasoning: agentCtx.options.effort,
       signal: agentCtx.signal,
@@ -103,13 +108,18 @@ export async function* streamAgent(
         case "thinking_end":
         case "toolcall_start":
         case "toolcall_delta":
-        case "toolcall_end":
+        case "toolcall_end": {
           if (partial) {
             partial = e.partial;
             llmCtx.messages[llmCtx.messages.length - 1] = partial;
             yield { type: "message_update", partial };
           }
+
+          estimate = estimateTokens(JSON.stringify(llmCtx));
+          // 80k is the agreed uppon threshold to the DUMB ZONE
+          if (estimate > 80000) compactContext(llmCtx.messages);
           break;
+        }
 
         case "error": {
           const finalMessage = await s.result();

@@ -1,5 +1,5 @@
 import { cel, HStack, ProcessTerminal, VStack } from "@cel-tui/core";
-import { compactContext, streamAgent } from "./agent";
+import { streamAgent } from "./agent";
 import { getBranchLabel } from "./git";
 import {
   buildSystemPrompt,
@@ -158,10 +158,6 @@ async function streamAgentTUI(state: TUIState) {
   });
   state.prompt = "";
 
-  // Compact at 80k tokens, the dumb zone threshold.
-  if (estimateTokens(JSON.stringify(state.messages)) > 80000)
-    compactContext(state.messages);
-
   const systemPrompt = await buildSystemPrompt(MAIN_PROMPT);
   const ctx: AgentContex = {
     systemPrompt,
@@ -179,11 +175,13 @@ async function streamAgentTUI(state: TUIState) {
       switch (ev.type) {
         case "message_start":
         case "message_update":
+        case "message_end": {
+          const { systemPrompt, tools, messages } = ctx;
+          state.contextSize = estimateTokens(
+            JSON.stringify({ systemPrompt, tools, messages }),
+          );
           break;
-
-        case "message_end":
-          state.contextSize = estimateTokens(JSON.stringify(ctx));
-          break;
+        }
 
         case "tool_message_start":
         case "tool_message_update":
@@ -204,7 +202,10 @@ async function streamAgentTUI(state: TUIState) {
             state.messages[idx] = withReminder;
           }
 
-          state.contextSize = estimateTokens(JSON.stringify(ctx));
+          const { systemPrompt, tools, messages } = ctx;
+          state.contextSize = estimateTokens(
+            JSON.stringify({ systemPrompt, tools, messages }),
+          );
         }
       }
     }
@@ -214,9 +215,6 @@ async function streamAgentTUI(state: TUIState) {
       const id = secureRandomString(10);
       state.sessionId = id;
     }
-    // TODO: Should we make this delta only so compaction doesn;t affect saves?
-    //        I'm not sure since it we do, there is no trace in logs about compaction
-    //        and that would mean the logs don't repesent the truth. Confusing decision.
     await updateSession(state.sessionId, state.messages);
   }
 
