@@ -71,8 +71,12 @@ export async function saveSession(s: Session) {
 export async function updateSession(id: string, messages: Message[]) {
   const existing = await getSession(id);
   if (existing) {
-    existing.messages = messages;
-    await saveSession(existing);
+    // Only append new messages, so we don't save compacted messages.
+    if (existing.messages.length < messages.length) {
+      const newMessages = messages.slice(existing.messages.length);
+      existing.messages = [...existing.messages, ...newMessages];
+      await saveSession(existing);
+    }
     return;
   }
 
