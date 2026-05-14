@@ -5,8 +5,6 @@ import { Value } from "typebox/value";
 import { SESSIONS_DIR } from "./shared";
 import { type Session, SessionSchema } from "./types";
 
-// TODO: sessions are json files in SESSIONS_DIR inside of DATA_DIR, use a 10 length `secureRandomString()` for the ids.
-
 export async function ensureSessionsDir(): Promise<void> {
   await mkdir(SESSIONS_DIR, { recursive: true });
 }

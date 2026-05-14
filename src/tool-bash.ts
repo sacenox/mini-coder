@@ -1,8 +1,6 @@
 import { type Tool, Type } from "@earendil-works/pi-ai";
-import { secureRandomString } from "./shared";
 import type { ToolRunnerEvent } from "./types";
 
-const OUTPUT_THRESHOLD = 16000;
 const description = `Bash CLI tool
 
 Execute shell commands on the user's environment.
@@ -68,25 +66,9 @@ export async function* runBashTool(
 
   const exitCode = await proc.exited;
 
-  let result = `# EXIT CODE: ${exitCode}`;
+  let result = `${output.length ? output : "(no ouput)"}\n\nExit code: ${exitCode}`;
   if (output.length) {
-    result += `
-# OUTPUT:
-
-${output}`;
-  }
-
-  // If `out` is too big, more than ~XXKB, write it to a temp file
-  // And add that to the truncation label for the agent to be able
-  // to continue the read with scans. This is to protect context,
-  // not a general read guard. The hint is for the agent, not the TUI
-  if (result.length > OUTPUT_THRESHOLD) {
-    const key = `${Date.now()}-${secureRandomString(4)}`;
-    const pathname = `/tmp/bash_result_${key}.txt`;
-    await Bun.write(pathname, result);
-    result = `${result.substring(0, OUTPUT_THRESHOLD)}
-
-Truncated at ~${OUTPUT_THRESHOLD / 1000}KB. Full output at ${pathname}`;
+    result += `${output}`;
   }
 
   yield {
