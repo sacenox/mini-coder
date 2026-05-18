@@ -23,6 +23,7 @@ export async function main(): Promise<void> {
     options,
     prompt: "",
     messages: [],
+    tuiMessages: [],
     streaming: false,
     stickToBottom: true,
     scrollOffset: 0,

@@ -267,5 +267,8 @@ export function Conversation(state: TUIState) {
       },
     },
     state.messages.map(conversationMessageNode),
+    // state.tuiMessages.map((m) => {
+    //   return VStack({}, []);
+    // }),
   );
 }

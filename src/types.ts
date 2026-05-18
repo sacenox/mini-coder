@@ -76,10 +76,24 @@ export const SessionSchema = Type.Object({
 export type Session = Static<typeof SessionSchema>;
 export type Sessions = Session[];
 
+export type TUIMessage = {
+  timestamp: string;
+  role: "user" | "assistant";
+  text: string;
+  thinking?: string;
+  toolCalls?: {
+    id: string;
+    tool: string;
+    args: Record<string, any>;
+    output: string;
+  }[];
+};
+
 export type TUIState = {
   options: CliOptions;
   prompt: string;
-  messages: Message[];
+  messages: Message[]; // Context messages
+  tuiMessages: TUIMessage[];
   contextSize?: number;
   stickToBottom: boolean;
   scrollOffset: number;

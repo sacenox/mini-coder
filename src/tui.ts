@@ -8,7 +8,7 @@ import {
   MAIN_PROMPT,
 } from "./prompt";
 import { updateSession } from "./session";
-import { estimateTokens, secureRandomString } from "./shared";
+import { estimateTokens, formatTimestamp, secureRandomString } from "./shared";
 import { bash, runBashTool } from "./tool-bash";
 import { edit, runEditTool } from "./tool-edit";
 import { read, runReadTool } from "./tool-read";
@@ -24,7 +24,8 @@ import {
 import { Conversation, emptyState } from "./tui-conversation";
 import { Editor } from "./tui-editor";
 import { mainMenu } from "./tui-overlay";
-import type { AgentContex, ToolAndRunner, TUIState } from "./types";
+import type { AgentContex, ToolAndRunner, TUIMessage, TUIState } from "./types";
+import { AssistantMessage, ToolResultMessage } from "@earendil-works/pi-ai";
 
 function clearOrAbort(state: TUIState) {
   // Are we mid stream? Abort it.
@@ -156,6 +157,11 @@ async function streamAgentTUI(state: TUIState) {
     content: userContent,
     timestamp: Date.now(),
   });
+  state.tuiMessages.push({
+    timestamp: formatTimestamp(Date.now()),
+    role: "user",
+    text: state.prompt,
+  });
   state.prompt = "";
 
   const systemPrompt = await buildSystemPrompt(MAIN_PROMPT);
@@ -167,15 +173,70 @@ async function streamAgentTUI(state: TUIState) {
     signal: state.abortController?.signal,
   };
 
-  // We send a reference to state.messages, so things just render.
-  // We just need to react to some updates.
+  const toTUIMessage = (partial: AssistantMessage) => {
+    const text = partial.content
+      .filter((c) => c.type === "text")
+      .map((c) => c.text)
+      .join("")
+      .trim();
+    const thinking = partial.content
+      .filter((c) => c.type === "thinking")
+      .map((c) => c.thinking)
+      .join("")
+      .trim();
+    const toolCalls = partial.content
+      .filter((c) => c.type === "toolCall")
+      .map((c) => {
+        return {
+          id: c.id,
+          tool: c.name,
+          args: c.arguments,
+          output: "",
+        };
+      });
+
+    return {
+      timestamp: formatTimestamp(partial.timestamp),
+      role: "assistant" as const,
+      text,
+      thinking,
+      toolCalls,
+    };
+  };
+
+  const updateToolCall = (
+    partial: ToolResultMessage,
+    tuiMessages: TUIMessage[],
+  ) => {
+    tuiMessages.forEach((c) => {
+      const parentCall =
+        c.toolCalls && c.toolCalls.find((t) => t.id === partial.toolCallId);
+      if (parentCall) {
+        parentCall.output = partial.content
+          .filter((c) => c.type === "text")
+          .map((c) => c.text)
+          .join("")
+          .trim();
+      }
+    });
+  };
+
   const agent = streamAgent(ctx);
   try {
     for await (const ev of agent) {
       switch (ev.type) {
         case "message_start":
+          state.tuiMessages.push(toTUIMessage(ev.partial));
+          break;
         case "message_update":
+          state.tuiMessages[state.tuiMessages.length - 1] = toTUIMessage(
+            ev.partial,
+          );
+          break;
         case "message_end": {
+          state.tuiMessages[state.tuiMessages.length - 1] = toTUIMessage(
+            ev.message,
+          );
           const { systemPrompt, tools, messages } = ctx;
           state.contextSize = estimateTokens(
             JSON.stringify({ systemPrompt, tools, messages }),
@@ -184,10 +245,13 @@ async function streamAgentTUI(state: TUIState) {
         }
 
         case "tool_message_start":
-        case "tool_message_update":
+          updateToolCall(ev.partial, state.tuiMessages);
           break;
-
+        case "tool_message_update":
+          updateToolCall(ev.partial, state.tuiMessages);
+          break;
         case "tool_message_end": {
+          updateToolCall(ev.message, state.tuiMessages);
           const withReminder = insertToolUsageReminder(
             state.messages,
             ev.message,
