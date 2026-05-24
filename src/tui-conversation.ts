@@ -68,23 +68,32 @@ function ConversationMessageToolCall(call: TUIToolCall) {
     outputNode = Text(call.output, { wrap: "word" });
   }
 
-  return VStack({}, [
-    TextPill(call.tool, theme.black, theme.bwhite),
+  let argumentNodes: Node[] = [];
 
-    ...Object.entries(call.args).map(([key, value]) => {
+  if (call.tool === "edit") {
+    argumentNodes = [
+      Text(`Writing... ~${estimateTokens(JSON.stringify(call.args))} tokens`),
+    ];
+  } else {
+    argumentNodes = Object.entries(call.args).map(([key, value]) => {
       let node: Node | null = Text(String(value));
 
       // Syntax highlight bash args
       if (call.tool === "bash") {
         node = SyntaxHighlight(String(value), "bash");
+        return node;
       }
 
       return HStack({ gap: 1 }, [
         Text(`${key}`, { italic: true, fgColor: theme.white }),
         node,
       ]);
-    }),
+    });
+  }
 
+  return VStack({}, [
+    TextPill(call.tool, theme.black, theme.bwhite),
+    ...argumentNodes,
     outputNode,
   ]);
 }
@@ -109,7 +118,7 @@ function ConversationMessage(message: TUIMessage) {
         {
           width: "100%",
           bgColor: message.role === "user" ? theme.bblack : undefined,
-          padding: { y: 1, x: 1 },
+          padding: { y: 1, x: message.role === "user" ? 1 : 0 },
         },
         [SyntaxHighlight(message.text, "markdown")],
       ),
@@ -119,6 +128,15 @@ function ConversationMessage(message: TUIMessage) {
   if (message.toolCalls?.length) {
     blocks.push(
       VStack({ gap: 1 }, message.toolCalls.map(ConversationMessageToolCall)),
+    );
+  }
+
+  if (!message.thinking && !message.text.length && !message.toolCalls?.length) {
+    blocks.push(
+      Text(`Loading...`, {
+        wrap: "word",
+        fgColor: theme.bblack,
+      }),
     );
   }
 

@@ -88,7 +88,7 @@ export function Spinner() {
 }
 
 export function ActivityPill(state: TUIState, spinnerFrame: string) {
-  let label = "idle";
+  let label = "";
   const frame = state.streaming ? spinnerFrame : "";
 
   if (frame) {

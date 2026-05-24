@@ -89,6 +89,7 @@ export function initTUI(state: TUIState, leave: (s: string) => void) {
       if (state.prompt === ":n" || state.prompt === "/new") {
         state.sessionId = undefined;
         state.messages = [];
+        state.tuiMessages = [];
         state.prompt = "";
         state.contextSize = 0;
         state.scrollOffset = 0;

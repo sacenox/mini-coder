@@ -1,10 +1,14 @@
 import { HStack, Text, TextInput, VStack } from "@cel-tui/core";
-import { getModels, type ThinkingLevel } from "@earendil-works/pi-ai";
+import {
+  getModels,
+  type Message,
+  type ThinkingLevel,
+} from "@earendil-works/pi-ai";
 import { getOAuthProviders } from "@earendil-works/pi-ai/oauth";
 import { saveSettings } from "./args";
 import { getAvailableProviders } from "./oauth";
 import { listSessionsForCwd } from "./session";
-import { estimateTokens } from "./shared";
+import { estimateTokens, formatTimestamp } from "./shared";
 import { TextPill, theme } from "./tui-components";
 import type { SelectOptions, SelectState, Session, TUIState } from "./types";
 
@@ -302,6 +306,61 @@ export function mainMenu(state: TUIState) {
     state.overlay = false;
   };
 
+  const toTUIMessage = (msg: Message) => {
+    const textFromContent = (
+      content: string | { type: string; text?: string }[],
+    ) =>
+      typeof content === "string"
+        ? content
+        : content
+            .filter((c) => c.type === "text")
+            .map((c) => c.text ?? "")
+            .join("")
+            .trim();
+
+    if (msg.role === "user") {
+      return {
+        timestamp: formatTimestamp(msg.timestamp),
+        role: "user" as const,
+        text: textFromContent(msg.content)
+          .replaceAll(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "")
+          .trim(),
+      };
+    } else {
+      const text = msg.content
+        .filter((c) => c.type === "text")
+        .map((c) => c.text)
+        .join("")
+        .trim();
+      const thinking = msg.content
+        .filter((c) => c.type === "thinking")
+        .map((c) => c.thinking)
+        .join("")
+        .trim();
+      const toolCalls = msg.content
+        .filter((c) => c.type === "toolCall")
+        .map((c) => {
+          const toolResult = state.messages.find(
+            (m) => m.role === "toolResult" && m.toolCallId === c.id,
+          );
+          return {
+            id: c.id,
+            tool: c.name,
+            args: c.arguments,
+            output: toolResult ? textFromContent(toolResult.content) : "",
+          };
+        });
+
+      return {
+        timestamp: formatTimestamp(msg.timestamp),
+        role: "assistant" as const,
+        text,
+        thinking,
+        toolCalls,
+      };
+    }
+  };
+
   const select = useSelectOverlay({
     ...mainPane,
     onSelect: (s) => {
@@ -331,6 +390,9 @@ export function mainMenu(state: TUIState) {
 
         state.sessionId = session.id;
         state.messages = session.messages;
+        state.tuiMessages = session.messages
+          .filter((message) => message.role !== "toolResult")
+          .map(toTUIMessage);
         state.prompt = "";
         state.contextSize = estimateTokens(JSON.stringify(state.messages));
         state.scrollOffset = 0;
