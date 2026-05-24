@@ -1,4 +1,8 @@
 import { cel, HStack, ProcessTerminal, VStack } from "@cel-tui/core";
+import type {
+  AssistantMessage,
+  ToolResultMessage,
+} from "@earendil-works/pi-ai";
 import { streamAgent } from "./agent";
 import { getBranchLabel } from "./git";
 import {
@@ -25,7 +29,6 @@ import { Conversation, emptyState } from "./tui-conversation";
 import { Editor } from "./tui-editor";
 import { mainMenu } from "./tui-overlay";
 import type { AgentContex, ToolAndRunner, TUIMessage, TUIState } from "./types";
-import { AssistantMessage, ToolResultMessage } from "@earendil-works/pi-ai";
 
 function clearOrAbort(state: TUIState) {
   // Are we mid stream? Abort it.
@@ -209,8 +212,7 @@ async function streamAgentTUI(state: TUIState) {
     tuiMessages: TUIMessage[],
   ) => {
     tuiMessages.forEach((c) => {
-      const parentCall =
-        c.toolCalls && c.toolCalls.find((t) => t.id === partial.toolCallId);
+      const parentCall = c.toolCalls?.find((t) => t.id === partial.toolCallId);
       if (parentCall) {
         parentCall.output = partial.content
           .filter((c) => c.type === "text")
