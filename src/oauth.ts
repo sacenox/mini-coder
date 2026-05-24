@@ -5,10 +5,54 @@ import {
   getOAuthApiKey,
   getOAuthProvider,
   getOAuthProviders,
+  type OAuthLoginCallbacks,
+  type OAuthPrompt,
   type OAuthProviderId,
+  type OAuthSelectPrompt,
 } from "@earendil-works/pi-ai/oauth";
 import { AUTH_PATH as AUTH_FILE } from "./shared";
 import type { CliOptions, SavedOAuthCreds } from "./types";
+
+type ReadlineInterface = ReturnType<typeof readline.createInterface>;
+
+function ask(rl: ReadlineInterface, question: string): Promise<string> {
+  return new Promise((resolve) => rl.question(question, resolve));
+}
+
+function formatPrompt(prompt: OAuthPrompt): string {
+  const placeholder = prompt.placeholder ? ` (${prompt.placeholder})` : "";
+  return `${prompt.message}${placeholder}: `;
+}
+
+async function selectOption(
+  rl: ReadlineInterface,
+  prompt: OAuthSelectPrompt,
+): Promise<string | undefined> {
+  console.log(prompt.message);
+  for (let i = 0; i < prompt.options.length; i++) {
+    console.log(`${i + 1}. ${prompt.options[i]?.label}`);
+  }
+
+  const choice = await ask(rl, `Enter number (1-${prompt.options.length}): `);
+  const index = Number.parseInt(choice, 10) - 1;
+  return prompt.options[index]?.id;
+}
+
+function createLoginCallbacks(rl: ReadlineInterface): OAuthLoginCallbacks {
+  return {
+    onAuth: ({ url, instructions }) => {
+      console.log(`Open: ${url}`);
+      if (instructions) console.log(instructions);
+    },
+    onDeviceCode: ({ userCode, verificationUri }) => {
+      console.log(`Open: ${verificationUri}`);
+      console.log(`Enter code: ${userCode}`);
+    },
+    onPrompt: (prompt) => ask(rl, formatPrompt(prompt)),
+    onProgress: (message) => console.log(message),
+    onSelect: (prompt) => selectOption(rl, prompt),
+  };
+}
 
 export function isOAuthProvider(provider: string): boolean {
   return getOAuthProviders().some(
@@ -47,18 +91,7 @@ export async function loginOAuth(provider: OAuthProviderId) {
   });
 
   try {
-    const creds = await oauthProvider.login({
-      onAuth: ({ url, instructions }) => {
-        console.log(`Open: ${url}`);
-        if (instructions) console.log(instructions);
-      },
-      onPrompt: async (prompt) => {
-        let answer: string = "";
-        await rl.question(prompt.message, (a) => (answer = a));
-        return answer;
-      },
-      onProgress: (message) => console.log(message),
-    });
+    const creds = await oauthProvider.login(createLoginCallbacks(rl));
 
     await writeCreds({ [provider]: { type: "oauth", ...creds } });
   } finally {

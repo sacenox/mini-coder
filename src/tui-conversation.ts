@@ -1,12 +1,6 @@
 import { SyntaxHighlight } from "@cel-tui/components";
 import { HStack, type Node, Text, VStack } from "@cel-tui/core";
-import type {
-  AssistantMessage,
-  Message,
-  ToolResultMessage,
-  UserMessage,
-} from "@earendil-works/pi-ai";
-import { estimateTokens, relativeTime } from "./shared";
+import { estimateTokens } from "./shared";
 import { TextPill, theme } from "./tui-components";
 import type { TUIMessage, TUIState, TUIToolCall } from "./types";
 
