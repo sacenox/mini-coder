@@ -183,6 +183,14 @@ export function useSelectOverlay(initialOptions: SelectOptions) {
     );
 }
 
+function cleanSnippet(text: string): string {
+  return text
+    .replaceAll(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .slice(0, 80);
+}
+
 function sessionLabel(session: Session): string {
   const firstUserMessage = session.messages.find(
     (message) => message.role === "user",
@@ -195,16 +203,79 @@ function sessionLabel(session: Session): string {
       : firstUserMessage.content
           .map((block) => (block.type === "text" ? block.text : ""))
           .join(" ");
-  const snippet = text
-    .replaceAll(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "")
-    .trim()
-    .replace(/\s+/g, " ")
-    .slice(0, 80);
+  const snippet = cleanSnippet(text);
 
   return snippet || session.id;
 }
 
-export function mainMenu(state: TUIState) {
+function messageText(message: Message): string {
+  if (message.role === "user") {
+    return typeof message.content === "string"
+      ? message.content
+      : message.content
+          .map((content) =>
+            content.type === "text" ? content.text : "[image]",
+          )
+          .join(" ");
+  }
+
+  if (message.role === "toolResult") {
+    return message.content
+      .map((content) => (content.type === "text" ? content.text : "[image]"))
+      .join(" ");
+  }
+
+  return message.content
+    .map((content) => {
+      if (content.type === "text") return content.text;
+      if (content.type === "thinking") return content.thinking;
+      if (content.type === "toolCall") return `tool call: ${content.name}`;
+      return "";
+    })
+    .join(" ");
+}
+
+function messageLabel(message: Message, index: number): string {
+  const role =
+    message.role === "toolResult"
+      ? `toolResult:${message.toolName}`
+      : message.role;
+  const snippet = cleanSnippet(messageText(message));
+  const prefix = `${index + 1}. ${role} ${formatTimestamp(message.timestamp)}`;
+
+  return snippet ? `${prefix} — ${snippet}` : prefix;
+}
+
+function forkMessages(messages: Message[], selectedIndex: number): Message[] {
+  const forkedMessages = messages.slice(0, selectedIndex + 1);
+  const toolCallIds = new Set<string>();
+  const includedToolResultIds = new Set<string>();
+
+  for (const message of forkedMessages) {
+    if (message.role === "assistant") {
+      for (const content of message.content) {
+        if (content.type === "toolCall") toolCallIds.add(content.id);
+      }
+    } else if (message.role === "toolResult") {
+      includedToolResultIds.add(message.toolCallId);
+    }
+  }
+
+  for (const message of messages) {
+    if (
+      message.role === "toolResult" &&
+      toolCallIds.has(message.toolCallId) &&
+      !includedToolResultIds.has(message.toolCallId)
+    ) {
+      forkedMessages.push(message);
+      includedToolResultIds.add(message.toolCallId);
+    }
+  }
+
+  return forkedMessages;
+}
+
+export function mainMenu(state: TUIState, initialPane = "main") {
   type MenuPane = Omit<SelectOptions, "onCancel" | "onSelect">;
 
   const oauthProviders = getOAuthProviders();
@@ -264,6 +335,15 @@ export function mainMenu(state: TUIState) {
     };
   };
 
+  const forkPane = (): MenuPane => ({
+    label: "fork",
+    filter: "",
+    list: state.messages.map((message, index) => ({
+      label: messageLabel(message, index),
+      value: String(index),
+    })),
+  });
+
   const mainPane: MenuPane = {
     label: "main",
     filter: state.prompt.length ? state.prompt : "",
@@ -271,6 +351,7 @@ export function mainMenu(state: TUIState) {
       { label: "models and providers", value: "providers" },
       { label: "reasoning effort", value: "effort" },
       { label: "sessions", value: "sessions" },
+      { label: "fork", value: "fork" },
     ],
   };
   const effortPane: MenuPane = {
@@ -279,7 +360,7 @@ export function mainMenu(state: TUIState) {
     list: efforts,
   };
   const panes: MenuPane[] = [effortPane];
-  let currentPane = mainPane;
+  let currentPane = initialPane === "fork" ? forkPane() : mainPane;
   let selectedProvider: string | undefined;
 
   const openPane = (s: SelectState, pane: MenuPane) => {
@@ -362,7 +443,7 @@ export function mainMenu(state: TUIState) {
   };
 
   const select = useSelectOverlay({
-    ...mainPane,
+    ...currentPane,
     onSelect: (s) => {
       if (!s.selected) return;
 
@@ -379,6 +460,11 @@ export function mainMenu(state: TUIState) {
           });
         }
 
+        if (s.selected === "fork") {
+          openPane(s, forkPane());
+          return;
+        }
+
         const nextPane = panes.find((pane) => pane.label === s.selected);
         if (nextPane) openPane(s, nextPane);
         return;
@@ -391,6 +477,28 @@ export function mainMenu(state: TUIState) {
         state.sessionId = session.id;
         state.messages = session.messages;
         state.tuiMessages = session.messages
+          .filter((message) => message.role !== "toolResult")
+          .map(toTUIMessage);
+        state.prompt = "";
+        state.contextSize = estimateTokens(JSON.stringify(state.messages));
+        state.scrollOffset = 0;
+        state.stickToBottom = true;
+        closeMenu(s);
+        return;
+      }
+
+      if (currentPane.label === "fork") {
+        const selectedIndex = Number(s.selected);
+        if (
+          !Number.isInteger(selectedIndex) ||
+          !state.messages[selectedIndex]
+        ) {
+          return;
+        }
+
+        state.sessionId = undefined;
+        state.messages = forkMessages(state.messages, selectedIndex);
+        state.tuiMessages = state.messages
           .filter((message) => message.role !== "toolResult")
           .map(toTUIMessage);
         state.prompt = "";

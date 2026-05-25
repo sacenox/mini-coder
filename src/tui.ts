@@ -59,6 +59,8 @@ export function initTUI(state: TUIState, leave: (s: string) => void) {
     cel.render();
   }, 1000 / fps);
 
+  let menu = mainMenu(state);
+
   const onWindowKeyPress = (key: string) => {
     if (key === "ctrl+q" || key === "ctrl+c" || key === "ctrl+d") {
       // Quit
@@ -69,6 +71,10 @@ export function initTUI(state: TUIState, leave: (s: string) => void) {
       // Abort or clear prompt
       clearOrAbort(state);
     } else if (key === "ctrl+p") {
+      menu = mainMenu(state);
+      state.overlay = true;
+    } else if (key === "ctrl+f") {
+      menu = mainMenu(state, "fork");
       state.overlay = true;
     }
   };
@@ -103,8 +109,6 @@ export function initTUI(state: TUIState, leave: (s: string) => void) {
       return false;
     }
   };
-
-  const menu = mainMenu(state);
 
   cel.init(new ProcessTerminal());
   cel.viewport(() => {

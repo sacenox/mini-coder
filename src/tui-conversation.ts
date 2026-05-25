@@ -50,15 +50,16 @@ function ConversationMessageToolCall(call: TUIToolCall) {
     const tail = call.output.trim().slice(-200);
     const blocks: Node[] = [];
 
-    blocks.push(Text(tail, { fgColor: theme.white, wrap: "word" }));
-
     if (tail.length !== call.output.trim().length) {
       blocks.push(
         Text("Showing the last 200 characters", {
           fgColor: theme.bblack,
           italic: true,
         }),
+        Text(`[...] ${tail}`, { fgColor: theme.white, wrap: "word" }),
       );
+    } else {
+      blocks.push(Text(tail, { fgColor: theme.white, wrap: "word" }));
     }
 
     outputNode = VStack({ width: "100%" }, blocks);
