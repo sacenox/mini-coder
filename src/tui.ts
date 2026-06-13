@@ -1,3 +1,6 @@
+import { stat } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { cel, HStack, ProcessTerminal, VStack } from "@cel-tui/core";
 import type {
   AssistantMessage,
@@ -39,6 +42,52 @@ function clearOrAbort(state: TUIState) {
   // Is the user clearing a state prompt?
   if (state.prompt?.length) {
     state.prompt = "";
+  }
+}
+
+async function directoryExists(path: string): Promise<boolean> {
+  try {
+    return (await stat(path)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+async function handleSkillSlashCommand(prompt: string) {
+  const match = prompt.trim().match(/^\/([a-zA-Z0-9_-]+)(?:\s|$)/);
+
+  if (!match) return;
+
+  const skillName = match[1];
+  const skillRoots = [
+    join(homedir(), ".agents", "skills"),
+    join(process.cwd(), ".agents", "skills"),
+  ];
+
+  for (const root of skillRoots) {
+    if (!(await directoryExists(root))) {
+      continue;
+    }
+
+    const glob = new Bun.Glob("*/SKILL.md");
+
+    for await (const path of glob.scan({ cwd: root, absolute: true })) {
+      const file = Bun.file(path);
+
+      if (!(await file.exists())) {
+        continue;
+      }
+
+      const body = await file.text();
+      const frontmatter = body.match(/^---\s*\n([\s\S]*?)\n---/);
+      const name = frontmatter?.[1]
+        .match(/^name:\s*["']?([^"'\n]+)["']?\s*$/m)?.[1]
+        ?.trim();
+
+      if (name === skillName) {
+        return body;
+      }
+    }
   }
 }
 
@@ -84,6 +133,19 @@ export function initTUI(state: TUIState, leave: (s: string) => void) {
   };
 
   const onEditorKeyPress = (key: string) => {
+    const submit = async () => {
+      await streamAgentTUI(state);
+    };
+    const skillSubmit = async () => {
+      const skill = await handleSkillSlashCommand(state.prompt);
+      if (skill) {
+        state.streaming = true;
+        // This cause the prompt to flash the body before vanishing on submit.
+        // To avoid this I added a new state property
+        state.promptSkill = skill;
+        await streamAgentTUI(state);
+      }
+    };
     // onKeyPress
     if (key === "enter") {
       if (state.prompt === ":q") {
@@ -102,9 +164,10 @@ export function initTUI(state: TUIState, leave: (s: string) => void) {
         state.stickToBottom = true;
         return false;
       }
-      const submit = async () => {
-        await streamAgentTUI(state);
-      };
+      if (state.prompt && state.prompt[0] === "/" && !state.streaming) {
+        skillSubmit();
+        return false;
+      }
       if (state.prompt && !state.streaming) submit();
       return false;
     }
@@ -144,6 +207,8 @@ export function initTUI(state: TUIState, leave: (s: string) => void) {
 }
 
 async function streamAgentTUI(state: TUIState) {
+  // Just as a defensive thought, callers should set this ahead of time if doing other
+  // ops before starting the stream.
   state.streaming = true;
 
   const abortController = new AbortController();
@@ -156,6 +221,12 @@ async function streamAgentTUI(state: TUIState) {
   ];
 
   let userContent = state.prompt;
+  if (state.promptSkill) {
+    // TODO: Skill arguments? replace template marks in skill body for arguments?
+    //       Right now we just appead the user prompt to the skill body
+    userContent = `${state.promptSkill}\n${state.prompt}`;
+    state.promptSkill = undefined;
+  }
   if (state.messages.length === 0) {
     const envReminder = await injectEnvReminder();
     userContent = `${envReminder}\n\n${userContent}`;

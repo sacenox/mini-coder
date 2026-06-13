@@ -94,6 +94,7 @@ export type TUIMessage = {
 export type TUIState = {
   options: CliOptions;
   prompt: string;
+  promptSkill?: string;
   messages: Message[]; // Context messages
   tuiMessages: TUIMessage[];
   contextSize?: number;
