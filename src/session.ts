@@ -9,7 +9,6 @@ export async function ensureSessionsDir(): Promise<void> {
   await mkdir(SESSIONS_DIR, { recursive: true });
 }
 
-// readSession: writes the session
 export async function getSession(id: string): Promise<Session | undefined> {
   const file = Bun.file(join(SESSIONS_DIR, `${id}.json`));
 
@@ -65,7 +64,6 @@ export async function saveSession(s: Session) {
   await Bun.write(file, JSON.stringify(s));
 }
 
-// updateSession: finds and appends to the existing setting file
 export async function updateSession(id: string, messages: Message[]) {
   const existing = await getSession(id);
   if (existing) {
