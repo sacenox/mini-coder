@@ -1,36 +1,48 @@
-import { SyntaxHighlight } from "@cel-tui/components";
-import { HStack, type Node, Text, VStack } from "@cel-tui/core";
+import {
+  SyntaxHighlight,
+  type SyntaxHighlightTheme,
+} from "@cel-tui/components";
+import { type Color, HStack, type Node, Text, VStack } from "@cel-tui/core";
 import { estimateTokens } from "./shared";
+import { getTUITheme, textColorForBackground } from "./themes";
 import { TextPill, theme } from "./tui-components";
 import type { TUIMessage, TUIState, TUIToolCall } from "./types";
 
-export function emptyState(): Node {
+export function emptyState(state: TUIState): Node {
   const randColor = theme.bgreen;
+  const shortcutFgColor =
+    state.options.theme === "ansi16"
+      ? randColor
+      : textColorForBackground(theme.bblack, state.options.theme);
   return HStack({ flex: 1, alignItems: "center" }, [
     VStack({ flex: 1, alignItems: "center", gap: 1 }, [
       HStack({ gap: 1 }, [
         Text("mini"),
-        TextPill("coder", theme.black, randColor),
+        TextPill(
+          "coder",
+          textColorForBackground(randColor, state.options.theme),
+          randColor,
+        ),
       ]),
       VStack({ gap: 1 }, [
         HStack({ gap: 1 }, [
-          TextPill("/new", randColor, theme.bblack, 13),
+          TextPill("/new", shortcutFgColor, theme.bblack, 13),
           Text("Start a new session from the input box.", {
             fgColor: theme.bblack,
           }),
         ]),
         HStack({ gap: 1 }, [
-          TextPill("ctrl+p", randColor, theme.bblack, 13),
+          TextPill("ctrl+p", shortcutFgColor, theme.bblack, 13),
           Text("Menu for session history, and settings.", {
             fgColor: theme.bblack,
           }),
         ]),
         HStack({ gap: 1 }, [
-          TextPill("ESC", randColor, theme.bblack, 13),
+          TextPill("ESC", shortcutFgColor, theme.bblack, 13),
           Text("Abort agent response.", { fgColor: theme.bblack }),
         ]),
         HStack({ gap: 1 }, [
-          TextPill("ctrl+c|d|q", randColor, theme.bblack, 13),
+          TextPill("ctrl+c|d|q", shortcutFgColor, theme.bblack, 13),
           Text("Quit.", { fgColor: theme.bblack }),
         ]),
       ]),
@@ -38,7 +50,10 @@ export function emptyState(): Node {
   ]);
 }
 
-function ConversationMessageToolCall(call: TUIToolCall) {
+function ConversationMessageToolCall(
+  call: TUIToolCall,
+  syntaxTheme: SyntaxHighlightTheme,
+) {
   let outputNode: Node | null = null;
 
   // Compress read and bash calls
@@ -64,7 +79,7 @@ function ConversationMessageToolCall(call: TUIToolCall) {
 
     outputNode = VStack({ width: "100%" }, blocks);
   } else if (call.tool === "edit") {
-    outputNode = SyntaxHighlight(call.output, "patch");
+    outputNode = SyntaxHighlight(call.output, "patch", { theme: syntaxTheme });
   } else {
     outputNode = Text(call.output, { wrap: "word" });
   }
@@ -81,7 +96,7 @@ function ConversationMessageToolCall(call: TUIToolCall) {
 
       // Syntax highlight bash args
       if (call.tool === "bash") {
-        node = SyntaxHighlight(String(value), "bash");
+        node = SyntaxHighlight(String(value), "bash", { theme: syntaxTheme });
         return node;
       }
 
@@ -99,7 +114,11 @@ function ConversationMessageToolCall(call: TUIToolCall) {
   ]);
 }
 
-function ConversationMessage(message: TUIMessage) {
+function ConversationMessage(
+  message: TUIMessage,
+  syntaxTheme: SyntaxHighlightTheme,
+  userMessageBgColor: Color | undefined,
+) {
   const blocks: Node[] = [];
 
   if (message.thinking) {
@@ -118,17 +137,22 @@ function ConversationMessage(message: TUIMessage) {
       VStack(
         {
           width: "100%",
-          bgColor: message.role === "user" ? theme.bblack : undefined,
+          bgColor: message.role === "user" ? userMessageBgColor : undefined,
           padding: { y: 1, x: message.role === "user" ? 1 : 0 },
         },
-        [SyntaxHighlight(message.text, "markdown")],
+        [SyntaxHighlight(message.text, "markdown", { theme: syntaxTheme })],
       ),
     );
   }
 
   if (message.toolCalls?.length) {
     blocks.push(
-      VStack({ gap: 1 }, message.toolCalls.map(ConversationMessageToolCall)),
+      VStack(
+        { gap: 1 },
+        message.toolCalls.map((call) =>
+          ConversationMessageToolCall(call, syntaxTheme),
+        ),
+      ),
     );
   }
 
@@ -158,6 +182,8 @@ function ConversationMessage(message: TUIMessage) {
 }
 
 export function Conversation(state: TUIState) {
+  const activeTheme = getTUITheme(state.options.theme);
+
   return VStack(
     {
       flex: 1,
@@ -169,6 +195,12 @@ export function Conversation(state: TUIState) {
         state.stickToBottom = offset >= maxOffset;
       },
     },
-    state.tuiMessages.map(ConversationMessage),
+    state.tuiMessages.map((message) =>
+      ConversationMessage(
+        message,
+        activeTheme.syntax,
+        activeTheme.userMessageBgColor,
+      ),
+    ),
   );
 }

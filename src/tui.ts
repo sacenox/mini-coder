@@ -16,6 +16,7 @@ import {
 } from "./prompt";
 import { updateSession } from "./session";
 import { estimateTokens, formatTimestamp, secureRandomString } from "./shared";
+import { activeTuiTheme, applyTUITheme, getTUITheme } from "./themes";
 import { bash, runBashTool } from "./tool-bash";
 import { edit, runEditTool } from "./tool-edit";
 import { read, runReadTool } from "./tool-read";
@@ -173,8 +174,10 @@ export function initTUI(state: TUIState, leave: (s: string) => void) {
     }
   };
 
-  cel.init(new ProcessTerminal());
+  applyTUITheme(state.options.theme);
+  cel.init(new ProcessTerminal(), { theme: activeTuiTheme });
   cel.viewport(() => {
+    const activeTheme = getTUITheme(state.options.theme);
     const layers = [
       VStack(
         {
@@ -182,9 +185,12 @@ export function initTUI(state: TUIState, leave: (s: string) => void) {
           gap: 1,
           padding: { x: 1, y: 1 },
           onKeyPress: onWindowKeyPress,
+          fgColor: activeTheme.rootFgColor,
+          bgColor: activeTheme.rootBgColor,
+          italic: state.forceThemeRefresh,
         },
         [
-          state.messages.length ? Conversation(state) : emptyState(),
+          state.messages.length ? Conversation(state) : emptyState(state),
           HStack({ gap: 1 }, [
             ModelPill(state),
             TextPill(`../${state.cwd}`, theme.bwhite, theme.bblack),

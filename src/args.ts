@@ -9,6 +9,7 @@ import {
 import { Value } from "typebox/value";
 import { getAvailableProviders, isOAuthProvider, loginOAuth } from "./oauth";
 import { DATA_DIR, SETTINGS_PATH } from "./shared.ts";
+import { DEFAULT_TUI_THEME_ID } from "./themes.ts";
 import {
   type CliOptions,
   CliOptionsSchema,
@@ -149,6 +150,7 @@ export async function handleArgv(argv: string[]): Promise<CliOptions> {
       ? DEFAULT_MODEL_ID
       : getFirstModelConfig(settingsProvider, customProviders).id);
   const settingsEffort = settings?.effort ?? DEFAULT_EFFORT;
+  const settingsTheme = settings?.theme ?? DEFAULT_TUI_THEME_ID;
   let provider: string = settingsProvider;
   let modelId = settingsModelId;
   let effort: string = settingsEffort;
@@ -273,6 +275,7 @@ export async function handleArgv(argv: string[]): Promise<CliOptions> {
     effort: cliSettings.effort,
     prompt,
     customProviders,
+    theme: settingsTheme,
   });
   const nextSettings = parseSettings(
     {
@@ -280,6 +283,7 @@ export async function handleArgv(argv: string[]): Promise<CliOptions> {
       model: options.model.id,
       effort: options.effort,
       customProviders,
+      theme: options.theme,
     },
     "settings",
   );

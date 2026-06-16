@@ -1,32 +1,9 @@
 import { type Color, HStack, Text } from "@cel-tui/core";
 import { onceEvery } from "./shared";
+import { textColorForBackground, theme } from "./themes";
 import type { TUIState } from "./types";
 
-export const theme = {
-  black: "color00" as Color,
-  bblack: "color08" as Color,
-
-  red: "color01" as Color,
-  bred: "color09" as Color,
-
-  green: "color02" as Color,
-  bgreen: "color10" as Color,
-
-  yellow: "color03" as Color,
-  byellow: "color11" as Color,
-
-  blue: "color04" as Color,
-  bblue: "color12" as Color,
-
-  magenta: "color05" as Color,
-  bmagenta: "color13" as Color,
-
-  cyan: "color06" as Color,
-  bcyan: "color14" as Color,
-
-  white: "color07" as Color,
-  bwhite: "color15" as Color,
-};
+export { theme };
 
 export function TextPill(
   content: string,
@@ -100,7 +77,7 @@ export function ActivityPill(state: TUIState, spinnerFrame: string) {
 
 export function ContextPill(state: TUIState) {
   let text = "";
-  let bg = theme.bgreen;
+  let bg: Color = theme.bgreen;
   if (!state.contextSize) {
     text = "0%";
     bg = theme.bwhite;
@@ -126,7 +103,7 @@ export function ContextPill(state: TUIState) {
 
   text += ` (${state.options.model.contextWindow / 1000}k)`;
 
-  return TextPill(text, theme.black, bg);
+  return TextPill(text, textColorForBackground(bg, state.options.theme), bg);
 }
 
 export function GitPill(state: TUIState) {
