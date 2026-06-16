@@ -16,11 +16,16 @@ export async function getSession(id: string): Promise<Session | undefined> {
     return;
   }
 
-  const sessionJson = await file.text();
-  const parsed = JSON.parse(sessionJson) as unknown;
-  const valid = Value.Check(SessionSchema, parsed);
+  try {
+    const sessionJson = await file.text();
+    const parsed = JSON.parse(sessionJson) as unknown;
+    const valid = Value.Check(SessionSchema, parsed);
 
-  if (valid) return parsed;
+    if (valid) return parsed;
+  } catch {
+    return;
+  }
+
   return;
 }
 

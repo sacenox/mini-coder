@@ -64,7 +64,14 @@ async function getSettings(): Promise<Settings | undefined> {
   }
 
   const jsonText = await file.text();
-  const settings = JSON.parse(jsonText) as unknown;
+  let settings: unknown;
+
+  try {
+    settings = JSON.parse(jsonText) as unknown;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`Invalid settings JSON: ${message}`);
+  }
 
   return parseSettings(settings, "settings");
 }

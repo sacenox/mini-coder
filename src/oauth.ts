@@ -1,3 +1,4 @@
+import { mkdir } from "node:fs/promises";
 import readline from "node:readline";
 
 import { getEnvApiKey, getProviders } from "@earendil-works/pi-ai";
@@ -10,7 +11,7 @@ import {
   type OAuthProviderId,
   type OAuthSelectPrompt,
 } from "@earendil-works/pi-ai/oauth";
-import { AUTH_PATH as AUTH_FILE } from "./shared";
+import { AUTH_PATH as AUTH_FILE, DATA_DIR } from "./shared";
 import type { CliOptions, SavedOAuthCreds } from "./types";
 
 type ReadlineInterface = ReturnType<typeof readline.createInterface>;
@@ -134,13 +135,19 @@ export async function getApiKey(options: CliOptions) {
 export async function readCreds(): Promise<SavedOAuthCreds> {
   const file = Bun.file(AUTH_FILE);
   if (await file.exists()) {
-    return JSON.parse(await file.text());
+    try {
+      return JSON.parse(await file.text());
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new Error(`Invalid auth JSON: ${message}`);
+    }
   }
 
   return {};
 }
 
 async function writeCreds(creds: SavedOAuthCreds) {
+  await mkdir(DATA_DIR, { recursive: true });
   await Bun.write(AUTH_FILE, JSON.stringify(await mergeCreds(creds)));
 }
 
