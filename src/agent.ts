@@ -78,10 +78,6 @@ export async function* streamAgent(
 
   // Main agent loop, continues until llm sends a response other than toolCall or has no tool calls.
   while (true) {
-    let estimate = estimateTokens(JSON.stringify(llmCtx));
-    // 80k is the agreed uppon threshold to the DUMB ZONE
-    if (estimate > 80000) compactContext(llmCtx.messages);
-
     const s = streamSimple(agentCtx.options.model, llmCtx, {
       reasoning: agentCtx.options.effort,
       signal: agentCtx.signal,
@@ -115,9 +111,6 @@ export async function* streamAgent(
             yield { type: "message_update", partial };
           }
 
-          estimate = estimateTokens(JSON.stringify(llmCtx));
-          // 80k is the agreed uppon threshold to the DUMB ZONE
-          if (estimate > 80000) compactContext(llmCtx.messages);
           break;
         }
 
@@ -134,6 +127,12 @@ export async function* streamAgent(
           return;
         }
       }
+
+      // Experiment: use this inside the inner loop for "running" compaction
+      // after we are in the dumb zone.
+      const estimate = estimateTokens(JSON.stringify(llmCtx));
+      // 80k is the agreed uppon threshold to the DUMB ZONE
+      if (estimate > 80000) compactContext(llmCtx.messages);
     }
 
     const message = await s.result();

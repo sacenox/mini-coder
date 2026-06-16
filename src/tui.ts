@@ -357,6 +357,13 @@ async function streamAgentTUI(state: TUIState) {
         }
       }
     }
+  } catch (error) {
+    const text = error instanceof Error ? error.message : String(error);
+    state.tuiMessages.push({
+      timestamp: formatTimestamp(Date.now()),
+      role: "assistant",
+      text,
+    });
   } finally {
     state.streaming = false;
     if (!state.sessionId) {
