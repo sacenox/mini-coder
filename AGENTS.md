@@ -49,7 +49,7 @@ Plain text readme file: https://raw.githubusercontent.com/badlogic/pi-mono/refs/
 - Format root `*.md` files: `bunx prettier --write *.md`
 - Format typescript files: `bunx biome format --write`
 
-Then lint with: `bunx biome check` and `tsc --noEmit`.
+Then lint with: `bunx biome check` and `bunx tsc --noEmit`. (Do not expect to see tsc in PATH).
 
 **Do not use the `package.json` commands/scripts they are for the users.** Use the commands above instead.
 
