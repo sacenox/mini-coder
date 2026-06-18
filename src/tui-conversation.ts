@@ -14,6 +14,17 @@ export function emptyState(state: TUIState): Node {
     state.options.theme === "ansi16"
       ? randColor
       : textColorForBackground(theme.bblack, state.options.theme);
+  const updateNotice = state.availableUpdate
+    ? [
+        HStack({ gap: 1 }, [
+          TextPill("update", shortcutFgColor, theme.bblack, 13),
+          Text(
+            `mini-coder ${state.availableUpdate.latestVersion} is available. Run mc --update.`,
+            { fgColor: theme.bblack },
+          ),
+        ]),
+      ]
+    : [];
   return HStack({ flex: 1, alignItems: "center" }, [
     VStack({ flex: 1, alignItems: "center", gap: 1 }, [
       HStack({ gap: 1 }, [
@@ -45,6 +56,7 @@ export function emptyState(state: TUIState): Node {
           TextPill("ctrl+c|d|q", shortcutFgColor, theme.bblack, 13),
           Text("Quit.", { fgColor: theme.bblack }),
         ]),
+        ...updateNotice,
       ]),
     ]),
   ]);

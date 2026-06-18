@@ -30,6 +30,11 @@ import { Conversation, emptyState } from "./tui-conversation";
 import { Editor } from "./tui-editor";
 import { mainMenu } from "./tui-overlay";
 import type { AgentContex, ToolAndRunner, TUIMessage, TUIState } from "./types";
+import { getAvailableUpdate } from "./update";
+
+async function refreshAvailableUpdate(state: TUIState): Promise<void> {
+  state.availableUpdate = await getAvailableUpdate();
+}
 
 function clearOrAbort(state: TUIState) {
   // Are we mid stream? Abort it.
@@ -46,6 +51,7 @@ function clearOrAbort(state: TUIState) {
 export function initTUI(state: TUIState, leave: (s: string) => void) {
   // TODO: Cleanup accumulated sessions for this cwd.
   const { spinnerEvery, currentSpinner } = Spinner();
+  void refreshAvailableUpdate(state);
 
   // Stable 60fps rendering.
   // This ensure Xfps, and excessive calls get coalesced in cel-tui.

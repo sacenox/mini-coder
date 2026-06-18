@@ -98,6 +98,11 @@ export type TUIMessage = {
   toolCalls?: TUIToolCall[];
 };
 
+export type AvailableUpdate = {
+  currentVersion: string;
+  latestVersion: string;
+};
+
 export type TUIState = {
   options: CliOptions;
   prompt: string;
@@ -110,6 +115,7 @@ export type TUIState = {
   abortController?: AbortController;
   cwd: string;
   gitBranch?: string;
+  availableUpdate?: AvailableUpdate | undefined;
   overlay?: boolean | undefined;
   forceThemeRefresh?: boolean | undefined;
   sessionId?: string | undefined;
