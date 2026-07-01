@@ -20,17 +20,31 @@ import type {
 // Published research found that **simply hiding old tool outputs** matched the quality of full LLM summarization with **zero extra compute**:
 // https://blog.jetbrains.com/research/2025/12/efficient-context-management/
 export function compactContext(messages: Message[]) {
-  // TODO: Preserve SKILL.md contents, and exclude them from compaction.
-  // Problem: How do we know? we need to check each message result againt it's arguments
-  // and then find if by chance it has a read skill command... This is a mess. We we.
-  // A better way would be to first add a read(path, lines, offset). And then we know
-  // which files are read using it, and can match by path if it's a SKILL.md ending.
   const KEEP_OBSERVATIONS = 10;
+
+  const skillReadToolCallIds = new Set<string>();
+  for (const message of messages) {
+    if (message.role !== "assistant") continue;
+
+    for (const content of message.content) {
+      if (content.type !== "toolCall") continue;
+      if (content.name !== "read") continue;
+
+      const path = content.arguments.path;
+      if (typeof path === "string" && path.endsWith("SKILL.md")) {
+        skillReadToolCallIds.add(content.id);
+      }
+    }
+  }
 
   const toolResultIndices: number[] = [];
   for (let i = 0; i < messages.length; i++) {
     if (messages[i].role !== "toolResult") continue;
-    const content = (messages[i] as ToolResultMessage).content;
+
+    const message = messages[i] as ToolResultMessage;
+    if (skillReadToolCallIds.has(message.toolCallId)) continue;
+
+    const content = message.content;
     if (
       content.length === 1 &&
       content[0].type === "text" &&
@@ -130,12 +144,6 @@ export async function* streamAgent(
           return;
         }
       }
-
-      // Experiment: use this inside the inner loop for "running" compaction
-      // after we are in the dumb zone.
-      const estimate = estimateTokens(JSON.stringify(llmCtx));
-      // 80k is the agreed uppon threshold to the DUMB ZONE
-      if (estimate > 80000) compactContext(llmCtx.messages);
     }
 
     const message = await s.result();
