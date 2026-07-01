@@ -1,11 +1,8 @@
 import { HStack, Text, TextInput, VStack } from "@cel-tui/core";
-import {
-  getModels,
-  type Message,
-  type ThinkingLevel,
-} from "@earendil-works/pi-ai";
+import type { Message, ThinkingLevel } from "@earendil-works/pi-ai";
 import { getOAuthProviders } from "@earendil-works/pi-ai/oauth";
 import { saveSettings } from "./args";
+import { findModelConfig, getProviderModels } from "./models.ts";
 import { getAvailableProviders } from "./oauth";
 import { listSessionsForCwd } from "./session";
 import { estimateTokens, formatTimestamp } from "./shared";
@@ -290,20 +287,11 @@ export function mainMenu(state: TUIState, initialPane = "main") {
     "xhigh",
   ];
   const efforts = reasoningEfforts.map((v) => ({ label: v, value: v }));
-  const getProviderModels = (provider: string) => {
-    const builtIn = getModels(provider as any).map((v) => ({
+  const getProviderModelOptions = (provider: string) =>
+    getProviderModels(provider, state.options.customProviders).map((v) => ({
       label: v.name,
       value: v.id,
     }));
-    const custom =
-      state.options.customProviders
-        ?.filter((m) => m.provider === provider)
-        .map((v) => ({
-          label: v.name,
-          value: v.id,
-        })) ?? [];
-    return [...builtIn, ...custom];
-  };
 
   let currentProviders: string[] = [];
   let currentSessions: Session[] = [];
@@ -517,7 +505,7 @@ export function mainMenu(state: TUIState, initialPane = "main") {
         openPane(s, {
           label: "models",
           filter: "",
-          list: getProviderModels(selectedProvider),
+          list: getProviderModelOptions(selectedProvider),
         });
         return;
       }
@@ -525,13 +513,11 @@ export function mainMenu(state: TUIState, initialPane = "main") {
       if (currentPane.label === "models") {
         if (!selectedProvider) return;
 
-        const builtIn = getModels(selectedProvider as any).find(
-          (v) => v.id === s.selected,
+        const model = findModelConfig(
+          s.selected,
+          selectedProvider,
+          state.options.customProviders,
         );
-        const custom = state.options.customProviders?.find(
-          (v) => v.provider === selectedProvider && v.id === s.selected,
-        );
-        const model = builtIn ?? custom;
         if (!model) return;
 
         state.options.provider = selectedProvider;

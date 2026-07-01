@@ -1,12 +1,11 @@
 import { mkdir } from "node:fs/promises";
-import {
-  type Api,
-  getModels,
-  getProviders,
-  type Model,
-  type ThinkingLevel,
-} from "@earendil-works/pi-ai";
+import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import { Value } from "typebox/value";
+import {
+  findModelConfig,
+  getFallbackModel,
+  getFirstModelConfig,
+} from "./models.ts";
 import { getAvailableProviders, isOAuthProvider, loginOAuth } from "./oauth";
 import { DATA_DIR, SETTINGS_PATH } from "./shared.ts";
 import {
@@ -82,53 +81,6 @@ function requireValue(argv: string[], index: number, flag: string) {
   }
 
   return value;
-}
-
-function findModelConfig(
-  modelId: string,
-  provider: string,
-  customProviders?: Model<Api>[],
-) {
-  const knownProviders = getProviders() as string[];
-  if (knownProviders.includes(provider)) {
-    const models = getModels(provider as any);
-    if (models.length === 0) throw new Error("Provider has no models");
-    return models.find((m) => m.id === modelId);
-  }
-  return customProviders?.find(
-    (m) => m.provider === provider && m.id === modelId,
-  );
-}
-
-function getFirstModelConfig(
-  provider: string,
-  customProviders?: Model<Api>[],
-): Model<Api> {
-  const knownProviders = getProviders() as string[];
-  if (knownProviders.includes(provider)) {
-    const models = getModels(provider as any);
-    if (models.length > 0) return models[0];
-  }
-  const custom = customProviders?.find((m) => m.provider === provider);
-  if (custom) return custom;
-  throw new Error("Provider has no models");
-}
-
-function getFallbackModel(
-  provider: string,
-  explicitModel: boolean,
-  providerChanged: boolean,
-  customProviders?: Model<Api>[],
-): Model<Api> {
-  if (explicitModel) {
-    throw new Error("Model not found");
-  }
-
-  if (!providerChanged) {
-    throw new Error("Model not found");
-  }
-
-  return getFirstModelConfig(provider, customProviders);
 }
 
 export async function handleArgv(argv: string[]): Promise<CliOptions> {

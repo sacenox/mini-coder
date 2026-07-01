@@ -1,14 +1,13 @@
-import {
-  type AssistantMessage,
-  type Context,
-  type ImageContent,
-  type Message,
-  streamSimple,
-  type TextContent,
-  type ToolCall,
-  type ToolResultMessage,
+import type {
+  AssistantMessage,
+  Context,
+  ImageContent,
+  Message,
+  TextContent,
+  ToolCall,
+  ToolResultMessage,
 } from "@earendil-works/pi-ai";
-import { getApiKey } from "./oauth";
+import { createAppModels } from "./models.ts";
 import { estimateTokens } from "./shared";
 import type {
   AgentContex,
@@ -73,8 +72,7 @@ export async function* streamAgent(
     messages: agentCtx.messages,
   };
 
-  // Important for refreshing tokens.
-  const apiKey = await getApiKey(agentCtx.options);
+  const models = createAppModels(agentCtx.options.customProviders);
 
   // Main agent loop, continues until llm sends a response other than toolCall or has no tool calls.
   while (true) {
@@ -82,10 +80,9 @@ export async function* streamAgent(
     // 80k is the agreed uppon threshold to the DUMB ZONE
     if (estimate > 80000) compactContext(llmCtx.messages);
 
-    const s = streamSimple(agentCtx.options.model, llmCtx, {
+    const s = models.streamSimple(agentCtx.options.model, llmCtx, {
       reasoning: agentCtx.options.effort,
       signal: agentCtx.signal,
-      apiKey,
     });
 
     let partial: AssistantMessage | null = null;
@@ -123,6 +120,8 @@ export async function* streamAgent(
 
         case "error": {
           const finalMessage = await s.result();
+          if (!finalMessage) throw new Error(e.error.errorMessage);
+
           if (added) {
             llmCtx.messages[llmCtx.messages.length - 1] = finalMessage;
           } else {
@@ -137,6 +136,8 @@ export async function* streamAgent(
     }
 
     const message = await s.result();
+    if (!message) throw new Error("Stream finished without a message");
+
     if (added) {
       llmCtx.messages[llmCtx.messages.length - 1] = message;
     } else {
@@ -145,7 +146,9 @@ export async function* streamAgent(
     }
     yield { type: "message_end", message };
 
-    const toolCalls = message.content.filter((c) => c.type === "toolCall");
+    const toolCalls = message.content.filter(
+      (c): c is ToolCall => c.type === "toolCall",
+    );
 
     // Stop on errors or no tools to call.
     if (message.stopReason !== "toolUse" || toolCalls.length === 0) {

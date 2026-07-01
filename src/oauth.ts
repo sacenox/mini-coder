@@ -1,8 +1,6 @@
 import readline from "node:readline";
 
-import { getEnvApiKey, getProviders } from "@earendil-works/pi-ai";
 import {
-  getOAuthApiKey,
   getOAuthProvider,
   getOAuthProviders,
   type OAuthLoginCallbacks,
@@ -10,6 +8,11 @@ import {
   type OAuthProviderId,
   type OAuthSelectPrompt,
 } from "@earendil-works/pi-ai/oauth";
+import {
+  createAppModels,
+  getConfiguredBuiltinProviders,
+  isBuiltinProvider,
+} from "./models.ts";
 import { AUTH_PATH as AUTH_FILE } from "./shared";
 import type { CliOptions, SavedOAuthCreds } from "./types";
 
@@ -65,9 +68,7 @@ export async function getAvailableProviders(): Promise<string[]> {
   const loggedInOAuthProviders = getOAuthProviders()
     .map((provider) => provider.id)
     .filter((provider) => auth[provider]);
-  const envKeyProviders = getProviders().filter(
-    (provider) => !!getEnvApiKey(provider),
-  );
+  const envKeyProviders = await getConfiguredBuiltinProviders();
   const providers: string[] = [];
   const providerIds = new Set<string>();
 
@@ -103,23 +104,12 @@ export async function loginOAuth(provider: OAuthProviderId) {
 
 export async function getApiKey(options: CliOptions) {
   const provider = options.model.provider;
-  const auth = await readCreds();
+  const models = createAppModels(options.customProviders);
+  const auth = await models.getAuth(options.model);
 
-  if (isOAuthProvider(provider)) {
-    const result = await getOAuthApiKey(provider, auth);
-    if (result) {
-      auth[provider] = { type: "oauth", ...result.newCredentials };
-      await writeCreds(auth);
+  if (auth?.auth.apiKey) return auth.auth.apiKey;
 
-      return result.apiKey;
-    }
-  }
-
-  const envApiKey = getEnvApiKey(provider);
-  if (envApiKey) return envApiKey;
-
-  const knownProviders = getProviders() as string[];
-  if (!knownProviders.includes(provider)) {
+  if (!isBuiltinProvider(provider)) {
     if (options.model.api === "openai-completions") {
       // pi-ai requires a truthy apiKey for OpenAI-compatible local providers like Ollama.
       return "dummy";
