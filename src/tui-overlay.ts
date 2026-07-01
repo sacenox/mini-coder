@@ -1,4 +1,4 @@
-import { HStack, Text, TextInput, VStack } from "@cel-tui/core";
+import { cel, HStack, Text, TextInput, VStack } from "@cel-tui/core";
 import type { Message, ThinkingLevel } from "@earendil-works/pi-ai";
 import { getOAuthProviders } from "@earendil-works/pi-ai/oauth";
 import { saveSettings } from "./args";

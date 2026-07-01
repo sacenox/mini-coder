@@ -90,7 +90,7 @@ export async function* streamAgent(
 
   // Main agent loop, continues until llm sends a response other than toolCall or has no tool calls.
   while (true) {
-    let estimate = estimateTokens(JSON.stringify(llmCtx));
+    const estimate = estimateTokens(JSON.stringify(llmCtx));
     // 80k is the agreed uppon threshold to the DUMB ZONE
     if (estimate > 80000) compactContext(llmCtx.messages);
 

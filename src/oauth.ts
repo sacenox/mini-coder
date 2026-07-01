@@ -14,7 +14,7 @@ import {
   getConfiguredBuiltinProviders,
   isBuiltinProvider,
 } from "./models.ts";
-import { AUTH_PATH as AUTH_FILE } from "./shared";
+import { AUTH_PATH as AUTH_FILE, DATA_DIR } from "./shared";
 import type { CliOptions, SavedOAuthCreds } from "./types";
 
 type ReadlineInterface = ReturnType<typeof readline.createInterface>;
