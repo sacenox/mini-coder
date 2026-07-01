@@ -10,6 +10,7 @@ import {
   Type,
 } from "@earendil-works/pi-ai";
 import type { OAuthCredentials } from "@earendil-works/pi-ai/oauth";
+import { TUI_THEME_IDS, type TUIThemeId } from "./themes";
 
 const ThinkingLevelSchema = Type.Unsafe<ThinkingLevel>(
   Type.Union([
@@ -45,11 +46,16 @@ const ModelSchema = Type.Unsafe<Model<Api>>(
   }),
 );
 
+const TUIThemeIdSchema = Type.Unsafe<TUIThemeId>(
+  Type.Union(TUI_THEME_IDS.map((id) => Type.Literal(id))),
+);
+
 export const SettingsSchema = Type.Object({
   provider: Type.String(),
   model: Type.String(),
   effort: ThinkingLevelSchema,
   customProviders: Type.Optional(Type.Array(ModelSchema)),
+  theme: Type.Optional(TUIThemeIdSchema),
 });
 export type Settings = Static<typeof SettingsSchema>;
 
@@ -59,6 +65,7 @@ export const CliOptionsSchema = Type.Object({
   effort: ThinkingLevelSchema,
   prompt: Type.Optional(Type.String()),
   customProviders: Type.Optional(Type.Array(ModelSchema)),
+  theme: TUIThemeIdSchema,
 });
 export type CliOptions = Static<typeof CliOptionsSchema>;
 
@@ -91,6 +98,11 @@ export type TUIMessage = {
   toolCalls?: TUIToolCall[];
 };
 
+export type AvailableUpdate = {
+  currentVersion: string;
+  latestVersion: string;
+};
+
 export type TUIState = {
   options: CliOptions;
   prompt: string;
@@ -103,7 +115,9 @@ export type TUIState = {
   abortController?: AbortController;
   cwd: string;
   gitBranch?: string;
+  availableUpdate?: AvailableUpdate | undefined;
   overlay?: boolean | undefined;
+  forceThemeRefresh?: boolean | undefined;
   sessionId?: string | undefined;
 };
 

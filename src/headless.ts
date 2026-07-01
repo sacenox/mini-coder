@@ -39,6 +39,7 @@ export async function streamHeadless(
   };
 
   const agent = streamAgent(ctx);
+
   for await (const ev of agent) {
     switch (ev.type) {
       case "message_end":

@@ -6,6 +6,7 @@ import { findModelConfig, getProviderModels } from "./models.ts";
 import { getAvailableProviders } from "./oauth";
 import { listSessionsForCwd } from "./session";
 import { estimateTokens, formatTimestamp } from "./shared";
+import { applyTUITheme, getTUITheme, TUI_THEME_IDS } from "./themes";
 import { TextPill, theme } from "./tui-components";
 import type { SelectOptions, SelectState, Session, TUIState } from "./types";
 
@@ -332,12 +333,28 @@ export function mainMenu(state: TUIState, initialPane = "main") {
     })),
   });
 
+  const themesPane = (): MenuPane => ({
+    label: "themes",
+    filter: "",
+    list: TUI_THEME_IDS.map((id) => {
+      const tuiTheme = getTUITheme(id);
+      return {
+        label:
+          id === state.options.theme
+            ? `${tuiTheme.label} (current)`
+            : tuiTheme.label,
+        value: id,
+      };
+    }),
+  });
+
   const mainPane: MenuPane = {
     label: "main",
     filter: state.prompt.length ? state.prompt : "",
     list: [
       { label: "models and providers", value: "providers" },
       { label: "reasoning effort", value: "effort" },
+      { label: "themes", value: "themes" },
       { label: "sessions", value: "sessions" },
       { label: "fork", value: "fork" },
     ],
@@ -347,7 +364,7 @@ export function mainMenu(state: TUIState, initialPane = "main") {
     filter: "",
     list: efforts,
   };
-  const panes: MenuPane[] = [effortPane];
+  const panes: MenuPane[] = [effortPane, themesPane()];
   let currentPane = initialPane === "fork" ? forkPane() : mainPane;
   let selectedProvider: string | undefined;
 
@@ -373,6 +390,14 @@ export function mainMenu(state: TUIState, initialPane = "main") {
   const closeMenu = (s: SelectState) => {
     resetMenu(s);
     state.overlay = false;
+  };
+
+  const requestThemeRefresh = () => {
+    state.forceThemeRefresh = true;
+    setTimeout(() => {
+      state.forceThemeRefresh = false;
+      cel.render();
+    }, 0);
   };
 
   const toTUIMessage = (msg: Message) => {
@@ -497,6 +522,24 @@ export function mainMenu(state: TUIState, initialPane = "main") {
         return;
       }
 
+      if (currentPane.label === "themes") {
+        const nextTheme = TUI_THEME_IDS.find((id) => id === s.selected);
+        if (!nextTheme) return;
+
+        state.options.theme = nextTheme;
+        applyTUITheme(nextTheme);
+        saveSettings({
+          provider: state.options.provider,
+          model: state.options.model.id,
+          effort: state.options.effort,
+          customProviders: state.options.customProviders,
+          theme: nextTheme,
+        });
+        requestThemeRefresh();
+        closeMenu(s);
+        return;
+      }
+
       if (currentPane.label === "providers") {
         const provider = currentProviders.find((v) => v === s.selected);
         if (!provider) return;
@@ -527,6 +570,7 @@ export function mainMenu(state: TUIState, initialPane = "main") {
           model: model.id,
           effort: state.options.effort,
           customProviders: state.options.customProviders,
+          theme: state.options.theme,
         });
         closeMenu(s);
         return;
@@ -542,6 +586,7 @@ export function mainMenu(state: TUIState, initialPane = "main") {
           model: state.options.model.id,
           effort: effort,
           customProviders: state.options.customProviders,
+          theme: state.options.theme,
         });
         closeMenu(s);
       }

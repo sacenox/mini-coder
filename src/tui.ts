@@ -13,6 +13,7 @@ import {
 } from "./prompt";
 import { updateSession } from "./session";
 import { estimateTokens, formatTimestamp, secureRandomString } from "./shared";
+import { activeTuiTheme, applyTUITheme, getTUITheme } from "./themes";
 import { bash, runBashTool } from "./tool-bash";
 import { edit, runEditTool } from "./tool-edit";
 import { read, runReadTool } from "./tool-read";
@@ -29,6 +30,11 @@ import { Conversation, emptyState } from "./tui-conversation";
 import { Editor } from "./tui-editor";
 import { mainMenu } from "./tui-overlay";
 import type { AgentContex, ToolAndRunner, TUIMessage, TUIState } from "./types";
+import { getAvailableUpdate } from "./update";
+
+async function refreshAvailableUpdate(state: TUIState): Promise<void> {
+  state.availableUpdate = await getAvailableUpdate();
+}
 
 function clearOrAbort(state: TUIState) {
   // Are we mid stream? Abort it.
@@ -45,6 +51,7 @@ function clearOrAbort(state: TUIState) {
 export function initTUI(state: TUIState, leave: (s: string) => void) {
   // TODO: Cleanup accumulated sessions for this cwd.
   const { spinnerEvery, currentSpinner } = Spinner();
+  void refreshAvailableUpdate(state);
 
   // Stable 60fps rendering.
   // This ensure Xfps, and excessive calls get coalesced in cel-tui.
@@ -84,6 +91,9 @@ export function initTUI(state: TUIState, leave: (s: string) => void) {
   };
 
   const onEditorKeyPress = (key: string) => {
+    const submit = async () => {
+      await streamAgentTUI(state);
+    };
     // onKeyPress
     if (key === "enter") {
       if (state.prompt === ":q") {
@@ -102,16 +112,15 @@ export function initTUI(state: TUIState, leave: (s: string) => void) {
         state.stickToBottom = true;
         return false;
       }
-      const submit = async () => {
-        await streamAgentTUI(state);
-      };
       if (state.prompt && !state.streaming) submit();
       return false;
     }
   };
 
-  cel.init(new ProcessTerminal());
+  applyTUITheme(state.options.theme);
+  cel.init(new ProcessTerminal(), { theme: activeTuiTheme });
   cel.viewport(() => {
+    const activeTheme = getTUITheme(state.options.theme);
     const layers = [
       VStack(
         {
@@ -119,9 +128,12 @@ export function initTUI(state: TUIState, leave: (s: string) => void) {
           gap: 1,
           padding: { x: 1, y: 1 },
           onKeyPress: onWindowKeyPress,
+          fgColor: activeTheme.rootFgColor,
+          bgColor: activeTheme.rootBgColor,
+          italic: state.forceThemeRefresh,
         },
         [
-          state.messages.length ? Conversation(state) : emptyState(),
+          state.messages.length ? Conversation(state) : emptyState(state),
           HStack({ gap: 1 }, [
             ModelPill(state),
             TextPill(`../${state.cwd}`, theme.bwhite, theme.bblack),
@@ -144,6 +156,8 @@ export function initTUI(state: TUIState, leave: (s: string) => void) {
 }
 
 async function streamAgentTUI(state: TUIState) {
+  // Just as a defensive thought, callers should set this ahead of time if doing other
+  // ops before starting the stream.
   state.streaming = true;
 
   const abortController = new AbortController();
@@ -280,6 +294,13 @@ async function streamAgentTUI(state: TUIState) {
         }
       }
     }
+  } catch (error) {
+    const text = error instanceof Error ? error.message : String(error);
+    state.tuiMessages.push({
+      timestamp: formatTimestamp(Date.now()),
+      role: "assistant",
+      text,
+    });
   } finally {
     state.streaming = false;
     if (!state.sessionId) {

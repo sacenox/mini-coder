@@ -66,10 +66,7 @@ export async function* runBashTool(
 
   const exitCode = await proc.exited;
 
-  let result = `${output.length ? output : "(no ouput)"}\n\nExit code: ${exitCode}`;
-  if (output.length) {
-    result += `${output}`;
-  }
+  const result = `${output.length ? output : "(no output)"}\n\nExit code: ${exitCode}`;
 
   yield {
     type: "result",
