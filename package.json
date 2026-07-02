@@ -1,6 +1,6 @@
 {
   "name": "mini-coder",
-  "version": "0.7.3",
+  "version": "0.7.4",
   "type": "module",
   "packageManager": "bun@1.3.13",
   "bin": {
