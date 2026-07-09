@@ -8,7 +8,12 @@ import type {
   ToolResultMessage,
 } from "@earendil-works/pi-ai";
 import { createAppModels } from "./models.ts";
-import { estimateContextTokens, estimateTokens } from "./shared";
+import {
+  contextCompactionThreshold,
+  estimateContextTokens,
+  estimateNextTurnTokens,
+  estimateTokens,
+} from "./shared";
 import { truncateToolOutput } from "./tool-output.ts";
 import type {
   AgentContex,
@@ -96,10 +101,13 @@ export async function* streamAgent(
   while (true) {
     const fallbackContext = JSON.stringify(llmCtx);
     let estimate = estimateContextTokens(llmCtx.messages, fallbackContext);
-    // Stay below both the agreed-upon 80k DUMB ZONE and smaller model windows.
-    const compactionThreshold = Math.min(
-      80_000,
-      Math.floor(agentCtx.options.model.contextWindow * 0.8),
+    const estimatedNextTurn = estimateNextTurnTokens(
+      llmCtx.messages,
+      agentCtx.options.model.maxTokens,
+    );
+    const compactionThreshold = contextCompactionThreshold(
+      agentCtx.options.model.contextWindow,
+      estimatedNextTurn,
     );
     if (estimate > compactionThreshold) {
       for (

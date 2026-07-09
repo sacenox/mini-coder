@@ -80,19 +80,44 @@ export function takeTail<T>(arr: T[], x: number): T[] {
   return x <= 0 ? [] : arr.slice(-x);
 }
 
-function reportedContextTokens(message: Message): number | undefined {
+const MAX_CONTEXT_SAFETY_TOKENS = 4_096;
+const CONTEXT_SAFETY_RATIO = 0.05;
+
+type ReportedUsage = {
+  contextTokens: number;
+  outputTokens: number;
+};
+
+function reportedUsage(message: Message): ReportedUsage | undefined {
   if (message.role !== "assistant" || !message.usage) return;
+  if (message.stopReason === "aborted" || message.stopReason === "error")
+    return;
 
   const { usage } = message;
-  const reported = usage.totalTokens;
-  if (Number.isFinite(reported) && reported > 0) {
-    return Math.ceil(reported);
-  }
-
   const calculated =
     usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
-  if (Number.isFinite(calculated) && calculated > 0) {
-    return Math.ceil(calculated);
+  const contextTokens =
+    Number.isFinite(usage.totalTokens) && usage.totalTokens > 0
+      ? usage.totalTokens
+      : calculated;
+  if (!Number.isFinite(contextTokens) || contextTokens <= 0) return;
+
+  const outputTokens = Number.isFinite(usage.output)
+    ? Math.max(0, Math.ceil(usage.output))
+    : 0;
+
+  return {
+    contextTokens: Math.ceil(contextTokens),
+    outputTokens,
+  };
+}
+
+function latestReportedUsage(
+  messages: readonly Message[],
+): (ReportedUsage & { index: number }) | undefined {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const usage = reportedUsage(messages[index]);
+    if (usage) return { ...usage, index };
   }
 }
 
@@ -101,20 +126,38 @@ export function estimateTokens(text: string): number {
 }
 
 export function estimateContextTokens(
-  messages: Message[],
+  messages: readonly Message[],
   fallbackSerializedContext = JSON.stringify(messages),
 ): number {
-  for (let index = messages.length - 1; index >= 0; index--) {
-    const providerTokens = reportedContextTokens(messages[index]);
-    if (providerTokens === undefined) continue;
+  const usage = latestReportedUsage(messages);
+  if (!usage) return estimateTokens(fallbackSerializedContext);
 
-    const trailingMessages = messages.slice(index + 1);
-    if (trailingMessages.length === 0) return providerTokens;
+  const trailingMessages = messages.slice(usage.index + 1);
+  if (trailingMessages.length === 0) return usage.contextTokens;
 
-    return providerTokens + estimateTokens(JSON.stringify(trailingMessages));
-  }
+  return usage.contextTokens + estimateTokens(JSON.stringify(trailingMessages));
+}
 
-  return estimateTokens(fallbackSerializedContext);
+export function estimateNextTurnTokens(
+  messages: readonly Message[],
+  maxTokens: number,
+): number {
+  const usage = latestReportedUsage(messages);
+  if (!usage) return 0;
+
+  return Math.min(usage.outputTokens, Math.max(0, maxTokens));
+}
+
+export function contextCompactionThreshold(
+  contextWindow: number,
+  estimatedNextTurnTokens: number,
+): number {
+  const safetyTokens = Math.min(
+    MAX_CONTEXT_SAFETY_TOKENS,
+    Math.floor(Math.max(0, contextWindow) * CONTEXT_SAFETY_RATIO),
+  );
+
+  return Math.max(0, contextWindow - estimatedNextTurnTokens - safetyTokens);
 }
 
 export function parseSkillFrontmatter(content: string) {
