@@ -8,7 +8,8 @@ import type {
   ToolResultMessage,
 } from "@earendil-works/pi-ai";
 import { createAppModels } from "./models.ts";
-import { estimateTokens } from "./shared";
+import { estimateContextTokens, estimateTokens } from "./shared";
+import { truncateToolOutput } from "./tool-output.ts";
 import type {
   AgentContex,
   AgentEvent,
@@ -19,9 +20,10 @@ import type {
 // ### JetBrains Junie: Observation Masking
 // Published research found that **simply hiding old tool outputs** matched the quality of full LLM summarization with **zero extra compute**:
 // https://blog.jetbrains.com/research/2025/12/efficient-context-management/
-export function compactContext(messages: Message[]) {
-  const KEEP_OBSERVATIONS = 10;
-
+export function compactContext(
+  messages: Message[],
+  keepObservations = 10,
+): boolean {
   const skillReadToolCallIds = new Set<string>();
   for (const message of messages) {
     if (message.role !== "assistant") continue;
@@ -55,9 +57,9 @@ export function compactContext(messages: Message[]) {
     toolResultIndices.push(i);
   }
 
-  if (toolResultIndices.length <= KEEP_OBSERVATIONS) return;
+  if (toolResultIndices.length <= keepObservations) return false;
 
-  for (let i = 0; i < toolResultIndices.length - KEEP_OBSERVATIONS; i++) {
+  for (let i = 0; i < toolResultIndices.length - keepObservations; i++) {
     const idx = toolResultIndices[i];
     const msg = messages[idx] as ToolResultMessage;
     let lines = 0;
@@ -75,6 +77,8 @@ export function compactContext(messages: Message[]) {
     }
     msg.content = [{ type: "text", text }];
   }
+
+  return true;
 }
 
 export async function* streamAgent(
@@ -90,9 +94,27 @@ export async function* streamAgent(
 
   // Main agent loop, continues until llm sends a response other than toolCall or has no tool calls.
   while (true) {
-    const estimate = estimateTokens(JSON.stringify(llmCtx));
-    // 80k is the agreed uppon threshold to the DUMB ZONE
-    if (estimate > 80000) compactContext(llmCtx.messages);
+    const fallbackContext = JSON.stringify(llmCtx);
+    let estimate = estimateContextTokens(llmCtx.messages, fallbackContext);
+    // Stay below both the agreed-upon 80k DUMB ZONE and smaller model windows.
+    const compactionThreshold = Math.min(
+      80_000,
+      Math.floor(agentCtx.options.model.contextWindow * 0.8),
+    );
+    if (estimate > compactionThreshold) {
+      for (
+        let keepObservations = 10;
+        keepObservations >= 0;
+        keepObservations--
+      ) {
+        if (estimate <= compactionThreshold) break;
+        if (!compactContext(llmCtx.messages, keepObservations)) continue;
+
+        // Provider usage describes the pre-compaction request. Once messages are
+        // masked, fall back to estimating the context that will actually be sent.
+        estimate = estimateTokens(JSON.stringify(llmCtx));
+      }
+    }
 
     const s = models.streamSimple(agentCtx.options.model, llmCtx, {
       reasoning: agentCtx.options.effort,
@@ -247,11 +269,8 @@ async function* toolRunner(
 
     try {
       for await (const e of tool.runner(call.arguments, signal)) {
-        // yield deltas for output, full output on result.
-        const content: TextContent = { type: "text", text: e.text };
-
         if (e.type === "output") {
-          // handle deltas
+          const content: TextContent = { type: "text", text: e.text };
           yield {
             type: "tool_update",
             partial: {
@@ -264,7 +283,10 @@ async function* toolRunner(
             },
           };
         } else if (e.type === "result") {
-          // handle final message, and check for images
+          const content: TextContent = {
+            type: "text",
+            text: truncateToolOutput(e.text),
+          };
           let img: ImageContent | null = null;
           if (e.image) {
             img = { ...e.image, type: "image" };
@@ -292,7 +314,12 @@ async function* toolRunner(
           role: "toolResult",
           toolCallId: call.id,
           toolName: call.name,
-          content: [{ type: "text", text: `Error: ${error}` }],
+          content: [
+            {
+              type: "text",
+              text: truncateToolOutput(`Error: ${error}`),
+            },
+          ],
           isError: true,
           timestamp,
         },

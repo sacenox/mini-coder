@@ -198,12 +198,6 @@ export const TUI_THEMES = {
   },
 } as const satisfies Record<TUIThemeId, TUIThemeDefinition>;
 
-export const activeTuiTheme: Theme = { ...ansi16Palette };
-
-export function applyTUITheme(id: TUIThemeId): void {
-  Object.assign(activeTuiTheme, TUI_THEMES[id].palette);
-}
-
 export function getTUITheme(id: TUIThemeId): TUIThemeDefinition {
   return TUI_THEMES[id];
 }

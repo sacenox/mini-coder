@@ -1,4 +1,9 @@
 import { type Tool, Type } from "@earendil-works/pi-ai";
+import {
+  appendToolOutput,
+  createToolOutputBuffer,
+  renderToolOutput,
+} from "./tool-output.ts";
 import type { ToolRunnerEvent } from "./types";
 
 const description = `Bash CLI tool
@@ -42,7 +47,7 @@ export async function* runBashTool(
   const decoder = new TextDecoder();
   const reader = proc.stdout.getReader();
 
-  let output = "";
+  const output = createToolOutputBuffer();
   while (true) {
     const { done, value } = await reader.read();
 
@@ -50,8 +55,8 @@ export async function* runBashTool(
       const remaining = Bun.stripANSI(decoder.decode());
 
       if (remaining.length) {
-        output += remaining;
-        yield { type: "output", text: remaining };
+        const liveText = appendToolOutput(output, remaining);
+        if (liveText) yield { type: "output", text: liveText };
       }
       break;
     }
@@ -59,14 +64,17 @@ export async function* runBashTool(
     const text = Bun.stripANSI(decoder.decode(value, { stream: true }));
 
     if (text.length) {
-      output += text;
-      yield { type: "output", text: text };
+      const liveText = appendToolOutput(output, text);
+      if (liveText) yield { type: "output", text: liveText };
     }
   }
 
   const exitCode = await proc.exited;
-
-  const result = `${output.length ? output : "(no output)"}\n\nExit code: ${exitCode}`;
+  if (!renderToolOutput(output)) {
+    appendToolOutput(output, "(no output)");
+  }
+  appendToolOutput(output, `\n\nExit code: ${exitCode}`);
+  const result = renderToolOutput(output);
 
   yield {
     type: "result",

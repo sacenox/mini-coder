@@ -117,7 +117,6 @@ export type TUIState = {
   gitBranch?: string;
   availableUpdate?: AvailableUpdate | undefined;
   overlay?: boolean | undefined;
-  forceThemeRefresh?: boolean | undefined;
   sessionId?: string | undefined;
 };
 

@@ -198,6 +198,7 @@ export function Conversation(state: TUIState) {
 
   return VStack(
     {
+      stateKey: "conversation-scroll",
       flex: 1,
       gap: 2,
       overflow: "scroll",

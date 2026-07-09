@@ -12,8 +12,12 @@ import {
   MAIN_PROMPT,
 } from "./prompt";
 import { updateSession } from "./session";
-import { estimateTokens, formatTimestamp, secureRandomString } from "./shared";
-import { activeTuiTheme, applyTUITheme, getTUITheme } from "./themes";
+import {
+  estimateContextTokens,
+  formatTimestamp,
+  secureRandomString,
+} from "./shared";
+import { getTUITheme } from "./themes";
 import { bash, runBashTool } from "./tool-bash";
 import { edit, runEditTool } from "./tool-edit";
 import { read, runReadTool } from "./tool-read";
@@ -117,8 +121,8 @@ export function initTUI(state: TUIState, leave: (s: string) => void) {
     }
   };
 
-  applyTUITheme(state.options.theme);
-  cel.init(new ProcessTerminal(), { theme: activeTuiTheme });
+  const initialTheme = getTUITheme(state.options.theme);
+  cel.init(new ProcessTerminal(), { theme: initialTheme.palette });
   cel.viewport(() => {
     const activeTheme = getTUITheme(state.options.theme);
     const layers = [
@@ -130,7 +134,6 @@ export function initTUI(state: TUIState, leave: (s: string) => void) {
           onKeyPress: onWindowKeyPress,
           fgColor: activeTheme.rootFgColor,
           bgColor: activeTheme.rootBgColor,
-          italic: state.forceThemeRefresh,
         },
         [
           state.messages.length ? Conversation(state) : emptyState(state),
@@ -259,7 +262,8 @@ async function streamAgentTUI(state: TUIState) {
             ev.message,
           );
           const { systemPrompt, tools, messages } = ctx;
-          state.contextSize = estimateTokens(
+          state.contextSize = estimateContextTokens(
+            messages,
             JSON.stringify({ systemPrompt, tools, messages }),
           );
           break;
@@ -288,7 +292,8 @@ async function streamAgentTUI(state: TUIState) {
           }
 
           const { systemPrompt, tools, messages } = ctx;
-          state.contextSize = estimateTokens(
+          state.contextSize = estimateContextTokens(
+            messages,
             JSON.stringify({ systemPrompt, tools, messages }),
           );
         }

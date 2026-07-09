@@ -1,5 +1,6 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
+import type { Message } from "@earendil-works/pi-ai";
 import { parseDocument } from "yaml";
 
 // Mixed bag of helpers that can be shared across the codebase
@@ -79,8 +80,41 @@ export function takeTail<T>(arr: T[], x: number): T[] {
   return x <= 0 ? [] : arr.slice(-x);
 }
 
+function reportedContextTokens(message: Message): number | undefined {
+  if (message.role !== "assistant" || !message.usage) return;
+
+  const { usage } = message;
+  const reported = usage.totalTokens;
+  if (Number.isFinite(reported) && reported > 0) {
+    return Math.ceil(reported);
+  }
+
+  const calculated =
+    usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
+  if (Number.isFinite(calculated) && calculated > 0) {
+    return Math.ceil(calculated);
+  }
+}
+
 export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
+}
+
+export function estimateContextTokens(
+  messages: Message[],
+  fallbackSerializedContext = JSON.stringify(messages),
+): number {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const providerTokens = reportedContextTokens(messages[index]);
+    if (providerTokens === undefined) continue;
+
+    const trailingMessages = messages.slice(index + 1);
+    if (trailingMessages.length === 0) return providerTokens;
+
+    return providerTokens + estimateTokens(JSON.stringify(trailingMessages));
+  }
+
+  return estimateTokens(fallbackSerializedContext);
 }
 
 export function parseSkillFrontmatter(content: string) {

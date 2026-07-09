@@ -19,6 +19,15 @@ import {
 const DEFAULT_PROVIDER = "openai-codex";
 const DEFAULT_MODEL_ID = "gpt-5.5";
 const DEFAULT_EFFORT: ThinkingLevel = "xhigh";
+const VALUE_OPTIONS = new Set([
+  "--provider",
+  "--model",
+  "--effort",
+  "--prompt",
+  "-p",
+  "--login",
+  "-l",
+]);
 
 function formatValidationError(
   label: string,
@@ -89,6 +98,24 @@ function requireValue(argv: string[], index: number, flag: string) {
   }
 
   return value;
+}
+
+export function validateArgv(argv: string[]): void {
+  for (let i = 0; i < argv.length; i++) {
+    const argument = argv[i];
+
+    if (argument === "--update") {
+      continue;
+    }
+
+    if (!VALUE_OPTIONS.has(argument)) {
+      const kind = argument.startsWith("-") ? "option" : "argument";
+      throw new Error(`Unknown ${kind}: ${argument}`);
+    }
+
+    requireValue(argv, i, argument);
+    i++;
+  }
 }
 
 export async function handleArgv(argv: string[]): Promise<CliOptions> {

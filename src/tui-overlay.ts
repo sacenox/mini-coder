@@ -5,8 +5,8 @@ import { saveSettings } from "./args";
 import { findModelConfig, getProviderModels } from "./models.ts";
 import { getAvailableProviders } from "./oauth";
 import { listSessionsForCwd } from "./session";
-import { estimateTokens, formatTimestamp } from "./shared";
-import { applyTUITheme, getTUITheme, TUI_THEME_IDS } from "./themes";
+import { estimateContextTokens, formatTimestamp } from "./shared";
+import { getTUITheme, TUI_THEME_IDS } from "./themes";
 import { TextPill, theme } from "./tui-components";
 import type { SelectOptions, SelectState, Session, TUIState } from "./types";
 
@@ -19,7 +19,6 @@ export function SelectOverlay(
   onChange: (newValue: string) => void,
   onKeyPress: (key: string) => boolean | undefined,
 ) {
-  let isEditorFocused = true;
   return VStack(
     {
       height: "100%",
@@ -49,6 +48,7 @@ export function SelectOverlay(
           ]),
 
           TextInput({
+            stateKey: "menu-filter-input",
             value,
             minHeight: 3,
             maxHeight: 10,
@@ -61,13 +61,7 @@ export function SelectOverlay(
             bgColor: theme.white,
             onChange,
             onKeyPress,
-            focused: isEditorFocused,
-            onFocus: () => {
-              isEditorFocused = true;
-            },
-            onBlur: () => {
-              isEditorFocused = false;
-            },
+            autoFocus: true,
           }),
         ],
       ),
@@ -392,14 +386,6 @@ export function mainMenu(state: TUIState, initialPane = "main") {
     state.overlay = false;
   };
 
-  const requestThemeRefresh = () => {
-    state.forceThemeRefresh = true;
-    setTimeout(() => {
-      state.forceThemeRefresh = false;
-      cel.render();
-    }, 0);
-  };
-
   const toTUIMessage = (msg: Message) => {
     const textFromContent = (
       content: string | { type: string; text?: string }[],
@@ -493,7 +479,7 @@ export function mainMenu(state: TUIState, initialPane = "main") {
           .filter((message) => message.role !== "toolResult")
           .map(toTUIMessage);
         state.prompt = "";
-        state.contextSize = estimateTokens(JSON.stringify(state.messages));
+        state.contextSize = estimateContextTokens(state.messages);
         state.scrollOffset = 0;
         state.stickToBottom = true;
         closeMenu(s);
@@ -515,7 +501,7 @@ export function mainMenu(state: TUIState, initialPane = "main") {
           .filter((message) => message.role !== "toolResult")
           .map(toTUIMessage);
         state.prompt = "";
-        state.contextSize = estimateTokens(JSON.stringify(state.messages));
+        state.contextSize = estimateContextTokens(state.messages);
         state.scrollOffset = 0;
         state.stickToBottom = true;
         closeMenu(s);
@@ -527,7 +513,7 @@ export function mainMenu(state: TUIState, initialPane = "main") {
         if (!nextTheme) return;
 
         state.options.theme = nextTheme;
-        applyTUITheme(nextTheme);
+        cel.setTheme(getTUITheme(nextTheme).palette);
         saveSettings({
           provider: state.options.provider,
           model: state.options.model.id,
@@ -535,7 +521,6 @@ export function mainMenu(state: TUIState, initialPane = "main") {
           customProviders: state.options.customProviders,
           theme: nextTheme,
         });
-        requestThemeRefresh();
         closeMenu(s);
         return;
       }
