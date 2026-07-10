@@ -14,13 +14,23 @@ import {
   estimateNextTurnTokens,
   estimateTokens,
 } from "./shared";
-import { truncateToolOutput } from "./tool-output.ts";
 import type {
   AgentContex,
   AgentEvent,
   AgentToolEvent,
   ToolAndRunner,
 } from "./types";
+
+function truncateToolResult(text: string): string {
+  const maxChars = 16_000;
+  if (text.length <= maxChars) return text;
+
+  const marker = "\n\n... tool output truncated ...\n\n";
+  const availableChars = maxChars - marker.length;
+  const headChars = Math.ceil((availableChars * 2) / 3);
+  const tailChars = availableChars - headChars;
+  return `${text.slice(0, headChars)}${marker}${text.slice(-tailChars)}`;
+}
 
 // ### JetBrains Junie: Observation Masking
 // Published research found that **simply hiding old tool outputs** matched the quality of full LLM summarization with **zero extra compute**:
@@ -293,7 +303,7 @@ async function* toolRunner(
         } else if (e.type === "result") {
           const content: TextContent = {
             type: "text",
-            text: truncateToolOutput(e.text),
+            text: truncateToolResult(e.text),
           };
           let img: ImageContent | null = null;
           if (e.image) {
@@ -325,7 +335,7 @@ async function* toolRunner(
           content: [
             {
               type: "text",
-              text: truncateToolOutput(`Error: ${error}`),
+              text: truncateToolResult(`Error: ${error}`),
             },
           ],
           isError: true,
