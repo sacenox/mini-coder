@@ -5,6 +5,8 @@ export const TUI_THEME_IDS = [
   "ansi16",
   "molokai-dark",
   "molokai-light",
+  "atom-dark",
+  "atom-light",
 ] as const;
 
 export type TUIThemeId = (typeof TUI_THEME_IDS)[number];
@@ -57,6 +59,44 @@ const ansi16Palette: Theme = {
   color15: 15,
 };
 
+const atomDarkPalette: Theme = {
+  color00: "#282c34",
+  color01: "#e06c75",
+  color02: "#98c379",
+  color03: "#d19a66",
+  color04: "#61afef",
+  color05: "#c678dd",
+  color06: "#56b6c2",
+  color07: "#abb2bf",
+  color08: "#5c6370",
+  color09: "#ff7b86",
+  color10: "#b5e890",
+  color11: "#efb77e",
+  color12: "#78c5ff",
+  color13: "#dc8bea",
+  color14: "#70d1dc",
+  color15: "#ffffff",
+};
+
+const atomLightPalette: Theme = {
+  color00: "#383a42",
+  color01: "#e45649",
+  color02: "#50a14f",
+  color03: "#986801",
+  color04: "#4078f2",
+  color05: "#a626a4",
+  color06: "#0184bc",
+  color07: "#eaeaeb",
+  color08: "#696c77",
+  color09: "#b8322a",
+  color10: "#2f7d32",
+  color11: "#745000",
+  color12: "#245fc5",
+  color13: "#852083",
+  color14: "#006b98",
+  color15: "#fafafa",
+};
+
 const molokaiDarkPalette: Theme = {
   color00: "#272822",
   color01: "#f92672",
@@ -94,6 +134,66 @@ const molokaiLightPalette: Theme = {
   color14: "#007885",
   color15: "#fffdf5",
 };
+
+const atomDarkSyntax = {
+  baseStyle: { fgColor: theme.bwhite },
+  scopeStyles: {
+    comment: { fgColor: theme.white, italic: true },
+    "markup.quote": { fgColor: theme.white, italic: true },
+    keyword: { fgColor: theme.bmagenta },
+    operator: { fgColor: theme.bcyan },
+    string: { fgColor: theme.bgreen },
+    escape: { fgColor: theme.bcyan },
+    "markup.list": { fgColor: theme.byellow },
+    number: { fgColor: theme.byellow },
+    regexp: { fgColor: theme.bcyan },
+    function: { fgColor: theme.bblue },
+    command: { fgColor: theme.bblue },
+    "markup.code": { fgColor: theme.bgreen },
+    builtin: { fgColor: theme.bcyan },
+    property: { fgColor: theme.bred },
+    type: { fgColor: theme.byellow },
+    meta: { fgColor: theme.bmagenta },
+    "markup.heading": { fgColor: theme.bblue, bold: true },
+    "diff.deleted": { fgColor: theme.bred },
+    "diff.file.old": { fgColor: theme.bred },
+    "diff.inserted": { fgColor: theme.bgreen },
+    "diff.file.new": { fgColor: theme.bgreen },
+    "diff.hunk": { fgColor: theme.bmagenta },
+    "diff.header": { fgColor: theme.white },
+    "diff.no-newline": { fgColor: theme.white },
+  },
+} as const satisfies SyntaxHighlightTheme;
+
+const atomLightSyntax = {
+  baseStyle: { fgColor: theme.black },
+  scopeStyles: {
+    comment: { fgColor: theme.bblack, italic: true },
+    "markup.quote": { fgColor: theme.bblack, italic: true },
+    keyword: { fgColor: theme.bmagenta },
+    operator: { fgColor: theme.bcyan },
+    string: { fgColor: theme.bgreen },
+    escape: { fgColor: theme.bcyan },
+    "markup.list": { fgColor: theme.byellow },
+    number: { fgColor: theme.byellow },
+    regexp: { fgColor: theme.bcyan },
+    function: { fgColor: theme.bblue },
+    command: { fgColor: theme.bblue },
+    "markup.code": { fgColor: theme.bgreen },
+    builtin: { fgColor: theme.bcyan },
+    property: { fgColor: theme.bred },
+    type: { fgColor: theme.byellow },
+    meta: { fgColor: theme.bmagenta },
+    "markup.heading": { fgColor: theme.bblue, bold: true },
+    "diff.deleted": { fgColor: theme.bred },
+    "diff.file.old": { fgColor: theme.bred },
+    "diff.inserted": { fgColor: theme.bgreen },
+    "diff.file.new": { fgColor: theme.bgreen },
+    "diff.hunk": { fgColor: theme.bmagenta },
+    "diff.header": { fgColor: theme.bblack },
+    "diff.no-newline": { fgColor: theme.bblack },
+  },
+} as const satisfies SyntaxHighlightTheme;
 
 const molokaiDarkSyntax = {
   baseStyle: { fgColor: theme.white },
@@ -183,6 +283,24 @@ export const TUI_THEMES = {
     rootBgColor: theme.bwhite,
     userMessageBgColor: theme.white,
   },
+  "atom-dark": {
+    id: "atom-dark",
+    label: "atom dark",
+    palette: atomDarkPalette,
+    syntax: atomDarkSyntax,
+    rootFgColor: theme.bwhite,
+    rootBgColor: theme.black,
+    userMessageBgColor: theme.bblack,
+  },
+  "atom-light": {
+    id: "atom-light",
+    label: "atom light",
+    palette: atomLightPalette,
+    syntax: atomLightSyntax,
+    rootFgColor: theme.black,
+    rootBgColor: theme.bwhite,
+    userMessageBgColor: theme.white,
+  },
 } as const satisfies Record<TUIThemeId, TUIThemeDefinition>;
 
 export function getTUITheme(id: TUIThemeId): TUIThemeDefinition {
@@ -196,7 +314,7 @@ export function textColorForBackground(
   if (bgColor === theme.bblack) return theme.bwhite;
 
   if (
-    themeId === "molokai-light" &&
+    (themeId === "molokai-light" || themeId === "atom-light") &&
     (
       [
         theme.bred,
