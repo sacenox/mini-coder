@@ -54,30 +54,22 @@ function clearOrAbort(state: TUIState) {
 
 export function initTUI(state: TUIState, leave: (s: string) => void) {
   // TODO: Cleanup accumulated sessions for this cwd.
-  const { spinnerEvery, currentSpinner } = Spinner();
-  void refreshAvailableUpdate(state);
-
-  // Stable 60fps rendering.
-  // This ensure Xfps, and excessive calls get coalesced in cel-tui.
-  const fps = 60;
-  const baseFramerateIntervalId = setInterval(() => {
-    if (state.streaming) {
-      spinnerEvery();
-    }
-    cel.setTitle(
-      `mc ${state.streaming ? currentSpinner() : ">"} ../${state.cwd}`,
-    );
-    cel.render();
-  }, 1000 / fps);
+  const spinner = Spinner((frame) => {
+    if (state.streaming) cel.setTitle(`mc ${frame} ../${state.cwd}`);
+  });
 
   let menu = mainMenu(state);
+
+  const quit = (message: string) => {
+    spinner.dispose();
+    cel.stop();
+    leave(message);
+  };
 
   const onWindowKeyPress = (key: string) => {
     if (key === "ctrl+q" || key === "ctrl+c" || key === "ctrl+d") {
       // Quit
-      clearInterval(baseFramerateIntervalId);
-      cel.stop();
-      leave("Done.");
+      quit("Done.");
     } else if (key === "escape") {
       // Abort or clear prompt
       clearOrAbort(state);
@@ -96,14 +88,12 @@ export function initTUI(state: TUIState, leave: (s: string) => void) {
 
   const onEditorKeyPress = (key: string) => {
     const submit = async () => {
-      await streamAgentTUI(state);
+      await streamAgentTUI(state, spinner);
     };
     // onKeyPress
     if (key === "enter") {
       if (state.prompt === ":q") {
-        clearInterval(baseFramerateIntervalId);
-        cel.stop();
-        leave("Done. I like vim too.");
+        quit("Done. I like vim too.");
         return false;
       }
       if (state.prompt === ":n" || state.prompt === "/new") {
@@ -123,6 +113,8 @@ export function initTUI(state: TUIState, leave: (s: string) => void) {
 
   const initialTheme = getTUITheme(state.options.theme);
   cel.init(new ProcessTerminal(), { theme: initialTheme.palette });
+  cel.setTitle(`mc > ../${state.cwd}`);
+  void refreshAvailableUpdate(state).then(() => cel.render());
   cel.viewport(() => {
     const activeTheme = getTUITheme(state.options.theme);
     const layers = [
@@ -142,7 +134,7 @@ export function initTUI(state: TUIState, leave: (s: string) => void) {
             TextPill(`../${state.cwd}`, theme.bwhite, theme.bblack),
             GitPill(state),
             VStack({ flex: 1 }, []),
-            ActivityPill(state, currentSpinner()),
+            ActivityPill(state, spinner.current),
             ContextPill(state),
           ]),
 
@@ -158,10 +150,16 @@ export function initTUI(state: TUIState, leave: (s: string) => void) {
   });
 }
 
-async function streamAgentTUI(state: TUIState) {
+async function streamAgentTUI(
+  state: TUIState,
+  spinner: ReturnType<typeof Spinner>,
+) {
   // Just as a defensive thought, callers should set this ahead of time if doing other
   // ops before starting the stream.
   state.streaming = true;
+  spinner.reset();
+  spinner.start();
+  cel.setTitle(`mc ${spinner.current} ../${state.cwd}`);
 
   const abortController = new AbortController();
   state.abortController = abortController;
@@ -253,13 +251,15 @@ async function streamAgentTUI(state: TUIState) {
           state.tuiMessages.push(toTUIMessage(ev.partial));
           break;
         case "message_update":
-          state.tuiMessages[state.tuiMessages.length - 1] = toTUIMessage(
-            ev.partial,
+          Object.assign(
+            state.tuiMessages[state.tuiMessages.length - 1],
+            toTUIMessage(ev.partial),
           );
           break;
         case "message_end": {
-          state.tuiMessages[state.tuiMessages.length - 1] = toTUIMessage(
-            ev.message,
+          Object.assign(
+            state.tuiMessages[state.tuiMessages.length - 1],
+            toTUIMessage(ev.message),
           );
           const { systemPrompt, tools, messages } = ctx;
           state.contextSize = estimateContextTokens(
@@ -308,6 +308,9 @@ async function streamAgentTUI(state: TUIState) {
     });
   } finally {
     state.streaming = false;
+    spinner.stop();
+    cel.setTitle(`mc > ../${state.cwd}`);
+    cel.render();
     if (!state.sessionId) {
       const id = secureRandomString(10);
       state.sessionId = id;
@@ -316,4 +319,5 @@ async function streamAgentTUI(state: TUIState) {
   }
 
   state.gitBranch = await getBranchLabel();
+  cel.render();
 }

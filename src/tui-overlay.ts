@@ -1,4 +1,5 @@
-import { cel, HStack, Text, TextInput, VStack } from "@cel-tui/core";
+import { Select, type SelectInstance } from "@cel-tui/components";
+import { cel, HStack, Text, VStack } from "@cel-tui/core";
 import type { Message, ThinkingLevel } from "@earendil-works/pi-ai";
 import { getOAuthProviders } from "@earendil-works/pi-ai/oauth";
 import { saveSettings } from "./args";
@@ -8,171 +9,26 @@ import { listSessionsForCwd } from "./session";
 import { estimateContextTokens, formatTimestamp } from "./shared";
 import { getTUITheme, TUI_THEME_IDS } from "./themes";
 import { TextPill, theme } from "./tui-components";
-import type { SelectOptions, SelectState, Session, TUIState } from "./types";
+import type { Session, TUIState } from "./types";
 
-export function SelectOverlay(
-  value: string,
-  selected: string,
-  list: { label: string; value: string }[],
-  label: string,
-  onOverlayKeyPress: (key: string) => boolean | undefined,
-  onChange: (newValue: string) => void,
-  onKeyPress: (key: string) => boolean | undefined,
-) {
-  return VStack(
-    {
-      height: "100%",
-      justifyContent: "end",
-      onKeyPress: onOverlayKeyPress,
-    },
-    [
-      VStack(
-        {
-          bgColor: theme.white,
-          fgColor: theme.bblack,
-          gap: 1,
-          padding: { x: 1, y: 1 },
-        },
-        [
-          VStack(
-            { flex: 1, minHeight: 5, maxHeight: 20, padding: { x: 1 } },
-            list.map((i) =>
-              i.value === selected
-                ? Text(i.label, { fgColor: theme.black })
-                : Text(i.label, { fgColor: theme.bblack }),
-            ),
-          ),
-
-          HStack({ width: "100%" }, [
-            TextPill(label, theme.bwhite, theme.bblack),
-          ]),
-
-          TextInput({
-            stateKey: "menu-filter-input",
-            value,
-            minHeight: 3,
-            maxHeight: 10,
-            padding: { x: 1 },
-            placeholder: Text("Search...", {
-              fgColor: theme.bblack,
-              italic: true,
-            }),
-            fgColor: theme.bblack,
-            bgColor: theme.white,
-            onChange,
-            onKeyPress,
-            autoFocus: true,
-          }),
-        ],
-      ),
-    ],
-  );
-}
-
-export function useSelectOverlay(initialOptions: SelectOptions) {
-  // Inner state
-  const s: SelectState = {
-    value: "",
-    selected: "",
-    label: "SELECT",
-    list: [],
-  };
-  let baseList: SelectOptions["list"] = [];
-
-  const applyOptions = (
-    options: Pick<SelectOptions, "filter" | "label" | "list">,
-  ) => {
-    baseList = options.list;
-    s.value = options.filter ?? "";
-    s.label = options.label ? options.label.toUpperCase() : "SELECT";
-    s.list = s.value
-      ? baseList.filter((i) => i.label.includes(s.value))
-      : baseList;
-    s.selected = s.list.length ? s.list[0].value : "";
-  };
-
-  applyOptions(initialOptions);
-
-  const onChange = (newValue: string) => {
-    s.value = newValue;
-    s.list = s.value
-      ? baseList.filter((i) => i.label.includes(s.value))
-      : baseList;
-    s.selected = s.list.length ? s.list[0].value : "";
-  };
-
-  const moveSelected = (direction: -1 | 1) => {
-    if (!s.list.length) return;
-
-    const currentIndex = s.list.findIndex((i) => i.value === s.selected);
-    const nextIndex =
-      currentIndex === -1
-        ? direction === 1
-          ? 0
-          : s.list.length - 1
-        : (currentIndex + direction + s.list.length) % s.list.length;
-
-    s.selected = s.list[nextIndex].value;
-  };
-
-  const onMoveKeyPress = (key: string) => {
-    if (key !== "up" && key !== "down") return;
-
-    moveSelected(key === "up" ? -1 : 1);
-    return false;
-  };
-
-  const onEditorKeyPress = (key: string) => {
-    const didMove = onMoveKeyPress(key);
-    if (didMove === false) return false;
-
-    if (key === "enter") {
-      const previousList = s.list;
-      const previousBaseList = baseList;
-      const applySelectionResult = () => {
-        if (s.list !== previousList) {
-          baseList = s.list;
-        } else {
-          s.list = previousBaseList;
-          s.selected = s.list.length ? s.list[0].value : "";
-        }
-      };
-
-      s.value = "";
-      const result = initialOptions.onSelect(s);
-      if (result instanceof Promise) {
-        result.then(applySelectionResult).catch(() => {
-          s.list = previousBaseList;
-          s.selected = s.list.length ? s.list[0].value : "";
-        });
-      } else {
-        applySelectionResult();
-      }
-      return false;
-    }
-  };
-
-  const onOverlayKeyPress = (key: string) => {
-    const didMove = onMoveKeyPress(key);
-    if (didMove === false) return false;
-
-    if (key === "escape" || key === "ctrl+p") {
-      applyOptions(initialOptions);
-      initialOptions.onCancel();
-    }
-    return false;
-  };
-
-  return () =>
-    SelectOverlay(
-      s.value,
-      s.selected,
-      s.list,
-      s.label,
-      onOverlayKeyPress,
-      onChange,
-      onEditorKeyPress,
-    );
+function SelectOverlay(label: string, select: SelectInstance) {
+  return VStack({ height: "100%", justifyContent: "end" }, [
+    VStack(
+      {
+        width: "100%",
+        bgColor: theme.white,
+        fgColor: theme.bblack,
+        gap: 1,
+        padding: { x: 1, y: 1 },
+      },
+      [
+        HStack({ width: "100%" }, [
+          TextPill(label.toUpperCase(), theme.bwhite, theme.bblack),
+        ]),
+        select(),
+      ],
+    ),
+  ]);
 }
 
 function cleanSnippet(text: string): string {
@@ -268,7 +124,11 @@ function forkMessages(messages: Message[], selectedIndex: number): Message[] {
 }
 
 export function mainMenu(state: TUIState, initialPane = "main") {
-  type MenuPane = Omit<SelectOptions, "onCancel" | "onSelect">;
+  type MenuPane = {
+    label: string;
+    filter: string;
+    list: { label: string; value: string }[];
+  };
 
   const oauthProviders = getOAuthProviders();
   const getProviderLabel = (provider: string) =>
@@ -361,28 +221,27 @@ export function mainMenu(state: TUIState, initialPane = "main") {
   const panes: MenuPane[] = [effortPane, themesPane()];
   let currentPane = initialPane === "fork" ? forkPane() : mainPane;
   let selectedProvider: string | undefined;
+  let select: SelectInstance;
 
-  const openPane = (s: SelectState, pane: MenuPane) => {
+  const openPane = (pane: MenuPane) => {
     currentPane = pane;
-    s.value = pane.filter;
-    s.label = pane.label ? pane.label.toUpperCase() : "SELECT";
-    s.list = pane.list;
-    s.selected = s.list.length ? s.list[0].value : "";
+    select.update({
+      items: pane.list,
+      query: pane.filter,
+      cursor: pane.filter.length,
+      highlightIndex: 0,
+    });
   };
 
-  const resetMenu = (s: SelectState) => {
+  const resetMenu = () => {
     currentPane = mainPane;
     selectedProvider = undefined;
     currentProviders = [];
     currentSessions = [];
-    s.value = "";
-    s.label = mainPane.label ? mainPane.label.toUpperCase() : "SELECT";
-    s.list = mainPane.list;
-    s.selected = s.list.length ? s.list[0].value : "";
   };
 
-  const closeMenu = (s: SelectState) => {
-    resetMenu(s);
+  const closeMenu = () => {
+    resetMenu();
     state.overlay = false;
   };
 
@@ -441,36 +300,53 @@ export function mainMenu(state: TUIState, initialPane = "main") {
     }
   };
 
-  const select = useSelectOverlay({
-    ...currentPane,
-    onSelect: (s) => {
-      if (!s.selected) return;
-
+  select = Select({
+    items: currentPane.list,
+    initialQuery: currentPane.filter,
+    stateKey: "menu-filter-input",
+    maxVisible: 20,
+    searchLabel: "",
+    placeholder: "Search...",
+    highlightColor: theme.black,
+    fgColor: theme.bblack,
+    bgColor: theme.white,
+    autoFocus: true,
+    filter: (items, query) =>
+      query ? items.filter((item) => item.filterText.includes(query)) : items,
+    renderRow: (item, { highlighted }) =>
+      Text(item.label, {
+        fgColor: highlighted ? theme.black : theme.bblack,
+      }),
+    onSelect: (selected) => {
       if (currentPane.label === "main") {
-        if (s.selected === "providers") {
-          return providersPane().then((pane) => {
-            openPane(s, pane);
-          });
-        }
-
-        if (s.selected === "sessions") {
-          return sessionsPane().then((pane) => {
-            openPane(s, pane);
-          });
-        }
-
-        if (s.selected === "fork") {
-          openPane(s, forkPane());
+        if (selected === "providers") {
+          select.update({ query: "", cursor: 0, highlightIndex: 0 });
+          void providersPane()
+            .then(openPane)
+            .catch(() => openPane(mainPane));
           return;
         }
 
-        const nextPane = panes.find((pane) => pane.label === s.selected);
-        if (nextPane) openPane(s, nextPane);
+        if (selected === "sessions") {
+          select.update({ query: "", cursor: 0, highlightIndex: 0 });
+          void sessionsPane()
+            .then(openPane)
+            .catch(() => openPane(mainPane));
+          return;
+        }
+
+        if (selected === "fork") {
+          openPane(forkPane());
+          return;
+        }
+
+        const nextPane = panes.find((pane) => pane.label === selected);
+        if (nextPane) openPane(nextPane);
         return;
       }
 
       if (currentPane.label === "sessions") {
-        const session = currentSessions.find((v) => v.id === s.selected);
+        const session = currentSessions.find((v) => v.id === selected);
         if (!session) return;
 
         state.sessionId = session.id;
@@ -482,12 +358,12 @@ export function mainMenu(state: TUIState, initialPane = "main") {
         state.contextSize = estimateContextTokens(state.messages);
         state.scrollOffset = 0;
         state.stickToBottom = true;
-        closeMenu(s);
+        closeMenu();
         return;
       }
 
       if (currentPane.label === "fork") {
-        const selectedIndex = Number(s.selected);
+        const selectedIndex = Number(selected);
         if (
           !Number.isInteger(selectedIndex) ||
           !state.messages[selectedIndex]
@@ -504,12 +380,12 @@ export function mainMenu(state: TUIState, initialPane = "main") {
         state.contextSize = estimateContextTokens(state.messages);
         state.scrollOffset = 0;
         state.stickToBottom = true;
-        closeMenu(s);
+        closeMenu();
         return;
       }
 
       if (currentPane.label === "themes") {
-        const nextTheme = TUI_THEME_IDS.find((id) => id === s.selected);
+        const nextTheme = TUI_THEME_IDS.find((id) => id === selected);
         if (!nextTheme) return;
 
         state.options.theme = nextTheme;
@@ -521,16 +397,16 @@ export function mainMenu(state: TUIState, initialPane = "main") {
           customProviders: state.options.customProviders,
           theme: nextTheme,
         });
-        closeMenu(s);
+        closeMenu();
         return;
       }
 
       if (currentPane.label === "providers") {
-        const provider = currentProviders.find((v) => v === s.selected);
+        const provider = currentProviders.find((v) => v === selected);
         if (!provider) return;
 
         selectedProvider = provider;
-        openPane(s, {
+        openPane({
           label: "models",
           filter: "",
           list: getProviderModelOptions(selectedProvider),
@@ -542,7 +418,7 @@ export function mainMenu(state: TUIState, initialPane = "main") {
         if (!selectedProvider) return;
 
         const model = findModelConfig(
-          s.selected,
+          selected,
           selectedProvider,
           state.options.customProviders,
         );
@@ -557,12 +433,12 @@ export function mainMenu(state: TUIState, initialPane = "main") {
           customProviders: state.options.customProviders,
           theme: state.options.theme,
         });
-        closeMenu(s);
+        closeMenu();
         return;
       }
 
       if (currentPane.label === "effort") {
-        const effort = reasoningEfforts.find((v) => v === s.selected);
+        const effort = reasoningEfforts.find((v) => v === selected);
         if (!effort) return;
 
         state.options.effort = effort;
@@ -573,17 +449,23 @@ export function mainMenu(state: TUIState, initialPane = "main") {
           customProviders: state.options.customProviders,
           theme: state.options.theme,
         });
-        closeMenu(s);
+        closeMenu();
       }
     },
     onCancel: () => {
-      currentPane = mainPane;
-      selectedProvider = undefined;
-      currentProviders = [];
-      currentSessions = [];
+      resetMenu();
       state.overlay = false;
+    },
+    onKeyPress: (key) => {
+      if (key === "ctrl+p") {
+        resetMenu();
+        state.overlay = false;
+        return;
+      }
+
+      return false;
     },
   });
 
-  return select;
+  return () => SelectOverlay(currentPane.label, select);
 }

@@ -19,25 +19,6 @@ export interface TUIThemeDefinition {
   userMessageBgColor?: Color;
 }
 
-const ANSI_SLOT_HEX: Record<Color, string> = {
-  color00: "#000000",
-  color01: "#cd3131",
-  color02: "#0dbc79",
-  color03: "#e5e510",
-  color04: "#2472c8",
-  color05: "#bc3fbc",
-  color06: "#11a8cd",
-  color07: "#e5e5e5",
-  color08: "#666666",
-  color09: "#f14c4c",
-  color10: "#23d18b",
-  color11: "#f5f543",
-  color12: "#3b8eea",
-  color13: "#d670d6",
-  color14: "#29b8db",
-  color15: "#ffffff",
-};
-
 export const theme = {
   black: "color00",
   red: "color01",
@@ -114,58 +95,64 @@ const molokaiLightPalette: Theme = {
   color15: "#fffdf5",
 };
 
-const slotColor = (slot: Color) => ANSI_SLOT_HEX[slot];
-
-function syntaxScope(
-  scope: string | readonly string[],
-  foreground: Color,
-  fontStyle?: string,
-) {
-  return {
-    scope,
-    settings: {
-      foreground: slotColor(foreground),
-      ...(fontStyle ? { fontStyle } : {}),
-    },
-  };
-}
-
 const molokaiDarkSyntax = {
-  name: "mini-coder-molokai-dark",
-  type: "dark",
-  fg: slotColor("color07"),
-  tokenColors: [
-    syntaxScope(["comment", "markup.quote"], "color08", "italic"),
-    syntaxScope(["keyword", "operator"], "color05"),
-    syntaxScope(["string", "escape", "markup.list"], "color03"),
-    syntaxScope(["number", "regexp"], "color13"),
-    syntaxScope(["function", "command", "markup.code"], "color10"),
-    syntaxScope(["builtin", "property", "type", "meta"], "color06"),
-    syntaxScope("markup.heading", "color04", "bold"),
-    syntaxScope(["diff.deleted", "diff.file.old"], "color09"),
-    syntaxScope(["diff.inserted", "diff.file.new"], "color10"),
-    syntaxScope("diff.hunk", "color13"),
-    syntaxScope(["diff.header", "diff.no-newline"], "color08"),
-  ],
+  baseStyle: { fgColor: theme.white },
+  scopeStyles: {
+    comment: { fgColor: theme.bblack, italic: true },
+    "markup.quote": { fgColor: theme.bblack, italic: true },
+    keyword: { fgColor: theme.magenta },
+    operator: { fgColor: theme.magenta },
+    string: { fgColor: theme.yellow },
+    escape: { fgColor: theme.yellow },
+    "markup.list": { fgColor: theme.yellow },
+    number: { fgColor: theme.bmagenta },
+    regexp: { fgColor: theme.bmagenta },
+    function: { fgColor: theme.bgreen },
+    command: { fgColor: theme.bgreen },
+    "markup.code": { fgColor: theme.bgreen },
+    builtin: { fgColor: theme.cyan },
+    property: { fgColor: theme.cyan },
+    type: { fgColor: theme.cyan },
+    meta: { fgColor: theme.cyan },
+    "markup.heading": { fgColor: theme.blue, bold: true },
+    "diff.deleted": { fgColor: theme.bred },
+    "diff.file.old": { fgColor: theme.bred },
+    "diff.inserted": { fgColor: theme.bgreen },
+    "diff.file.new": { fgColor: theme.bgreen },
+    "diff.hunk": { fgColor: theme.bmagenta },
+    "diff.header": { fgColor: theme.bblack },
+    "diff.no-newline": { fgColor: theme.bblack },
+  },
 } as const satisfies SyntaxHighlightTheme;
 
 const molokaiLightSyntax = {
-  name: "mini-coder-molokai-light",
-  type: "light",
-  fg: slotColor("color00"),
-  tokenColors: [
-    syntaxScope(["comment", "markup.quote"], "color08", "italic"),
-    syntaxScope(["keyword", "operator"], "color13"),
-    syntaxScope(["string", "escape", "markup.list"], "color11"),
-    syntaxScope(["number", "regexp"], "color09"),
-    syntaxScope(["function", "command", "markup.code"], "color10"),
-    syntaxScope(["builtin", "property", "type", "meta"], "color14"),
-    syntaxScope("markup.heading", "color12", "bold"),
-    syntaxScope(["diff.deleted", "diff.file.old"], "color09"),
-    syntaxScope(["diff.inserted", "diff.file.new"], "color10"),
-    syntaxScope("diff.hunk", "color13"),
-    syntaxScope(["diff.header", "diff.no-newline"], "color08"),
-  ],
+  baseStyle: { fgColor: theme.black },
+  scopeStyles: {
+    comment: { fgColor: theme.bblack, italic: true },
+    "markup.quote": { fgColor: theme.bblack, italic: true },
+    keyword: { fgColor: theme.bmagenta },
+    operator: { fgColor: theme.bmagenta },
+    string: { fgColor: theme.byellow },
+    escape: { fgColor: theme.byellow },
+    "markup.list": { fgColor: theme.byellow },
+    number: { fgColor: theme.bred },
+    regexp: { fgColor: theme.bred },
+    function: { fgColor: theme.bgreen },
+    command: { fgColor: theme.bgreen },
+    "markup.code": { fgColor: theme.bgreen },
+    builtin: { fgColor: theme.bcyan },
+    property: { fgColor: theme.bcyan },
+    type: { fgColor: theme.bcyan },
+    meta: { fgColor: theme.bcyan },
+    "markup.heading": { fgColor: theme.bblue, bold: true },
+    "diff.deleted": { fgColor: theme.bred },
+    "diff.file.old": { fgColor: theme.bred },
+    "diff.inserted": { fgColor: theme.bgreen },
+    "diff.file.new": { fgColor: theme.bgreen },
+    "diff.hunk": { fgColor: theme.bmagenta },
+    "diff.header": { fgColor: theme.bblack },
+    "diff.no-newline": { fgColor: theme.bblack },
+  },
 } as const satisfies SyntaxHighlightTheme;
 
 export const DEFAULT_TUI_THEME_ID: TUIThemeId = "ansi16";

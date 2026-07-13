@@ -1,4 +1,5 @@
 import {
+  createSyntaxHighlight,
   SyntaxHighlight,
   type SyntaxHighlightTheme,
 } from "@cel-tui/components";
@@ -7,6 +8,31 @@ import { estimateTokens } from "./shared";
 import { getTUITheme, textColorForBackground } from "./themes";
 import { TextPill, theme } from "./tui-components";
 import type { TUIMessage, TUIState, TUIToolCall } from "./types";
+
+const streamingHighlighter = createSyntaxHighlight();
+let streamingMessage: TUIMessage | undefined;
+
+function highlightMessage(
+  message: TUIMessage,
+  syntaxTheme: SyntaxHighlightTheme,
+  streaming: boolean,
+) {
+  if (!streaming) {
+    if (streamingMessage === message) {
+      streamingHighlighter.dispose();
+      streamingMessage = undefined;
+    }
+    return SyntaxHighlight(message.text, "markdown", { theme: syntaxTheme });
+  }
+
+  if (streamingMessage !== message) {
+    streamingHighlighter.dispose();
+    streamingMessage = message;
+  }
+  return streamingHighlighter(message.text, "markdown", {
+    theme: syntaxTheme,
+  });
+}
 
 export function emptyState(state: TUIState): Node {
   const randColor = theme.bgreen;
@@ -130,6 +156,7 @@ function ConversationMessage(
   message: TUIMessage,
   syntaxTheme: SyntaxHighlightTheme,
   userMessageBgColor: Color | undefined,
+  streaming: boolean,
 ) {
   const blocks: Node[] = [];
 
@@ -152,7 +179,7 @@ function ConversationMessage(
           bgColor: message.role === "user" ? userMessageBgColor : undefined,
           padding: { y: 1, x: message.role === "user" ? 1 : 0 },
         },
-        [SyntaxHighlight(message.text, "markdown", { theme: syntaxTheme })],
+        [highlightMessage(message, syntaxTheme, streaming)],
       ),
     );
   }
@@ -208,11 +235,14 @@ export function Conversation(state: TUIState) {
         state.stickToBottom = offset >= maxOffset;
       },
     },
-    state.tuiMessages.map((message) =>
+    state.tuiMessages.map((message, index) =>
       ConversationMessage(
         message,
         activeTheme.syntax,
         activeTheme.userMessageBgColor,
+        state.streaming &&
+          message.role === "assistant" &&
+          index === state.tuiMessages.length - 1,
       ),
     ),
   );

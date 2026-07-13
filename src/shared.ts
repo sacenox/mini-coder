@@ -61,21 +61,6 @@ export function relativeTime(timestamp: number): string {
   return elapsedTime(seconds);
 }
 
-export function onceEvery<T extends unknown[]>(
-  n: number,
-  fn: (...args: T) => void,
-) {
-  let calls = 0;
-
-  return (...args: T) => {
-    calls++;
-
-    if (calls % n === 0) {
-      fn(...args);
-    }
-  };
-}
-
 export function takeTail<T>(arr: T[], x: number): T[] {
   return x <= 0 ? [] : arr.slice(-x);
 }

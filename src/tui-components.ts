@@ -1,5 +1,5 @@
+import { Spinner as CelSpinner } from "@cel-tui/components";
 import { type Color, HStack, Text } from "@cel-tui/core";
-import { onceEvery } from "./shared";
 import { textColorForBackground, theme } from "./themes";
 import type { TUIState } from "./types";
 
@@ -18,50 +18,48 @@ export function TextPill(
   ]);
 }
 
-export function Spinner() {
-  const spinnerFrames = [
-    "⠁",
-    "⠂",
-    "⠄",
-    "⡀",
-    "⡈",
-    "⡐",
-    "⡠",
-    "⣀",
-    "⣁",
-    "⣂",
-    "⣄",
-    "⣌",
-    "⣔",
-    "⣤",
-    "⣥",
-    "⣦",
-    "⣮",
-    "⣶",
-    "⣷",
-    "⣿",
-    "⡿",
-    "⠿",
-    "⢟",
-    "⠟",
-    "⡛",
-    "⠛",
-    "⠫",
-    "⢋",
-    "⠋",
-    "⠍",
-    "⡉",
-    "⠉",
-    "⠑",
-    "⠡",
-    "⢁",
-  ];
-  let spinnerTick = 0;
-  const spinnerEvery = onceEvery(4, () => spinnerTick++);
-  const currentSpinner = () =>
-    spinnerFrames[spinnerTick % spinnerFrames.length];
-
-  return { spinnerEvery, currentSpinner };
+export function Spinner(onFrame?: (frame: string) => void) {
+  return CelSpinner({
+    frames: [
+      "⠁",
+      "⠂",
+      "⠄",
+      "⡀",
+      "⡈",
+      "⡐",
+      "⡠",
+      "⣀",
+      "⣁",
+      "⣂",
+      "⣄",
+      "⣌",
+      "⣔",
+      "⣤",
+      "⣥",
+      "⣦",
+      "⣮",
+      "⣶",
+      "⣷",
+      "⣿",
+      "⡿",
+      "⠿",
+      "⢟",
+      "⠟",
+      "⡛",
+      "⠛",
+      "⠫",
+      "⢋",
+      "⠋",
+      "⠍",
+      "⡉",
+      "⠉",
+      "⠑",
+      "⠡",
+      "⢁",
+    ],
+    maxFps: 15,
+    onFrame,
+  });
 }
 
 export function ActivityPill(state: TUIState, spinnerFrame: string) {
