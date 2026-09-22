@@ -67,8 +67,9 @@ Hard constraints. Do not cross these without explicit direction:
   the turn.
 - The loop has no compaction, no retries, and no meta-messages between steps.
   Provider errors surface as-is, never masked or summarized.
-- `edit` and `bash` only. No `read` tool — the model reads files through `bash`.
-  Tool arguments are untrusted and validated once at the boundary.
+- `edit`, `read`, and `bash` only. Tool arguments are untrusted and validated
+  once at the boundary. `read` returns image blocks only for models that declare
+  image input.
 - Interruption: ESC politely pauses at the next step boundary; Ctrl+C cancels the
   turn (abort the request, kill the tool's process group, persist the aborted
   message); Ctrl+D exits on an empty draft. Completed side effects are never

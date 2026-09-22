@@ -61,6 +61,7 @@ function completeLines(text: string): string[] {
 function callSummary(name: string, args: JsonObject): string {
   if (name === "bash" && typeof args.command === "string") return args.command.replace(/\s*\n\s*/g, " ");
   if (name === "edit" && typeof args.path === "string") return args.path;
+  if (name === "read" && typeof args.path === "string") return args.path;
   return JSON.stringify(args);
 }
 

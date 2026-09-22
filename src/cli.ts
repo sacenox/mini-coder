@@ -11,7 +11,7 @@ import type {
 } from "@earendil-works/pi-ai";
 import { loadConfig, resolveModel, type ToolName } from "./config.ts";
 import { buildSystemPrompt } from "./prompt.ts";
-import { toolSchemas } from "./tools/index.ts";
+import { acceptsImages, toolSchemas } from "./tools/index.ts";
 import { Session } from "./session.ts";
 import { NO_INTERACTION, runAgentTurn } from "./agent.ts";
 import { runTui } from "./tui/tui.ts";
@@ -105,7 +105,7 @@ async function main(): Promise<void> {
     models,
     model,
     systemPrompt: buildSystemPrompt(config),
-    tools: toolSchemas(config.tools),
+    tools: toolSchemas(config.tools, acceptsImages(model)),
     toolNames: config.tools,
     thinkingEffort: config.thinkingEffort,
     session,

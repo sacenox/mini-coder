@@ -17,7 +17,7 @@ import { googleGenerativeAIApi } from "@earendil-works/pi-ai/api/google-generati
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy";
 
-const ToolNameSchema = Type.Union([Type.Literal("edit"), Type.Literal("bash")]);
+const ToolNameSchema = Type.Union([Type.Literal("edit"), Type.Literal("read"), Type.Literal("bash")]);
 export type ToolName = Static<typeof ToolNameSchema>;
 
 const CustomApiSchema = Type.Union([
@@ -47,7 +47,7 @@ const ConfigSchema = Type.Object(
     systemPrompt: Type.String({ default: "" }),
     discoverAgentFiles: Type.Boolean({ default: true }),
     skillsDirs: Type.Array(Type.String(), { default: [] }),
-    tools: Type.Array(ToolNameSchema, { default: ["edit", "bash"] }),
+    tools: Type.Array(ToolNameSchema, { default: ["edit", "read", "bash"] }),
     provider: Type.String(),
     model: Type.String(),
     thinkingEffort: Type.Union(

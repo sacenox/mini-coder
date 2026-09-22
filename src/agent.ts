@@ -12,7 +12,7 @@ import {
   type UserMessage,
 } from "@earendil-works/pi-ai";
 import type { Session } from "./session.ts";
-import { executeTool, type ToolDetails, type ToolResult } from "./tools/index.ts";
+import { acceptsImages, executeTool, type ToolDetails, type ToolResult } from "./tools/index.ts";
 import type { ToolName } from "./config.ts";
 
 export type Phase = "preparing" | "waitingModel" | "streaming" | "runningTool" | "pausing" | "idle";
@@ -165,6 +165,7 @@ export async function runAgentTurn(run: AgentRun): Promise<void> {
         try {
           result = await executeTool(tool, call, {
             signal,
+            supportsImages: acceptsImages(run.model),
             onOutput: (chunk) => onEvent({ type: "toolOutput", name: call.name, callId: call.id, chunk }),
           });
         } catch (error) {
@@ -176,7 +177,7 @@ export async function runAgentTurn(run: AgentRun): Promise<void> {
         role: "toolResult",
         toolCallId: call.id,
         toolName: call.name,
-        content: [{ type: "text", text: result.text }],
+        content: [{ type: "text", text: result.text }, ...(result.images ?? [])],
         details: result.details,
         isError: result.isError,
         timestamp: Date.now(),
