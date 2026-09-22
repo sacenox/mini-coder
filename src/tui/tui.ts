@@ -32,6 +32,19 @@ function wrapText(text: string, width: number): string[] {
   return text.split("\n").flatMap((line) => wrapLine(line, width));
 }
 
+interface LiveRow {
+  text: string;
+  dim: boolean;
+}
+
+function wrapStyled(text: string, width: number, dim: boolean): LiveRow[] {
+  return wrapText(text, width).map((line) => ({ text: line, dim }));
+}
+
+function dim(text: string): string {
+  return `\x1b[2m${text}\x1b[22m`;
+}
+
 function tail(text: string): string {
   return text.length > MAX_LIVE_CHARS ? text.slice(text.length - MAX_LIVE_CHARS) : text;
 }
@@ -73,11 +86,11 @@ class LiveRegion {
     return out;
   }
 
-  draw(lines: string[], cursorRow: number, cursorCol: number): string {
+  draw(lines: LiveRow[], cursorRow: number, cursorCol: number): string {
     let out = this.clear();
     for (let i = 0; i < lines.length; i++) {
       if (i > 0) out += "\r\n";
-      out += lines[i];
+      out += lines[i].dim ? dim(lines[i].text) : lines[i].text;
     }
     const up = lines.length - 1 - cursorRow;
     if (up > 0) out += `\x1b[${up}A`;
@@ -315,7 +328,7 @@ class Tui {
     const parts: string[] = [];
     for (const block of message.content) {
       if (block.type === "thinking") {
-        if (block.thinking.trim()) parts.push(block.thinking.trimEnd());
+        if (block.thinking.trim()) parts.push(dim(block.thinking.trimEnd()));
       } else if (block.type === "text") {
         if (block.text.trim()) parts.push(block.text.trimEnd());
       } else if (block.type === "toolCall") {
@@ -352,13 +365,13 @@ class Tui {
     if (this.closed) return;
     const width = Math.max(1, this.term.width);
     const maxLive = Math.max(1, Math.min(MAX_LIVE_ROWS, this.term.height - 1));
-    const content: string[] = [];
-    if (this.reasoning) content.push(...wrapText(this.reasoning, width));
-    if (this.answer) content.push(...wrapText(this.answer, width));
-    if (this.toolOutput) content.push(...wrapText(this.toolOutput, width));
-    const status = wrapText(`[${this.status}]`, width);
+    const all: LiveRow[] = [];
+    if (this.reasoning) all.push(...wrapStyled(this.reasoning, width, true));
+    if (this.answer) all.push(...wrapStyled(this.answer, width, false));
+    if (this.toolOutput) all.push(...wrapStyled(this.toolOutput, width, false));
+    all.push(...wrapStyled(`[${this.status}]`, width, true));
     const editor = this.editor.render(width);
-    const all = [...content, ...status, ...editor.rows];
+    for (const row of editor.rows) all.push({ text: row, dim: false });
     const shown = all.slice(-maxLive);
     const editorOffset = all.length - editor.rows.length;
     const shownOffset = all.length - shown.length;
