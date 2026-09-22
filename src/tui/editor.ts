@@ -1,7 +1,30 @@
 import { displayWidth, expandTabs, wrapLine, type Key } from "./term.ts";
 
+const TAB = 4;
+const DEFAULT_WIDTH = 80;
+
 function codePoints(line: string): string[] {
   return Array.from(line);
+}
+
+function isSpace(ch: string): boolean {
+  return /\s/u.test(ch);
+}
+
+/** First code point index of the word before `col`; shared by all word motion. */
+function wordStart(cps: string[], col: number): number {
+  let i = col;
+  while (i > 0 && isSpace(cps[i - 1])) i--;
+  while (i > 0 && !isSpace(cps[i - 1])) i--;
+  return i;
+}
+
+/** Code point index one past the word at or after `col`. */
+function wordEnd(cps: string[], col: number): number {
+  let i = col;
+  while (i < cps.length && isSpace(cps[i])) i++;
+  while (i < cps.length && !isSpace(cps[i])) i++;
+  return i;
 }
 
 export interface EditorRender {
@@ -14,6 +37,8 @@ export class Editor {
   private lines: string[] = [""];
   private row = 0;
   private col = 0;
+  private scroll = 0;
+  private width = DEFAULT_WIDTH;
 
   text(): string {
     return this.lines.join("\n");
@@ -23,15 +48,18 @@ export class Editor {
     this.lines = [""];
     this.row = 0;
     this.col = 0;
+    this.scroll = 0;
   }
 
   handle(key: Key): "submit" | "changed" | "none" {
     switch (key.type) {
-      case "text":
-        this.insert(key.text);
-        return "changed";
+      case "submit":
+        return "submit";
       case "newline":
         this.insert("\n");
+        return "changed";
+      case "text":
+        this.insert(key.text);
         return "changed";
       case "tab":
         this.insert("\t");
@@ -42,11 +70,20 @@ export class Editor {
       case "delete":
         this.deleteForward();
         return "changed";
+      case "wordBack":
+        this.wordBack();
+        return "changed";
       case "left":
         this.left();
         return "changed";
       case "right":
         this.right();
+        return "changed";
+      case "wordLeft":
+        this.wordLeft();
+        return "changed";
+      case "wordRight":
+        this.wordRight();
         return "changed";
       case "up":
         this.up();
@@ -60,40 +97,72 @@ export class Editor {
       case "end":
         this.col = codePoints(this.lines[this.row]).length;
         return "changed";
-      case "wordBack":
-        this.wordBack();
+      case "docStart":
+        this.row = 0;
+        this.col = 0;
         return "changed";
-      case "enter":
-        return "submit";
+      case "docEnd":
+        this.row = this.lines.length - 1;
+        this.col = codePoints(this.lines[this.row]).length;
+        return "changed";
       default:
         return "none";
     }
   }
 
-  render(width: number): EditorRender {
+  /** Clipped to `maxRows`, scrolled only as far as the caret requires. */
+  render(width: number, maxRows: number): EditorRender {
+    this.width = Math.max(1, width);
     const rows: string[] = [];
     let cursorRow = 0;
     let cursorCol = 0;
     for (let line = 0; line < this.lines.length; line++) {
-      const expanded = expandTabs(this.lines[line]);
-      const chunks = wrapLine(expanded, width);
+      const chunks = wrapLine(expandTabs(this.lines[line], TAB), this.width);
       if (line === this.row) {
-        const prefix = codePoints(expanded)
-          .slice(0, this.col)
-          .join("");
-        const prefixWidth = displayWidth(prefix);
-        let rowInLine = Math.floor(prefixWidth / width);
-        if (rowInLine >= chunks.length) {
-          rowInLine = chunks.length - 1;
-          cursorCol = displayWidth(chunks[rowInLine]);
-        } else {
-          cursorCol = prefixWidth - rowInLine * width;
-        }
-        cursorRow = rows.length + rowInLine;
+        const caret = this.caret();
+        cursorRow = rows.length + caret.row;
+        cursorCol = caret.col;
       }
       rows.push(...chunks);
     }
-    return { rows, cursorRow, cursorCol };
+    const view = Math.max(1, maxRows);
+    if (cursorRow < this.scroll) this.scroll = cursorRow;
+    else if (cursorRow >= this.scroll + view) this.scroll = cursorRow - view + 1;
+    this.scroll = Math.min(Math.max(this.scroll, 0), Math.max(0, rows.length - view));
+    return {
+      rows: rows.slice(this.scroll, this.scroll + view),
+      cursorRow: cursorRow - this.scroll,
+      cursorCol,
+    };
+  }
+
+  /** The caret's display row within its logical line, and its cell column. */
+  private caret(): { row: number; col: number } {
+    const line = this.lines[this.row];
+    const chunks = wrapLine(expandTabs(line, TAB), this.width);
+    const cell = this.cells(line)[this.col];
+    const row = Math.floor(cell / this.width);
+    if (row >= chunks.length) return { row: chunks.length - 1, col: displayWidth(chunks[chunks.length - 1]) };
+    return { row, col: cell - row * this.width };
+  }
+
+  /** Display column of every code point boundary in `line`, tabs expanded. */
+  private cells(line: string): number[] {
+    const out = [0];
+    let col = 0;
+    for (const ch of codePoints(line)) {
+      col += ch === "\t" ? TAB - (col % TAB) : displayWidth(ch);
+      out.push(col);
+    }
+    return out;
+  }
+
+  /** The caret column nearest `cell`, never past the end of the line. */
+  private colAtCell(line: string, cell: number): number {
+    const cells = this.cells(line);
+    let i = cells.length - 1;
+    while (i > 0 && cells[i] > cell) i--;
+    return i;
   }
 
   private insert(text: string): void {
@@ -157,25 +226,62 @@ export class Editor {
     }
   }
 
+  /** One display row, so the caret crosses the wrapped rows of a long line. */
   private up(): void {
-    if (this.row > 0) {
-      this.row--;
-      this.col = Math.min(this.col, codePoints(this.lines[this.row]).length);
+    const line = this.lines[this.row];
+    const caret = this.caret();
+    if (caret.row > 0) {
+      this.col = this.colAtCell(line, this.cells(line)[this.col] - this.width);
+      return;
     }
+    if (this.row === 0) return;
+    this.row--;
+    const previous = this.lines[this.row];
+    const lastRow = wrapLine(expandTabs(previous, TAB), this.width).length - 1;
+    this.col = this.colAtCell(previous, lastRow * this.width + caret.col);
   }
 
   private down(): void {
-    if (this.row < this.lines.length - 1) {
-      this.row++;
-      this.col = Math.min(this.col, codePoints(this.lines[this.row]).length);
+    const line = this.lines[this.row];
+    const caret = this.caret();
+    if (caret.row < wrapLine(expandTabs(line, TAB), this.width).length - 1) {
+      this.col = this.colAtCell(line, this.cells(line)[this.col] + this.width);
+      return;
     }
+    if (this.row === this.lines.length - 1) return;
+    this.row++;
+    this.col = this.colAtCell(this.lines[this.row], caret.col);
+  }
+
+  private wordLeft(): void {
+    const cps = codePoints(this.lines[this.row]);
+    const start = wordStart(cps, this.col);
+    if (start !== this.col) {
+      this.col = start;
+      return;
+    }
+    if (this.row === 0) return;
+    this.row--;
+    const previous = codePoints(this.lines[this.row]);
+    this.col = wordStart(previous, previous.length);
+  }
+
+  private wordRight(): void {
+    const cps = codePoints(this.lines[this.row]);
+    const end = wordEnd(cps, this.col);
+    if (end !== this.col) {
+      this.col = end;
+      return;
+    }
+    if (this.row === this.lines.length - 1) return;
+    this.row++;
+    this.col = wordEnd(codePoints(this.lines[this.row]), 0);
   }
 
   private wordBack(): void {
     const current = codePoints(this.lines[this.row]);
-    const start = this.col;
-    while (this.col > 0 && current[this.col - 1] === " ") this.col--;
-    while (this.col > 0 && current[this.col - 1] !== " ") this.col--;
-    this.lines[this.row] = current.slice(0, this.col).join("") + current.slice(start).join("");
+    const start = wordStart(current, this.col);
+    this.lines[this.row] = current.slice(0, start).join("") + current.slice(this.col).join("");
+    this.col = start;
   }
 }

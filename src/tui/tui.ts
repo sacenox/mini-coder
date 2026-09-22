@@ -98,6 +98,11 @@ class LiveRegion {
   private rows = 0;
   private cursorUp = 0;
 
+  /** Rows the region currently occupies on screen. */
+  get height(): number {
+    return this.rows;
+  }
+
   reset(): void {
     this.rows = 0;
     this.cursorUp = 0;
@@ -182,9 +187,11 @@ class Tui {
     process.on("SIGINT", this.onSignal);
     process.on("SIGTERM", this.onSignal);
     this.separator = true;
+    this.push(`mini-coder · ${this.opts.model.provider}/${this.opts.model.id}`);
     this.push(
-      `mini-coder · ${this.opts.model.provider}/${this.opts.model.id} · ` +
-        "Enter submit · Ctrl+J newline · Esc pause · Ctrl+C cancel · Ctrl+D exit",
+      dim(
+        "Enter submit · Shift+Enter (or Ctrl+J) newline · Esc pause · Ctrl+C cancel · Ctrl+D exit",
+      ),
     );
     this.separator = true;
     this.render();
@@ -467,6 +474,9 @@ class Tui {
   /** Scrollback is written before the live region is redrawn, never after. */
   private flushScroll(): void {
     if (this.scroll === "") return;
+    // A commit on a region filling every row above the last scrolls the
+    // terminal and moves the anchor; re-anchor like SIGWINCH does.
+    if (this.live.height >= this.term.height - 1) this.reanchor = true;
     const out = this.live.clear() + this.scroll;
     this.scroll = "";
     this.term.write(out);
@@ -483,7 +493,7 @@ class Tui {
 
   /** One dim row while a turn is active or paused; nothing when idle. */
   private statusLine(): string | null {
-    if (this.paused || this.phase === "pausing") return "paused - type steering, Enter to continue";
+    if (this.paused || this.phase === "pausing") return "paused - type steering, Enter to submit";
     if (!this.active || this.phase === "idle") return null;
     const label =
       this.phase === "preparing"
@@ -499,41 +509,37 @@ class Tui {
   private draw(): void {
     if (this.closed) return;
     const width = Math.max(1, this.term.width);
-    const lines: string[] = [];
-    lines.push(
+    const height = Math.max(1, this.term.height - 1);
+    const status = this.statusLine();
+    const fixed = 1 + (status !== null ? 1 : 0);
+
+    const pending = this.pending !== "" ? this.pending : this.preview;
+    const inflight: string[] = [];
+    if (pending !== "") {
+      const styled = this.pending === "" ? dim : (row: string) => row;
+      for (const row of wrapLine(expandTabs(pending), width)) inflight.push(styled(row));
+    }
+
+    // Short on space: clip the in-flight rows first, then the editor viewport,
+    // which never drops below one row. The context row is always kept.
+    const keep = Math.max(0, Math.min(inflight.length, height - fixed - 1));
+    const body = inflight.slice(inflight.length - keep);
+    const editor = this.editor.render(width, Math.max(1, height - fixed - body.length));
+
+    const lines = [
       contextUsageLine(
         estimateContextTokens(this.messages, this.opts.systemPrompt, this.opts.tools),
         this.opts.model,
       ),
-    );
-    const pending = this.pending !== "" ? this.pending : this.preview;
-    if (pending !== "") {
-      const styled = this.pending === "" ? dim : (row: string) => row;
-      for (const row of wrapLine(expandTabs(pending), width)) lines.push(styled(row));
-    }
-    const status = this.statusLine();
-    if (status !== null) lines.push(dim(status));
-    const editor = this.editor.render(width);
-    const editorStart = lines.length;
-    lines.push(...editor.rows);
-
-    let cursorRow = editorStart + editor.cursorRow;
-    let cursorCol = editor.cursorCol;
-    let shown = lines;
-    const maxRows = Math.max(1, this.term.height - 1);
-    if (lines.length > maxRows) {
-      const dropped = lines.length - maxRows;
-      shown = lines.slice(dropped);
-      cursorRow -= dropped;
-      if (cursorRow < 0) {
-        cursorRow = 0;
-        cursorCol = 0;
-      }
-    }
-    if (cursorRow >= shown.length) cursorRow = shown.length - 1;
+      ...body,
+      ...(status !== null ? [dim(status)] : []),
+      ...editor.rows,
+    ];
+    let cursorRow = fixed + body.length + editor.cursorRow;
+    if (cursorRow >= lines.length) cursorRow = lines.length - 1;
     const prefix = this.reanchor ? "\r\n" : "";
     this.reanchor = false;
-    this.term.write(prefix + this.live.draw(shown, cursorRow, cursorCol));
+    this.term.write(prefix + this.live.draw(lines, cursorRow, editor.cursorCol));
   }
 
   private exit(): void {

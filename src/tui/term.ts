@@ -74,17 +74,21 @@ export function wrapLine(text: string, width: number): string[] {
 
 export type Key =
   | { type: "text"; text: string }
-  | { type: "enter" }
+  | { type: "submit" }
   | { type: "newline" }
   | { type: "backspace" }
   | { type: "delete" }
+  | { type: "wordBack" }
   | { type: "left" }
   | { type: "right" }
+  | { type: "wordLeft" }
+  | { type: "wordRight" }
   | { type: "up" }
   | { type: "down" }
   | { type: "home" }
   | { type: "end" }
-  | { type: "wordBack" }
+  | { type: "docStart" }
+  | { type: "docEnd" }
   | { type: "tab" }
   | { type: "escape" }
   | { type: "interrupt" }
@@ -93,51 +97,123 @@ export type Key =
 const PASTE_START = "\x1b[200~";
 const PASTE_END = "\x1b[201~";
 
+const SHIFT = 1;
+const ALT = 2;
+const CTRL = 4;
+/** Only real modifiers are acted on; lock bits and the rest are ignored. */
+const MODS = SHIFT | ALT | CTRL;
+
+/** Codes for keys without a printable form, matching kitty's functional range. */
+const CODE = {
+  enter: 13,
+  escape: 27,
+  tab: 9,
+  backspace: 127,
+  delete: 57349,
+  left: 57350,
+  right: 57351,
+  up: 57352,
+  down: 57353,
+  home: 57356,
+  end: 57357,
+} as const;
+
+/** The one table every input path resolves through: code and modifiers to key. */
+const KEYS: Record<string, Key | undefined> = {
+  [`${CODE.enter}:0`]: { type: "submit" },
+  [`${CODE.enter}:${ALT}`]: { type: "newline" },
+  [`${CODE.enter}:${SHIFT}`]: { type: "newline" },
+  [`${CODE.escape}:0`]: { type: "escape" },
+  [`${CODE.tab}:0`]: { type: "tab" },
+  [`${CODE.backspace}:0`]: { type: "backspace" },
+  [`${CODE.backspace}:${CTRL}`]: { type: "wordBack" },
+  [`${CODE.delete}:0`]: { type: "delete" },
+  [`${CODE.left}:0`]: { type: "left" },
+  [`${CODE.left}:${CTRL}`]: { type: "wordLeft" },
+  [`${CODE.right}:0`]: { type: "right" },
+  [`${CODE.right}:${CTRL}`]: { type: "wordRight" },
+  [`${CODE.up}:0`]: { type: "up" },
+  [`${CODE.down}:0`]: { type: "down" },
+  [`${CODE.home}:0`]: { type: "home" },
+  [`${CODE.home}:${CTRL}`]: { type: "docStart" },
+  [`${CODE.end}:0`]: { type: "end" },
+  [`${CODE.end}:${CTRL}`]: { type: "docEnd" },
+  ["97:4"]: { type: "home" }, // Ctrl+A
+  ["98:2"]: { type: "wordBack" }, // Alt+B
+  ["99:4"]: { type: "interrupt" }, // Ctrl+C
+  ["100:4"]: { type: "eof" }, // Ctrl+D
+  ["101:4"]: { type: "end" }, // Ctrl+E
+  ["106:4"]: { type: "newline" }, // Ctrl+J
+  ["119:4"]: { type: "wordBack" }, // Ctrl+W
+};
+
+const CSI_FINALS: Record<string, number | undefined> = {
+  A: CODE.up,
+  B: CODE.down,
+  C: CODE.right,
+  D: CODE.left,
+  H: CODE.home,
+  F: CODE.end,
+};
+
+const CSI_TILDES: Record<number, number | undefined> = {
+  1: CODE.home,
+  3: CODE.delete,
+  4: CODE.end,
+  7: CODE.home,
+  8: CODE.end,
+};
+
+interface Chord {
+  code: number;
+  mods: number;
+}
+
+function lookup(code: number, mods: number): Key | null {
+  return KEYS[`${code}:${mods}`] ?? null;
+}
+
+/** A legacy control byte, as the chord the same key arrives as elsewhere. */
+function controlChord(code: number): Chord {
+  if (code === 0x08) return { code: CODE.backspace, mods: 0 };
+  if (code === 0x09) return { code: CODE.tab, mods: 0 };
+  if (code === 0x0d) return { code: CODE.enter, mods: 0 };
+  return { code: code + 0x60, mods: CTRL };
+}
+
+/** Control bytes are never text: they resolve through the table or vanish. */
+function mapPoint(code: number): Key | null {
+  if (code === 0x7f) return lookup(CODE.backspace, 0);
+  if (code < 0x20) {
+    const { code: point, mods } = controlChord(code);
+    return lookup(point, mods);
+  }
+  return { type: "text", text: String.fromCodePoint(code) };
+}
+
+function modsOf(field: string | undefined): number {
+  const raw = Number.parseInt(field ?? "", 10);
+  return Number.isFinite(raw) && raw > 0 ? (raw - 1) & MODS : 0;
+}
+
+/** `code[:shifted[:base]];mods[:event];text` */
+function csiUChord(params: string): Chord | null {
+  const fields = params.split(";");
+  const code = Number.parseInt(fields[0].split(":")[0], 10);
+  if (!Number.isFinite(code)) return null; // probe replies and private forms
+  if (code >= 57344) return null; // functional keys never arrive as CSI-u
+  return { code, mods: modsOf(fields[1]?.split(":")[0]) };
+}
+
+/** `params final`: the legacy `CSI 1;5D` form and SS3's bare `A`. */
+function legacyChord(final: string, params: string): Chord | null {
+  const fields = params.split(";");
+  const code = final === "~" ? CSI_TILDES[Number.parseInt(fields[0], 10)] : CSI_FINALS[final];
+  return code === undefined ? null : { code, mods: modsOf(fields[1]) };
+}
+
 function normalizePaste(text: string): string {
   return text.replace(/\r\n?/g, "\n");
-}
-
-function mapChar(ch: string): Key | null {
-  switch (ch) {
-    case "\r":
-      return { type: "enter" };
-    case "\n":
-      return { type: "newline" };
-    case "\x7f":
-    case "\x08":
-      return { type: "backspace" };
-    case "\t":
-      return { type: "tab" };
-    case "\x01":
-      return { type: "home" };
-    case "\x05":
-      return { type: "end" };
-    case "\x17":
-      return { type: "wordBack" };
-    case "\x03":
-      return { type: "interrupt" };
-    case "\x04":
-      return { type: "eof" };
-    default:
-      return null;
-  }
-}
-
-function mapCsi(seq: string): Key | null {
-  const last = seq[seq.length - 1];
-  if (last === "A") return { type: "up" };
-  if (last === "B") return { type: "down" };
-  if (last === "C") return { type: "right" };
-  if (last === "D") return { type: "left" };
-  if (last === "H") return { type: "home" };
-  if (last === "F") return { type: "end" };
-  if (last === "~") {
-    const code = Number.parseInt(seq.slice(2, -1), 10);
-    if (code === 1 || code === 7) return { type: "home" };
-    if (code === 4 || code === 8) return { type: "end" };
-    if (code === 3) return { type: "delete" };
-  }
-  return null;
 }
 
 export class KeyParser {
@@ -152,6 +228,15 @@ export class KeyParser {
     if (this.buffer !== "\x1b") return [];
     this.buffer = "";
     return [{ type: "escape" }];
+  }
+
+  /** True while the buffer holds a sequence that may still complete. */
+  pendingSequence(): boolean {
+    return !this.pasting && this.buffer.length > 1;
+  }
+
+  flushSequence(): void {
+    this.buffer = "";
   }
 
   feed(chunk: string): Key[] {
@@ -189,9 +274,8 @@ export class KeyParser {
       const code = this.buffer.codePointAt(0)!;
       const ch = String.fromCodePoint(code);
       this.buffer = this.buffer.slice(ch.length);
-      const key = mapChar(ch);
+      const key = mapPoint(code);
       if (key) keys.push(key);
-      else if (code >= 0x20 && code !== 0x7f) keys.push({ type: "text", text: ch });
     }
     return keys;
   }
@@ -200,24 +284,44 @@ export class KeyParser {
     const buffer = this.buffer;
     if (buffer.length < 2) return false;
     const next = buffer[1];
-    if (next === "[" || next === "O") {
-      let i = 2;
-      while (i < buffer.length) {
-        const code = buffer.charCodeAt(i);
-        if (code >= 0x40 && code <= 0x7e) break;
-        i++;
-      }
-      if (i >= buffer.length) return false;
-      const seq = buffer.slice(0, i + 1);
-      this.buffer = buffer.slice(i + 1);
-      const key = mapCsi(seq);
-      if (key) keys.push(key);
-      return true;
-    }
-    const ch = buffer[1];
+    if (next === "[" || next === "O") return this.parseCsi(keys);
+    if (next === "]") return this.skipString(true);
+    if (next === "P" || next === "X" || next === "^" || next === "_") return this.skipString(false);
     this.buffer = buffer.slice(2);
-    if (ch === "\r" || ch === "\n") keys.push({ type: "newline" });
-    else if (ch === "b" || ch === "B") keys.push({ type: "wordBack" });
+    const key = lookup(next.codePointAt(0)!, ALT);
+    if (key) keys.push(key);
+    return true;
+  }
+
+  private parseCsi(keys: Key[]): boolean {
+    const buffer = this.buffer;
+    let i = 2;
+    while (i < buffer.length) {
+      const code = buffer.charCodeAt(i);
+      if (code >= 0x40 && code <= 0x7e) break;
+      i++;
+    }
+    if (i >= buffer.length) return false;
+    const final = buffer[i];
+    const params = buffer.slice(2, i);
+    this.buffer = buffer.slice(i + 1);
+    const chord = final === "u" ? csiUChord(params) : legacyChord(final, params);
+    if (chord !== null) {
+      const key = lookup(chord.code, chord.mods);
+      if (key) keys.push(key);
+    }
+    return true;
+  }
+
+  /** OSC ends at BEL or ST; DCS/APC/PM/SOS end at ST. Skipped whole. */
+  private skipString(bel: boolean): boolean {
+    const st = this.buffer.indexOf("\x1b\\", 2);
+    const bell = bel ? this.buffer.indexOf("\x07", 2) : -1;
+    let end = -1;
+    if (bell >= 0 && (st < 0 || bell < st)) end = bell + 1;
+    else if (st >= 0) end = st + 2;
+    if (end < 0) return false;
+    this.buffer = this.buffer.slice(end);
     return true;
   }
 }
@@ -231,6 +335,7 @@ export class Terminal {
   private readonly handlers: TerminalHandlers;
   private parser = new KeyParser();
   private escapeTimer: NodeJS.Timeout | undefined;
+  private sequenceTimer: NodeJS.Timeout | undefined;
   private started = false;
 
   constructor(handlers: TerminalHandlers) {
@@ -253,16 +358,17 @@ export class Terminal {
     process.stdin.resume();
     process.stdin.on("data", this.onData);
     process.stdout.on("resize", this.onResize);
-    process.stdout.write("\x1b[?2004h");
+    // Bracketed paste, then kitty flag 1 so `Shift+Enter` is distinguishable.
+    if (process.stdout.isTTY) process.stdout.write("\x1b[?2004h\x1b[>1u\x1b[?u");
   }
 
   stop(): void {
     if (!this.started) return;
     this.started = false;
-    if (this.escapeTimer) clearTimeout(this.escapeTimer);
+    this.clearTimers();
     process.stdin.off("data", this.onData);
     process.stdout.off("resize", this.onResize);
-    process.stdout.write("\x1b[?2004l");
+    if (process.stdout.isTTY) process.stdout.write("\x1b[<u\x1b[?2004l");
     if (process.stdin.isTTY) process.stdin.setRawMode(false);
     process.stdin.pause();
   }
@@ -271,17 +377,28 @@ export class Terminal {
     process.stdout.write(text);
   }
 
+  private clearTimers(): void {
+    if (this.escapeTimer) clearTimeout(this.escapeTimer);
+    if (this.sequenceTimer) clearTimeout(this.sequenceTimer);
+    this.escapeTimer = undefined;
+    this.sequenceTimer = undefined;
+  }
+
   private onData = (chunk: string): void => {
-    if (this.escapeTimer) {
-      clearTimeout(this.escapeTimer);
-      this.escapeTimer = undefined;
-    }
+    // Both timers reset on every chunk, so `Alt`+key stays snappy and an
+    // incomplete sequence never wedges the buffer.
+    this.clearTimers();
     for (const key of this.parser.feed(chunk)) this.handlers.onKey(key);
     if (this.parser.pendingEscape()) {
       this.escapeTimer = setTimeout(() => {
         this.escapeTimer = undefined;
         for (const key of this.parser.flushEscape()) this.handlers.onKey(key);
       }, 30);
+    } else if (this.parser.pendingSequence()) {
+      this.sequenceTimer = setTimeout(() => {
+        this.sequenceTimer = undefined;
+        this.parser.flushSequence();
+      }, 150);
     }
   };
 
