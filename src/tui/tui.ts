@@ -261,6 +261,7 @@ class Tui {
   }
 
   private handleAgentEvent(event: AgentEvent): void {
+    if (this.closed) return;
     switch (event.type) {
       case "phase":
         this.status = phaseStatus(event.phase, event.detail);
@@ -331,7 +332,7 @@ class Tui {
   }
 
   private commit(text: string): void {
-    if (text === "") return;
+    if (this.closed || text === "") return;
     let out = this.live.clear();
     out += text.endsWith("\n") ? text : `${text}\n`;
     this.term.write(out);
@@ -376,6 +377,7 @@ class Tui {
   private exit(): void {
     if (this.closed) return;
     this.closed = true;
+    this.abort?.abort();
     this.term.write(this.live.clear());
     this.term.stop();
     this.opts.session.close();

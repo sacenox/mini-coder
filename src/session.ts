@@ -81,6 +81,7 @@ export class Session {
   id: string | null = null;
   logPath: string | null = null;
   private fd: number | null = null;
+  private closed = false;
 
   constructor(sessionsDir: string, cwd: string) {
     this.sessionsDir = sessionsDir;
@@ -88,6 +89,7 @@ export class Session {
   }
 
   appendMessage(message: Message): void {
+    if (this.closed) return;
     this.ensure(titleFor(message));
     this.write({
       type: "message",
@@ -97,11 +99,13 @@ export class Session {
   }
 
   appendRequest(input: Omit<RequestRecord, "type" | "at">): void {
+    if (this.closed) return;
     this.ensure("session");
     this.write({ type: "request", at: new Date().toISOString(), ...input });
   }
 
   close(): void {
+    this.closed = true;
     if (this.fd !== null) {
       closeSync(this.fd);
       this.fd = null;
