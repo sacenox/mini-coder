@@ -15,6 +15,8 @@ import type { Session } from "../session.ts";
 import type { ToolName } from "../config.ts";
 import { Terminal, expandTabs, wrapLine, type Key } from "./term.ts";
 import { Editor } from "./editor.ts";
+import { dim } from "./styles.ts";
+import { contextUsageLine, estimateContextTokens } from "./usage.ts";
 
 export interface TuiOptions {
   models: Models;
@@ -42,10 +44,6 @@ const BODY_PREFIX = " | ";
 const ERROR_PREFIX = " ! ";
 const EXIT_LINE = /^exit code: (.+)$/;
 const EDIT_HEADER = /^(Index: |={3,}$|--- |\+\+\+ )/;
-
-function dim(text: string): string {
-  return `\x1b[2m${text}\x1b[22m`;
-}
 
 /** The text after the last newline: what is still incomplete. */
 function incomplete(text: string): string {
@@ -502,6 +500,12 @@ class Tui {
     if (this.closed) return;
     const width = Math.max(1, this.term.width);
     const lines: string[] = [];
+    lines.push(
+      contextUsageLine(
+        estimateContextTokens(this.messages, this.opts.systemPrompt, this.opts.tools),
+        this.opts.model,
+      ),
+    );
     const pending = this.pending !== "" ? this.pending : this.preview;
     if (pending !== "") {
       const styled = this.pending === "" ? dim : (row: string) => row;

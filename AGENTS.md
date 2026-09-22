@@ -51,7 +51,7 @@ are references. Extract ideas, do not port code.
 - Module boundaries (names may change, boundaries may not move):
   - `cli` — argument parsing, mode selection, process wiring.
   - `config` — load, validate, merge, resolve config; build `pi-ai` models.
-  - `session` — append-only JSONL store; projection to a `pi-ai` `Context`.
+  - `session` — append-only JSONL store of `pi-ai` `Message`s.
   - `agent` — streaming loop, tool dispatch, pause/cancel state. No UI, no
     provider-specific code.
   - `tools` — `edit`, `bash` runners. No UI.
@@ -129,8 +129,8 @@ Decisions:
 ## Session persistence
 
 `pi-ai` ships no session store. The session layer is a thin append-only JSONL
-wrapper over `pi-ai`'s own `Context`/`Message` types. Never invent a parallel
-message model.
+wrapper around `pi-ai`'s own `Message` type. Never invent a parallel message
+model.
 
 One JSON object per line; never rewrite or delete committed lines. Records:
 
@@ -162,11 +162,11 @@ Directory and file layout:
 - Append with `writeSync` + `fsyncSync` so committed lines survive a crash. A
   persistence failure stops the turn; never continue with unrecorded side
   effects.
-- On read, tolerate a truncated final line; reject corruption in committed
-  history.
-- Preserve message order and tool-call ↔ tool-result relationships. If partials
-  are ever persisted, use `AssistantMessageFrameEncoder` /
-  `reduceAssistantMessageFrames`, not a custom frame format.
+- Preserve message order and tool-call ↔ tool-result relationships.
+- Reading sessions back is deferred; when it is added, tolerate a truncated
+  final line, reject corruption in committed history, and use `pi-ai`'s
+  `AssistantMessageFrameEncoder` / `reduceAssistantMessageFrames` rather than a
+  custom frame format.
 
 ## Agent loop
 
@@ -177,7 +177,7 @@ each result, and repeat. Stop when the assistant produces no tool calls, on
 cancel, or on a surfaced error.
 
 Phases: `preparing`, `waitingModel`, `streaming`, `runningTool`, `pausing`,
-`idle` (plus `cancelled` reachable from active states). Events: `phase`, `text`,
+`idle`; a turn may be cancelled from any active phase. Events: `phase`, `text`,
 `reasoning`, `toolCall`, `toolOutput`, `toolResult`, `message`, `error`,
 `cancelled`, `complete`.
 
@@ -218,7 +218,7 @@ then agent files (when `discoverAgentFiles`).
 
 - Agent files: load `AGENTS.md` and `CLAUDE.md` from `~/.agents/` and the project
   root (`process.cwd()`), trimmed, each under a heading naming its path.
-- Skills: scan each `skillsDirs` entry for `<dir>/SKILL.md`, read its
+- Skills: scan each `skillsDirs` entry for `<dir>/<name>/SKILL.md`, read its
   frontmatter (`name`, `description`), and advertise the absolute path so the
   model can read it with `bash` on demand. Progressive disclosure only — never
   inline skill bodies. No directories means no skills; there is no implicit
@@ -238,9 +238,18 @@ Two regions:
   redrawn. User turns, assistant text, tool calls, and tool results go here. The
   terminal owns scrollback, selection, and scrolling.
 - **Live region** — at most the height of the terminal minus one row, holding
-  the in-flight line (the current incomplete line of whichever stream is
-  active), a one-row phase status, and the editor. Only this region is redrawn.
-  When idle it holds the editor alone: no in-flight line, no status row.
+  a one-row context-usage readout, the in-flight line (the current incomplete
+  line of whichever stream is active), a one-row phase status, and the editor,
+  in that order. Only this region is redrawn. When idle it holds the context
+  readout and the editor: no in-flight line, no status row.
+
+The context readout is always present, including idle, and is display-only: it
+estimates the tokens the next request would send against `model.contextWindow`
+and is never persisted. Anchor on the last `AssistantMessage.usage` — the prompt
+that was sent is `totalTokens - output` — and estimate the anchor message and
+everything after it; fall back to a ~1 token per 4 characters estimate of the
+whole context. Emphasize as it approaches the window, and mark it full when
+`used + model.maxTokens` would exceed it.
 
 Scrollback is append-only and written before the live region is redrawn, never
 after. Blocks — a user turn, a tool call with its result body, a terminal-state
@@ -279,7 +288,7 @@ machine with a short timeout to distinguish a lone ESC from a sequence.
 - **CTRL+C = cancel the turn completely.** Abort the model request via
   `AbortSignal` and terminate the running tool's process group. Persist the
   aborted assistant message (`stopReason: "aborted"`). Return to idle; do not
-  undo completed side effects.
+  undo completed side effects. When idle, it clears a non-empty draft instead.
 - **CTRL+D = exit**, only when the input is empty. Flush the session, restore the
   terminal, exit cleanly.
 - No max turns, tool-call budget, or automatic stop.
@@ -302,16 +311,19 @@ Accepted spellings: `-p <prompt>`, `--print <prompt>`, `-p=<prompt>`,
 
 - Persistence failure stops the turn.
 - Surface provider errors with their message; do not mask, summarize, or retry.
-- Local diagnostics only. No remote telemetry. Debug output goes to stderr
-  behind an explicit flag; redact secrets and prompt/tool content by default.
+- Local diagnostics only. No remote telemetry. Any debug output would go to
+  stderr behind an explicit flag; redact secrets and prompt/tool content by
+  default.
 - No hidden stalls: every wait (model request, tool, pause) has a visible state
-  in the TUI and a diagnostic path in headless mode.
+  in the TUI; in headless mode tool calls, tool output, errors, and
+  cancellation are written to stderr.
 
 ## Scope boundaries
 
 Deferred, not rejected. Do not build unless explicitly promoted:
 
 - context compaction / summarization / masking;
+- reading or resuming sessions (the JSONL log is write-only today);
 - prompt templates;
 - custom agents / subagents / delegation;
 - an extension or plugin system;
@@ -330,9 +342,9 @@ Deferred, not rejected. Do not build unless explicitly promoted:
   code.
 - Prefer plain functions and objects over classes; keep exports minimal; define
   helpers near their use.
-- Validate untrusted input once at the boundary (config, session records, tool
-  args) with Typebox, then keep internal code plain-typed. Do not spread
-  schema-derived types everywhere.
+- Validate untrusted input once at the boundary (config, tool args) with
+  Typebox, then keep internal code plain-typed. Do not spread schema-derived
+  types everywhere.
 - Ask before adding a dependency. `diff` and `typebox` are approved;
   supply-chain risk is a real constraint.
 - Do not add tests unless explicitly asked. Verify manually.
