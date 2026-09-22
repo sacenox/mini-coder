@@ -2,6 +2,7 @@ import process from "node:process";
 import type {
   Api,
   AssistantMessage,
+  JsonObject,
   Message,
   Model,
   Models,
@@ -12,7 +13,7 @@ import type {
 import { runAgentTurn, type AgentEvent, type Phase } from "../agent.ts";
 import type { Session } from "../session.ts";
 import type { ToolName } from "../config.ts";
-import { Terminal, wrapLine, type Key } from "./term.ts";
+import { Terminal, expandTabs, wrapLine, type Key } from "./term.ts";
 import { Editor } from "./editor.ts";
 
 export interface TuiOptions {
@@ -25,45 +26,74 @@ export interface TuiOptions {
   session: Session;
 }
 
-const MAX_LIVE_ROWS = 8;
-const MAX_LIVE_CHARS = 4000;
+/** Status-row spinner frames; the only animation in the TUI. */
+const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+const SPINNER_MS = 120;
 
-function wrapText(text: string, width: number): string[] {
-  return text.split("\n").flatMap((line) => wrapLine(line, width));
-}
+/**
+ * Display-only elision for tool bodies, deliberately worded differently from
+ * the model-facing `... output truncated ...` marker in `tools.ts`.
+ */
+const MAX_BODY_ROWS = 12;
+const ELIDED_HEAD = 4;
+const ELIDED_TAIL = 4;
 
-interface LiveRow {
-  text: string;
-  dim: boolean;
-}
-
-function wrapStyled(text: string, width: number, dim: boolean): LiveRow[] {
-  return wrapText(text, width).map((line) => ({ text: line, dim }));
-}
+const BODY_PREFIX = " | ";
+const ERROR_PREFIX = " ! ";
+const EXIT_LINE = /^exit code: (.+)$/;
+const EDIT_HEADER = /^(Index: |={3,}$|--- |\+\+\+ )/;
 
 function dim(text: string): string {
   return `\x1b[2m${text}\x1b[22m`;
 }
 
-function tail(text: string): string {
-  return text.length > MAX_LIVE_CHARS ? text.slice(text.length - MAX_LIVE_CHARS) : text;
+/** The text after the last newline: what is still incomplete. */
+function incomplete(text: string): string {
+  const index = text.lastIndexOf("\n");
+  return index >= 0 ? text.slice(index + 1) : text;
 }
 
-function phaseStatus(phase: Phase, detail?: string): string {
-  switch (phase) {
-    case "preparing":
-      return "preparing";
-    case "waitingModel":
-      return "waiting for provider";
-    case "streaming":
-      return "streaming";
-    case "runningTool":
-      return `running ${detail ?? "tool"}`;
-    case "pausing":
-      return "paused — type steering, Enter to continue";
-    case "idle":
-      return "ready";
+/** The lines completed by the newest text, excluding the incomplete tail. */
+function completeLines(text: string): string[] {
+  const lines = text.split("\n");
+  lines.pop();
+  return lines;
+}
+
+function callSummary(name: string, args: JsonObject): string {
+  if (name === "bash" && typeof args.command === "string") return args.command.replace(/\s*\n\s*/g, " ");
+  if (name === "edit" && typeof args.path === "string") return args.path;
+  return JSON.stringify(args);
+}
+
+/** Display rewrite of a tool result, by tool name. */
+function resultLines(name: string, text: string, isError: boolean): string[] {
+  const lines = text.trimEnd().split("\n");
+  if (name === "bash") {
+    const exit = EXIT_LINE.exec(lines[lines.length - 1]);
+    if (exit !== null) {
+      lines.pop();
+      if (isError) lines.push(`exit ${exit[1]}`);
+    }
+  } else if (name === "edit" && /^(edited|created) /.test(lines[0])) {
+    lines.shift();
+    // The call line already names the path; drop the repeated diff file header.
+    while (lines.length > 0 && EDIT_HEADER.test(lines[0])) lines.shift();
   }
+  return lines;
+}
+
+function bodyRows(lines: string[], width: number): string[] {
+  const rows = lines.flatMap((line) => wrapLine(expandTabs(line), width));
+  if (rows.length > MAX_BODY_ROWS) {
+    const hidden = rows.length - ELIDED_HEAD - ELIDED_TAIL;
+    return [
+      ...rows.slice(0, ELIDED_HEAD),
+      `... ${hidden} lines not shown ...`,
+      ...rows.slice(rows.length - ELIDED_TAIL),
+    ];
+  }
+  return rows;
 }
 
 class LiveRegion {
@@ -86,11 +116,12 @@ class LiveRegion {
     return out;
   }
 
-  draw(lines: LiveRow[], cursorRow: number, cursorCol: number): string {
+  /** `lines` are already styled; the live region adds no attributes of its own. */
+  draw(lines: string[], cursorRow: number, cursorCol: number): string {
     let out = this.clear();
     for (let i = 0; i < lines.length; i++) {
       if (i > 0) out += "\r\n";
-      out += lines[i].dim ? dim(lines[i].text) : lines[i].text;
+      out += lines[i];
     }
     const up = lines.length - 1 - cursorRow;
     if (up > 0) out += `\x1b[${up}A`;
@@ -111,10 +142,8 @@ class Tui {
   readonly done: Promise<void>;
 
   private resolveExit: () => void = () => {};
-  private status = "ready";
-  private reasoning = "";
-  private answer = "";
-  private toolOutput = "";
+  private phase: Phase = "idle";
+  private detail: string | undefined;
   private active = false;
   private paused = false;
   private pauseRequested = false;
@@ -123,6 +152,21 @@ class Tui {
   private renderScheduled = false;
   private reanchor = false;
   private closed = false;
+
+  // Scrollback: lines accumulate here and are written above the live region.
+  private scroll = "";
+  private wrote = false;
+  private lastBlank = false;
+  private separator = false;
+
+  // In-flight stream state, never persisted: all display-only.
+  private pending = "";
+  private preview = "";
+  private pendingCalls: string[] = [];
+  private streamed = "";
+  private turnStart = 0;
+  private frame = 0;
+  private spinner: NodeJS.Timeout | undefined;
 
   constructor(opts: TuiOptions) {
     this.opts = opts;
@@ -139,10 +183,12 @@ class Tui {
     this.term.start();
     process.on("SIGINT", this.onSignal);
     process.on("SIGTERM", this.onSignal);
-    this.commit(
+    this.separator = true;
+    this.push(
       `mini-coder · ${this.opts.model.provider}/${this.opts.model.id} · ` +
         "Enter submit · Ctrl+J newline · Esc pause · Ctrl+C cancel · Ctrl+D exit",
     );
+    this.separator = true;
     this.render();
   }
 
@@ -174,7 +220,6 @@ class Tui {
     if (key.type === "escape") {
       if (this.active && !this.paused) {
         this.pauseRequested = true;
-        this.status = "pause requested";
         this.render();
       }
       return;
@@ -209,7 +254,14 @@ class Tui {
   private startTurn(): void {
     this.active = true;
     this.abort = new AbortController();
-    this.status = "preparing";
+    this.phase = "preparing";
+    this.detail = undefined;
+    this.turnStart = Date.now();
+    this.frame = 0;
+    this.spinner = setInterval(() => {
+      this.frame++;
+      this.render();
+    }, SPINNER_MS);
     void this.runTurn();
     this.render();
   }
@@ -245,8 +297,8 @@ class Tui {
         onEvent: (event) => this.handleAgentEvent(event),
       });
     } catch (error) {
-      this.status = "failed";
-      this.commit(`! ${(error as Error).message}`);
+      this.separator = true;
+      this.push(`! ${(error as Error).message}`);
     } finally {
       this.active = false;
       this.abort = null;
@@ -257,6 +309,8 @@ class Tui {
         resolve("");
       }
       this.paused = false;
+      if (this.spinner) clearInterval(this.spinner);
+      this.spinner = undefined;
       this.render();
     }
   }
@@ -269,7 +323,6 @@ class Tui {
       resolve("");
     }
     this.abort?.abort();
-    this.status = "cancelling";
     this.render();
   }
 
@@ -277,79 +330,148 @@ class Tui {
     if (this.closed) return;
     switch (event.type) {
       case "phase":
-        this.status = phaseStatus(event.phase, event.detail);
+        this.phase = event.phase;
+        this.detail = event.detail;
         if (event.phase === "pausing") this.paused = true;
         break;
       case "text":
-        this.answer = tail(this.answer + event.delta);
+        this.preview = "";
+        this.pending += event.delta;
+        this.streamed += event.delta;
+        for (const line of completeLines(this.pending)) this.push(line);
+        this.pending = incomplete(this.pending);
         break;
       case "reasoning":
-        this.reasoning = tail(this.reasoning + event.delta);
+        if (this.pending === "") this.preview = incomplete(this.preview + event.delta);
         break;
       case "toolCall":
+        // Flush first so scrollback order matches execution order, then hold the
+        // call line until its result arrives: a message may carry several calls,
+        // all announced before any of them runs.
+        this.flushPending();
+        this.preview = "";
+        this.pendingCalls.push(`-> ${event.name}  ${callSummary(event.name, event.arguments)}`);
         break;
       case "toolOutput":
-        this.toolOutput = tail(this.toolOutput + event.chunk);
+        this.preview = incomplete(this.preview + event.chunk);
         break;
       case "message":
-        this.commitAssistant(event.message);
-        this.answer = "";
-        this.reasoning = "";
+        this.commitMessage(event.message);
         break;
       case "toolResult":
-        this.commitToolResult(event.text, event.isError);
-        this.toolOutput = "";
+        this.preview = "";
+        this.commitToolResult(event.name, event.text, event.isError);
         break;
       case "error":
-        this.status = "failed";
-        this.commit(`! ${event.message}`);
+        this.finishTurn();
+        this.flushPending();
+        this.flushCalls();
+        this.separator = true;
+        this.push(`! ${event.message}`);
         break;
       case "cancelled":
-        this.status = "cancelled";
-        this.commit("! cancelled");
+        this.finishTurn();
+        this.flushPending();
+        this.flushCalls();
+        this.separator = true;
+        this.push("! cancelled");
         break;
       case "complete":
-        this.status = "complete";
+        this.finishTurn();
+        this.flushPending();
+        this.flushCalls();
+        this.separator = true;
+        this.push(dim(`[complete · ${this.elapsed()}s]`));
         break;
     }
     this.render();
+  }
+
+  /** Terminal states clear the status row instead of lingering in it. */
+  private finishTurn(): void {
+    this.phase = "idle";
+    this.detail = undefined;
+    this.paused = false;
+  }
+
+  private elapsed(): number {
+    return Math.max(0, Math.floor((Date.now() - this.turnStart) / 1000));
   }
 
   private commitUser(text: string): void {
-    this.commit(
-      text
-        .split("\n")
-        .map((line) => `> ${line}`)
-        .join("\n"),
-    );
+    this.separator = true;
+    for (const line of text.split("\n")) this.push(`> ${line}`);
+    this.separator = true;
   }
 
-  private commitAssistant(message: AssistantMessage): void {
-    const parts: string[] = [];
-    for (const block of message.content) {
-      if (block.type === "thinking") {
-        if (block.thinking.trim()) parts.push(dim(block.thinking.trimEnd()));
-      } else if (block.type === "text") {
-        if (block.text.trim()) parts.push(block.text.trimEnd());
-      } else if (block.type === "toolCall") {
-        parts.push(`→ ${block.name} ${JSON.stringify(block.arguments)}`);
-      }
+  /** Commits a line the model emitted without streaming it, plus the in-flight tail. */
+  private commitMessage(message: AssistantMessage): void {
+    this.preview = "";
+    this.flushPending();
+    const text = message.content
+      .filter((block) => block.type === "text")
+      .map((block) => block.text)
+      .join("");
+    if (text.trim() !== "" && !this.streamed.includes(text)) {
+      for (const line of text.trimEnd().split("\n")) this.push(line);
     }
-    if (parts.length > 0) this.commit(parts.join("\n"));
+    this.streamed = "";
   }
 
-  private commitToolResult(text: string, isError: boolean): void {
-    const body = text.trimEnd();
-    if (body === "") return;
-    this.commit(isError ? `! ${body}` : body);
+  private commitToolResult(name: string, text: string, isError: boolean): void {
+    const call = this.pendingCalls.shift();
+    this.separator = true;
+    if (call !== undefined) this.push(call);
+    const width = Math.max(1, this.term.width - BODY_PREFIX.length);
+    const rows = bodyRows(resultLines(name, text, isError), width);
+    for (let i = 0; i < rows.length; i++) {
+      const prefix = isError && i === rows.length - 1 ? ERROR_PREFIX : BODY_PREFIX;
+      this.push(prefix + rows[i]);
+    }
+    this.separator = true;
   }
 
-  private commit(text: string): void {
-    if (this.closed || text === "") return;
-    let out = this.live.clear();
-    out += text.endsWith("\n") ? text : `${text}\n`;
+  /** Commits any call line whose result never arrived, e.g. after a cancel. */
+  private flushCalls(): void {
+    for (const call of this.pendingCalls) {
+      this.separator = true;
+      this.push(call);
+    }
+    this.pendingCalls = [];
+  }
+
+  private flushPending(): void {
+    if (this.pending === "") return;
+    const line = this.pending;
+    this.pending = "";
+    this.push(line);
+  }
+
+  /**
+   * Appends one scrollback line. A block boundary owes exactly one blank line,
+   * and two blank lines never appear in a row.
+   */
+  private push(line: string): void {
+    const blank = line === "" || (this.separator && this.wrote);
+    this.separator = false;
+    if (blank && this.wrote && !this.lastBlank) {
+      this.scroll += "\n";
+      this.lastBlank = true;
+    }
+    if (line !== "") {
+      this.scroll += `${line}\n`;
+      this.wrote = true;
+      this.lastBlank = false;
+    }
+    this.flushScroll();
+  }
+
+  /** Scrollback is written before the live region is redrawn, never after. */
+  private flushScroll(): void {
+    if (this.scroll === "") return;
+    const out = this.live.clear() + this.scroll;
+    this.scroll = "";
     this.term.write(out);
-    this.render();
   }
 
   private render(): void {
@@ -361,25 +483,48 @@ class Tui {
     }, 16);
   }
 
+  /** One dim row while a turn is active or paused; nothing when idle. */
+  private statusLine(): string | null {
+    if (this.paused || this.phase === "pausing") return "paused - type steering, Enter to continue";
+    if (!this.active || this.phase === "idle") return null;
+    const label =
+      this.phase === "preparing"
+        ? "preparing"
+        : this.phase === "waitingModel"
+          ? "waiting for provider"
+          : this.phase === "streaming"
+            ? "streaming"
+            : `running ${this.detail ?? "tool"}`;
+    return `${SPINNER[this.frame % SPINNER.length]} ${label} · ${this.elapsed()}s`;
+  }
+
   private draw(): void {
     if (this.closed) return;
     const width = Math.max(1, this.term.width);
-    const maxLive = Math.max(1, Math.min(MAX_LIVE_ROWS, this.term.height - 1));
-    const all: LiveRow[] = [];
-    if (this.reasoning) all.push(...wrapStyled(this.reasoning, width, true));
-    if (this.answer) all.push(...wrapStyled(this.answer, width, false));
-    if (this.toolOutput) all.push(...wrapStyled(this.toolOutput, width, false));
-    all.push(...wrapStyled(`[${this.status}]`, width, true));
+    const lines: string[] = [];
+    const pending = this.pending !== "" ? this.pending : this.preview;
+    if (pending !== "") {
+      const styled = this.pending === "" ? dim : (row: string) => row;
+      for (const row of wrapLine(expandTabs(pending), width)) lines.push(styled(row));
+    }
+    const status = this.statusLine();
+    if (status !== null) lines.push(dim(status));
     const editor = this.editor.render(width);
-    for (const row of editor.rows) all.push({ text: row, dim: false });
-    const shown = all.slice(-maxLive);
-    const editorOffset = all.length - editor.rows.length;
-    const shownOffset = all.length - shown.length;
-    let cursorRow = editorOffset + editor.cursorRow - shownOffset;
+    const editorStart = lines.length;
+    lines.push(...editor.rows);
+
+    let cursorRow = editorStart + editor.cursorRow;
     let cursorCol = editor.cursorCol;
-    if (cursorRow < 0) {
-      cursorRow = 0;
-      cursorCol = 0;
+    let shown = lines;
+    const maxRows = Math.max(1, this.term.height - 1);
+    if (lines.length > maxRows) {
+      const dropped = lines.length - maxRows;
+      shown = lines.slice(dropped);
+      cursorRow -= dropped;
+      if (cursorRow < 0) {
+        cursorRow = 0;
+        cursorCol = 0;
+      }
     }
     if (cursorRow >= shown.length) cursorRow = shown.length - 1;
     const prefix = this.reanchor ? "\r\n" : "";
@@ -391,6 +536,8 @@ class Tui {
     if (this.closed) return;
     this.closed = true;
     this.abort?.abort();
+    if (this.spinner) clearInterval(this.spinner);
+    this.spinner = undefined;
     this.term.write(this.live.clear());
     this.term.stop();
     this.opts.session.close();

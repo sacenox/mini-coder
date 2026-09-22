@@ -1,6 +1,7 @@
 import {
   type Api,
   type AssistantMessage,
+  type JsonObject,
   type Message,
   type Model,
   type Models,
@@ -20,7 +21,7 @@ export type AgentEvent =
   | { type: "phase"; phase: Phase; detail?: string }
   | { type: "text"; delta: string }
   | { type: "reasoning"; delta: string }
-  | { type: "toolCall"; name: string; callId: string }
+  | { type: "toolCall"; name: string; callId: string; arguments: JsonObject }
   | { type: "toolOutput"; name: string; callId: string; chunk: string }
   | { type: "toolResult"; name: string; callId: string; text: string; isError: boolean }
   | { type: "message"; message: AssistantMessage }
@@ -112,7 +113,12 @@ export async function runAgentTurn(run: AgentRun): Promise<void> {
         if (event.type === "text_delta") onEvent({ type: "text", delta: event.delta });
         else if (event.type === "thinking_delta") onEvent({ type: "reasoning", delta: event.delta });
         else if (event.type === "toolcall_end") {
-          onEvent({ type: "toolCall", name: event.toolCall.name, callId: event.toolCall.id });
+          onEvent({
+            type: "toolCall",
+            name: event.toolCall.name,
+            callId: event.toolCall.id,
+            arguments: event.toolCall.arguments,
+          });
         }
       }
     } catch (error) {
