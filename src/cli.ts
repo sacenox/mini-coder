@@ -56,7 +56,6 @@ async function runPrint(prompt: string, ctx: RunContext): Promise<number> {
   process.on("SIGINT", onSignal);
   process.on("SIGTERM", onSignal);
 
-  let last: AssistantMessage | null = null;
   let failed = false;
   let cancelled = false;
   try {
@@ -66,8 +65,7 @@ async function runPrint(prompt: string, ctx: RunContext): Promise<number> {
       signal: controller.signal,
       interaction: NO_INTERACTION,
       onEvent: (event) => {
-        if (event.type === "message") last = event.message;
-        else if (event.type === "toolCall") process.stderr.write(`[tool] ${event.name}\n`);
+        if (event.type === "toolCall") process.stderr.write(`[tool] ${event.name}\n`);
         else if (event.type === "toolOutput") process.stderr.write(event.chunk);
         else if (event.type === "error") {
           failed = true;
@@ -87,9 +85,9 @@ async function runPrint(prompt: string, ctx: RunContext): Promise<number> {
     ctx.session.close();
   }
 
-  if (!failed && !cancelled && last !== null) {
-    const answer = last as AssistantMessage;
-    const text = answer.content
+  const last = messages.filter((message): message is AssistantMessage => message.role === "assistant").at(-1);
+  if (!failed && !cancelled && last !== undefined) {
+    const text = last.content
       .filter((block) => block.type === "text")
       .map((block) => block.text)
       .join("");

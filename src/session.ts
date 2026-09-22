@@ -1,11 +1,8 @@
 import {
-  appendFileSync,
   closeSync,
-  existsSync,
   fsyncSync,
   mkdirSync,
   openSync,
-  readFileSync,
   writeSync,
 } from "node:fs";
 import { randomBytes } from "node:crypto";
@@ -40,7 +37,7 @@ export interface MessageRecord {
 
 export type SessionRecord = SessionHeader | RequestRecord | MessageRecord;
 
-export function slugify(text: string): string {
+function slugify(text: string): string {
   const slug = text
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
@@ -137,7 +134,6 @@ export class Session {
         title,
       };
       this.write(header);
-      this.ignoreDefaultDir();
       return;
     }
     throw new Error(`session: could not create a unique directory in ${this.sessionsDir}`);
@@ -148,29 +144,4 @@ export class Session {
     writeSync(this.fd, JSON.stringify(record) + "\n");
     fsyncSync(this.fd);
   }
-
-  private ignoreDefaultDir(): void {
-    if (this.sessionsDir !== join(this.cwd, "sessions")) return;
-    const path = join(this.cwd, ".gitignore");
-    const entry = "sessions/";
-    if (existsSync(path) && readFileSync(path, "utf8").split("\n").includes(entry)) return;
-    appendFileSync(path, entry + "\n");
-  }
-}
-
-export function readSession(logPath: string): SessionRecord[] {
-  const lines = readFileSync(logPath, "utf8").split("\n");
-  let last = lines.length - 1;
-  while (last >= 0 && lines[last] === "") last--;
-  const records: SessionRecord[] = [];
-  for (let i = 0; i <= last; i++) {
-    if (lines[i] === "") continue;
-    try {
-      records.push(JSON.parse(lines[i]) as SessionRecord);
-    } catch (error) {
-      if (i === last) return records;
-      throw new Error(`session corruption at line ${i + 1}: ${(error as Error).message}`);
-    }
-  }
-  return records;
 }

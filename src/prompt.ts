@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import type { Config } from "./config.ts";
 
 interface Skill {
@@ -34,7 +34,7 @@ function discoverSkills(dirs: string[]): Skill[] {
       continue;
     }
     for (const entry of entries) {
-      const path = join(root, entry, "SKILL.md");
+      const path = resolve(root, entry, "SKILL.md");
       if (!existsSync(path)) continue;
       const meta = frontmatter(readFileSync(path, "utf8"));
       if (!meta.name) continue;

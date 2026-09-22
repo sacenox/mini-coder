@@ -1,5 +1,4 @@
 import {
-  validateToolCall,
   type Api,
   type AssistantMessage,
   type Message,
@@ -12,7 +11,7 @@ import {
   type UserMessage,
 } from "@earendil-works/pi-ai";
 import type { Session } from "./session.ts";
-import { executeTool, type ToolResult } from "./tools.ts";
+import { executeTool, type ToolDetails, type ToolResult } from "./tools.ts";
 import type { ToolName } from "./config.ts";
 
 export type Phase = "preparing" | "waitingModel" | "streaming" | "runningTool" | "pausing" | "idle";
@@ -152,13 +151,13 @@ export async function runAgentTurn(run: AgentRun): Promise<void> {
       }
       onEvent({ type: "phase", phase: "runningTool", detail: call.name });
 
+      const tool = run.toolNames.find((name) => name === call.name);
       let result: ToolResult;
-      if (!run.toolNames.includes(call.name as ToolName)) {
+      if (tool === undefined) {
         result = { text: `unknown tool: ${call.name}`, isError: true };
       } else {
         try {
-          const args = validateToolCall(run.tools, call);
-          result = await executeTool(call.name as ToolName, args, {
+          result = await executeTool(tool, call, {
             signal,
             onOutput: (chunk) => onEvent({ type: "toolOutput", name: call.name, callId: call.id, chunk }),
           });
@@ -167,11 +166,12 @@ export async function runAgentTurn(run: AgentRun): Promise<void> {
         }
       }
 
-      const toolMessage: ToolResultMessage = {
+      const toolMessage: ToolResultMessage<ToolDetails> = {
         role: "toolResult",
         toolCallId: call.id,
         toolName: call.name,
         content: [{ type: "text", text: result.text }],
+        details: result.details,
         isError: result.isError,
         timestamp: Date.now(),
       };

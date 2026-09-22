@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { Type, type Tool } from "@earendil-works/pi-ai";
+import { Type, type Static, type TSchema, type Tool, type ToolCall } from "@earendil-works/pi-ai";
+import { Value } from "typebox/value";
 import { createTwoFilesPatch } from "diff";
 import type { ToolName } from "./config.ts";
 
@@ -9,49 +10,69 @@ export interface ToolContext {
   onOutput?: (chunk: string) => void;
 }
 
+export interface ToolDetails {
+  truncated: boolean;
+  omittedChars: number;
+  totalChars: number;
+}
+
 export interface ToolResult {
   text: string;
   isError: boolean;
+  details?: ToolDetails;
 }
 
-export const EDIT_TOOL: Tool = {
-  name: "edit",
-  description:
-    "Edit a file by exact text replacement. oldText must occur exactly once. " +
-    "With empty oldText, create a new file (fails if it exists).",
-  parameters: Type.Object(
-    {
-      path: Type.String({ description: "File path" }),
-      oldText: Type.String({ description: "Exact text to replace; empty to create a file" }),
-      newText: Type.String({ description: "Replacement text" }),
-    },
-    { additionalProperties: false },
-  ),
-};
+const EDIT_PARAMS = Type.Object(
+  {
+    path: Type.String({ description: "File path" }),
+    oldText: Type.String({ description: "Exact text to replace; empty to create a file" }),
+    newText: Type.String({ description: "Replacement text" }),
+  },
+  { additionalProperties: false },
+);
+type EditArgs = Static<typeof EDIT_PARAMS>;
 
-export const BASH_TOOL: Tool = {
-  name: "bash",
-  description: "Run a bash command in the current working directory.",
-  parameters: Type.Object(
-    { command: Type.String({ description: "Command to run" }) },
-    { additionalProperties: false },
-  ),
+const BASH_PARAMS = Type.Object(
+  { command: Type.String({ description: "Command to run" }) },
+  { additionalProperties: false },
+);
+type BashArgs = Static<typeof BASH_PARAMS>;
+
+const TOOL_SCHEMAS: Record<ToolName, Tool> = {
+  edit: {
+    name: "edit",
+    description:
+      "Edit a file by exact text replacement. oldText must occur exactly once. " +
+      "With empty oldText, create a new file (fails if it exists).",
+    parameters: EDIT_PARAMS,
+  },
+  bash: {
+    name: "bash",
+    description: "Run a bash command in the current working directory.",
+    parameters: BASH_PARAMS,
+  },
 };
 
 export function toolSchemas(names: ToolName[]): Tool[] {
-  const available: Record<ToolName, Tool> = { edit: EDIT_TOOL, bash: BASH_TOOL };
-  return names.map((name) => available[name]);
+  return names.map((name) => TOOL_SCHEMAS[name]);
 }
 
-export function executeTool(name: ToolName, args: unknown, ctx: ToolContext): Promise<ToolResult> {
-  if (name === "edit") return Promise.resolve(edit(args as EditArgs, ctx.signal));
-  return bash(args as BashArgs, ctx);
+export function executeTool(name: ToolName, call: ToolCall, ctx: ToolContext): Promise<ToolResult> {
+  try {
+    if (name === "edit") return Promise.resolve(edit(parseArgs(EDIT_PARAMS, call.arguments), ctx.signal));
+    return bash(parseArgs(BASH_PARAMS, call.arguments), ctx);
+  } catch (error) {
+    return Promise.resolve({ text: (error as Error).message, isError: true });
+  }
 }
 
-interface EditArgs {
-  path: string;
-  oldText: string;
-  newText: string;
+function parseArgs<T extends TSchema>(schema: T, value: unknown): Static<T> {
+  try {
+    return Value.Parse(schema, value);
+  } catch {
+    const first = [...Value.Errors(schema, value)][0];
+    throw new Error(first ? `${first.instancePath || "/"} ${first.message}` : "invalid arguments");
+  }
 }
 
 function edit(args: EditArgs, signal: AbortSignal): ToolResult {
@@ -81,9 +102,9 @@ function unified(path: string, before: string, after: string): string {
   return createTwoFilesPatch(path, path, before, after, "", "", { context: 3 });
 }
 
-interface BashArgs {
-  command: string;
-}
+const MAX_HEAD = 10_000;
+const MAX_TAIL = 6_000;
+const TRUNCATED = "\n\n... output truncated ...\n\n";
 
 function bash(args: BashArgs, ctx: ToolContext): Promise<ToolResult> {
   return new Promise((resolve) => {
@@ -93,11 +114,23 @@ function bash(args: BashArgs, ctx: ToolContext): Promise<ToolResult> {
       stdio: ["ignore", "pipe", "pipe"],
     });
 
-    let output = "";
+    let head = "";
+    let tail = "";
+    let omitted = 0;
     const append = (chunk: Buffer) => {
-      const text = chunk.toString();
-      output += text;
+      let text = chunk.toString();
       ctx.onOutput?.(text);
+      if (head.length < MAX_HEAD) {
+        const take = Math.min(MAX_HEAD - head.length, text.length);
+        head += text.slice(0, take);
+        text = text.slice(take);
+      }
+      if (text === "") return;
+      tail += text;
+      if (tail.length > MAX_TAIL) {
+        omitted += tail.length - MAX_TAIL;
+        tail = tail.slice(tail.length - MAX_TAIL);
+      }
     };
     child.stdout?.on("data", append);
     child.stderr?.on("data", append);
@@ -109,8 +142,16 @@ function bash(args: BashArgs, ctx: ToolContext): Promise<ToolResult> {
       ctx.signal.removeEventListener("abort", onAbort);
       clearTimeout(killTimer);
       const exit = code ?? (ctx.signal.aborted ? "aborted" : "unknown");
-      const text = output + (output.endsWith("\n") || output === "" ? "" : "\n") + `exit code: ${exit}`;
-      resolve({ text, isError: code !== 0 });
+      const truncated = omitted > 0;
+      const body = truncated ? head + TRUNCATED + tail : head + tail;
+      const text = body + (body.endsWith("\n") || body === "" ? "" : "\n") + `exit code: ${exit}`;
+      resolve({
+        text,
+        isError: code !== 0,
+        details: truncated
+          ? { truncated: true, omittedChars: omitted, totalChars: head.length + tail.length + omitted }
+          : undefined,
+      });
     };
 
     let killTimer: NodeJS.Timeout | undefined;
@@ -134,7 +175,7 @@ function bash(args: BashArgs, ctx: ToolContext): Promise<ToolResult> {
     else ctx.signal.addEventListener("abort", onAbort, { once: true });
 
     child.on("error", (error) => {
-      output += `${output ? "\n" : ""}bash failed: ${error.message}\n`;
+      append(Buffer.from(`${head || tail ? "\n" : ""}bash failed: ${error.message}\n`));
       finish(null);
     });
     child.on("close", (code) => finish(code));
