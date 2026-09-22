@@ -48,8 +48,8 @@ const ConfigSchema = Type.Object(
     discoverAgentFiles: Type.Boolean({ default: true }),
     skillsDirs: Type.Array(Type.String(), { default: [] }),
     tools: Type.Array(ToolNameSchema, { default: ["edit", "bash"] }),
-    provider: Type.String({ default: "anthropic" }),
-    model: Type.String({ default: "claude-sonnet-4-5" }),
+    provider: Type.String(),
+    model: Type.String(),
     thinkingEffort: Type.Union(
       [
         Type.Literal("minimal"),

@@ -12,7 +12,7 @@ import {
   type UserMessage,
 } from "@earendil-works/pi-ai";
 import type { Session } from "./session.ts";
-import { executeTool, type ToolDetails, type ToolResult } from "./tools.ts";
+import { executeTool, type ToolDetails, type ToolResult } from "./tools/index.ts";
 import type { ToolName } from "./config.ts";
 
 export type Phase = "preparing" | "waitingModel" | "streaming" | "runningTool" | "pausing" | "idle";

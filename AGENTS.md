@@ -64,7 +64,8 @@ are references. Extract ideas, do not port code.
 
 Global config only, at `$XDG_CONFIG_HOME/mini-coder/config.json`
 (default `~/.config/mini-coder/config.json`). No project-local config, no
-config-override flags. A missing file is valid and uses defaults.
+config-override flags. A missing file is valid and uses defaults, except for
+`provider` and `model`, which are required.
 
 Because `pi-ai` owns the provider catalog, auth env vars, base URLs, wire APIs,
 and compat detection, model config stays thin. A built-in provider needs only
@@ -78,9 +79,10 @@ Fields and defaults:
 - `discoverAgentFiles` — include discovered `AGENTS.md`/`CLAUDE.md`. Default `true`.
 - `skillsDirs` — directories scanned for `SKILL.md`. Default `[]` (no skills).
 - `tools` — enabled tool names. Default `["edit", "bash"]`.
-- `provider` — built-in `pi-ai` provider id or a `customProviders[].id`.
-  Default `"anthropic"`.
-- `model` — model id within that provider. Default `"claude-sonnet-4-5"`.
+- `provider` — **required.** Built-in `pi-ai` provider id or a
+  `customProviders[].id`. No default; a config without it is an error.
+- `model` — **required.** Model id within that provider. No default; mini-coder
+  never picks a model.
 - `thinkingEffort` — one of `minimal`, `low`, `medium`, `high`, `xhigh`, `max`.
   Default `"medium"`.
 - `customProviders` — array; default `[]`. Each entry:

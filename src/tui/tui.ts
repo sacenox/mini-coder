@@ -34,7 +34,7 @@ const SPINNER_MS = 120;
 
 /**
  * Display-only elision for tool bodies, deliberately worded differently from
- * the model-facing `... output truncated ...` marker in `tools.ts`.
+ * the model-facing `... output truncated ...` marker in `tools/bash.ts`.
  */
 const MAX_BODY_ROWS = 12;
 const ELIDED_HEAD = 4;
