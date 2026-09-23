@@ -58,19 +58,27 @@ export interface AgentRun {
 export async function runAgentTurn(run: AgentRun): Promise<void> {
   const { messages, session, signal, interaction, onEvent } = run;
 
-  const pause = async (): Promise<boolean> => {
-    if (!interaction.isPauseRequested()) return true;
+  /** Appends a user message the model reads at the next step boundary. */
+  const steer = (texts: string[]): void => {
+    const content = texts.filter((text) => text.length > 0).join("\n");
+    if (content.length === 0) return;
+    const message: UserMessage = { role: "user", content, timestamp: Date.now() };
+    messages.push(message);
+    session.appendMessage(message);
+  };
+
+  /**
+   * Returns the steering typed while paused, or ""; the caller decides where
+   * it lands, because a user message between an assistant turn and its tool
+   * results is rejected by the provider.
+   */
+  const pause = async (): Promise<string> => {
+    if (!interaction.isPauseRequested()) return "";
     interaction.clearPause();
     onEvent({ type: "phase", phase: "pausing" });
     const steering = await interaction.requestSteering();
-    if (signal.aborted) return false;
-    if (steering.length > 0) {
-      const message: UserMessage = { role: "user", content: steering, timestamp: Date.now() };
-      messages.push(message);
-      session.appendMessage(message);
-    }
     onEvent({ type: "phase", phase: "idle" });
-    return true;
+    return steering;
   };
 
   for (;;) {
@@ -78,10 +86,12 @@ export async function runAgentTurn(run: AgentRun): Promise<void> {
       onEvent({ type: "cancelled" });
       return;
     }
-    if (!(await pause())) {
+    const steering = await pause();
+    if (signal.aborted) {
       onEvent({ type: "cancelled" });
       return;
     }
+    steer([steering]);
 
     onEvent({ type: "phase", phase: "preparing" });
     session.appendRequest({
@@ -146,15 +156,21 @@ export async function runAgentTurn(run: AgentRun): Promise<void> {
       return;
     }
 
+    // Steering is held until every result of this assistant turn has landed:
+    // the provider rejects a user message between an assistant turn and its
+    // tool results.
+    const held: string[] = [];
     for (const call of toolCalls) {
       if (signal.aborted) {
         onEvent({ type: "cancelled" });
         return;
       }
-      if (!(await pause())) {
+      const steering = await pause();
+      if (signal.aborted) {
         onEvent({ type: "cancelled" });
         return;
       }
+      if (steering !== "") held.push(steering);
       onEvent({ type: "phase", phase: "runningTool", detail: call.name });
 
       const tool = run.toolNames.find((name) => name === call.name);
@@ -186,5 +202,6 @@ export async function runAgentTurn(run: AgentRun): Promise<void> {
       session.appendMessage(toolMessage);
       onEvent({ type: "toolResult", name: call.name, callId: call.id, text: result.text, isError: result.isError });
     }
+    steer(held);
   }
 }
