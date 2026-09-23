@@ -1,5 +1,5 @@
 import type { Api, AssistantMessage, ImageContent, Message, Model, TextContent, Tool } from "@earendil-works/pi-ai";
-import { dim } from "./styles.ts";
+import { dim, red, yellow } from "./styles.ts";
 
 /** ~1 token per 4 characters, the heuristic pi-ai uses. */
 function estimateText(text: string): number {
@@ -63,13 +63,13 @@ export function formatTokens(n: number): string {
 }
 
 /**
- * The context row: dim, SGR 33 as the window nears, SGR 31 once the next
- * request could not carry a maximum-size reply.
+ * The context row: dim, yellow as the window nears, red once the next request
+ * could not carry a maximum-size reply.
  */
 export function contextUsageLine(used: number, model: Model<Api>): string {
   const percent = (used / model.contextWindow) * 100;
   const sizes = `${formatTokens(used)}/${formatTokens(model.contextWindow)}`;
-  if (used + model.maxTokens > model.contextWindow) return `\x1b[31mctx full · ${sizes}\x1b[39m`;
+  if (used + model.maxTokens > model.contextWindow) return red(`ctx full · ${sizes}`);
   const text = `ctx ${sizes} · ${Math.round(percent)}%`;
-  return percent >= 85 ? `\x1b[33m${text}\x1b[39m` : dim(text);
+  return percent >= 85 ? yellow(text) : dim(text);
 }

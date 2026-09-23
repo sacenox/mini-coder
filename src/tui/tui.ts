@@ -15,7 +15,7 @@ import type { Session } from "../session.ts";
 import type { ToolName } from "../config.ts";
 import { Terminal, expandTabs, wrapLine, type Key } from "./term.ts";
 import { Editor } from "./editor.ts";
-import { dim } from "./styles.ts";
+import { cyan, dim, green, red } from "./styles.ts";
 import { contextUsageLine, estimateContextTokens } from "./usage.ts";
 
 export interface TuiOptions {
@@ -65,9 +65,26 @@ function callSummary(name: string, args: JsonObject): string {
   return JSON.stringify(args);
 }
 
+/** One display line: unwrapped text plus the style its wrapped rows inherit. */
+interface BodyLine {
+  text: string;
+  style?: (text: string) => string;
+}
+
+/** Unified-diff color for one `edit` body line; file headers are stripped. */
+function diffStyle(line: string): ((text: string) => string) | undefined {
+  if (line.startsWith("@@")) return cyan;
+  if (line.startsWith("+")) return green;
+  if (line.startsWith("-")) return red;
+  if (line.startsWith("\\ No newline")) return dim;
+  if (line.startsWith(" ")) return dim;
+  return undefined;
+}
+
 /** Display rewrite of a tool result, by tool name. */
-function resultLines(name: string, text: string, isError: boolean): string[] {
+function resultLines(name: string, text: string, isError: boolean): BodyLine[] {
   const lines = text.trimEnd().split("\n");
+  let diff = false;
   if (name === "bash") {
     const exit = EXIT_LINE.exec(lines[lines.length - 1]);
     if (exit !== null) {
@@ -78,12 +95,23 @@ function resultLines(name: string, text: string, isError: boolean): string[] {
     lines.shift();
     // The call line already names the path; drop the repeated diff file header.
     while (lines.length > 0 && EDIT_HEADER.test(lines[0])) lines.shift();
+    diff = true;
   }
-  return lines;
+  return lines.map((line) => ({ text: line, style: diff ? diffStyle(line) : undefined }));
 }
 
-function bodyRows(lines: string[], width: number): string[] {
-  const rows = lines.flatMap((line) => wrapLine(expandTabs(line), width));
+/**
+ * Wraps plain text, then styles each row: `wrapLine` measures escapes as
+ * printable cells, so it must never see them. A continuation row carries no
+ * marker and inherits the style of its source line; the elision marker and
+ * empty rows stay unstyled.
+ */
+function bodyRows(lines: BodyLine[], width: number): string[] {
+  const rows = lines.flatMap((line) => {
+    const style = line.style;
+    const wrapped = wrapLine(expandTabs(line.text), width);
+    return style === undefined ? wrapped : wrapped.map((row) => (row === "" ? row : style(row)));
+  });
   if (rows.length > MAX_BODY_ROWS) {
     const hidden = rows.length - ELIDED_HEAD - ELIDED_TAIL;
     return [
