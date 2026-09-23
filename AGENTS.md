@@ -85,7 +85,7 @@ Hard constraints. Do not cross these without explicit direction:
   their use.
 - Validate untrusted input once at the boundary with Typebox, then keep internal
   code plain-typed.
-- Ask before adding a dependency. `diff` and `typebox` are approved.
+- Ask before adding a dependency.
 - Do not add tests unless explicitly asked; verify manually.
 - Before finishing, review the diff against the direction and guardrails, remove
   anything that added scope, and report any requirement you could not satisfy.

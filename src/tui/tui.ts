@@ -15,7 +15,7 @@ import type { Session } from "../session.ts";
 import type { ToolName } from "../config.ts";
 import { Terminal, expandTabs, wrapLine, type Key } from "./term.ts";
 import { Editor } from "./editor.ts";
-import { LineStream, TailStream, type BodyLine, type StreamRenderer } from "./stream.ts";
+import { MarkdownStream, TailStream, type BodyLine, type StreamRenderer } from "./stream.ts";
 import { cyan, dim, green, red } from "./styles.ts";
 import { contextUsageLine, estimateContextTokens } from "./usage.ts";
 
@@ -184,7 +184,7 @@ class Tui {
   private separator = false;
 
   // In-flight stream state, never persisted: all display-only.
-  private readonly reply: StreamRenderer = new LineStream();
+  private readonly reply: StreamRenderer = new MarkdownStream();
   private readonly activity: StreamRenderer = new TailStream();
   private pendingCalls: string[] = [];
   private streamed = "";
@@ -438,7 +438,8 @@ class Tui {
       .map((block) => block.text)
       .join("");
     if (text.trim() !== "" && !this.streamed.includes(text)) {
-      this.commitLines(text.trimEnd().split("\n").map((line) => ({ text: line })));
+      const stream = new MarkdownStream();
+      this.commitLines([...stream.feed(text.trimEnd()), ...stream.flush()]);
     }
     this.streamed = "";
   }

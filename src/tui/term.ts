@@ -34,11 +34,22 @@ export function displayWidth(text: string): number {
   return width;
 }
 
+/** An SGR sequence: zero cells wide, so it never affects a row break. */
+const SGR = /^\x1b\[[0-9;]*m/;
+
 export function expandTabs(text: string, size = 4): string {
   if (!text.includes("\t")) return text;
   let column = 0;
   let out = "";
-  for (const ch of text) {
+  for (let i = 0; i < text.length; ) {
+    const escape = SGR.exec(text.slice(i));
+    if (escape !== null) {
+      out += escape[0];
+      i += escape[0].length;
+      continue;
+    }
+    const ch = String.fromCodePoint(text.codePointAt(i)!);
+    i += ch.length;
     if (ch === "\t") {
       const spaces = size - (column % size);
       out += " ".repeat(spaces);
@@ -50,9 +61,6 @@ export function expandTabs(text: string, size = 4): string {
   }
   return out;
 }
-
-/** An SGR sequence: zero cells wide, so it never affects a row break. */
-const SGR = /^\x1b\[[0-9;]*m/;
 
 /**
  * Splits one logical line into physical rows no wider than `width` cells. SGR
