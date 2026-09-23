@@ -36,6 +36,7 @@ const SPINNER_MS = 120;
 /**
  * Display-only elision for tool bodies, deliberately worded differently from
  * the model-facing `... output truncated ...` marker in `tools/bash.ts`.
+ * `edit` is exempt: its diffs are always shown in full.
  */
 const MAX_BODY_ROWS = 12;
 const ELIDED_HEAD = 4;
@@ -447,7 +448,9 @@ class Tui {
     this.separator = true;
     if (call !== undefined) this.push(call);
     const width = Math.max(1, this.term.width - BODY_PREFIX.length);
-    const rows = bodyRows(resultLines(name, text, isError), width);
+    const lines = resultLines(name, text, isError);
+    // Diffs are shown in full; other tool bodies stay elided.
+    const rows = name === "edit" ? renderRows(lines, width) : bodyRows(lines, width);
     for (let i = 0; i < rows.length; i++) {
       const prefix = isError && i === rows.length - 1 ? ERROR_PREFIX : BODY_PREFIX;
       this.push(prefix + rows[i]);
