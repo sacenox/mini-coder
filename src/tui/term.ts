@@ -51,14 +51,29 @@ export function expandTabs(text: string, size = 4): string {
   return out;
 }
 
-/** Splits one logical line into physical rows no wider than `width` cells. */
+/** An SGR sequence: zero cells wide, so it never affects a row break. */
+const SGR = /^\x1b\[[0-9;]*m/;
+
+/**
+ * Splits one logical line into physical rows no wider than `width` cells. SGR
+ * sequences count as zero cells and stay attached to the text that follows.
+ */
 export function wrapLine(text: string, width: number): string[] {
   if (width <= 0) return [""];
   if (text === "") return [""];
   const rows: string[] = [];
   let current = "";
   let used = 0;
-  for (const ch of text) {
+  for (let i = 0; i < text.length; ) {
+    if (text.charCodeAt(i) === 0x1b) {
+      const escape = SGR.exec(text.slice(i));
+      if (escape !== null) {
+        current += escape[0];
+        i += escape[0].length;
+        continue;
+      }
+    }
+    const ch = String.fromCodePoint(text.codePointAt(i)!);
     const w = charWidth(ch.codePointAt(0)!);
     if (used + w > width && current !== "") {
       rows.push(current);
@@ -67,6 +82,7 @@ export function wrapLine(text: string, width: number): string[] {
     }
     current += ch;
     used += w;
+    i += ch.length;
   }
   rows.push(current);
   return rows;

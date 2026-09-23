@@ -15,6 +15,7 @@ import type { Session } from "../session.ts";
 import type { ToolName } from "../config.ts";
 import { Terminal, expandTabs, wrapLine, type Key } from "./term.ts";
 import { Editor } from "./editor.ts";
+import { LineStream, TailStream, type BodyLine, type StreamRenderer } from "./stream.ts";
 import { cyan, dim, green, red } from "./styles.ts";
 import { contextUsageLine, estimateContextTokens } from "./usage.ts";
 
@@ -45,30 +46,11 @@ const ERROR_PREFIX = " ! ";
 const EXIT_LINE = /^exit code: (.+)$/;
 const EDIT_HEADER = /^(Index: |={3,}$|--- |\+\+\+ )/;
 
-/** The text after the last newline: what is still incomplete. */
-function incomplete(text: string): string {
-  const index = text.lastIndexOf("\n");
-  return index >= 0 ? text.slice(index + 1) : text;
-}
-
-/** The lines completed by the newest text, excluding the incomplete tail. */
-function completeLines(text: string): string[] {
-  const lines = text.split("\n");
-  lines.pop();
-  return lines;
-}
-
 function callSummary(name: string, args: JsonObject): string {
   if (name === "bash" && typeof args.command === "string") return args.command.replace(/\s*\n\s*/g, " ");
   if (name === "edit" && typeof args.path === "string") return args.path;
   if (name === "read" && typeof args.path === "string") return args.path;
   return JSON.stringify(args);
-}
-
-/** One display line: unwrapped text plus the style its wrapped rows inherit. */
-interface BodyLine {
-  text: string;
-  style?: (text: string) => string;
 }
 
 /** Unified-diff color for one `edit` body line; file headers are stripped. */
@@ -101,17 +83,21 @@ function resultLines(name: string, text: string, isError: boolean): BodyLine[] {
 }
 
 /**
- * Wraps plain text, then styles each row: `wrapLine` measures escapes as
- * printable cells, so it must never see them. A continuation row carries no
- * marker and inherits the style of its source line; the elision marker and
- * empty rows stay unstyled.
+ * Wraps plain text, then styles each row: styling after the break is what lets a
+ * continuation row inherit its source line's style. A continuation row carries
+ * no marker; empty rows stay unstyled.
  */
-function bodyRows(lines: BodyLine[], width: number): string[] {
-  const rows = lines.flatMap((line) => {
+function renderRows(lines: BodyLine[], width: number): string[] {
+  return lines.flatMap((line) => {
     const style = line.style;
     const wrapped = wrapLine(expandTabs(line.text), width);
     return style === undefined ? wrapped : wrapped.map((row) => (row === "" ? row : style(row)));
   });
+}
+
+/** `renderRows` plus the display-only elision applied to long tool bodies. */
+function bodyRows(lines: BodyLine[], width: number): string[] {
+  const rows = renderRows(lines, width);
   if (rows.length > MAX_BODY_ROWS) {
     const hidden = rows.length - ELIDED_HEAD - ELIDED_TAIL;
     return [
@@ -148,9 +134,14 @@ class LiveRegion {
     return out;
   }
 
-  /** `lines` are already styled; the live region adds no attributes of its own. */
-  draw(lines: string[], cursorRow: number, cursorCol: number): string {
+  /**
+   * `lines` are already styled; the live region adds no attributes of its own.
+   * `above` is written between the clear and the body, so scrollback lands
+   * where the region was.
+   */
+  draw(lines: string[], cursorRow: number, cursorCol: number, above: string): string {
     let out = this.clear();
+    out += above;
     for (let i = 0; i < lines.length; i++) {
       if (i > 0) out += "\r\n";
       out += lines[i];
@@ -192,8 +183,8 @@ class Tui {
   private separator = false;
 
   // In-flight stream state, never persisted: all display-only.
-  private pending = "";
-  private preview = "";
+  private readonly reply: StreamRenderer = new LineStream();
+  private readonly activity: StreamRenderer = new TailStream();
   private pendingCalls: string[] = [];
   private streamed = "";
   private turnStart = 0;
@@ -369,50 +360,48 @@ class Tui {
         if (event.phase === "pausing") this.paused = true;
         break;
       case "text":
-        this.preview = "";
-        this.pending += event.delta;
+        this.activity.reset();
         this.streamed += event.delta;
-        for (const line of completeLines(this.pending)) this.push(line);
-        this.pending = incomplete(this.pending);
+        this.commitLines(this.reply.feed(event.delta));
         break;
       case "reasoning":
-        if (this.pending === "") this.preview = incomplete(this.preview + event.delta);
+        if (this.reply.pending().length === 0) this.activity.feed(event.delta);
         break;
       case "toolCall":
         // Flush first so scrollback order matches execution order, then hold the
         // call line until its result arrives: a message may carry several calls,
         // all announced before any of them runs.
-        this.flushPending();
-        this.preview = "";
+        this.commitLines(this.reply.flush());
+        this.activity.reset();
         this.pendingCalls.push(`-> ${event.name}  ${callSummary(event.name, event.arguments)}`);
         break;
       case "toolOutput":
-        this.preview = incomplete(this.preview + event.chunk);
+        this.activity.feed(event.chunk);
         break;
       case "message":
         this.commitMessage(event.message);
         break;
       case "toolResult":
-        this.preview = "";
+        this.activity.reset();
         this.commitToolResult(event.name, event.text, event.isError);
         break;
       case "error":
         this.finishTurn();
-        this.flushPending();
+        this.commitLines(this.reply.flush());
         this.flushCalls();
         this.separator = true;
         this.push(`! ${event.message}`);
         break;
       case "cancelled":
         this.finishTurn();
-        this.flushPending();
+        this.commitLines(this.reply.flush());
         this.flushCalls();
         this.separator = true;
         this.push("! cancelled");
         break;
       case "complete":
         this.finishTurn();
-        this.flushPending();
+        this.commitLines(this.reply.flush());
         this.flushCalls();
         this.separator = true;
         this.push(dim(`[complete · ${this.elapsed()}s]`));
@@ -421,11 +410,12 @@ class Tui {
     this.render();
   }
 
-  /** Terminal states clear the status row instead of lingering in it. */
+  /** Terminal states clear the status row and any in-flight preview. */
   private finishTurn(): void {
     this.phase = "idle";
     this.detail = undefined;
     this.paused = false;
+    this.activity.reset();
   }
 
   private elapsed(): number {
@@ -434,20 +424,20 @@ class Tui {
 
   private commitUser(text: string): void {
     this.separator = true;
-    for (const line of text.split("\n")) this.push(`> ${line}`);
+    this.commitLines(text.split("\n").map((line) => ({ text: `> ${line}` })));
     this.separator = true;
   }
 
   /** Commits a line the model emitted without streaming it, plus the in-flight tail. */
   private commitMessage(message: AssistantMessage): void {
-    this.preview = "";
-    this.flushPending();
+    this.activity.reset();
+    this.commitLines(this.reply.flush());
     const text = message.content
       .filter((block) => block.type === "text")
       .map((block) => block.text)
       .join("");
     if (text.trim() !== "" && !this.streamed.includes(text)) {
-      for (const line of text.trimEnd().split("\n")) this.push(line);
+      this.commitLines(text.trimEnd().split("\n").map((line) => ({ text: line })));
     }
     this.streamed = "";
   }
@@ -474,11 +464,9 @@ class Tui {
     this.pendingCalls = [];
   }
 
-  private flushPending(): void {
-    if (this.pending === "") return;
-    const line = this.pending;
-    this.pending = "";
-    this.push(line);
+  /** Commits logical lines through the same wrap-and-style step tool bodies use. */
+  private commitLines(lines: BodyLine[]): void {
+    for (const row of renderRows(lines, Math.max(1, this.term.width))) this.push(row);
   }
 
   /**
@@ -489,26 +477,15 @@ class Tui {
     const blank = line === "" || (this.separator && this.wrote);
     this.separator = false;
     if (blank && this.wrote && !this.lastBlank) {
-      this.scroll += "\n";
+      this.scroll += "\r\n";
       this.lastBlank = true;
     }
     if (line !== "") {
-      this.scroll += `${line}\n`;
+      this.scroll += `${line}\r\n`;
       this.wrote = true;
       this.lastBlank = false;
     }
-    this.flushScroll();
-  }
-
-  /** Scrollback is written before the live region is redrawn, never after. */
-  private flushScroll(): void {
-    if (this.scroll === "") return;
-    // A commit on a region filling every row above the last scrolls the
-    // terminal and moves the anchor; re-anchor like SIGWINCH does.
-    if (this.live.height >= this.term.height - 1) this.reanchor = true;
-    const out = this.live.clear() + this.scroll;
-    this.scroll = "";
-    this.term.write(out);
+    this.render();
   }
 
   private render(): void {
@@ -520,10 +497,20 @@ class Tui {
     }, 16);
   }
 
-  /** One dim row while a turn is active or paused; nothing when idle. */
-  private statusLine(): string | null {
-    if (this.paused || this.phase === "pausing") return "paused - type steering, Enter to submit";
-    if (!this.active || this.phase === "idle") return null;
+  /**
+   * The one row between the in-flight lines and the editor: the phase while a
+   * turn is active, and the context readout always. The readout carries its own
+   * emphasis, so only the phase half is dimmed.
+   */
+  private statusLine(): string {
+    const usage = contextUsageLine(
+      estimateContextTokens(this.messages, this.opts.systemPrompt, this.opts.tools),
+      this.opts.model,
+    );
+    if (this.paused || this.phase === "pausing") {
+      return `${dim("paused - type steering, Enter to submit")} · ${usage}`;
+    }
+    if (!this.active || this.phase === "idle") return usage;
     const label =
       this.phase === "preparing"
         ? "preparing"
@@ -532,43 +519,42 @@ class Tui {
           : this.phase === "streaming"
             ? "streaming"
             : `running ${this.detail ?? "tool"}`;
-    return `${SPINNER[this.frame % SPINNER.length]} ${label} · ${this.elapsed()}s`;
+    return `${dim(`${SPINNER[this.frame % SPINNER.length]} ${label} · ${this.elapsed()}s`)} · ${usage}`;
   }
 
   private draw(): void {
     if (this.closed) return;
     const width = Math.max(1, this.term.width);
     const height = Math.max(1, this.term.height - 1);
-    const status = this.statusLine();
-    const fixed = 1 + (status !== null ? 1 : 0);
 
-    const pending = this.pending !== "" ? this.pending : this.preview;
-    const inflight: string[] = [];
-    if (pending !== "") {
-      const styled = this.pending === "" ? dim : (row: string) => row;
-      for (const row of wrapLine(expandTabs(pending), width)) inflight.push(styled(row));
-    }
+    const status = wrapLine(this.statusLine(), width);
+
+    let inflight = this.reply.pending();
+    if (inflight.length === 0) inflight = this.activity.pending();
+    const rows = renderRows(inflight, width);
 
     // Short on space: clip the in-flight rows first, then the editor viewport,
-    // which never drops below one row. The context row is always kept.
-    const keep = Math.max(0, Math.min(inflight.length, height - fixed - 1));
-    const body = inflight.slice(inflight.length - keep);
-    const editor = this.editor.render(width, Math.max(1, height - fixed - body.length));
+    // which never drops below one row. The status rows are always kept.
+    const keep = Math.max(0, Math.min(rows.length, height - status.length - 1));
+    const body = rows.slice(rows.length - keep);
+    const editor = this.editor.render(width, Math.max(1, height - status.length - body.length));
 
-    const lines = [
-      contextUsageLine(
-        estimateContextTokens(this.messages, this.opts.systemPrompt, this.opts.tools),
-        this.opts.model,
-      ),
-      ...body,
-      ...(status !== null ? [dim(status)] : []),
-      ...editor.rows,
-    ];
-    let cursorRow = fixed + body.length + editor.cursorRow;
+    const lines = [...body, ...status, ...editor.rows];
+    let cursorRow = status.length + body.length + editor.cursorRow;
     if (cursorRow >= lines.length) cursorRow = lines.length - 1;
+
+    // Scrollback and the live region are written as one frame. Clearing the
+    // region and restoring it in separate writes leaves it blank in between.
+    // A commit on a region filling every row above the last scrolls the
+    // terminal; the re-anchor newline goes after the scrollback, not before the
+    // erase, because `clear()` measures from the previous frame's cursor and
+    // moving the cursor down first lands the erase one row below the region.
+    if (this.scroll !== "" && this.live.height >= this.term.height - 1) this.reanchor = true;
+    const scroll = this.scroll;
+    this.scroll = "";
     const prefix = this.reanchor ? "\r\n" : "";
     this.reanchor = false;
-    this.term.write(prefix + this.live.draw(lines, cursorRow, editor.cursorCol));
+    this.term.write(this.live.draw(lines, cursorRow, editor.cursorCol, scroll + prefix));
   }
 
   private exit(): void {
@@ -577,7 +563,9 @@ class Tui {
     this.abort?.abort();
     if (this.spinner) clearInterval(this.spinner);
     this.spinner = undefined;
-    this.term.write(this.live.clear());
+    // Draws are deferred, so anything pushed since the last frame is still here.
+    this.term.write(this.live.clear() + this.scroll);
+    this.scroll = "";
     this.term.stop();
     this.opts.session.close();
     process.off("SIGINT", this.onSignal);
