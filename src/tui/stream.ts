@@ -110,8 +110,10 @@ export class MarkdownStream implements StreamRenderer {
     const fence = this.fence!;
     this.fence = null;
     const lines: BodyLine[] = [{ text: highlightMarkdown(fence.lines.shift()!) }];
-    for (const line of highlightCode(fence.info, fence.lines.join("\n")).split("\n")) {
-      lines.push({ text: line });
+    if (fence.lines.length > 0) {
+      for (const line of highlightCode(fence.info, fence.lines.join("\n")).split("\n")) {
+        lines.push({ text: line });
+      }
     }
     if (closing !== null) lines.push({ text: highlightMarkdown(closing) });
     return lines;

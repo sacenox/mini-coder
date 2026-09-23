@@ -150,6 +150,10 @@ function parse(syntax: Syntax, text: string): Parser.SyntaxNode {
   return syntax.parser.parse(text).rootNode;
 }
 
+/**
+ * A style's own attributes, with the defaults spelled out: a span that names no
+ * color must not inherit the color of the span or token before it.
+ */
 function sgr(style: Style): string {
   const channel = (code: number, hex: string): string =>
     `${code};2;${[1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16)).join(";")};`;
@@ -157,8 +161,8 @@ function sgr(style: Style): string {
   if (style.bold) out += "1;";
   if (style.italic) out += "3;";
   if (style.underline) out += "4;";
-  if (style.fg !== undefined) out += channel(38, style.fg);
-  if (style.bg !== undefined) out += channel(48, style.bg);
+  out += style.fg === undefined ? "39;" : channel(38, style.fg);
+  out += style.bg === undefined ? "49;" : channel(48, style.bg);
   return `${out.slice(0, -1)}m`;
 }
 
