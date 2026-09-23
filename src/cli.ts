@@ -1,30 +1,11 @@
 import process from "node:process";
-import type {
-  Api,
-  AssistantMessage,
-  Message,
-  Model,
-  Models,
-  ThinkingLevel,
-  Tool,
-  UserMessage,
-} from "@earendil-works/pi-ai";
-import { loadConfig, resolveModel, type ToolName } from "./config.ts";
+import type { AssistantMessage, Message, UserMessage } from "@earendil-works/pi-ai";
+import { loadConfig, resolveModel } from "./config.ts";
 import { buildSystemPrompt } from "./prompt.ts";
 import { acceptsImages, toolSchemas } from "./tools/index.ts";
 import { Session } from "./session.ts";
-import { NO_INTERACTION, runAgentTurn } from "./agent.ts";
+import { NO_INTERACTION, runAgentTurn, type AgentOptions } from "./agent.ts";
 import { runTui } from "./tui/tui.ts";
-
-interface RunContext {
-  models: Models;
-  model: Model<Api>;
-  systemPrompt: string;
-  tools: Tool[];
-  toolNames: ToolName[];
-  thinkingEffort: ThinkingLevel;
-  session: Session;
-}
 
 function parseArgs(argv: string[]): { print: string | null } {
   let print: string | null = null;
@@ -45,7 +26,7 @@ function parseArgs(argv: string[]): { print: string | null } {
   return { print };
 }
 
-async function runPrint(prompt: string, ctx: RunContext): Promise<number> {
+async function runPrint(prompt: string, ctx: AgentOptions): Promise<number> {
   const messages: Message[] = [];
   const user: UserMessage = { role: "user", content: prompt, timestamp: Date.now() };
   messages.push(user);
@@ -101,7 +82,7 @@ async function main(): Promise<void> {
   const config = loadConfig();
   const { models, model } = resolveModel(config);
   const session = new Session(config.sessionsDir, process.cwd());
-  const ctx: RunContext = {
+  const ctx: AgentOptions = {
     models,
     model,
     systemPrompt: buildSystemPrompt(config),

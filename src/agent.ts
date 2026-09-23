@@ -41,17 +41,21 @@ export const NO_INTERACTION: Interaction = {
   requestSteering: async () => "",
 };
 
-export interface AgentRun {
+/** What one turn needs, shared by both projections: the TUI and `--print`. */
+export interface AgentOptions {
   models: Models;
   model: Model<Api>;
   systemPrompt: string;
   tools: Tool[];
   toolNames: ToolName[];
-  messages: Message[];
+  thinkingEffort: ThinkingLevel;
   session: Session;
+}
+
+export interface AgentRun extends AgentOptions {
+  messages: Message[];
   signal: AbortSignal;
   interaction: Interaction;
-  thinkingEffort: ThinkingLevel;
   onEvent: (event: AgentEvent) => void;
 }
 

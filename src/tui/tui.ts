@@ -1,33 +1,11 @@
 import process from "node:process";
-import type {
-  Api,
-  AssistantMessage,
-  JsonObject,
-  Message,
-  Model,
-  Models,
-  ThinkingLevel,
-  Tool,
-  UserMessage,
-} from "@earendil-works/pi-ai";
-import { runAgentTurn, type AgentEvent, type Phase } from "../agent.ts";
-import type { Session } from "../session.ts";
-import type { ToolName } from "../config.ts";
+import type { AssistantMessage, JsonObject, Message, UserMessage } from "@earendil-works/pi-ai";
+import { runAgentTurn, type AgentEvent, type AgentOptions, type Phase } from "../agent.ts";
 import { Terminal, expandTabs, wrapLine, type Key } from "./term.ts";
 import { Editor } from "./editor.ts";
 import { MarkdownStream, TailStream, type BodyLine, type StreamRenderer } from "./stream.ts";
 import { cyan, dim, green, red } from "./styles.ts";
 import { contextUsageLine, estimateContextTokens } from "./usage.ts";
-
-export interface TuiOptions {
-  models: Models;
-  model: Model<Api>;
-  systemPrompt: string;
-  tools: Tool[];
-  toolNames: ToolName[];
-  thinkingEffort: ThinkingLevel;
-  session: Session;
-}
 
 /** Status-row spinner frames; the only animation in the TUI. */
 const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
@@ -158,7 +136,7 @@ class LiveRegion {
 }
 
 class Tui {
-  private readonly opts: TuiOptions;
+  private readonly opts: AgentOptions;
   private readonly term: Terminal;
   private readonly editor = new Editor();
   private readonly live = new LiveRegion();
@@ -192,7 +170,7 @@ class Tui {
   private frame = 0;
   private spinner: NodeJS.Timeout | undefined;
 
-  constructor(opts: TuiOptions) {
+  constructor(opts: AgentOptions) {
     this.opts = opts;
     this.term = new Terminal({
       onKey: (key) => this.handleKey(key),
@@ -258,13 +236,10 @@ class Tui {
   private submit(): void {
     const text = this.editor.text();
     if (this.active) {
-      if (this.paused && this.steeringResolve) {
+      if (this.paused && this.steeringResolve !== null) {
         this.editor.clear();
         if (text.length > 0) this.commitUser(text);
-        const resolve = this.steeringResolve;
-        this.steeringResolve = null;
-        this.paused = false;
-        resolve(text);
+        this.resolveSteering(text);
       }
       return;
     }
@@ -312,11 +287,7 @@ class Tui {
           requestSteering: () =>
             new Promise<string>((resolve) => {
               this.paused = true;
-              this.steeringResolve = (text) => {
-                this.paused = false;
-                this.steeringResolve = null;
-                resolve(text);
-              };
+              this.steeringResolve = resolve;
               this.render();
             }),
         },
@@ -329,11 +300,7 @@ class Tui {
       this.active = false;
       this.abort = null;
       this.pauseRequested = false;
-      if (this.steeringResolve) {
-        const resolve = this.steeringResolve;
-        this.steeringResolve = null;
-        resolve("");
-      }
+      this.resolveSteering("");
       this.paused = false;
       if (this.spinner) clearInterval(this.spinner);
       this.spinner = undefined;
@@ -342,14 +309,18 @@ class Tui {
   }
 
   private cancel(): void {
-    if (this.steeringResolve) {
-      const resolve = this.steeringResolve;
-      this.steeringResolve = null;
-      this.paused = false;
-      resolve("");
-    }
+    this.resolveSteering("");
     this.abort?.abort();
     this.render();
+  }
+
+  /** Answers a pending steering prompt; "" leaves the turn ending. */
+  private resolveSteering(text: string): void {
+    const resolve = this.steeringResolve;
+    if (resolve === null) return;
+    this.steeringResolve = null;
+    this.paused = false;
+    resolve(text);
   }
 
   private handleAgentEvent(event: AgentEvent): void {
@@ -387,36 +358,28 @@ class Tui {
         this.commitToolResult(event.name, event.text, event.isError);
         break;
       case "error":
-        this.finishTurn();
-        this.commitLines(this.reply.flush());
-        this.flushCalls();
-        this.separator = true;
-        this.push(`! ${event.message}`);
+        this.endTurn(`! ${event.message}`);
         break;
       case "cancelled":
-        this.finishTurn();
-        this.commitLines(this.reply.flush());
-        this.flushCalls();
-        this.separator = true;
-        this.push("! cancelled");
+        this.endTurn("! cancelled");
         break;
       case "complete":
-        this.finishTurn();
-        this.commitLines(this.reply.flush());
-        this.flushCalls();
-        this.separator = true;
-        this.push(dim(`[complete · ${this.elapsed()}s]`));
+        this.endTurn(dim(`[complete · ${this.elapsed()}s]`));
         break;
     }
     this.render();
   }
 
-  /** Terminal states clear the status row and any in-flight preview. */
-  private finishTurn(): void {
+  /** A terminal state: clears the status row and any in-flight preview, then commits. */
+  private endTurn(line: string): void {
     this.phase = "idle";
     this.detail = undefined;
     this.paused = false;
     this.activity.reset();
+    this.commitLines(this.reply.flush());
+    this.flushCalls();
+    this.separator = true;
+    this.push(line);
   }
 
   private elapsed(): number {
@@ -578,7 +541,7 @@ class Tui {
   }
 }
 
-export async function runTui(opts: TuiOptions): Promise<void> {
+export async function runTui(opts: AgentOptions): Promise<void> {
   const tui = new Tui(opts);
   tui.start();
   return tui.done;

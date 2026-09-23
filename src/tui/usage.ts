@@ -15,9 +15,7 @@ function contentChars(content: string | Array<TextContent | ImageContent>): numb
 
 /** Characters one message contributes. Image and thinking blocks are ignored: an undercount. */
 function messageChars(message: Message): number {
-  if (message.role === "system") return contentChars(message.content);
-  if (message.role === "user") return contentChars(message.content);
-  if (message.role === "toolResult") return contentChars(message.content);
+  if (message.role !== "assistant") return contentChars(message.content);
   let chars = 0;
   for (const block of message.content) {
     if (block.type === "text") chars += block.text.length;

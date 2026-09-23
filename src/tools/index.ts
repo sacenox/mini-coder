@@ -5,7 +5,7 @@ import { BASH_PARAMS, bash } from "./bash.ts";
 import { EDIT_PARAMS, edit } from "./edit.ts";
 import { READ_PARAMS, read } from "./read.ts";
 
-export type { ToolContext, ToolDetails, ToolResult } from "./common.ts";
+export type { ToolDetails, ToolResult } from "./common.ts";
 
 /** Whether a model accepts image input. Drives `read`'s description and results. */
 export function acceptsImages(model: Model<Api>): boolean {
@@ -40,12 +40,8 @@ export function toolSchemas(names: ToolName[], withImages: boolean): Tool[] {
   return names.map((name) => tools[name]);
 }
 
-export function executeTool(name: ToolName, call: ToolCall, ctx: ToolContext): Promise<ToolResult> {
-  try {
-    if (name === "edit") return Promise.resolve(edit(parseArgs(EDIT_PARAMS, call.arguments), ctx.signal));
-    if (name === "read") return Promise.resolve(read(parseArgs(READ_PARAMS, call.arguments), ctx));
-    return bash(parseArgs(BASH_PARAMS, call.arguments), ctx);
-  } catch (error) {
-    return Promise.resolve({ text: (error as Error).message, isError: true });
-  }
+export async function executeTool(name: ToolName, call: ToolCall, ctx: ToolContext): Promise<ToolResult> {
+  if (name === "edit") return edit(parseArgs(EDIT_PARAMS, call.arguments), ctx.signal);
+  if (name === "read") return read(parseArgs(READ_PARAMS, call.arguments), ctx);
+  return bash(parseArgs(BASH_PARAMS, call.arguments), ctx);
 }

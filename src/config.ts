@@ -105,12 +105,7 @@ const API_FACTORY: Record<CustomApi, () => ReturnType<typeof openAICompletionsAp
   "google-generative-ai": googleGenerativeAIApi,
 };
 
-export interface ResolvedModel {
-  models: MutableModels;
-  model: Model<Api>;
-}
-
-export function resolveModel(config: Config): ResolvedModel {
+export function resolveModel(config: Config): { models: MutableModels; model: Model<Api> } {
   const models = builtinModels();
   for (const provider of config.customProviders) {
     models.setProvider(

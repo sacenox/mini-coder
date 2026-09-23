@@ -9,7 +9,7 @@ import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import type { Message, Tool } from "@earendil-works/pi-ai";
 
-export interface SessionHeader {
+interface SessionHeader {
   type: "session";
   version: 1;
   id: string;
@@ -18,7 +18,7 @@ export interface SessionHeader {
   title: string;
 }
 
-export interface RequestRecord {
+interface RequestRecord {
   type: "request";
   at: string;
   provider: string;
@@ -29,13 +29,13 @@ export interface RequestRecord {
   tools: Tool[];
 }
 
-export interface MessageRecord {
+interface MessageRecord {
   type: "message";
   at: string;
   message: Message;
 }
 
-export type SessionRecord = SessionHeader | RequestRecord | MessageRecord;
+type SessionRecord = SessionHeader | RequestRecord | MessageRecord;
 
 function slugify(text: string): string {
   const slug = text
@@ -57,7 +57,7 @@ function shortId(): string {
 }
 
 function timestamp(date: Date): string {
-  const p = (n: number, width = 2) => String(n).padStart(width, "0");
+  const p = (n: number) => String(n).padStart(2, "0");
   return (
     `${date.getUTCFullYear()}${p(date.getUTCMonth() + 1)}${p(date.getUTCDate())}` +
     `-${p(date.getUTCHours())}${p(date.getUTCMinutes())}${p(date.getUTCSeconds())}`
