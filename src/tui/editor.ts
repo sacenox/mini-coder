@@ -51,6 +51,13 @@ export class Editor {
     this.scroll = 0;
   }
 
+  setText(text: string): void {
+    this.lines = text.split("\n");
+    this.row = this.lines.length - 1;
+    this.col = codePoints(this.lines[this.row]).length;
+    this.scroll = 0;
+  }
+
   handle(key: Key): "submit" | "changed" | "none" {
     switch (key.type) {
       case "submit":
@@ -60,9 +67,6 @@ export class Editor {
         return "changed";
       case "text":
         this.insert(key.text);
-        return "changed";
-      case "tab":
-        this.insert("\t");
         return "changed";
       case "backspace":
         this.backspace();

@@ -3,6 +3,7 @@ import type { AssistantMessage, JsonObject, Message, UserMessage } from "@earend
 import { runAgentTurn, type AgentEvent, type AgentOptions, type Phase } from "../agent.ts";
 import { Terminal, expandTabs, wrapLine, type Key } from "./term.ts";
 import { Editor } from "./editor.ts";
+import { completeCommand, findCommand, type CommandContext } from "./commands.ts";
 import { MarkdownStream, TailStream, type BodyLine, type StreamRenderer } from "./stream.ts";
 import { cyan, dim, green, red } from "./styles.ts";
 import { contextUsageLine, estimateContextTokens } from "./usage.ts";
@@ -143,6 +144,15 @@ class Tui {
   private readonly messages: Message[] = [];
   readonly done: Promise<void>;
 
+  /** The only capability a command gets: styled lines into scrollback. */
+  private readonly commandContext: CommandContext = {
+    write: (lines) => {
+      this.separator = true;
+      this.commitLines(lines.map((text) => ({ text })));
+      this.separator = true;
+    },
+  };
+
   private resolveExit: () => void = () => {};
   private phase: Phase = "idle";
   private detail: string | undefined;
@@ -187,11 +197,6 @@ class Tui {
     process.on("SIGTERM", this.onSignal);
     this.separator = true;
     this.push(`mini-coder · ${this.opts.model.provider}/${this.opts.model.id}`);
-    this.push(
-      dim(
-        "Enter submit · Shift+Enter (or Ctrl+J) newline · Esc pause · Ctrl+C cancel · Ctrl+D exit",
-      ),
-    );
     this.separator = true;
     this.render();
   }
@@ -228,6 +233,14 @@ class Tui {
       }
       return;
     }
+    if (key.type === "tab") {
+      const completed = completeCommand(this.editor.text());
+      if (completed !== null) {
+        this.editor.setText(completed);
+        this.render();
+      }
+      return;
+    }
     const result = this.editor.handle(key);
     if (result === "submit") this.submit();
     else if (result === "changed") this.render();
@@ -244,6 +257,13 @@ class Tui {
       return;
     }
     if (text.trim() === "") return;
+    const invocation = findCommand(text);
+    if (invocation !== null) {
+      this.editor.clear();
+      invocation.command.run(this.commandContext, invocation.args);
+      this.render();
+      return;
+    }
     this.editor.clear();
     const message: UserMessage = { role: "user", content: text, timestamp: Date.now() };
     this.messages.push(message);
