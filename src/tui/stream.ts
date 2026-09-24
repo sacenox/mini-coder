@@ -1,4 +1,4 @@
-import { highlightCode, highlightMarkdown } from "../highlight.ts";
+import { highlightCode, highlightMarkdown } from "./highlight.ts";
 import { dim } from "./styles.ts";
 
 /** One logical display line: unwrapped text plus the style its rows inherit. */
