@@ -5,7 +5,7 @@ export interface CommandContext {
   write(lines: string[]): void;
 }
 
-export interface Command {
+interface Command {
   name: string; // no leading slash, lowercase
   description: string; // one line, shown by /help
   run(ctx: CommandContext, args: string): void;
@@ -35,7 +35,7 @@ const help: Command = {
   },
 };
 
-export const COMMANDS: Command[] = [help];
+const COMMANDS: Command[] = [help];
 
 /** `/name args` for a known `name`, else null; unknown slash text stays a message. */
 export function findCommand(text: string): { command: Command; args: string } | null {

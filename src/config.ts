@@ -108,16 +108,17 @@ const API_FACTORY: Record<CustomApi, () => ReturnType<typeof openAICompletionsAp
 export function resolveModel(config: Config): { models: MutableModels; model: Model<Api> } {
   const models = builtinModels();
   for (const provider of config.customProviders) {
+    const name = provider.name ?? provider.id;
     models.setProvider(
       createProvider({
         id: provider.id,
-        name: provider.name ?? provider.id,
+        name,
         baseUrl: provider.baseUrl,
         headers: provider.headers,
         auth: {
           apiKey: provider.envKeys?.length
-            ? envApiKeyAuth(provider.name ?? provider.id, provider.envKeys)
-            : { name: provider.name ?? provider.id, resolve: async () => ({ auth: { apiKey: "unused" } }) },
+            ? envApiKeyAuth(name, provider.envKeys)
+            : { name, resolve: async () => ({ auth: { apiKey: "unused" } }) },
         },
         api: API_FACTORY[provider.api](),
         models: provider.models.map((id) => ({

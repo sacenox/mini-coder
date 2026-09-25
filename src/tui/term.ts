@@ -1,7 +1,6 @@
 const COMBINING = /\p{M}/u;
 
 function charWidth(code: number): number {
-  if (code === 0) return 0;
   if (code < 32 || (code >= 0x7f && code < 0xa0)) return 0;
   if (code === 0x200b || code === 0x200c || code === 0x200d || code === 0xfeff) return 0;
   if (code >= 0xfe00 && code <= 0xfe0f) return 0;
@@ -210,20 +209,15 @@ function lookup(code: number, mods: number): Key | null {
   return KEYS[`${code}:${mods}`] ?? null;
 }
 
-/** A legacy control byte, as the chord the same key arrives as elsewhere. */
-function controlChord(code: number): Chord {
-  if (code === 0x08) return { code: CODE.backspace, mods: 0 };
-  if (code === 0x09) return { code: CODE.tab, mods: 0 };
-  if (code === 0x0d) return { code: CODE.enter, mods: 0 };
-  return { code: code + 0x60, mods: CTRL };
-}
-
 /** Control bytes are never text: they resolve through the table or vanish. */
 function mapPoint(code: number): Key | null {
   if (code === 0x7f) return lookup(CODE.backspace, 0);
   if (code < 0x20) {
-    const { code: point, mods } = controlChord(code);
-    return lookup(point, mods);
+    // A legacy control byte, as the chord the same key arrives as elsewhere.
+    if (code === 0x08) return lookup(CODE.backspace, 0);
+    if (code === 0x09) return lookup(CODE.tab, 0);
+    if (code === 0x0d) return lookup(CODE.enter, 0);
+    return lookup(code + 0x60, CTRL);
   }
   return { type: "text", text: String.fromCodePoint(code) };
 }
@@ -253,23 +247,21 @@ function normalizePaste(text: string): string {
   return text.replace(/\r\n?/g, "\n");
 }
 
-export class KeyParser {
+class KeyParser {
   private buffer = "";
   private pasting = false;
 
-  pendingEscape(): boolean {
-    return !this.pasting && this.buffer === "\x1b";
+  /** What the buffer may still complete: a lone ESC, a partial sequence, or nothing. */
+  pending(): "escape" | "sequence" | null {
+    if (this.pasting) return null;
+    if (this.buffer === "\x1b") return "escape";
+    return this.buffer.length > 1 ? "sequence" : null;
   }
 
   flushEscape(): Key[] {
     if (this.buffer !== "\x1b") return [];
     this.buffer = "";
     return [{ type: "escape" }];
-  }
-
-  /** True while the buffer holds a sequence that may still complete. */
-  pendingSequence(): boolean {
-    return !this.pasting && this.buffer.length > 1;
   }
 
   flushSequence(): void {
@@ -363,7 +355,7 @@ export class KeyParser {
   }
 }
 
-export interface TerminalHandlers {
+interface TerminalHandlers {
   onKey: (key: Key) => void;
   onResize: () => void;
 }
@@ -426,12 +418,13 @@ export class Terminal {
     // incomplete sequence never wedges the buffer.
     this.clearTimers();
     for (const key of this.parser.feed(chunk)) this.handlers.onKey(key);
-    if (this.parser.pendingEscape()) {
+    const pending = this.parser.pending();
+    if (pending === "escape") {
       this.escapeTimer = setTimeout(() => {
         this.escapeTimer = undefined;
         for (const key of this.parser.flushEscape()) this.handlers.onKey(key);
       }, 30);
-    } else if (this.parser.pendingSequence()) {
+    } else if (pending === "sequence") {
       this.sequenceTimer = setTimeout(() => {
         this.sequenceTimer = undefined;
         this.parser.flushSequence();
@@ -439,7 +432,5 @@ export class Terminal {
     }
   };
 
-  private onResize = (): void => {
-    this.handlers.onResize();
-  };
+  private onResize = (): void => this.handlers.onResize();
 }

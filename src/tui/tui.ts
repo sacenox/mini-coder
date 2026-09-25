@@ -29,8 +29,7 @@ const EDIT_HEADER = /^(Index: |={3,}$|--- |\+\+\+ )/;
 
 function callSummary(name: string, args: JsonObject): string {
   if (name === "bash" && typeof args.command === "string") return args.command.replace(/\s*\n\s*/g, " ");
-  if (name === "edit" && typeof args.path === "string") return args.path;
-  if (name === "read" && typeof args.path === "string") return args.path;
+  if ((name === "edit" || name === "read") && typeof args.path === "string") return args.path;
   return JSON.stringify(args);
 }
 
@@ -187,7 +186,6 @@ class Tui {
   private steeringResolve: ((text: string) => void) | null = null;
   private abort: AbortController | null = null;
   private renderScheduled = false;
-  private reanchor = false;
   private closed = false;
 
   // Scrollback: lines accumulate here and are written above the live region.
@@ -209,7 +207,10 @@ class Tui {
     this.opts = opts;
     this.term = new Terminal({
       onKey: (key) => this.handleKey(key),
-      onResize: () => this.handleResize(),
+      // A reflow moves the region but leaves the cursor on the line it was on,
+      // so the region's top is still `cursorUp` rows above it. Redraw over the
+      // old region instead of dropping the anchor, which would leave it behind.
+      onResize: () => this.render(),
     });
     this.done = new Promise((resolve) => {
       this.resolveExit = resolve;
@@ -226,16 +227,7 @@ class Tui {
     this.render();
   }
 
-  private onSignal = (): void => {
-    this.exit();
-  };
-
-  private handleResize(): void {
-    // A reflow moves the region but leaves the cursor on the line it was on, so
-    // the region's top is still `cursorUp` rows above it. Redraw over the old
-    // region instead of dropping the anchor, which would leave it behind.
-    this.render();
-  }
+  private onSignal = (): void => this.exit();
 
   private handleKey(key: Key): void {
     if (key.type === "eof") {
@@ -314,15 +306,9 @@ class Tui {
   private async runTurn(): Promise<void> {
     try {
       await runAgentTurn({
-        models: this.opts.models,
-        model: this.opts.model,
-        systemPrompt: this.opts.systemPrompt,
-        tools: this.opts.tools,
-        toolNames: this.opts.toolNames,
+        ...this.opts,
         messages: this.messages,
-        session: this.opts.session,
         signal: this.abort!.signal,
-        thinkingEffort: this.opts.thinkingEffort,
         interaction: {
           isPauseRequested: () => this.pauseRequested,
           clearPause: () => {
@@ -563,12 +549,10 @@ class Tui {
     // terminal; the re-anchor newline goes after the scrollback, not before the
     // erase, because `clear()` measures from the previous frame's cursor and
     // moving the cursor down first lands the erase one row below the region.
-    if (this.scroll !== "" && this.live.height >= this.term.height - 1) this.reanchor = true;
     const scroll = this.scroll;
     this.scroll = "";
-    const prefix = this.reanchor ? "\r\n" : "";
-    this.reanchor = false;
-    this.term.write(this.live.draw(lines, cursorRow, editor.cursorCol, scroll + prefix));
+    const reanchor = scroll !== "" && this.live.height >= this.term.height - 1;
+    this.term.write(this.live.draw(lines, cursorRow, editor.cursorCol, scroll + (reanchor ? "\r\n" : "")));
   }
 
   private exit(): void {

@@ -6,7 +6,7 @@ export const BASH_PARAMS = Type.Object(
   { command: Type.String({ description: "Command to run" }) },
   { additionalProperties: false },
 );
-export type BashArgs = Static<typeof BASH_PARAMS>;
+type BashArgs = Static<typeof BASH_PARAMS>;
 
 const MAX_HEAD = 10_000;
 const MAX_TAIL = 6_000;

@@ -13,7 +13,6 @@ import {
 } from "@earendil-works/pi-ai";
 import type { Session } from "./session.ts";
 import { acceptsImages, executeTool, type ToolDetails, type ToolResult } from "./tools/index.ts";
-import type { ToolName } from "./config.ts";
 
 export type Phase = "preparing" | "waitingModel" | "streaming" | "runningTool" | "pausing" | "idle";
 
@@ -21,15 +20,15 @@ export type AgentEvent =
   | { type: "phase"; phase: Phase; detail?: string }
   | { type: "text"; delta: string }
   | { type: "reasoning"; delta: string }
-  | { type: "toolCall"; name: string; callId: string; arguments: JsonObject }
-  | { type: "toolOutput"; name: string; callId: string; chunk: string }
-  | { type: "toolResult"; name: string; callId: string; text: string; isError: boolean }
+  | { type: "toolCall"; name: string; arguments: JsonObject }
+  | { type: "toolOutput"; chunk: string }
+  | { type: "toolResult"; name: string; text: string; isError: boolean }
   | { type: "message"; message: AssistantMessage }
   | { type: "error"; message: string }
   | { type: "cancelled" }
   | { type: "complete" };
 
-export interface Interaction {
+interface Interaction {
   isPauseRequested(): boolean;
   clearPause(): void;
   requestSteering(): Promise<string>;
@@ -47,12 +46,11 @@ export interface AgentOptions {
   model: Model<Api>;
   systemPrompt: string;
   tools: Tool[];
-  toolNames: ToolName[];
   thinkingEffort: ModelThinkingLevel;
   session: Session;
 }
 
-export interface AgentRun extends AgentOptions {
+interface AgentRun extends AgentOptions {
   messages: Message[];
   signal: AbortSignal;
   interaction: Interaction;
@@ -63,9 +61,8 @@ export async function runAgentTurn(run: AgentRun): Promise<void> {
   const { messages, session, signal, interaction, onEvent } = run;
 
   /** Appends a user message the model reads at the next step boundary. */
-  const steer = (texts: string[]): void => {
-    const content = texts.filter((text) => text.length > 0).join("\n");
-    if (content.length === 0) return;
+  const steer = (content: string): void => {
+    if (content === "") return;
     const message: UserMessage = { role: "user", content, timestamp: Date.now() };
     messages.push(message);
     session.appendMessage(message);
@@ -74,28 +71,29 @@ export async function runAgentTurn(run: AgentRun): Promise<void> {
   /**
    * Returns the steering typed while paused, or ""; the caller decides where
    * it lands, because a user message between an assistant turn and its tool
-   * results is rejected by the provider.
+   * results is rejected by the provider. Null once the turn has been aborted;
+   * every step boundary is a cancellation point.
    */
-  const pause = async (): Promise<string> => {
-    if (!interaction.isPauseRequested()) return "";
-    interaction.clearPause();
-    onEvent({ type: "phase", phase: "pausing" });
-    const steering = await interaction.requestSteering();
-    onEvent({ type: "phase", phase: "idle" });
-    return steering;
+  const pauseStep = async (): Promise<string | null> => {
+    if (signal.aborted) return null;
+    if (interaction.isPauseRequested()) {
+      interaction.clearPause();
+      onEvent({ type: "phase", phase: "pausing" });
+      const steering = await interaction.requestSteering();
+      onEvent({ type: "phase", phase: "idle" });
+      if (signal.aborted) return null;
+      return steering;
+    }
+    return "";
   };
 
   for (;;) {
-    if (signal.aborted) {
+    const steering = await pauseStep();
+    if (steering === null) {
       onEvent({ type: "cancelled" });
       return;
     }
-    const steering = await pause();
-    if (signal.aborted) {
-      onEvent({ type: "cancelled" });
-      return;
-    }
-    steer([steering]);
+    steer(steering);
 
     onEvent({ type: "phase", phase: "preparing" });
     session.appendRequest({
@@ -130,7 +128,6 @@ export async function runAgentTurn(run: AgentRun): Promise<void> {
           onEvent({
             type: "toolCall",
             name: event.toolCall.name,
-            callId: event.toolCall.id,
             arguments: event.toolCall.arguments,
           });
         }
@@ -165,28 +162,24 @@ export async function runAgentTurn(run: AgentRun): Promise<void> {
     // tool results.
     const held: string[] = [];
     for (const call of toolCalls) {
-      if (signal.aborted) {
-        onEvent({ type: "cancelled" });
-        return;
-      }
-      const steering = await pause();
-      if (signal.aborted) {
+      const steering = await pauseStep();
+      if (steering === null) {
         onEvent({ type: "cancelled" });
         return;
       }
       if (steering !== "") held.push(steering);
       onEvent({ type: "phase", phase: "runningTool", detail: call.name });
 
-      const tool = run.toolNames.find((name) => name === call.name);
+      const tool = run.tools.find((candidate) => candidate.name === call.name);
       let result: ToolResult;
       if (tool === undefined) {
         result = { text: `unknown tool: ${call.name}`, isError: true };
       } else {
         try {
-          result = await executeTool(tool, call, {
+          result = await executeTool(call, {
             signal,
             supportsImages: acceptsImages(run.model),
-            onOutput: (chunk) => onEvent({ type: "toolOutput", name: call.name, callId: call.id, chunk }),
+            onOutput: (chunk) => onEvent({ type: "toolOutput", chunk }),
           });
         } catch (error) {
           result = { text: (error as Error).message, isError: true };
@@ -204,8 +197,8 @@ export async function runAgentTurn(run: AgentRun): Promise<void> {
       };
       messages.push(toolMessage);
       session.appendMessage(toolMessage);
-      onEvent({ type: "toolResult", name: call.name, callId: call.id, text: result.text, isError: result.isError });
+      onEvent({ type: "toolResult", name: call.name, text: result.text, isError: result.isError });
     }
-    steer(held);
+    steer(held.join("\n"));
   }
 }

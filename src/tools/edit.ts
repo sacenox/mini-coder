@@ -11,7 +11,7 @@ export const EDIT_PARAMS = Type.Object(
   },
   { additionalProperties: false },
 );
-export type EditArgs = Static<typeof EDIT_PARAMS>;
+type EditArgs = Static<typeof EDIT_PARAMS>;
 
 export function edit(args: EditArgs, signal: AbortSignal): ToolResult {
   const { path, oldText, newText } = args;

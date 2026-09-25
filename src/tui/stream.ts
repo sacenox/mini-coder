@@ -9,11 +9,6 @@ export interface BodyLine {
   bg?: string;
 }
 
-/** The text after the last newline: what is still incomplete. */
-function tail(text: string): string {
-  return text.slice(text.lastIndexOf("\n") + 1);
-}
-
 /**
  * A text stream projected onto display lines. `feed` and `flush` return the
  * lines that became final; `pending` returns what is still in flight.
@@ -127,7 +122,8 @@ export class TailStream implements StreamRenderer {
   private rest = "";
 
   feed(delta: string): BodyLine[] {
-    this.rest = tail(this.rest + delta);
+    const text = this.rest + delta;
+    this.rest = text.slice(text.lastIndexOf("\n") + 1);
     return [];
   }
 

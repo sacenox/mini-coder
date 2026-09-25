@@ -10,18 +10,11 @@ import { runTui } from "./tui/tui.ts";
 function parseArgs(argv: string[]): { print: string | null } {
   let print: string | null = null;
   for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (arg === "-p" || arg === "--print") {
-      const value = argv[++i];
-      if (value === undefined) throw new Error(`${arg} requires a prompt`);
-      print = value;
-    } else if (arg.startsWith("--print=")) {
-      print = arg.slice("--print=".length);
-    } else if (arg.startsWith("-p=")) {
-      print = arg.slice("-p=".length);
-    } else {
-      throw new Error(`unknown argument: ${arg}`);
-    }
+    const match = /^(?:-p|--print)(?:=(.*))?$/.exec(argv[i]);
+    if (match === null) throw new Error(`unknown argument: ${argv[i]}`);
+    const value = match[1] ?? argv[++i];
+    if (value === undefined) throw new Error(`${argv[i - 1]} requires a prompt`);
+    print = value;
   }
   return { print };
 }
@@ -87,7 +80,6 @@ async function main(): Promise<void> {
     model,
     systemPrompt: buildSystemPrompt(config),
     tools: toolSchemas(config.tools, acceptsImages(model)),
-    toolNames: config.tools,
     thinkingEffort: clampThinkingLevel(model, config.thinkingEffort),
     session,
   };

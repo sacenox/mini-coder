@@ -40,8 +40,8 @@ export function toolSchemas(names: ToolName[], withImages: boolean): Tool[] {
   return names.map((name) => tools[name]);
 }
 
-export async function executeTool(name: ToolName, call: ToolCall, ctx: ToolContext): Promise<ToolResult> {
-  if (name === "edit") return edit(parseArgs(EDIT_PARAMS, call.arguments), ctx.signal);
-  if (name === "read") return read(parseArgs(READ_PARAMS, call.arguments), ctx);
+export async function executeTool(call: ToolCall, ctx: ToolContext): Promise<ToolResult> {
+  if (call.name === "edit") return edit(parseArgs(EDIT_PARAMS, call.arguments), ctx.signal);
+  if (call.name === "read") return read(parseArgs(READ_PARAMS, call.arguments), ctx);
   return bash(parseArgs(BASH_PARAMS, call.arguments), ctx);
 }

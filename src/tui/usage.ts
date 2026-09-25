@@ -1,4 +1,4 @@
-import type { Api, AssistantMessage, ImageContent, Message, Model, TextContent, Tool } from "@earendil-works/pi-ai";
+import type { Api, AssistantMessage, Message, Model, Tool } from "@earendil-works/pi-ai";
 import { dim, red, yellow } from "./styles.ts";
 
 /** ~1 token per 4 characters, the heuristic pi-ai uses. */
@@ -6,18 +6,12 @@ function estimateText(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
-function contentChars(content: string | Array<TextContent | ImageContent>): number {
-  if (typeof content === "string") return content.length;
-  let chars = 0;
-  for (const block of content) if (block.type === "text") chars += block.text.length;
-  return chars;
-}
-
 /** Characters one message contributes. Image and thinking blocks are ignored: an undercount. */
 function messageChars(message: Message): number {
-  if (message.role !== "assistant") return contentChars(message.content);
+  const content = message.content;
+  if (typeof content === "string") return content.length;
   let chars = 0;
-  for (const block of message.content) {
+  for (const block of content) {
     if (block.type === "text") chars += block.text.length;
     else if (block.type === "toolCall") chars += block.name.length + JSON.stringify(block.arguments).length;
   }
@@ -53,7 +47,7 @@ export function estimateContextTokens(messages: Message[], systemPrompt: string,
 }
 
 /** `812`, `12.3k`, `1.24M` — trailing zeros trimmed. */
-export function formatTokens(n: number): string {
+function formatTokens(n: number): string {
   if (n < 1000) return String(n);
   const scaled = n < 1_000_000 ? n / 1000 : n / 1_000_000;
   const unit = n < 1_000_000 ? "k" : "M";

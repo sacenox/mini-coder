@@ -1,38 +1,25 @@
 /**
- * The one palette: TokyoNight `night`, transcribed from `folke/tokyonight.nvim`
- * (`lua/tokyonight/colors/night.lua` and its generated highlight groups). Every
- * colour the TUI writes comes from here, foreground and background alike, so no
- * row can fall back to the terminal's own colours. Truecolor only.
+ * The one palette: the TokyoNight `night` slots the TUI uses, from
+ * `folke/tokyonight.nvim` (`lua/tokyonight/colors/night.lua` and its generated
+ * highlight groups). Every colour the TUI writes comes from here, foreground and
+ * background alike, so no row can fall back to the terminal's own colours.
+ * Truecolor only.
  */
 export const PALETTE = {
   bg: "#1a1b26",
-  bg_dark: "#16161e",
-  bg_dark1: "#0c0e14",
-  bg_highlight: "#292e42",
   fg: "#c0caf5",
   fg_dark: "#a9b1d6",
-  fg_gutter: "#3b4261",
   comment: "#565f89",
-  dark3: "#545c7e",
-  dark5: "#737aa2",
   terminal_black: "#414868",
   blue: "#7aa2f7",
-  blue0: "#3d59a1",
   blue1: "#2ac3de",
-  blue2: "#0db9d7",
   blue5: "#89ddff",
-  blue6: "#b4f9f8",
-  blue7: "#394b70",
-  cyan: "#7dcfff",
   green: "#9ece6a",
   green1: "#73daca",
-  green2: "#41a6b5",
   magenta: "#bb9af7",
-  magenta2: "#ff007c",
   orange: "#ff9e64",
   purple: "#9d7cd8",
   red: "#f7768e",
-  red1: "#db4b4b",
   teal: "#1abc9c",
   yellow: "#e0af68",
 } as const;

@@ -73,10 +73,9 @@ function titleFor(message: Message): string {
 }
 
 export class Session {
-  readonly sessionsDir: string;
-  readonly cwd: string;
+  private readonly sessionsDir: string;
+  private readonly cwd: string;
   id: string | null = null;
-  logPath: string | null = null;
   private fd: number | null = null;
   private closed = false;
 
@@ -123,8 +122,8 @@ export class Session {
         throw error;
       }
       this.id = name;
-      this.logPath = join(dir, "session.jsonl");
-      this.fd = openSync(this.logPath, "a");
+      const logPath = join(dir, "session.jsonl");
+      this.fd = openSync(logPath, "a");
       const header: SessionHeader = {
         type: "session",
         version: 1,

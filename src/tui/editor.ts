@@ -27,7 +27,7 @@ function wordEnd(cps: string[], col: number): number {
   return i;
 }
 
-export interface EditorRender {
+interface EditorRender {
   rows: string[];
   cursorRow: number;
   cursorCol: number;
