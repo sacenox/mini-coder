@@ -4,8 +4,8 @@ import {
   type JsonObject,
   type Message,
   type Model,
+  type ModelThinkingLevel,
   type Models,
-  type ThinkingLevel,
   type Tool,
   type ToolCall,
   type ToolResultMessage,
@@ -48,7 +48,7 @@ export interface AgentOptions {
   systemPrompt: string;
   tools: Tool[];
   toolNames: ToolName[];
-  thinkingEffort: ThinkingLevel;
+  thinkingEffort: ModelThinkingLevel;
   session: Session;
 }
 
@@ -112,7 +112,7 @@ export async function runAgentTurn(run: AgentRun): Promise<void> {
     let stream;
     try {
       stream = run.models.streamSimple(run.model, context, {
-        reasoning: run.thinkingEffort,
+        reasoning: run.thinkingEffort === "off" ? undefined : run.thinkingEffort,
         signal,
         sessionId: session.id ?? undefined,
       });

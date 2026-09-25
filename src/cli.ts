@@ -1,5 +1,5 @@
 import process from "node:process";
-import type { AssistantMessage, Message, UserMessage } from "@earendil-works/pi-ai";
+import { clampThinkingLevel, type AssistantMessage, type Message, type UserMessage } from "@earendil-works/pi-ai";
 import { loadConfig, resolveModel } from "./config.ts";
 import { buildSystemPrompt } from "./prompt.ts";
 import { acceptsImages, toolSchemas } from "./tools/index.ts";
@@ -88,7 +88,7 @@ async function main(): Promise<void> {
     systemPrompt: buildSystemPrompt(config),
     tools: toolSchemas(config.tools, acceptsImages(model)),
     toolNames: config.tools,
-    thinkingEffort: config.thinkingEffort,
+    thinkingEffort: clampThinkingLevel(model, config.thinkingEffort),
     session,
   };
 

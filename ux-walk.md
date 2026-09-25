@@ -124,7 +124,7 @@ runs the TypeScript entrypoint directly.
     background=#ffffff foreground=#000000 cursor=#000000`; the app paints its own
     palette, so the light-theme check is that no row leaks the host's colours.
 - Use the provider and model already configured in `~/.config/mini-coder`
-  (`opencode-go/deepseek-v4.1-flash`, default effort `medium`), with short
+  (`opencode-go/deepseek-v4.1-flash`, effective effort `high`), with short
   single-purpose prompts — one prompt per state you want to reach — so streaming,
   reasoning, tool calls, and usage numbers are all genuine. Reach the hostile
   shapes through the model too: ask it to run a command that prints a few hundred
@@ -134,9 +134,12 @@ runs the TypeScript entrypoint directly.
   reported as not covered rather than faked: the `read` of an image on a model
   that does *not* accept image input (this model declares image input, so the
   other case needs a different provider/model), and a provider error or stalled
-  stream. Note also that `thinkingLevelMap.medium` is `null`, so the request
-  carries no thinking level and the dimmed reasoning preview appears only for
-  prompts that make the model think.
+  stream. Note also that the config default effort is `medium`, but this model's
+  `thinkingLevelMap` marks `minimal`, `medium`, and `xhigh` as `null` — only
+  `low`, `high`, and `max` are supported — so the app clamps the default up to
+  `high`: the request carries `reasoning_effort: "high"` and the startup banner
+  reads `... · high`. The dimmed reasoning preview appears only for prompts that
+  make the model think.
 - Hazard: with a live turn, the model's own `bash` tool can reach this pane
   (`kitty @ --to unix:/tmp/uxw-<date> send-key ...`), so prompts must be
   self-contained, and the pane must be re-read rather than assumed to hold still.
@@ -148,8 +151,9 @@ done until every one of these has been reached and captured:
 
 Startup and idle
 
-- banner `mini-coder · <provider>/<model>`, empty scrollback, status row showing
-  only the context readout, cursor at column 0 of the editor.
+- banner `mini-coder · <provider>/<model> · <effective thinking effort>`, empty
+  scrollback, status row showing only the context readout, cursor at column 0 of
+  the editor.
 - editor: empty draft, one line wrapping past the width, more lines than the
   viewport, caret at each wrap boundary (read it with `--add-cursor`), Home/End,
   Ctrl+A/Ctrl+E, Ctrl+Home/Ctrl+End, word motions, backspace/delete across a line

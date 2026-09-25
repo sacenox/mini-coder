@@ -221,7 +221,7 @@ class Tui {
     process.on("SIGINT", this.onSignal);
     process.on("SIGTERM", this.onSignal);
     this.separator = true;
-    this.push(`mini-coder · ${this.opts.model.provider}/${this.opts.model.id}`);
+    this.push(`mini-coder · ${this.opts.model.provider}/${this.opts.model.id} · ${this.opts.thinkingEffort}`);
     this.separator = true;
     this.render();
   }
