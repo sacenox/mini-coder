@@ -1,0 +1,120 @@
+bash-5.3$ script -q -O s01.log -c 'node /home/xonecas/src/agents/mini-coder/src/cli.ts'
+mini-coder · opencode-go/deepseek-v4.1-flash
+
+> the quick brown fox jumps over the lazy dog and then keeps running past every single column bounda
+ry here we go
+
+-> bash  pwd && ls -la
+ | /home/xonecas/src/agents/mini-coder/ux-walk-20260924
+ | total 28
+ | drwxr-xr-x 5 xonecas xonecas   101 set 24 17:33 .
+ | drwxr-xr-x 8 xonecas xonecas  4096 set 24 17:32 ..
+ | drwxr-xr-x 2 xonecas xonecas    65 set 24 17:33 captures
+ | -rw-r--r-- 1 xonecas xonecas   813 set 24 17:33 harness.sh
+ | -rw-r--r-- 1 xonecas xonecas  4096 set 24 17:34 s01.log
+ | drwxr-xr-x 3 xonecas xonecas    76 set 24 17:34 sessions
+ | drwxr-xr-x 2 xonecas xonecas    82 set 24 17:33 shots
+ | -rw-r--r-- 1 xonecas xonecas 13232 set 24 17:33 smoke.log
+
+-> bash  ls -la ~ 2>/dev/null | head -50
+ | total 3280
+ | drwx------ 49 xonecas xonecas    4096 set 24 17:33 .
+ | drwxr-xr-x  3 root    root         21 out 26  2025 ..
+ | drwxr-xr-x  2 xonecas xonecas      23 set 10 12:39 .agents
+ | ... 43 lines not shown ...
+ | drwxr-xr-x  2 xonecas xonecas       6 abr 16 20:09 Projects
+ | drwxr-xr-x  2 xonecas xonecas       6 out 26  2025 Public
+ | -rw-r--r--  1 xonecas xonecas       0 jun  8 23:53 .python_history
+ | -rw-------  1 xonecas xonecas    1024 set 24 14:32 .rnd
+
+-> bash  cd /home/xonecas/src/agents/mini-coder/ux-walk-20260924 && cat harness.sh && echo ---- && t
+ail -40 s01.log && echo ---- && ls -la captures shots sessions sessions/* && echo ---- && head -60 s
+moke.log
+ | # Harness helpers for the ux-walk. Source from the run dir.
+ | RUN=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+ | S=uxw
+ | APP=/home/xonecas/src/agents/mini-coder/src/cli.ts
+ | ... 104 lines not shown ...
+mini-coder · opencode-go/deepseek-v4.1-flash
+ | [2mctx 404/1M · 0%[0m
+ |
+ | Script done on 2026-09-24 17:33:27+01:00 [COMMAND_EXIT_CODE="0"]
+
+-> bash  cd /home/xonecas/src/agents/mini-coder && ls -la && git log --oneline -10 2>/dev/null && gi
+t status --short | head -20
+ | total 108
+ | drwxr-xr-x  8 xonecas xonecas  4096 set 24 17:32 .
+ | drwxr-xr-x  7 xonecas xonecas    81 set 23 13:16 ..
+ | -rw-r--r--  1 xonecas xonecas  4507 set 23 17:02 AGENTS.md
+ | ... 20 lines not shown ...
+ | 9890b42 feat: colored diffs
+ | 7f3096e feat: read tool with image input support
+ | ?? ux-walk-20260924/
+ | ?? ux-walk.md
+
+-> bash  tail -60 ~/.bash_history
+ | ll
+ | mkdir distro-lol
+ | cd distro-lol/
+ | mini-coder
+ | ... 52 lines not shown ...
+ | mini-coder
+ | gpo
+ | mini-coder
+ | script -q -O smoke.log
+
+-> read  /home/xonecas/src/agents/mini-coder/ux-walk.md
+ | # Goal
+ |
+ | Your goal is to drive the TUI through all possible states, screenshot or record
+ | it, then analyze it from a user's perspective as a product manager and outline
+ | ... 175 lines not shown ...
+ |   capture lines next to them rather than describing them. If something can't be
+ |   shown in the report, attach the file.
+ | - No fixes, no diffs, no proposals. One line naming what would fix a finding is
+ |   the most you write.
+
+-> read  /home/xonecas/src/agents/mini-coder/AGENTS.md
+ | # mini-coder
+ |
+ | A fast, transparent, config-first terminal coding agent for one user at a time.
+ |
+ | ... 83 lines not shown ...
+ | - Ask before adding a dependency.
+ | - Do not add tests unless explicitly asked; verify manually.
+ | - Before finishing, review the diff against the direction and guardrails, remove
+ |   anything that added scope, and report any requirement you could not satisfy.
+
+! cancelled
+bash-5.3$ echo EXIT=$?
+EXIT=0
+bash-5.3$ script -q -O s02.log -c 'node /home/xonecas/src/agents/mini-coder/src/cli.ts'
+mini-coder · opencode-go/deepseek-v4.1-flash
+bash-5.3$ script -q -O s02b.log -c 'node /home/xonecas/src/agents/mini-coder/src/cli.ts'
+mini-coder · opencode-go/deepseek-v4.1-flash
+
+commands
+  [2m/help      [0m  list commands and keybindings
+
+keybindings
+  [2mEnter      [0m  submit
+  [2mShift+Enter[0m  newline (Ctrl+J also works)
+  [2mEsc        [0m  pause the turn at the next step boundary
+  [2mCtrl+C     [0m  cancel the turn
+  [2mCtrl+D     [0m  exit on an empty draft
+
+commands
+  [2m/help      [0m  list commands and keybindings
+
+keybindings
+  [2mEnter      [0m  submit
+  [2mShift+Enter[0m  newline (Ctrl+J also works)
+  [2mEsc        [0m  pause the turn at the next step boundary
+  [2mCtrl+C     [0m  cancel the turn
+  [2mCtrl+D     [0m  exit on an empty draft
+
+> /unknown
+
+! cancelled
+[2mctx 406/1M · 0%[0m
+

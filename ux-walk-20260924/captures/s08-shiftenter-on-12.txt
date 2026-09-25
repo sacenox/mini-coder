@@ -1,0 +1,30 @@
+SHELL-OK
+bash-5.3$ script -q -O s11.log -c 'node /home/xonecas/src/agents/mini-coder/src/cli.ts'
+mini-coder · opencode-go/deepseek-v4.1-flash
+
+> alpha
+[2m⠏ streaming · 1s[0m · [2mctx 406/1M · 0%[0m
+beta
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

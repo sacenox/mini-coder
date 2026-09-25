@@ -1,0 +1,930 @@
+--- frame 1
+bash-5.3$ script -q -O s02b.log -c 'node /home/xonecas/src/agents/mini-coder/src/cli.ts'
+mini-coder · opencode-go/deepseek-v4.1-flash
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+> /unknown
+
+! cancelled
+bash-5.3$ script -q -O s03.log -c 'node /home/xonecas/src/agents/mini-coder/src/cli.ts'
+mini-coder · opencode-go/deepseek-v4.1-flash
+ctx 404/1M · 0%
+Reply with exactly: ok
+--- frame 2
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+> /unknown
+
+! cancelled
+bash-5.3$ script -q -O s03.log -c 'node /home/xonecas/src/agents/mini-coder/src/cli.ts'
+mini-coder · opencode-go/deepseek-v4.1-flash
+
+> Reply with exactly: ok
+⠋ streaming · 0s · ctx 410/1M · 0%
+
+--- frame 3
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+> /unknown
+
+! cancelled
+bash-5.3$ script -q -O s03.log -c 'node /home/xonecas/src/agents/mini-coder/src/cli.ts'
+mini-coder · opencode-go/deepseek-v4.1-flash
+
+> Reply with exactly: ok
+⠋ streaming · 0s · ctx 410/1M · 0%
+
+--- frame 4
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+> /unknown
+
+! cancelled
+bash-5.3$ script -q -O s03.log -c 'node /home/xonecas/src/agents/mini-coder/src/cli.ts'
+mini-coder · opencode-go/deepseek-v4.1-flash
+
+> Reply with exactly: ok
+⠙ streaming · 0s · ctx 410/1M · 0%
+
+--- frame 5
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+> /unknown
+
+! cancelled
+bash-5.3$ script -q -O s03.log -c 'node /home/xonecas/src/agents/mini-coder/src/cli.ts'
+mini-coder · opencode-go/deepseek-v4.1-flash
+
+> Reply with exactly: ok
+⠹ streaming · 0s · ctx 410/1M · 0%
+
+--- frame 6
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+> /unknown
+
+! cancelled
+bash-5.3$ script -q -O s03.log -c 'node /home/xonecas/src/agents/mini-coder/src/cli.ts'
+mini-coder · opencode-go/deepseek-v4.1-flash
+
+> Reply with exactly: ok
+⠸ streaming · 0s · ctx 410/1M · 0%
+
+--- frame 7
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+> /unknown
+
+! cancelled
+bash-5.3$ script -q -O s03.log -c 'node /home/xonecas/src/agents/mini-coder/src/cli.ts'
+mini-coder · opencode-go/deepseek-v4.1-flash
+
+> Reply with exactly: ok
+⠸ streaming · 0s · ctx 410/1M · 0%
+
+--- frame 8
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+> /unknown
+
+! cancelled
+bash-5.3$ script -q -O s03.log -c 'node /home/xonecas/src/agents/mini-coder/src/cli.ts'
+mini-coder · opencode-go/deepseek-v4.1-flash
+
+> Reply with exactly: ok
+⠼ streaming · 0s · ctx 410/1M · 0%
+
+--- frame 9
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+> /unknown
+
+! cancelled
+bash-5.3$ script -q -O s03.log -c 'node /home/xonecas/src/agents/mini-coder/src/cli.ts'
+mini-coder · opencode-go/deepseek-v4.1-flash
+
+> Reply with exactly: ok
+⠴ streaming · 0s · ctx 410/1M · 0%
+
+--- frame 10
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+> /unknown
+
+! cancelled
+bash-5.3$ script -q -O s03.log -c 'node /home/xonecas/src/agents/mini-coder/src/cli.ts'
+mini-coder · opencode-go/deepseek-v4.1-flash
+
+> Reply with exactly: ok
+⠴ streaming · 0s · ctx 410/1M · 0%
+
+--- frame 11
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+> /unknown
+
+! cancelled
+bash-5.3$ script -q -O s03.log -c 'node /home/xonecas/src/agents/mini-coder/src/cli.ts'
+mini-coder · opencode-go/deepseek-v4.1-flash
+
+> Reply with exactly: ok
+⠦ streaming · 0s · ctx 410/1M · 0%
+
+--- frame 12
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+> /unknown
+
+! cancelled
+bash-5.3$ script -q -O s03.log -c 'node /home/xonecas/src/agents/mini-coder/src/cli.ts'
+mini-coder · opencode-go/deepseek-v4.1-flash
+
+> Reply with exactly: ok
+⠧ streaming · 0s · ctx 410/1M · 0%
+
+--- frame 13
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+> /unknown
+
+! cancelled
+bash-5.3$ script -q -O s03.log -c 'node /home/xonecas/src/agents/mini-coder/src/cli.ts'
+mini-coder · opencode-go/deepseek-v4.1-flash
+
+> Reply with exactly: ok
+⠧ streaming · 0s · ctx 410/1M · 0%
+
+--- frame 14
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+> /unknown
+
+! cancelled
+bash-5.3$ script -q -O s03.log -c 'node /home/xonecas/src/agents/mini-coder/src/cli.ts'
+mini-coder · opencode-go/deepseek-v4.1-flash
+
+> Reply with exactly: ok
+⠇ streaming · 0s · ctx 410/1M · 0%
+
+--- frame 15
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+> /unknown
+
+! cancelled
+bash-5.3$ script -q -O s03.log -c 'node /home/xonecas/src/agents/mini-coder/src/cli.ts'
+mini-coder · opencode-go/deepseek-v4.1-flash
+
+> Reply with exactly: ok
+⠏ streaming · 1s · ctx 410/1M · 0%
+
+--- frame 16
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+> /unknown
+
+! cancelled
+bash-5.3$ script -q -O s03.log -c 'node /home/xonecas/src/agents/mini-coder/src/cli.ts'
+mini-coder · opencode-go/deepseek-v4.1-flash
+
+> Reply with exactly: ok
+⠋ streaming · 1s · ctx 410/1M · 0%
+
+--- frame 17
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+> /unknown
+
+! cancelled
+bash-5.3$ script -q -O s03.log -c 'node /home/xonecas/src/agents/mini-coder/src/cli.ts'
+mini-coder · opencode-go/deepseek-v4.1-flash
+
+> Reply with exactly: ok
+⠋ streaming · 1s · ctx 410/1M · 0%
+
+--- frame 18
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+> /unknown
+
+! cancelled
+bash-5.3$ script -q -O s03.log -c 'node /home/xonecas/src/agents/mini-coder/src/cli.ts'
+mini-coder · opencode-go/deepseek-v4.1-flash
+
+> Reply with exactly: ok
+⠙ streaming · 1s · ctx 410/1M · 0%
+
+--- frame 19
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+> /unknown
+
+! cancelled
+bash-5.3$ script -q -O s03.log -c 'node /home/xonecas/src/agents/mini-coder/src/cli.ts'
+mini-coder · opencode-go/deepseek-v4.1-flash
+
+> Reply with exactly: ok
+⠹ streaming · 1s · ctx 410/1M · 0%
+
+--- frame 20
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+> /unknown
+
+! cancelled
+bash-5.3$ script -q -O s03.log -c 'node /home/xonecas/src/agents/mini-coder/src/cli.ts'
+mini-coder · opencode-go/deepseek-v4.1-flash
+
+> Reply with exactly: ok
+⠹ streaming · 1s · ctx 410/1M · 0%
+
+--- frame 21
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+> /unknown
+
+! cancelled
+bash-5.3$ script -q -O s03.log -c 'node /home/xonecas/src/agents/mini-coder/src/cli.ts'
+mini-coder · opencode-go/deepseek-v4.1-flash
+
+> Reply with exactly: ok
+⠸ streaming · 1s · ctx 410/1M · 0%
+
+--- frame 22
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+> /unknown
+
+! cancelled
+bash-5.3$ script -q -O s03.log -c 'node /home/xonecas/src/agents/mini-coder/src/cli.ts'
+mini-coder · opencode-go/deepseek-v4.1-flash
+
+> Reply with exactly: ok
+⠼ streaming · 1s · ctx 410/1M · 0%
+
+--- frame 23
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+> /unknown
+
+! cancelled
+bash-5.3$ script -q -O s03.log -c 'node /home/xonecas/src/agents/mini-coder/src/cli.ts'
+mini-coder · opencode-go/deepseek-v4.1-flash
+
+> Reply with exactly: ok
+⠼ streaming · 1s · ctx 410/1M · 0%
+
+--- frame 24
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+> /unknown
+
+! cancelled
+bash-5.3$ script -q -O s03.log -c 'node /home/xonecas/src/agents/mini-coder/src/cli.ts'
+mini-coder · opencode-go/deepseek-v4.1-flash
+
+> Reply with exactly: ok
+⠴ streaming · 1s · ctx 410/1M · 0%
+
+--- frame 25
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+> /unknown
+
+! cancelled
+bash-5.3$ script -q -O s03.log -c 'node /home/xonecas/src/agents/mini-coder/src/cli.ts'
+mini-coder · opencode-go/deepseek-v4.1-flash
+
+> Reply with exactly: ok
+
+ok
+
+[complete · 1s]
+ctx 677/1M · 0%
+
+--- frame 26
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+> /unknown
+
+! cancelled
+bash-5.3$ script -q -O s03.log -c 'node /home/xonecas/src/agents/mini-coder/src/cli.ts'
+mini-coder · opencode-go/deepseek-v4.1-flash
+
+> Reply with exactly: ok
+
+ok
+
+[complete · 1s]
+ctx 677/1M · 0%
+
+--- frame 27
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+> /unknown
+
+! cancelled
+bash-5.3$ script -q -O s03.log -c 'node /home/xonecas/src/agents/mini-coder/src/cli.ts'
+mini-coder · opencode-go/deepseek-v4.1-flash
+
+> Reply with exactly: ok
+
+ok
+
+[complete · 1s]
+ctx 677/1M · 0%
+
+--- frame 28
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+> /unknown
+
+! cancelled
+bash-5.3$ script -q -O s03.log -c 'node /home/xonecas/src/agents/mini-coder/src/cli.ts'
+mini-coder · opencode-go/deepseek-v4.1-flash
+
+> Reply with exactly: ok
+
+ok
+
+[complete · 1s]
+ctx 677/1M · 0%
+
+--- frame 29
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+> /unknown
+
+! cancelled
+bash-5.3$ script -q -O s03.log -c 'node /home/xonecas/src/agents/mini-coder/src/cli.ts'
+mini-coder · opencode-go/deepseek-v4.1-flash
+
+> Reply with exactly: ok
+
+ok
+
+[complete · 1s]
+ctx 677/1M · 0%
+
+--- frame 30
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+commands
+  /help        list commands and keybindings
+
+keybindings
+  Enter        submit
+  Shift+Enter  newline (Ctrl+J also works)
+  Esc          pause the turn at the next step boundary
+  Ctrl+C       cancel the turn
+  Ctrl+D       exit on an empty draft
+
+> /unknown
+
+! cancelled
+bash-5.3$ script -q -O s03.log -c 'node /home/xonecas/src/agents/mini-coder/src/cli.ts'
+mini-coder · opencode-go/deepseek-v4.1-flash
+
+> Reply with exactly: ok
+
+ok
+
+[complete · 1s]
+ctx 677/1M · 0%
+

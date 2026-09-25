@@ -1,0 +1,696 @@
+のテ
+キ
+スト
+で
+す a
+nd em
+oji
+🚀🎉
+ don
+e
+
+[38;2;137;221;255m> [39mquo
+te li
+ne
+
+[2m[comp
+lete
+· 4s]
+
+[0m> Rep
+ly wi
+th ON
+LY th
+is: a
+ line
+ cont
+ainin
+g ```
+pytho
+n, th
+en 40
+ line
+s eac
+h exa
+ctly
+print
+(N) w
+here
+N cou
+nts 1
+..40,
+ then
+ stop
+. Do
+NOT c
+lose
+the f
+ence.
+ No c
+ommen
+tary.
+
+[38;2;137;221;255m```[38;2;195;232;141mpy
+thon[39m
+print
+(1)
+print
+(2)
+print
+(3)
+print
+(4)
+print
+(5)
+print
+(6)
+print
+(7)
+print
+(8)
+print
+(9)
+print
+(10)
+print
+(11)
+print
+(12)
+print
+(13)
+print
+(14)
+print
+(15)
+print
+(16)
+print
+(17)
+print
+(18)
+print
+(19)
+print
+(20)
+print
+(21)
+print
+(22)
+print
+(23)
+print
+(24)
+print
+(25)
+print
+(26)
+print
+(27)
+print
+(28)
+print
+(29)
+print
+(30)
+print
+(31)
+print
+(32)
+print
+(33)
+print
+(34)
+print
+(35)
+print
+(36)
+print
+(37)
+print
+(38)
+print
+(39)
+print
+(40)
+
+[2m[comp
+lete
+· 3s]
+
+
+[0m> Thi
+nk st
+ep by
+ step
+ and
+then
+answe
+r: wh
+at is
+ 17*2
+3? Ke
+ep th
+e fin
+al an
+swer
+to on
+e lin
+e.
+
+17 ×
+23 =
+17 ×
+20 +
+17 ×
+3 = 3
+40 +
+51 =
+391
+
+[2m[comp
+lete
+· 3s]
+
+[0m> How
+ many
+ trai
+ling
+zeros
+ does
+ 100!
+ have
+? Rea
+son i
+t out
+ befo
+re an
+sweri
+ng.
+
+Trail
+ing z
+eros
+come
+from
+pairs
+ of 2
+s and
+ 5s i
+n the
+ prim
+e fac
+toriz
+ation
+; 5s
+are t
+he bo
+ttlen
+eck.
+The n
+umber
+ of f
+actor
+s of
+5 in
+100!
+is ⌊1
+00/5⌋
+ + ⌊1
+00/25
+⌋ = 2
+0 + 4
+ = 24
+, and
+ fact
+ors o
+f 2 a
+re fa
+r mor
+e ple
+ntifu
+l.
+
+[38;2;137;221;255m**[1m[39m24[38;2;137;221;255m*
+*[0m
+
+[2m[comp
+lete
+· 2s]
+
+[0m> Pro
+ve th
+at th
+e squ
+are r
+oot o
+f 2 i
+s irr
+ation
+al. R
+eason
+ at l
+ength
+ befo
+re an
+sweri
+ng, t
+hen g
+ive a
+ shor
+t ans
+wer.
+
+[38;2;137;221;255m**[1m[39mSet
+up.[38;2;137;221;255m**
+[0m Supp
+ose,
+for c
+ontra
+dicti
+on, t
+hat √
+2 is
+ratio
+nal.
+Then
+we ca
+n wri
+te √2
+ = a/
+b whe
+re a
+and b
+ are
+posit
+ive i
+ntege
+rs.
+
+[38;2;137;221;255m**[1m[39mRed
+ucing
+ the
+fract
+ion.[38;2;137;221;255m*
+*[0m Eve
+ry ra
+tiona
+l num
+ber c
+an be
+ writ
+ten i
+n low
+est t
+erms,
+ so c
+hoose
+ a an
+d b w
+ith g
+cd(a,
+ b) =
+ 1. S
+quari
+ng gi
+ves 2
+ = a²
+/b²,
+hence
+
+  a²
+= 2b²
+.   (
+∗)
+
+[38;2;137;221;255m**[1m[39ma i
+s eve
+n.[38;2;137;221;255m**[0m
+From
+(∗),
+a² is
+ even
+. Sin
+ce th
+e squ
+are o
+f an
+odd n
+umber
+ is o
+dd, a
+² eve
+n for
+ces a
+ even
+. Wri
+te a
+= 2k
+for s
+ome i
+ntege
+r k.
+
+[38;2;137;221;255m**[1m[39mb i
+s eve
+n.[38;2;137;221;255m**[0m
+Subst
+ituti
+ng in
+to (∗
+): (2
+k)² =
+ 2b²,
+ so 4
+k² =
+2b²,
+so b²
+ = 2k
+². By
+ the
+same
+parit
+y arg
+ument
+, b i
+s eve
+n.
+
+[38;2;137;221;255m**[1m[39mCon
+tradi
+ction
+.[38;2;137;221;255m**[0m B
+ut a
+and b
+ both
+ even
+ cont
+radic
+ts gc
+d(a,
+b) =
+1. Th
+erefo
+re no
+ such
+ a/b
+exist
+s.
+
+[38;2;137;221;255m**[1m[39mSho
+rt an
+swer.
+[38;2;137;221;255m**[0m √2
+ is i
+rrati
+onal.
+ If √
+2 = a
+/b in
+ lowe
+st te
+rms,
+then
+a² =
+2b² f
+orces
+ a ev
+en, w
+hich
+force
+s b e
+ven,
+contr
+adict
+ing l
+owest
+ term
+s.
+
+[2m[comp
+lete
+· 5s]
+ctx 3
+.7k/1
+M · 0
+%[0m
+
+[2mctx 3
+.7k/1
+M · 0
+%[0m
+
+[2mctx 3
+.7k/1
+M · 0
+%[0m
+
+[2mctx 3
+.7k/1
+M · 0
+%[0m
+
+[2mctx 3
+.7k/1
+M · 0
+%[0m
+
+[2mctx 3
+.7k/1
+M · 0
+%[0m
+
+[2mctx 3
+.7k/1
+M · 0
+%[0m
+
+[2mctx 3
+.7k/1
+M · 0
+%[0m
+
+[2mctx 3
+.7k/1
+M · 0
+%[0m
+
+[2mc
+t
+x
+
+3
+.
+7
+k
+/
+1
+M
+
+·
+
+0
+%
+[0mbash-
+5.3$
+scrip
+t -q
+-O s0
+6-200
+x50.l
+og -c
+ 'nod
+e /ho
+me/xo
+necas
+/src/
+agent
+s/min
+i-cod
+er/sr
+c/cli
+.ts'
+mini-
+coder
+ · op
+encod
+e-go/
+deeps
+eek-v
+4.1-f
+lash
+bash-
+5.3$
+scrip
+t -q
+-O s0
+6-80x
+24.lo
+g -c
+'node
+ /hom
+e/xon
+ecas/
+src/a
+gents
+/mini
+-code
+r/src
+/cli.
+ts'
+mini-
+coder
+ · op
+encod
+e-go/
+deeps
+eek-v
+4.1-f
+lash
+bash-
+5.3$
+scrip
+t -q
+-O s0
+6-40x
+12.lo
+g -c
+'node
+ /hom
+e/xon
+ecas/
+src/a
+gents
+/mini
+-code
+r/src
+/cli.
+ts'
+mini-
+coder
+ · op
+encod
+e-go/
+deeps
+eek-v
+4.1-f
+lash
+bash-
+5.3$
+scrip
+t -q
+-O s0
+6-80x
+5.log
+ -c '
+node
+/home
+/xone
+cas/s
+rc/ag
+ents/
+mini-
+coder
+/src/
+cli.t
+s'
+mini-
+coder
+ · op
+encod
+e-go/
+deeps
+eek-v
+4.1-f
+lash
+bash-
+5.3$
+scrip
+t -q
+-O s0
+6-80x
+2.log
+ -c '
+node
+/home
+/xone
+cas/s
+rc/ag
+ents/
+mini-
+coder
+/src/
+cli.t
+s'
+mini-
+coder
+ · op
+encod
+e-go/
+deeps
+eek-v
+4.1-f
+lash
+[2mctx 4
+04/1M
+ · 0%
+[0mbash-
+5.3$
+scrip
+t -q
+-O s0
+6-20x
+24.lo
+g -c
+'node
+ /hom
+e/xon
+ecas/
+src/a
+gents
+/mini
+-code
+r/src
+/cli.
+ts'
+mini-
+coder
+ · op
+encod
+e-go/
+deeps
+eek-v
+4.1-f
+lash
+bash-
+bash-
+5.3$
+scrip
+t -q
+-O s0
+6-5x2
+4.log
+ -c '
+node
+/home
+/xone
+cas/s
+rc/ag
+ents/
+mini-
+coder
+/src/
+cli.t
+s'
+mini-
+coder
+ · op
+encod
+e-go/
+deeps
+eek-v
+4.1-f
+lash
+[2mctx 4
+04/1M
+ · 0%
+
