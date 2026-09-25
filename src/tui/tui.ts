@@ -98,11 +98,6 @@ class LiveRegion {
     return this.rows;
   }
 
-  reset(): void {
-    this.rows = 0;
-    this.cursorUp = 0;
-  }
-
   clear(): string {
     if (this.rows === 0) return "";
     let out = "";
@@ -206,10 +201,9 @@ class Tui {
   };
 
   private handleResize(): void {
-    // Reflow invalidates cursor-relative coordinates. Drop the anchor instead
-    // of guessing and never erase committed history.
-    this.live.reset();
-    this.reanchor = true;
+    // A reflow moves the region but leaves the cursor on the line it was on, so
+    // the region's top is still `cursorUp` rows above it. Redraw over the old
+    // region instead of dropping the anchor, which would leave it behind.
     this.render();
   }
 
