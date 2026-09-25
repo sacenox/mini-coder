@@ -1,7 +1,7 @@
 import process from "node:process";
 import type { AssistantMessage, JsonObject, Message, UserMessage } from "@earendil-works/pi-ai";
 import { runAgentTurn, type AgentEvent, type AgentOptions, type Phase } from "../agent.ts";
-import { Terminal, expandTabs, wrapLine, type Key } from "./term.ts";
+import { Terminal, expandTabs, sanitize, wrapLine, type Key } from "./term.ts";
 import { Editor } from "./editor.ts";
 import { completeCommand, findCommand, type CommandContext } from "./commands.ts";
 import { MarkdownStream, TailStream, type BodyLine, type StreamRenderer } from "./stream.ts";
@@ -70,7 +70,7 @@ function resultLines(name: string, text: string, isError: boolean): BodyLine[] {
 function renderRows(lines: BodyLine[], width: number): string[] {
   return lines.flatMap((line) => {
     const style = line.style;
-    const wrapped = wrapLine(expandTabs(line.text), width);
+    const wrapped = wrapLine(expandTabs(sanitize(line.text)), width);
     return style === undefined ? wrapped : wrapped.map((row) => (row === "" ? row : style(row)));
   });
 }
@@ -461,6 +461,7 @@ class Tui {
    * and two blank lines never appear in a row.
    */
   private push(line: string): void {
+    line = sanitize(line);
     const blank = line === "" || (this.separator && this.wrote);
     this.separator = false;
     if (blank && this.wrote && !this.lastBlank) {

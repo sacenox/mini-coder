@@ -37,6 +37,19 @@ export function displayWidth(text: string): number {
 /** An SGR sequence: zero cells wide, so it never affects a row break. */
 const SGR = /^\x1b\[[0-9;]*m/;
 
+/**
+ * Everything a tool, a file or a model can emit that the terminal would act on
+ * but the TUI did not write itself: control bytes and every escape sequence but
+ * SGR. Dropped before the text is measured, so a row's width is its visible
+ * width and a result can only add rows — never move the cursor, erase the
+ * screen, or break the row model. Tabs survive to `expandTabs`, which owns them.
+ */
+const UNSAFE = /(\x1b\[[0-9;]*m)|\x1b(?:\[[0-9;?]*[ -/]*[@-~]|.)|[\x00-\x08\x0a-\x1f\x7f-\x9f]/g;
+
+export function sanitize(text: string): string {
+  return text.replace(UNSAFE, (_match, sgr: string | undefined) => sgr ?? "");
+}
+
 export function expandTabs(text: string, size = 4): string {
   if (!text.includes("\t")) return text;
   let column = 0;
