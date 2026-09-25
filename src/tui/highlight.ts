@@ -5,71 +5,15 @@ import Parser from "tree-sitter";
 import JavaScript from "tree-sitter-javascript";
 import TypeScript from "tree-sitter-typescript";
 import Markdown from "@tree-sitter-grammars/tree-sitter-markdown";
+import { HEADINGS, INLINE_CODE, NORMAL_BG, NORMAL_FG, STYLES, channels, sgrPlain, type Style } from "./theme.ts";
 
 /**
  * Syntax highlighting for committed scrollback, once, over the whole block.
  * Grammar queries ship with the grammar packages and are consumed as data, so
- * a capture name is the only thing that reaches the palette. Colors are the
- * TokyoNight `moon` palette, mapped the way `folke/tokyonight.nvim` maps
- * capture names to highlight groups. Truecolor only.
+ * a capture name is the only thing that reaches the palette. The colours come
+ * from the TokyoNight `night` palette in `theme.ts`, mapped the way
+ * `folke/tokyonight.nvim` maps capture names to highlight groups. Truecolor only.
  */
-
-interface Style {
-  fg?: string;
-  bg?: string;
-  bold?: boolean;
-  italic?: boolean;
-  underline?: boolean;
-}
-
-/**
- * Headings take their level's color from TokyoNight's rainbow, over a 10%
- * tint of it, as `@markup.heading.N.markdown` does. The grammar's own query
- * names one heading color for all levels, so the level comes from the marker.
- */
-const HEADINGS: Style[] = [
-  { fg: "#82aaff", bg: "#2c314a" },
-  { fg: "#ffc777", bg: "#38343c" },
-  { fg: "#c3e88d", bg: "#32383f" },
-  { fg: "#4fd6be", bg: "#263644" },
-  { fg: "#c099ff", bg: "#32304a" },
-  { fg: "#fca7ea", bg: "#383148" },
-].map((style) => ({ ...style, bold: true }));
-
-/** Inline code: Helix's `@markup.raw.markdown_inline`, not Neovim's plain one. */
-const INLINE_CODE: Style = { fg: "#82aaff", bg: "#444a73" };
-
-/** Capture name to color. A dotted name falls back to its parent. */
-const STYLES: Record<string, Style | undefined> = {
-  comment: { fg: "#636da6" },
-  constant: { fg: "#ff966c" },
-  "constant.builtin": { fg: "#65bcff" },
-  constructor: { fg: "#c099ff" },
-  escape: { fg: "#c099ff" },
-  function: { fg: "#82aaff" },
-  "function.builtin": { fg: "#65bcff" },
-  "function.method": { fg: "#82aaff" },
-  keyword: { fg: "#fca7ea" },
-  number: { fg: "#ff966c" },
-  operator: { fg: "#89ddff" },
-  property: { fg: "#4fd6be" },
-  "punctuation.bracket": { fg: "#828bb8" },
-  "punctuation.delimiter": { fg: "#89ddff" },
-  "punctuation.special": { fg: "#89ddff" },
-  string: { fg: "#c3e88d" },
-  "string.special": { fg: "#65bcff" },
-  type: { fg: "#65bcff" },
-  "type.builtin": { fg: "#589ed7" },
-  variable: { fg: "#c8d3f5" },
-  "variable.builtin": { fg: "#ff757f" },
-  "variable.parameter": { fg: "#ffc777" },
-  // Markdown's queries predate the `@markup` rename; these are the old names.
-  "text.emphasis": { italic: true },
-  "text.strong": { bold: true },
-  "text.literal": { fg: "#c3e88d" },
-  "text.uri": { underline: true },
-  "text.reference": { fg: "#65bcff" },
-};
 
 function styleFor(capture: string): Style | undefined {
   for (let name = capture; ; name = name.slice(0, name.lastIndexOf("."))) {
@@ -152,24 +96,24 @@ function parse(syntax: Syntax, text: string): Parser.SyntaxNode {
 
 /**
  * A style's own attributes, with the defaults spelled out: a span that names no
- * color must not inherit the color of the span or token before it.
+ * color must not inherit the color of the span or token before it, and the
+ * fallback is the palette's `Normal`, never the terminal's own pair.
  */
 function sgr(style: Style): string {
-  const channel = (code: number, hex: string): string =>
-    `${code};2;${[1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16)).join(";")};`;
   let out = "\x1b[";
   if (style.bold) out += "1;";
   if (style.italic) out += "3;";
   if (style.underline) out += "4;";
-  out += style.fg === undefined ? "39;" : channel(38, style.fg);
-  out += style.bg === undefined ? "49;" : channel(48, style.bg);
-  return `${out.slice(0, -1)}m`;
+  out += `38;2;${channels(style.fg ?? NORMAL_FG)};48;2;${channels(style.bg ?? NORMAL_BG)}m`;
+  return out;
 }
 
 /**
  * Wraps every span in its color. Spans nest, so the innermost one wins; text
- * outside any span is reset to plain. The trailing reset closes the whole text,
- * so a span may cross a line break and the last line still ends plain.
+ * outside any span falls back to `Normal`. The trailing close restores the same
+ * pair, so a span may cross a line break and the last line still ends plain —
+ * and no cell is ever left to the terminal. Because each row is painted on its
+ * own, a span that outlives a line break re-asserts itself on the next line.
  */
 function paint(text: string, spans: Span[]): string {
   const events: { at: number; open: boolean; span: Span }[] = [];
@@ -187,13 +131,14 @@ function paint(text: string, spans: Span[]): string {
     if (end <= at) return;
     const style = active.length === 0 ? undefined : active[active.length - 1].style;
     if (style === undefined) {
-      if (!plain) out += "\x1b[0m";
+      if (!plain) out += sgrPlain();
       plain = true;
     } else {
       out += sgr(style);
       plain = false;
     }
-    out += text.slice(at, end);
+    const chunk = text.slice(at, end);
+    out += style === undefined ? chunk : chunk.replace(/\n/g, `\n${sgr(style)}`);
     at = end;
   };
   for (const event of events) {
@@ -202,7 +147,7 @@ function paint(text: string, spans: Span[]): string {
     else active.splice(active.indexOf(event.span), 1);
   }
   emit(text.length);
-  return plain ? out : `${out}\x1b[0m`;
+  return plain ? out : `${out}${sgrPlain()}`;
 }
 
 /**

@@ -5,6 +5,8 @@ import { dim } from "./styles.ts";
 export interface BodyLine {
   text: string;
   style?: (text: string) => string;
+  /** Row background, painted across the row's trailing cells by the renderer. */
+  bg?: string;
 }
 
 /** The text after the last newline: what is still incomplete. */

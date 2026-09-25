@@ -6,6 +6,7 @@ import { Editor } from "./editor.ts";
 import { completeCommand, findCommand, type CommandContext } from "./commands.ts";
 import { MarkdownStream, TailStream, type BodyLine, type StreamRenderer } from "./stream.ts";
 import { cyan, dim, green, red } from "./styles.ts";
+import { DIFF_ADD, DIFF_DELETE, NORMAL_BG, sgrBg, sgrPlain } from "./theme.ts";
 import { contextUsageLine, estimateContextTokens } from "./usage.ts";
 
 /** Status-row spinner frames; the only animation in the TUI. */
@@ -33,14 +34,18 @@ function callSummary(name: string, args: JsonObject): string {
   return JSON.stringify(args);
 }
 
-/** Unified-diff color for one `edit` body line; file headers are stripped. */
-function diffStyle(line: string): ((text: string) => string) | undefined {
-  if (line.startsWith("@@")) return cyan;
-  if (line.startsWith("+")) return green;
-  if (line.startsWith("-")) return red;
-  if (line.startsWith("\\ No newline")) return dim;
-  if (line.startsWith(" ")) return dim;
-  return undefined;
+/**
+ * Unified-diff styling for one `edit` body line; file headers are stripped.
+ * Additions and deletions carry the `DiffAdd`/`DiffDelete` background, so every
+ * cell of the line — the trailing ones `paintRow` erases included — is tinted.
+ */
+function diffLine(line: string): BodyLine {
+  if (line.startsWith("@@")) return { text: line, style: cyan };
+  if (line.startsWith("+")) return { text: line, style: green, bg: DIFF_ADD };
+  if (line.startsWith("-")) return { text: line, style: red, bg: DIFF_DELETE };
+  if (line.startsWith("\\ No newline")) return { text: line, style: dim };
+  if (line.startsWith(" ")) return { text: line, style: dim };
+  return { text: line };
 }
 
 /** Display rewrite of a tool result, by tool name. */
@@ -59,7 +64,7 @@ function resultLines(name: string, text: string, isError: boolean): BodyLine[] {
     while (lines.length > 0 && EDIT_HEADER.test(lines[0])) lines.shift();
     diff = true;
   }
-  return lines.map((line) => ({ text: line, style: diff ? diffStyle(line) : undefined }));
+  return lines.map((line) => (diff ? diffLine(line) : { text: line }));
 }
 
 /**
@@ -69,10 +74,32 @@ function resultLines(name: string, text: string, isError: boolean): BodyLine[] {
  */
 function renderRows(lines: BodyLine[], width: number): string[] {
   return lines.flatMap((line) => {
-    const style = line.style;
+    const { style, bg } = line;
     const wrapped = wrapLine(expandTabs(sanitize(line.text)), width);
-    return style === undefined ? wrapped : wrapped.map((row) => (row === "" ? row : style(row)));
+    return wrapped.map((row) => {
+      if (row === "") return row;
+      const styled = style === undefined ? row : style(row);
+      // The row's own background opens and closes it. A markdown span that
+      // carries a background (a heading tint, inline code) can still be open
+      // where the row ends, and `paintRow`'s trailing erase fills with whatever
+      // background is current — so the row has to hand it back its own.
+      const rowBg = sgrBg(bg ?? NORMAL_BG);
+      return `${rowBg}${styled}${rowBg}`;
+    });
   });
+}
+
+/**
+ * Paints one written row: the palette's pair, the row's own styling, then
+ * `ESC[K` — erase to the end of the line, which the terminal does *with the
+ * row's current background*. The row's trailing cells take the row's own
+ * background (the diff tints included) without a glyph being written for them,
+ * so a short row has no cell left to the host. Padding with spaces would look
+ * the same, but a terminal that reflows on a narrower resize would then wrap
+ * every row and lose the live region's anchor.
+ */
+function paintRow(line: string): string {
+  return `${sgrPlain()}${line}\x1b[K`;
 }
 
 /** `renderRows` plus the display-only elision applied to long tool bodies. */
@@ -103,7 +130,10 @@ class LiveRegion {
     let out = "";
     if (this.cursorUp > 0) out += `\x1b[${this.cursorUp}B`;
     if (this.rows > 1) out += `\x1b[${this.rows - 1}A`;
-    out += "\r\x1b[J";
+    // `ESC[J` erases with the *current* background, so the palette's is set
+    // first: without it the erase bites host-coloured holes and the region
+    // flashes the terminal's background while typing.
+    out += `\r${sgrPlain()}\x1b[J`;
     this.rows = 0;
     this.cursorUp = 0;
     return out;
@@ -459,11 +489,13 @@ class Tui {
     const blank = line === "" || (this.separator && this.wrote);
     this.separator = false;
     if (blank && this.wrote && !this.lastBlank) {
-      this.scroll += "\r\n";
+      // A separator is a row the app occupies, so it is painted like any other:
+      // a bare newline would leave the host terminal showing through it.
+      this.scroll += `${paintRow("")}\r\n`;
       this.lastBlank = true;
     }
     if (line !== "") {
-      this.scroll += `${line}\r\n`;
+      this.scroll += `${paintRow(line)}\r\n`;
       this.wrote = true;
       this.lastBlank = false;
     }
@@ -521,7 +553,7 @@ class Tui {
     const body = rows.slice(rows.length - keep);
     const editor = this.editor.render(width, Math.max(1, height - status.length - body.length));
 
-    const lines = [...body, ...status, ...editor.rows];
+    const lines = [...body, ...status, ...editor.rows].map(paintRow);
     let cursorRow = status.length + body.length + editor.cursorRow;
     if (cursorRow >= lines.length) cursorRow = lines.length - 1;
 

@@ -1,24 +1,32 @@
-/** Dim foreground (SGR 2), restored to normal intensity (SGR 22). */
+import { NORMAL_FG, PALETTE, sgrFg } from "./theme.ts";
+
+/**
+ * Inline foreground styling from the palette. The foreground is restored by
+ * re-asserting `Normal`'s, never by resetting: the row's background, set by the
+ * renderer, must survive, and no cell may fall back to the terminal's colours.
+ */
+function foreground(text: string, hex: string): string {
+  return `${sgrFg(hex)}${text}${sgrFg(NORMAL_FG)}`;
+}
+
+/** `Comment`, the colour diff context lines share. */
 export function dim(text: string): string {
-  return `\x1b[2m${text}\x1b[22m`;
+  return foreground(text, PALETTE.comment);
 }
 
-/** Red foreground (SGR 31), restored to the default foreground (SGR 39). */
 export function red(text: string): string {
-  return `\x1b[31m${text}\x1b[39m`;
+  return foreground(text, PALETTE.red);
 }
 
-/** Green foreground (SGR 32), restored to the default foreground (SGR 39). */
 export function green(text: string): string {
-  return `\x1b[32m${text}\x1b[39m`;
+  return foreground(text, PALETTE.green);
 }
 
-/** Yellow foreground (SGR 33), restored to the default foreground (SGR 39). */
 export function yellow(text: string): string {
-  return `\x1b[33m${text}\x1b[39m`;
+  return foreground(text, PALETTE.yellow);
 }
 
-/** Cyan foreground (SGR 36), restored to the default foreground (SGR 39). */
+/** Diff hunk headers; the palette's `blue` sits closest to the old ANSI cyan. */
 export function cyan(text: string): string {
-  return `\x1b[36m${text}\x1b[39m`;
+  return foreground(text, PALETTE.blue);
 }
