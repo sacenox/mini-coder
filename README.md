@@ -21,8 +21,8 @@ if set). There is no project-local config and no override flags.
 
 ```json
 {
-  "provider": "anthropic",
-  "model": "claude-sonnet-4-5"
+  "provider": "opencode-go",
+  "model": "deepseek-v4.1-flash"
 }
 ```
 
@@ -41,7 +41,7 @@ Only `provider` and `model` are required. Defaults for the rest:
 ```
 
 - `provider` / `model` — any model from the `pi-ai` catalog. Invalid pairs fail with a
-  list of available models for that provider.
+  list of available models for that provider. Requires a discoverable api key from the environment (Like: OPENCODE_API_KEY).
 - `sessionsDir` — where append-only session JSONL files are written. (no relative paths for now, absolute paths only).
 - `systemPrompt` — the base of the system prompt. Skills and agent files, if
   enabled, are appended after it.
