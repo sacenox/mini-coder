@@ -39,9 +39,19 @@ export class Editor {
   private col = 0;
   private scroll = 0;
   private width = DEFAULT_WIDTH;
+  private masked = false;
 
   text(): string {
     return this.lines.join("\n");
+  }
+
+  /** Renders each character as `*` without changing the underlying text. */
+  setMasked(masked: boolean): void {
+    this.masked = masked;
+  }
+
+  private display(line: string): string {
+    return this.masked ? "*".repeat(codePoints(line).length) : line;
   }
 
   clear(): void {
@@ -121,7 +131,7 @@ export class Editor {
     let cursorRow = 0;
     let cursorCol = 0;
     for (let line = 0; line < this.lines.length; line++) {
-      const chunks = wrapLine(expandTabs(this.lines[line], TAB), this.width);
+      const chunks = wrapLine(expandTabs(this.display(this.lines[line]), TAB), this.width);
       if (line === this.row) {
         const caret = this.caret();
         cursorRow = rows.length + caret.row;
@@ -142,7 +152,7 @@ export class Editor {
 
   /** The caret's display row within its logical line, and its cell column. */
   private caret(): { row: number; col: number } {
-    const line = this.lines[this.row];
+    const line = this.display(this.lines[this.row]);
     const chunks = wrapLine(expandTabs(line, TAB), this.width);
     const cell = this.cells(line)[this.col];
     const row = Math.floor(cell / this.width);

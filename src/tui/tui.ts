@@ -1,9 +1,9 @@
 import process from "node:process";
-import type { AssistantMessage, JsonObject, Message, UserMessage } from "@earendil-works/pi-ai";
+import type { AssistantMessage, AuthEvent, AuthPrompt, JsonObject, Message, UserMessage } from "@earendil-works/pi-ai";
 import { assistantText, runAgentTurn, type AgentEvent, type AgentOptions, type Phase } from "../agent.ts";
 import { Terminal, expandTabs, sanitize, wrapLine, type Key } from "./term.ts";
 import { Editor } from "./editor.ts";
-import { completeCommand, findCommand, type CommandContext } from "./commands.ts";
+import { completeCommand, findCommand, type Command, type CommandContext } from "./commands.ts";
 import { completePath } from "./complete.ts";
 import { MarkdownStream, TailStream, type BodyLine, type StreamRenderer } from "./stream.ts";
 import { blue, cyan, dim, green, red, teal } from "./styles.ts";
@@ -177,14 +177,13 @@ class Tui {
   private readonly messages: Message[] = [];
   readonly done: Promise<void>;
 
-  /** The only capability a command gets: styled lines into scrollback. */
-  private readonly commandContext: CommandContext = {
-    write: (lines) => {
-      this.separator = true;
-      this.commitLines(lines.map((text) => ({ text })));
-      this.separator = true;
-    },
-  };
+  /** A running command's cancellation, and its one pending prompt. */
+  private commandAbort: AbortController | null = null;
+  private pendingPrompt: {
+    prompt: AuthPrompt;
+    resolve: (value: string) => void;
+    reject: (error: Error) => void;
+  } | null = null;
 
   private resolveExit: () => void = () => {};
   private phase: Phase = "idle";
@@ -241,11 +240,12 @@ class Tui {
 
   private handleKey(key: Key): void {
     if (key.type === "eof") {
-      if (!this.active && this.editor.text() === "") this.exit();
+      if (!this.active && this.commandAbort === null && this.editor.text() === "") this.exit();
       return;
     }
     if (key.type === "interrupt") {
       if (this.active) this.cancel();
+      else if (this.commandAbort !== null) this.commandAbort.abort();
       else if (this.editor.text() !== "") {
         this.editor.clear();
         this.render();
@@ -284,11 +284,18 @@ class Tui {
       }
       return;
     }
-    if (text.trim() === "") return;
-    const command = findCommand(text);
-    if (command !== null) {
+    if (this.pendingPrompt !== null) {
       this.editor.clear();
-      command.run(this.commandContext);
+      this.render();
+      this.answerPrompt(text);
+      return;
+    }
+    if (this.commandAbort !== null) return;
+    if (text.trim() === "") return;
+    const found = findCommand(text);
+    if (found !== null) {
+      this.editor.clear();
+      this.runCommand(found.command, found.args);
       this.render();
       return;
     }
@@ -298,6 +305,121 @@ class Tui {
     this.opts.session.appendMessage(message);
     this.commitUser(text);
     this.startTurn();
+  }
+
+  /**
+   * Runs one command with a fresh context. Lines submitted while it runs route
+   * to a pending prompt; Ctrl+C aborts its signal. No agent turn may start
+   * until it settles. Errors surface as an error line.
+   */
+  private runCommand(command: Command, args: string): void {
+    const abort = new AbortController();
+    this.commandAbort = abort;
+    const ctx: CommandContext = {
+      models: this.opts.models,
+      signal: abort.signal,
+      write: (lines) => {
+        this.separator = true;
+        this.commitLines(lines.map((text) => ({ text })));
+        this.separator = true;
+      },
+      prompt: (prompt) => this.ask(prompt),
+      notify: (event) => this.notify(event),
+    };
+    void (async () => {
+      try {
+        await command.run(ctx, args);
+      } catch (error) {
+        this.separator = true;
+        this.push(red(`! ${(error as Error).message}`));
+        this.separator = true;
+      } finally {
+        this.commandAbort = null;
+        this.pendingPrompt = null;
+        this.editor.setMasked(false);
+        this.render();
+      }
+    })();
+  }
+
+  /** Commits a prompt and returns a promise resolving with the next submitted line. */
+  private ask(prompt: AuthPrompt): Promise<string> {
+    if (this.pendingPrompt !== null) return Promise.reject(new Error("a prompt is already pending"));
+    this.separator = true;
+    this.push(prompt.message);
+    if (prompt.type === "select") {
+      for (let i = 0; i < prompt.options.length; i++) this.push(`  ${i + 1}. ${prompt.options[i].label}`);
+    } else if (prompt.placeholder !== undefined) {
+      this.push(`  (${prompt.placeholder})`);
+    }
+    this.separator = true;
+    this.editor.setMasked(prompt.type === "secret");
+    this.render();
+
+    return new Promise<string>((resolve, reject) => {
+      const flow = this.commandAbort?.signal;
+      const onAbort = (): void => {
+        settle(() => reject(new Error("cancelled")));
+      };
+      const settle = (fn: () => void): void => {
+        prompt.signal?.removeEventListener("abort", onAbort);
+        flow?.removeEventListener("abort", onAbort);
+        this.editor.setMasked(false);
+        this.pendingPrompt = null;
+        this.render();
+        fn();
+      };
+      if (prompt.signal?.aborted === true || flow?.aborted === true) {
+        onAbort();
+        return;
+      }
+      prompt.signal?.addEventListener("abort", onAbort);
+      flow?.addEventListener("abort", onAbort);
+      this.pendingPrompt = {
+        prompt,
+        resolve: (value) => settle(() => resolve(value)),
+        reject: (error) => settle(() => reject(error)),
+      };
+    });
+  }
+
+  /** Turns the submitted line into the answer: a `select` maps to its option id. */
+  private answerPrompt(text: string): void {
+    const pending = this.pendingPrompt;
+    if (pending === null) return;
+    if (pending.prompt.type !== "select") {
+      pending.resolve(text);
+      return;
+    }
+    const trimmed = text.trim();
+    const index = Number.parseInt(trimmed, 10);
+    const byIndex = String(index) === trimmed ? pending.prompt.options[index - 1] : undefined;
+    const chosen = byIndex ?? pending.prompt.options.find((option) => option.id === trimmed || option.label === trimmed);
+    if (chosen === undefined) pending.reject(new Error(`invalid selection: ${trimmed}`));
+    else pending.resolve(chosen.id);
+  }
+
+  private notify(event: AuthEvent): void {
+    this.separator = true;
+    switch (event.type) {
+      case "info":
+        this.push(event.message);
+        for (const link of event.links ?? []) this.push(link.label === undefined ? link.url : `${link.label}: ${link.url}`);
+        break;
+      case "auth_url":
+        this.push(event.url);
+        if (event.instructions !== undefined) this.push(event.instructions);
+        break;
+      case "device_code":
+        this.push(event.verificationUri);
+        this.push(`code: ${event.userCode}`);
+        if (event.expiresInSeconds !== undefined) this.push(`expires in ${event.expiresInSeconds}s`);
+        break;
+      case "progress":
+        this.push(event.message);
+        break;
+    }
+    this.separator = true;
   }
 
   private startTurn(): void {
@@ -574,6 +696,7 @@ class Tui {
     if (this.closed) return;
     this.closed = true;
     this.abort?.abort();
+    this.commandAbort?.abort();
     if (this.spinner) clearInterval(this.spinner);
     this.spinner = undefined;
     // Draws are deferred, so anything pushed since the last frame is still here.

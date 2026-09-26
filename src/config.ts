@@ -16,6 +16,7 @@ import { anthropicMessagesApi } from "@earendil-works/pi-ai/api/anthropic-messag
 import { googleGenerativeAIApi } from "@earendil-works/pi-ai/api/google-generative-ai.lazy";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy";
+import { createCredentialStore } from "./auth.ts";
 
 const ToolNameSchema = Type.Union([Type.Literal("edit"), Type.Literal("read"), Type.Literal("bash")]);
 export type ToolName = Static<typeof ToolNameSchema>;
@@ -44,6 +45,7 @@ const CustomProviderSchema = Type.Object(
 const ConfigSchema = Type.Object(
   {
     sessionsDir: Type.String({ default: join(process.cwd(), "sessions") }),
+    authFile: Type.String({ default: join(configDir(), "auth.json") }),
     systemPrompt: Type.String({ default: "" }),
     discoverAgentFiles: Type.Boolean({ default: true }),
     skillsDirs: Type.Array(Type.String(), { default: [] }),
@@ -67,9 +69,13 @@ const ConfigSchema = Type.Object(
 );
 export type Config = Static<typeof ConfigSchema>;
 
-function configPath(): string {
+function configDir(): string {
   const base = process.env.XDG_CONFIG_HOME || join(homedir(), ".config");
-  return join(base, "mini-coder", "config.json");
+  return join(base, "mini-coder");
+}
+
+function configPath(): string {
+  return join(configDir(), "config.json");
 }
 
 function readJson(path: string): unknown {
@@ -106,7 +112,7 @@ const API_FACTORY: Record<CustomApi, () => ReturnType<typeof openAICompletionsAp
 };
 
 export function resolveModel(config: Config): { models: MutableModels; model: Model<Api> } {
-  const models = builtinModels();
+  const models = builtinModels({ credentials: createCredentialStore(config.authFile) });
   for (const provider of config.customProviders) {
     const name = provider.name ?? provider.id;
     models.setProvider(

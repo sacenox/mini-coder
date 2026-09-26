@@ -1,15 +1,24 @@
-import { dim } from "./styles.ts";
+import type { AuthEvent, AuthPrompt, AuthType, Models } from "@earendil-works/pi-ai";
+import { dim, red } from "./styles.ts";
 import { commonPrefix } from "./complete.ts";
 
 export interface CommandContext {
+  /** The collection the running command may reach, e.g. to start a login. */
+  models: Models;
+  /** Aborts when the running command is cancelled (Ctrl+C). */
+  signal: AbortSignal;
   /** Appends already-styled lines to scrollback. */
   write(lines: string[]): void;
+  /** Asks the user a question and resolves with the next submitted line. */
+  prompt(prompt: AuthPrompt): Promise<string>;
+  /** Reports a login event as styled scrollback lines. */
+  notify(event: AuthEvent): void;
 }
 
-interface Command {
+export interface Command {
   name: string; // no leading slash, lowercase
   description: string; // one line, shown by /help
-  run(ctx: CommandContext): void;
+  run(ctx: CommandContext, args: string): void | Promise<void>;
 }
 
 /** The keybindings the TUI accepts, in the order `/help` prints them. */
@@ -37,12 +46,66 @@ const help: Command = {
   },
 };
 
-const COMMANDS: Command[] = [help];
+const login: Command = {
+  name: "login",
+  description: "authenticate a provider",
+  async run(ctx, args): Promise<void> {
+    const providers = ctx.models
+      .getProviders()
+      .filter((provider) => provider.auth.oauth?.login !== undefined || provider.auth.apiKey?.login !== undefined);
+    const providerId =
+      args.trim() ||
+      (await ctx.prompt({
+        type: "select",
+        message: "Select a provider",
+        options: providers.map((provider) => ({ id: provider.id, label: provider.name })),
+      }));
+    const provider = ctx.models.getProvider(providerId);
+    if (provider === undefined) throw new Error(`unknown provider: ${providerId}`);
+
+    const oauth = provider.auth.oauth;
+    const apiKey = provider.auth.apiKey;
+    const types: { id: AuthType; label: string }[] = [];
+    if (oauth?.login !== undefined) {
+      types.push({ id: "oauth", label: oauth.loginLabel ?? oauth.name });
+    }
+    if (apiKey?.login !== undefined) types.push({ id: "api_key", label: apiKey.name });
+    if (types.length === 0) throw new Error(`provider "${providerId}" has no login flow`);
+    const type =
+      types.length === 1
+        ? types[0].id
+        : ((await ctx.prompt({
+            type: "select",
+            message: `How would you like to authenticate with ${provider.name}?`,
+            options: types,
+          })) as AuthType);
+
+    try {
+      await ctx.models.login(providerId, type, {
+        signal: ctx.signal,
+        prompt: (prompt) => ctx.prompt(prompt),
+        notify: (event) => ctx.notify(event),
+      });
+    } catch (error) {
+      if (ctx.signal.aborted) {
+        ctx.write([red("! cancelled")]);
+        return;
+      }
+      throw error;
+    }
+    const source = (await ctx.models.getAuth(providerId))?.source;
+    ctx.write([`logged in to ${provider.name}${source === undefined ? "" : ` (${source})`}`]);
+  },
+};
+
+const COMMANDS: Command[] = [help, login];
 
 /** `/name` for a known `name`, else null; unknown slash text stays a message. */
-export function findCommand(text: string): Command | null {
-  const match = /^\/(\S+)/.exec(text);
-  return match === null ? null : (COMMANDS.find((candidate) => candidate.name === match[1]) ?? null);
+export function findCommand(text: string): { command: Command; args: string } | null {
+  const match = /^\/(\S+)(?:\s+([\s\S]*))?$/.exec(text);
+  if (match === null) return null;
+  const command = COMMANDS.find((candidate) => candidate.name === match[1]);
+  return command === undefined ? null : { command, args: match[2] ?? "" };
 }
 
 /** Tab completion for a half-typed command name; null leaves the draft alone. */
