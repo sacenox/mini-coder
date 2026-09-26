@@ -61,20 +61,17 @@ export function bash(args: BashArgs, ctx: ToolContext): Promise<ToolResult> {
     };
 
     let killTimer: NodeJS.Timeout | undefined;
-    const onAbort = () => {
-      if (!child.pid) return;
+    const kill = (signal: NodeJS.Signals): void => {
       try {
-        process.kill(-child.pid, "SIGTERM");
+        process.kill(-child.pid!, signal);
       } catch {
         /* already gone */
       }
-      killTimer = setTimeout(() => {
-        try {
-          process.kill(-child.pid!, "SIGKILL");
-        } catch {
-          /* already gone */
-        }
-      }, 300);
+    };
+    const onAbort = () => {
+      if (!child.pid) return;
+      kill("SIGTERM");
+      killTimer = setTimeout(() => kill("SIGKILL"), 300);
     };
 
     if (ctx.signal.aborted) onAbort();

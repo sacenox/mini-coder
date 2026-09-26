@@ -5,38 +5,16 @@ import { NORMAL_FG, PALETTE, sgrFg } from "./theme.ts";
  * re-asserting `Normal`'s, never by resetting: the row's background, set by the
  * renderer, must survive, and no cell may fall back to the terminal's colours.
  */
-function foreground(text: string, hex: string): string {
-  return `${sgrFg(hex)}${text}${sgrFg(NORMAL_FG)}`;
-}
+const fg = (hex: string) => (text: string): string => `${sgrFg(hex)}${text}${sgrFg(NORMAL_FG)}`;
 
 /** `Comment`, the colour diff context lines share. */
-export function dim(text: string): string {
-  return foreground(text, PALETTE.comment);
-}
-
-export function red(text: string): string {
-  return foreground(text, PALETTE.red);
-}
-
-export function green(text: string): string {
-  return foreground(text, PALETTE.green);
-}
-
-export function yellow(text: string): string {
-  return foreground(text, PALETTE.yellow);
-}
-
+export const dim = fg(PALETTE.comment);
+export const red = fg(PALETTE.red);
+export const green = fg(PALETTE.green);
+export const yellow = fg(PALETTE.yellow);
 /** Diff hunk headers; the palette's `blue` sits closest to the old ANSI cyan. */
-export function cyan(text: string): string {
-  return foreground(text, PALETTE.blue);
-}
-
+export const cyan = fg(PALETTE.blue);
 /** The user's own words; also `Function`, which user rows never collide with. */
-export function blue(text: string): string {
-  return foreground(text, PALETTE.blue);
-}
-
+export const blue = fg(PALETTE.blue);
 /** The tool accent: call-line heads. */
-export function teal(text: string): string {
-  return foreground(text, PALETTE.teal);
-}
+export const teal = fg(PALETTE.teal);

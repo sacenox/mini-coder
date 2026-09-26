@@ -9,7 +9,7 @@ export interface CommandContext {
 interface Command {
   name: string; // no leading slash, lowercase
   description: string; // one line, shown by /help
-  run(ctx: CommandContext, args: string): void;
+  run(ctx: CommandContext): void;
 }
 
 /** The keybindings the TUI accepts, in the order `/help` prints them. */
@@ -39,12 +39,10 @@ const help: Command = {
 
 const COMMANDS: Command[] = [help];
 
-/** `/name args` for a known `name`, else null; unknown slash text stays a message. */
-export function findCommand(text: string): { command: Command; args: string } | null {
-  const match = /^\/(\S+)(?:\s+([\s\S]*))?$/.exec(text);
-  if (match === null) return null;
-  const command = COMMANDS.find((candidate) => candidate.name === match[1]);
-  return command === undefined ? null : { command, args: match[2] ?? "" };
+/** `/name` for a known `name`, else null; unknown slash text stays a message. */
+export function findCommand(text: string): Command | null {
+  const match = /^\/(\S+)/.exec(text);
+  return match === null ? null : (COMMANDS.find((candidate) => candidate.name === match[1]) ?? null);
 }
 
 /** Tab completion for a half-typed command name; null leaves the draft alone. */

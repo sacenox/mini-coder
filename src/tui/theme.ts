@@ -78,7 +78,6 @@ export const STYLES: Record<string, Style | undefined> = {
   escape: { fg: PALETTE.magenta },
   function: { fg: PALETTE.blue },
   "function.builtin": { fg: PALETTE.blue1 },
-  "function.method": { fg: PALETTE.blue },
   keyword: { fg: PALETTE.purple },
   number: { fg: PALETTE.orange },
   operator: { fg: PALETTE.blue5 },

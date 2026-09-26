@@ -4,7 +4,7 @@ import { loadConfig, resolveModel } from "./config.ts";
 import { buildSystemPrompt } from "./prompt.ts";
 import { acceptsImages, toolSchemas } from "./tools/index.ts";
 import { Session } from "./session.ts";
-import { NO_INTERACTION, runAgentTurn, type AgentOptions } from "./agent.ts";
+import { NO_INTERACTION, assistantText, runAgentTurn, type AgentOptions } from "./agent.ts";
 import { runTui } from "./tui/tui.ts";
 
 function parseArgs(argv: string[]): { print: string | null } {
@@ -61,10 +61,7 @@ async function runPrint(prompt: string, ctx: AgentOptions): Promise<number> {
 
   const last = messages.filter((message): message is AssistantMessage => message.role === "assistant").at(-1);
   if (!failed && !cancelled && last !== undefined) {
-    const text = last.content
-      .filter((block) => block.type === "text")
-      .map((block) => block.text)
-      .join("");
+    const text = assistantText(last);
     if (text !== "") process.stdout.write(text.endsWith("\n") ? text : `${text}\n`);
   }
   return failed || cancelled ? 1 : 0;

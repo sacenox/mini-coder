@@ -58,8 +58,19 @@ interface AgentRun extends AgentOptions {
   onEvent: (event: AgentEvent) => void;
 }
 
+/** The concatenated text blocks of an assistant message, ignoring the rest. */
+export function assistantText(message: AssistantMessage): string {
+  return message.content
+    .filter((block) => block.type === "text")
+    .map((block) => block.text)
+    .join("");
+}
+
 export async function runAgentTurn(run: AgentRun): Promise<void> {
   const { messages, session, signal, interaction, onEvent } = run;
+
+  const cancelled = (): void => onEvent({ type: "cancelled" });
+  const failed = (message: string): void => onEvent({ type: "error", message });
 
   /** Appends a user message the model reads at the next step boundary. */
   const steer = (content: string): void => {
@@ -91,7 +102,7 @@ export async function runAgentTurn(run: AgentRun): Promise<void> {
   for (;;) {
     const steering = await pauseStep();
     if (steering === null) {
-      onEvent({ type: "cancelled" });
+      cancelled();
       return;
     }
     steer(steering);
@@ -116,7 +127,7 @@ export async function runAgentTurn(run: AgentRun): Promise<void> {
         sessionId: session.id ?? undefined,
       });
     } catch (error) {
-      onEvent({ type: "error", message: (error as Error).message });
+      failed((error as Error).message);
       return;
     }
 
@@ -138,7 +149,7 @@ export async function runAgentTurn(run: AgentRun): Promise<void> {
         }
       }
     } catch (error) {
-      onEvent({ type: "error", message: (error as Error).message });
+      failed((error as Error).message);
       return;
     }
 
@@ -148,11 +159,11 @@ export async function runAgentTurn(run: AgentRun): Promise<void> {
     onEvent({ type: "message", message: assistant });
 
     if (assistant.stopReason === "aborted") {
-      onEvent({ type: "cancelled" });
+      cancelled();
       return;
     }
     if (assistant.stopReason === "error") {
-      onEvent({ type: "error", message: assistant.errorMessage ?? "provider error" });
+      failed(assistant.errorMessage ?? "provider error");
       return;
     }
 
@@ -169,7 +180,7 @@ export async function runAgentTurn(run: AgentRun): Promise<void> {
     for (const call of toolCalls) {
       const steering = await pauseStep();
       if (steering === null) {
-        onEvent({ type: "cancelled" });
+        cancelled();
         return;
       }
       if (steering !== "") held.push(steering);

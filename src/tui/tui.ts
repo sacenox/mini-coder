@@ -1,6 +1,6 @@
 import process from "node:process";
 import type { AssistantMessage, JsonObject, Message, UserMessage } from "@earendil-works/pi-ai";
-import { runAgentTurn, type AgentEvent, type AgentOptions, type Phase } from "../agent.ts";
+import { assistantText, runAgentTurn, type AgentEvent, type AgentOptions, type Phase } from "../agent.ts";
 import { Terminal, expandTabs, sanitize, wrapLine, type Key } from "./term.ts";
 import { Editor } from "./editor.ts";
 import { completeCommand, findCommand, type CommandContext } from "./commands.ts";
@@ -285,10 +285,10 @@ class Tui {
       return;
     }
     if (text.trim() === "") return;
-    const invocation = findCommand(text);
-    if (invocation !== null) {
+    const command = findCommand(text);
+    if (command !== null) {
       this.editor.clear();
-      invocation.command.run(this.commandContext, invocation.args);
+      command.run(this.commandContext);
       this.render();
       return;
     }
@@ -443,13 +443,9 @@ class Tui {
   private commitMessage(message: AssistantMessage): void {
     this.activity.reset();
     this.commitLines(this.reply.flush());
-    const text = message.content
-      .filter((block) => block.type === "text")
-      .map((block) => block.text)
-      .join("");
+    const text = assistantText(message);
     if (text.trim() !== "" && !this.streamed.includes(text)) {
-      const stream = new MarkdownStream();
-      this.commitLines([...stream.feed(text.trimEnd()), ...stream.flush()]);
+      this.commitLines([...this.reply.feed(text.trimEnd()), ...this.reply.flush()]);
     }
     this.streamed = "";
   }
