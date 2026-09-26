@@ -30,3 +30,13 @@ export function yellow(text: string): string {
 export function cyan(text: string): string {
   return foreground(text, PALETTE.blue);
 }
+
+/** The user's own words; also `Function`, which user rows never collide with. */
+export function blue(text: string): string {
+  return foreground(text, PALETTE.blue);
+}
+
+/** The tool accent: call-line heads. */
+export function teal(text: string): string {
+  return foreground(text, PALETTE.teal);
+}

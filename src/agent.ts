@@ -20,6 +20,7 @@ export type AgentEvent =
   | { type: "phase"; phase: Phase; detail?: string }
   | { type: "text"; delta: string }
   | { type: "reasoning"; delta: string }
+  | { type: "toolCallStart"; name: string }
   | { type: "toolCall"; name: string; arguments: JsonObject }
   | { type: "toolOutput"; chunk: string }
   | { type: "toolResult"; name: string; text: string; isError: boolean }
@@ -124,7 +125,11 @@ export async function runAgentTurn(run: AgentRun): Promise<void> {
       for await (const event of stream) {
         if (event.type === "text_delta") onEvent({ type: "text", delta: event.delta });
         else if (event.type === "thinking_delta") onEvent({ type: "reasoning", delta: event.delta });
-        else if (event.type === "toolcall_end") {
+        // The tool's name is known as soon as the call starts being written.
+        else if (event.type === "toolcall_start") {
+          const block = event.partial.content[event.contentIndex];
+          if (block.type === "toolCall") onEvent({ type: "toolCallStart", name: block.name });
+        } else if (event.type === "toolcall_end") {
           onEvent({
             type: "toolCall",
             name: event.toolCall.name,

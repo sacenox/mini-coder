@@ -5,7 +5,7 @@ import { Terminal, expandTabs, sanitize, wrapLine, type Key } from "./term.ts";
 import { Editor } from "./editor.ts";
 import { completeCommand, findCommand, type CommandContext } from "./commands.ts";
 import { MarkdownStream, TailStream, type BodyLine, type StreamRenderer } from "./stream.ts";
-import { cyan, dim, green, red } from "./styles.ts";
+import { blue, cyan, dim, green, red, teal } from "./styles.ts";
 import { DIFF_ADD, DIFF_DELETE, NORMAL_BG, sgrBg, sgrPlain } from "./theme.ts";
 import { contextUsageLine, estimateContextTokens } from "./usage.ts";
 
@@ -24,8 +24,16 @@ const ELIDED_TAIL = 4;
 
 const BODY_PREFIX = " | ";
 const ERROR_PREFIX = " ! ";
+/** The chrome prefix, styled: dim for output, red for errors; text stays `Normal`. */
+const BODY_CHROME = dim(BODY_PREFIX);
+const ERROR_CHROME = red(ERROR_PREFIX);
 const EXIT_LINE = /^exit code: (.+)$/;
 const EDIT_HEADER = /^(Index: |={3,}$|--- |\+\+\+ )/;
+
+/** The `-> <name>` head of a call line, in the tool accent; the args stay `Normal`. */
+function callHead(name: string): string {
+  return teal(`-> ${name}`);
+}
 
 function callSummary(name: string, args: JsonObject): string {
   if (name === "bash" && typeof args.command === "string") return args.command.replace(/\s*\n\s*/g, " ");
@@ -55,7 +63,7 @@ function resultLines(name: string, text: string, isError: boolean): BodyLine[] {
     const exit = EXIT_LINE.exec(lines[lines.length - 1]);
     if (exit !== null) {
       lines.pop();
-      if (isError) lines.push(`exit ${exit[1]}`);
+      if (isError) lines.push(red(`exit ${exit[1]}`));
     }
   } else if (name === "edit" && /^(edited|created) /.test(lines[0])) {
     lines.shift();
@@ -108,7 +116,7 @@ function bodyRows(lines: BodyLine[], width: number): string[] {
     const hidden = rows.length - ELIDED_HEAD - ELIDED_TAIL;
     return [
       ...rows.slice(0, ELIDED_HEAD),
-      `... ${hidden} lines not shown ...`,
+      dim(`... ${hidden} lines not shown ...`),
       ...rows.slice(rows.length - ELIDED_TAIL),
     ];
   }
@@ -180,6 +188,7 @@ class Tui {
   private resolveExit: () => void = () => {};
   private phase: Phase = "idle";
   private detail: string | undefined;
+  private writingTool: string | undefined;
   private active = false;
   private paused = false;
   private pauseRequested = false;
@@ -197,7 +206,6 @@ class Tui {
   // In-flight stream state, never persisted: all display-only.
   private readonly reply: StreamRenderer = new MarkdownStream();
   private readonly activity: StreamRenderer = new TailStream();
-  private pendingCalls: string[] = [];
   private streamed = "";
   private turnStart = 0;
   private frame = 0;
@@ -325,7 +333,7 @@ class Tui {
       });
     } catch (error) {
       this.separator = true;
-      this.push(`! ${(error as Error).message}`);
+      this.push(red(`! ${(error as Error).message}`));
     } finally {
       this.active = false;
       this.abort = null;
@@ -370,12 +378,15 @@ class Tui {
         if (this.reply.pending().length === 0) this.activity.feed(event.delta);
         break;
       case "toolCall":
-        // Flush first so scrollback order matches execution order, then hold the
-        // call line until its result arrives: a message may carry several calls,
-        // all announced before any of them runs.
+        // Flush first so scrollback order matches execution order, then commit
+        // the call line: results land under the calls, in execution order.
+        this.writingTool = undefined;
         this.commitLines(this.reply.flush());
         this.activity.reset();
-        this.pendingCalls.push(`-> ${event.name}  ${callSummary(event.name, event.arguments)}`);
+        this.commitCall(event.name, event.arguments);
+        break;
+      case "toolCallStart":
+        this.writingTool = event.name;
         break;
       case "toolOutput":
         this.activity.feed(event.chunk);
@@ -388,10 +399,10 @@ class Tui {
         this.commitToolResult(event.name, event.text, event.isError);
         break;
       case "error":
-        this.endTurn(`! ${event.message}`);
+        this.endTurn(red(`! ${event.message}`));
         break;
       case "cancelled":
-        this.endTurn("! cancelled");
+        this.endTurn(red("! cancelled"));
         break;
       case "complete":
         this.endTurn(dim(`[complete · ${this.elapsed()}s]`));
@@ -404,10 +415,10 @@ class Tui {
   private endTurn(line: string): void {
     this.phase = "idle";
     this.detail = undefined;
+    this.writingTool = undefined;
     this.paused = false;
     this.activity.reset();
     this.commitLines(this.reply.flush());
-    this.flushCalls();
     this.separator = true;
     this.push(line);
   }
@@ -418,8 +429,14 @@ class Tui {
 
   private commitUser(text: string): void {
     this.separator = true;
-    this.commitLines(text.split("\n").map((line) => ({ text: `> ${line}` })));
+    this.commitLines(text.split("\n").map((line) => ({ text: line, style: blue })));
     this.separator = true;
+  }
+
+  /** The call line lands the moment the model finishes writing it, never held. */
+  private commitCall(name: string, args: JsonObject): void {
+    this.separator = true;
+    this.commitLines([{ text: `${callHead(name)}  ${callSummary(name, args)}` }]);
   }
 
   /** Commits a line the model emitted without streaming it, plus the in-flight tail. */
@@ -438,27 +455,15 @@ class Tui {
   }
 
   private commitToolResult(name: string, text: string, isError: boolean): void {
-    const call = this.pendingCalls.shift();
-    this.separator = true;
-    if (call !== undefined) this.push(call);
     const width = Math.max(1, this.term.width - BODY_PREFIX.length);
     const lines = resultLines(name, text, isError);
     // Diffs are shown in full; other tool bodies stay elided.
     const rows = name === "edit" ? renderRows(lines, width) : bodyRows(lines, width);
     for (let i = 0; i < rows.length; i++) {
-      const prefix = isError && i === rows.length - 1 ? ERROR_PREFIX : BODY_PREFIX;
+      const prefix = isError && i === rows.length - 1 ? ERROR_CHROME : BODY_CHROME;
       this.push(prefix + rows[i]);
     }
     this.separator = true;
-  }
-
-  /** Commits any call line whose result never arrived, e.g. after a cancel. */
-  private flushCalls(): void {
-    for (const call of this.pendingCalls) {
-      this.separator = true;
-      this.push(call);
-    }
-    this.pendingCalls = [];
   }
 
   /** Commits logical lines through the same wrap-and-style step tool bodies use. */
@@ -517,7 +522,9 @@ class Tui {
         : this.phase === "waitingModel"
           ? "waiting for provider"
           : this.phase === "streaming"
-            ? "streaming"
+            ? this.writingTool !== undefined
+              ? `writing ${this.writingTool}`
+              : "streaming"
             : `running ${this.detail ?? "tool"}`;
     return `${dim(`${SPINNER[this.frame % SPINNER.length]} ${label} · ${this.elapsed()}s`)} · ${usage}`;
   }
