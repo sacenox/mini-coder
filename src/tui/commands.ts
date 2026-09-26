@@ -1,5 +1,14 @@
-import type { Api, AuthEvent, AuthPrompt, AuthType, Model, Models } from "@earendil-works/pi-ai";
-import { saveSelection } from "../config.ts";
+import {
+  getSupportedThinkingLevels,
+  type Api,
+  type AuthEvent,
+  type AuthPrompt,
+  type AuthType,
+  type Model,
+  type ModelThinkingLevel,
+  type Models,
+} from "@earendil-works/pi-ai";
+import { saveConfig } from "../config.ts";
 import { dim, red } from "./styles.ts";
 import { commonPrefix } from "./complete.ts";
 
@@ -10,6 +19,8 @@ export interface CommandContext {
   model: Model<Api>;
   /** Switches the running session to `model`. */
   select(model: Model<Api>): void;
+  /** Sets the running session's thinking level. */
+  setThinking(level: ModelThinkingLevel): void;
   /** Aborts when the running command is cancelled (Ctrl+C). */
   signal: AbortSignal;
   /** Appends already-styled lines to scrollback. */
@@ -125,8 +136,23 @@ const provider: Command = {
     });
     const chosen = models.find((m) => m.id === modelId);
     if (chosen === undefined) throw new Error(`unknown model: ${modelId}`);
-    saveSelection(providerId, modelId);
+    saveConfig({ provider: providerId, model: modelId });
     ctx.select(chosen);
+  },
+};
+
+const thinking: Command = {
+  name: "thinking",
+  description: "set the thinking level",
+  async run(ctx): Promise<void> {
+    const levels = getSupportedThinkingLevels(ctx.model);
+    const level = (await ctx.prompt({
+      type: "select",
+      message: "Select a thinking level",
+      options: levels.map((l) => ({ id: l, label: l })),
+    })) as ModelThinkingLevel;
+    saveConfig({ thinkingEffort: level });
+    ctx.setThinking(level);
   },
 };
 
@@ -145,12 +171,12 @@ const model: Command = {
     });
     const chosen = models.find((m) => m.id === modelId);
     if (chosen === undefined) throw new Error(`unknown model: ${modelId}`);
-    saveSelection(providerId, modelId);
+    saveConfig({ provider: providerId, model: modelId });
     ctx.select(chosen);
   },
 };
 
-const COMMANDS: Command[] = [help, login, provider, model];
+const COMMANDS: Command[] = [help, login, provider, model, thinking];
 
 /** `/name` for a known `name`, else null; unknown slash text stays a message. */
 export function findCommand(text: string): { command: Command; args: string } | null {

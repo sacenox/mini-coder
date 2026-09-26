@@ -8,6 +8,7 @@ import {
   type JsonObject,
   type Message,
   type Model,
+  type ModelThinkingLevel,
   type UserMessage,
 } from "@earendil-works/pi-ai";
 import { assistantText, runAgentTurn, type AgentEvent, type AgentOptions, type Phase } from "../agent.ts";
@@ -241,9 +242,7 @@ class Tui {
     this.term.start();
     process.on("SIGINT", this.onSignal);
     process.on("SIGTERM", this.onSignal);
-    this.separator = true;
-    this.push(`mini-coder · ${this.opts.model.provider}/${this.opts.model.id} · ${this.opts.thinkingEffort}`);
-    this.separator = true;
+    this.pushBanner();
     this.render();
   }
 
@@ -330,6 +329,7 @@ class Tui {
       models: this.opts.models,
       model: this.opts.model,
       select: (model) => this.select(model),
+      setThinking: (level) => this.setThinking(level),
       signal: abort.signal,
       write: (lines) => {
         this.separator = true;
@@ -355,6 +355,13 @@ class Tui {
     })();
   }
 
+  /** The startup and selection banner: provider, model, and thinking effort. */
+  private pushBanner(): void {
+    this.separator = true;
+    this.push(`mini-coder · ${this.opts.model.provider}/${this.opts.model.id} · ${this.opts.thinkingEffort}`);
+    this.separator = true;
+  }
+
   /**
    * Switches the running session to `model`: derived state follows — the
    * thinking effort is re-clamped, and `read`'s image behaviour is rebuilt for
@@ -365,9 +372,14 @@ class Tui {
     this.opts.model = model;
     this.opts.thinkingEffort = clampThinkingLevel(model, this.opts.thinkingEffort);
     this.opts.tools = toolSchemas(this.opts.toolNames, acceptsImages(model));
-    this.separator = true;
-    this.push(`${model.provider}/${model.id}`);
-    this.separator = true;
+    this.pushBanner();
+    this.render();
+  }
+
+  /** Sets the running session's thinking level, clamped to the current model. */
+  private setThinking(level: ModelThinkingLevel): void {
+    this.opts.thinkingEffort = clampThinkingLevel(this.opts.model, level);
+    this.pushBanner();
     this.render();
   }
 

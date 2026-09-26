@@ -7,6 +7,7 @@ import {
   Type,
   type Api,
   type Model,
+  type ModelThinkingLevel,
   type MutableModels,
   type Static,
 } from "@earendil-works/pi-ai";
@@ -54,6 +55,7 @@ const ConfigSchema = Type.Object(
     model: Type.String(),
     thinkingEffort: Type.Union(
       [
+        Type.Literal("off"),
         Type.Literal("minimal"),
         Type.Literal("low"),
         Type.Literal("medium"),
@@ -105,16 +107,20 @@ export function loadConfig(): Config {
 }
 
 /**
- * Persist the chosen pair to the global config, leaving every other key
- * untouched. Written atomically: a temp file, then a rename over the target.
+ * Persist a patch to the global config, leaving every other key untouched.
+ * Written atomically: a temp file, then a rename over the target.
  */
-export function saveSelection(provider: string, model: string): void {
+export function saveConfig(patch: {
+  provider?: string;
+  model?: string;
+  thinkingEffort?: ModelThinkingLevel;
+}): void {
   const path = configPath();
   const existing = readJson(path);
   if (typeof existing !== "object" || existing === null || Array.isArray(existing)) {
     throw new Error(`config ${path}: not an object`);
   }
-  const next = { ...existing, provider, model };
+  const next = { ...existing, ...patch };
   mkdirSync(dirname(path), { recursive: true });
   const temp = join(dirname(path), `.${process.pid}.${Date.now()}.tmp`);
   writeFileSync(temp, `${JSON.stringify(next, null, 2)}\n`);
