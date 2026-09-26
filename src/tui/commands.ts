@@ -19,7 +19,7 @@ const KEYBINDINGS: [string, string][] = [
   ["Esc", "pause the turn at the next step boundary"],
   ["Ctrl+C", "cancel the turn"],
   ["Ctrl+D", "exit on an empty draft"],
-  ["Tab", "complete path (after command completion)"],
+  ["Tab", "complete command or path"],
 ];
 
 /** One aligned `key  description` block; the key column is dimmed. */
