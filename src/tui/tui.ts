@@ -206,6 +206,7 @@ class Tui {
   // In-flight stream state, never persisted: all display-only.
   private readonly reply: StreamRenderer = new MarkdownStream();
   private readonly activity: StreamRenderer = new TailStream();
+  private pendingCalls: BodyLine[] = [];
   private streamed = "";
   private turnStart = 0;
   private frame = 0;
@@ -378,12 +379,13 @@ class Tui {
         if (this.reply.pending().length === 0) this.activity.feed(event.delta);
         break;
       case "toolCall":
-        // Flush first so scrollback order matches execution order, then commit
-        // the call line: results land under the calls, in execution order.
+        // Hold the call line until its result arrives: a message may carry
+        // several calls, all announced before any of them runs, and each call
+        // line pairs with its own output in execution order.
         this.writingTool = undefined;
         this.commitLines(this.reply.flush());
         this.activity.reset();
-        this.commitCall(event.name, event.arguments);
+        this.pendingCalls.push({ text: `${callHead(event.name)}  ${callSummary(event.name, event.arguments)}` });
         break;
       case "toolCallStart":
         this.writingTool = event.name;
@@ -419,6 +421,7 @@ class Tui {
     this.paused = false;
     this.activity.reset();
     this.commitLines(this.reply.flush());
+    this.flushCalls();
     this.separator = true;
     this.push(line);
   }
@@ -431,12 +434,6 @@ class Tui {
     this.separator = true;
     this.commitLines(text.split("\n").map((line) => ({ text: line, style: blue })));
     this.separator = true;
-  }
-
-  /** The call line lands the moment the model finishes writing it, never held. */
-  private commitCall(name: string, args: JsonObject): void {
-    this.separator = true;
-    this.commitLines([{ text: `${callHead(name)}  ${callSummary(name, args)}` }]);
   }
 
   /** Commits a line the model emitted without streaming it, plus the in-flight tail. */
@@ -455,6 +452,9 @@ class Tui {
   }
 
   private commitToolResult(name: string, text: string, isError: boolean): void {
+    const call = this.pendingCalls.shift();
+    this.separator = true;
+    if (call !== undefined) this.commitLines([call]);
     const width = Math.max(1, this.term.width - BODY_PREFIX.length);
     const lines = resultLines(name, text, isError);
     // Diffs are shown in full; other tool bodies stay elided.
@@ -469,6 +469,15 @@ class Tui {
   /** Commits logical lines through the same wrap-and-style step tool bodies use. */
   private commitLines(lines: BodyLine[]): void {
     for (const row of renderRows(lines, Math.max(1, this.term.width))) this.push(row);
+  }
+
+  /** Commits any call line whose result never arrived, e.g. after a cancel. */
+  private flushCalls(): void {
+    for (const call of this.pendingCalls) {
+      this.separator = true;
+      this.commitLines([call]);
+    }
+    this.pendingCalls = [];
   }
 
   /**
