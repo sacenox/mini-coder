@@ -76,6 +76,29 @@ Hard constraints. Do not cross these without explicit direction:
   undone.
 - Diagnostics are local only. No telemetry, no hidden stalls.
 
+## Driving the TUI with kitty
+
+There is no `tmux` here; drive the TUI through kitty's remote control on a
+private socket, one window per session:
+
+    kitty --detach --listen-on unix:/tmp/mc-<name>.sock \
+      -o allow_remote_control=yes -o remember_window_size=no \
+      -o initial_window_width=100c -o initial_window_height=30c \
+      --title mc-<name> env PS1='\n$ ' bash --norc --noprofile -i
+
+Run every `kitty @ --to unix:/tmp/mc-<name>.sock` call through that socket; the
+window id comes from `ls`, don't assume it. Run the app (`node src/cli.ts`) with
+a scratch cwd so its tool calls write nowhere that matters.
+
+- `send-text` types literal text and never submits — Enter is its own key,
+  `send-key enter`, and it does nothing while a turn is active.
+- `send-key` for named keys: `enter escape ctrl+c ctrl+d shift+enter tab`.
+- `get-text -m id:N --extent=all --ansi` returns the pane with the app's
+  truecolor SGR — assert colors from those escapes, not from pixels;
+  `--extent=screen` is the live screen alone.
+- `screenshot -m id:N out.png` for the visual check; `identify` it and look at
+  it before trusting it.
+
 ## Working agreement
 
 - Trace the real data flow before designing; apply guards at the narrowest
