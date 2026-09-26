@@ -14,7 +14,7 @@ export function acceptsImages(model: Model<Api>): boolean {
 
 const READ_DESCRIPTION = "Read a file. Returns its text. Prefer bash for search, ranges, or binary files.";
 const READ_IMAGE_DESCRIPTION =
-  "Read a file. Returns its text, or the image itself when the file is a png, jpg, gif, or webp. " +
+  "Read a file. Returns its text, or the image itself when the file is a png, jpg, or webp. " +
   "Prefer bash for search, ranges, or binary files.";
 
 export function toolSchemas(names: ToolName[], withImages: boolean): Tool[] {
