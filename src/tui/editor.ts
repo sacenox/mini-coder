@@ -288,4 +288,23 @@ export class Editor {
     this.lines[this.row] = current.slice(0, start).join("") + current.slice(this.col).join("");
     this.col = start;
   }
+
+  /**
+   * Applies `step` to the word ending at the caret, replacing it; false when
+   * there is no word before the caret. Whitespace is `isSpace` (Unicode `\s`),
+   * so a path word may carry `/`, `~`, `.`, `$` — no path-specific separator
+   * set. No completion-undo: bash's TAB-_ restore is out; the user backspaces
+   * or re-types instead, with Esc and the editor's own keys as recovery.
+   */
+  completeWord(step: (word: string) => string | null): boolean {
+    const current = codePoints(this.lines[this.row]);
+    const start = wordStart(current, this.col);
+    if (start === this.col || isSpace(current[this.col - 1])) return false;
+    const word = current.slice(start, this.col).join("");
+    const completed = step(word);
+    if (completed === null) return false;
+    this.lines[this.row] = current.slice(0, start).join("") + completed + current.slice(this.col).join("");
+    this.col = start + codePoints(completed).length;
+    return true;
+  }
 }

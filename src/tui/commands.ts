@@ -1,4 +1,5 @@
 import { dim } from "./styles.ts";
+import { commonPrefix } from "./complete.ts";
 
 export interface CommandContext {
   /** Appends already-styled lines to scrollback. */
@@ -18,6 +19,7 @@ const KEYBINDINGS: [string, string][] = [
   ["Esc", "pause the turn at the next step boundary"],
   ["Ctrl+C", "cancel the turn"],
   ["Ctrl+D", "exit on an empty draft"],
+  ["Tab", "complete path (after command completion)"],
 ];
 
 /** One aligned `key  description` block; the key column is dimmed. */
@@ -56,8 +58,3 @@ export function completeCommand(draft: string): string | null {
   return shared === typed ? null : `/${shared}`;
 }
 
-function commonPrefix(a: string, b: string): string {
-  let i = 0;
-  while (i < a.length && i < b.length && a[i] === b[i]) i++;
-  return a.slice(0, i);
-}

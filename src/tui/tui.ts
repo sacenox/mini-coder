@@ -4,6 +4,7 @@ import { runAgentTurn, type AgentEvent, type AgentOptions, type Phase } from "..
 import { Terminal, expandTabs, sanitize, wrapLine, type Key } from "./term.ts";
 import { Editor } from "./editor.ts";
 import { completeCommand, findCommand, type CommandContext } from "./commands.ts";
+import { completePath } from "./complete.ts";
 import { MarkdownStream, TailStream, type BodyLine, type StreamRenderer } from "./stream.ts";
 import { blue, cyan, dim, green, red, teal } from "./styles.ts";
 import { DIFF_ADD, DIFF_DELETE, NORMAL_BG, sgrBg, sgrPlain } from "./theme.ts";
@@ -262,8 +263,10 @@ class Tui {
       const completed = completeCommand(this.editor.text());
       if (completed !== null) {
         this.editor.setText(completed);
-        this.render();
+      } else {
+        this.editor.completeWord((word) => completePath(word, process.cwd()));
       }
+      this.render();
       return;
     }
     const result = this.editor.handle(key);
