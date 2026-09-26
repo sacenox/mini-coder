@@ -1,10 +1,15 @@
-import type { AuthEvent, AuthPrompt, AuthType, Models } from "@earendil-works/pi-ai";
+import type { Api, AuthEvent, AuthPrompt, AuthType, Model, Models } from "@earendil-works/pi-ai";
+import { saveSelection } from "../config.ts";
 import { dim, red } from "./styles.ts";
 import { commonPrefix } from "./complete.ts";
 
 export interface CommandContext {
   /** The collection the running command may reach, e.g. to start a login. */
   models: Models;
+  /** The model the session is currently running. */
+  model: Model<Api>;
+  /** Switches the running session to `model`. */
+  select(model: Model<Api>): void;
   /** Aborts when the running command is cancelled (Ctrl+C). */
   signal: AbortSignal;
   /** Appends already-styled lines to scrollback. */
@@ -98,7 +103,54 @@ const login: Command = {
   },
 };
 
-const COMMANDS: Command[] = [help, login];
+const provider: Command = {
+  name: "provider",
+  description: "choose the provider and model",
+  async run(ctx): Promise<void> {
+    const available = await ctx.models.getAvailable(undefined, { signal: ctx.signal });
+    const ids = [...new Set(available.map((m) => m.provider))];
+    if (ids.length === 0) throw new Error("no authenticated providers");
+    const providerId = await ctx.prompt({
+      type: "select",
+      message: "Select a provider",
+      options: ids.map((id) => ({ id, label: ctx.models.getProvider(id)?.name ?? id })),
+    });
+    const models = available.filter((m) => m.provider === providerId);
+    if (models.length === 0) throw new Error(`no models for provider "${providerId}"`);
+    const name = ctx.models.getProvider(providerId)?.name ?? providerId;
+    const modelId = await ctx.prompt({
+      type: "select",
+      message: `Select a model for ${name}`,
+      options: models.map((m) => ({ id: m.id, label: m.name ?? m.id })),
+    });
+    const chosen = models.find((m) => m.id === modelId);
+    if (chosen === undefined) throw new Error(`unknown model: ${modelId}`);
+    saveSelection(providerId, modelId);
+    ctx.select(chosen);
+  },
+};
+
+const model: Command = {
+  name: "model",
+  description: "choose a model for the current provider",
+  async run(ctx): Promise<void> {
+    const providerId = ctx.model.provider;
+    const models = await ctx.models.getAvailable(providerId, { signal: ctx.signal });
+    if (models.length === 0) throw new Error(`no models for provider "${providerId}"`);
+    const name = ctx.models.getProvider(providerId)?.name ?? providerId;
+    const modelId = await ctx.prompt({
+      type: "select",
+      message: `Select a model for ${name}`,
+      options: models.map((m) => ({ id: m.id, label: m.name ?? m.id })),
+    });
+    const chosen = models.find((m) => m.id === modelId);
+    if (chosen === undefined) throw new Error(`unknown model: ${modelId}`);
+    saveSelection(providerId, modelId);
+    ctx.select(chosen);
+  },
+};
+
+const COMMANDS: Command[] = [help, login, provider, model];
 
 /** `/name` for a known `name`, else null; unknown slash text stays a message. */
 export function findCommand(text: string): { command: Command; args: string } | null {

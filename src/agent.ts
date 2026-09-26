@@ -12,6 +12,7 @@ import {
   type UserMessage,
 } from "@earendil-works/pi-ai";
 import type { Session } from "./session.ts";
+import type { ToolName } from "./config.ts";
 import { acceptsImages, executeTool, type ToolDetails, type ToolResult } from "./tools/index.ts";
 
 export type Phase = "preparing" | "waitingModel" | "streaming" | "runningTool" | "pausing" | "idle";
@@ -47,6 +48,8 @@ export interface AgentOptions {
   model: Model<Api>;
   systemPrompt: string;
   tools: Tool[];
+  /** The configured tool names, kept so a model switch can rebuild `tools`. */
+  toolNames: ToolName[];
   thinkingEffort: ModelThinkingLevel;
   session: Session;
 }

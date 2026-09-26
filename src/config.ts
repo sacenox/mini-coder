@@ -1,6 +1,6 @@
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import {
   createProvider,
   envApiKeyAuth,
@@ -102,6 +102,23 @@ export function loadConfig(): Config {
     const first = [...Value.Errors(ConfigSchema, filled)][0];
     throw new Error(`config ${path}: ${first ? `${first.instancePath || "/"} ${first.message}` : "invalid"}`);
   }
+}
+
+/**
+ * Persist the chosen pair to the global config, leaving every other key
+ * untouched. Written atomically: a temp file, then a rename over the target.
+ */
+export function saveSelection(provider: string, model: string): void {
+  const path = configPath();
+  const existing = readJson(path);
+  if (typeof existing !== "object" || existing === null || Array.isArray(existing)) {
+    throw new Error(`config ${path}: not an object`);
+  }
+  const next = { ...existing, provider, model };
+  mkdirSync(dirname(path), { recursive: true });
+  const temp = join(dirname(path), `.${process.pid}.${Date.now()}.tmp`);
+  writeFileSync(temp, `${JSON.stringify(next, null, 2)}\n`);
+  renameSync(temp, path);
 }
 
 const API_FACTORY: Record<CustomApi, () => ReturnType<typeof openAICompletionsApi>> = {

@@ -77,6 +77,7 @@ async function main(): Promise<void> {
     model,
     systemPrompt: buildSystemPrompt(config),
     tools: toolSchemas(config.tools, acceptsImages(model)),
+    toolNames: config.tools,
     thinkingEffort: clampThinkingLevel(model, config.thinkingEffort),
     session,
   };

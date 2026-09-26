@@ -1,6 +1,17 @@
 import process from "node:process";
-import type { AssistantMessage, AuthEvent, AuthPrompt, JsonObject, Message, UserMessage } from "@earendil-works/pi-ai";
+import {
+  clampThinkingLevel,
+  type Api,
+  type AssistantMessage,
+  type AuthEvent,
+  type AuthPrompt,
+  type JsonObject,
+  type Message,
+  type Model,
+  type UserMessage,
+} from "@earendil-works/pi-ai";
 import { assistantText, runAgentTurn, type AgentEvent, type AgentOptions, type Phase } from "../agent.ts";
+import { acceptsImages, toolSchemas } from "../tools/index.ts";
 import { Terminal, expandTabs, sanitize, wrapLine, type Key } from "./term.ts";
 import { Editor } from "./editor.ts";
 import { completeCommand, findCommand, type Command, type CommandContext } from "./commands.ts";
@@ -317,6 +328,8 @@ class Tui {
     this.commandAbort = abort;
     const ctx: CommandContext = {
       models: this.opts.models,
+      model: this.opts.model,
+      select: (model) => this.select(model),
       signal: abort.signal,
       write: (lines) => {
         this.separator = true;
@@ -340,6 +353,22 @@ class Tui {
         this.render();
       }
     })();
+  }
+
+  /**
+   * Switches the running session to `model`: derived state follows — the
+   * thinking effort is re-clamped, and `read`'s image behaviour is rebuilt for
+   * the new model. The status line and context readout read `opts.model`, so
+   * they update on the next render.
+   */
+  private select(model: Model<Api>): void {
+    this.opts.model = model;
+    this.opts.thinkingEffort = clampThinkingLevel(model, this.opts.thinkingEffort);
+    this.opts.tools = toolSchemas(this.opts.toolNames, acceptsImages(model));
+    this.separator = true;
+    this.push(`${model.provider}/${model.id}`);
+    this.separator = true;
+    this.render();
   }
 
   /** Commits a prompt and returns a promise resolving with the next submitted line. */
