@@ -114,6 +114,21 @@ const login: Command = {
   },
 };
 
+/** Prompts for one of `models`, persists the choice, and switches to it. */
+async function chooseModel(ctx: CommandContext, providerId: string, models: readonly Model<Api>[]): Promise<void> {
+  if (models.length === 0) throw new Error(`no models for provider "${providerId}"`);
+  const name = ctx.models.getProvider(providerId)?.name ?? providerId;
+  const modelId = await ctx.prompt({
+    type: "select",
+    message: `Select a model for ${name}`,
+    options: models.map((m) => ({ id: m.id, label: m.name ?? m.id })),
+  });
+  const chosen = models.find((m) => m.id === modelId);
+  if (chosen === undefined) throw new Error(`unknown model: ${modelId}`);
+  saveConfig({ provider: providerId, model: modelId });
+  ctx.select(chosen);
+}
+
 const provider: Command = {
   name: "provider",
   description: "choose the provider and model",
@@ -126,18 +141,7 @@ const provider: Command = {
       message: "Select a provider",
       options: ids.map((id) => ({ id, label: ctx.models.getProvider(id)?.name ?? id })),
     });
-    const models = available.filter((m) => m.provider === providerId);
-    if (models.length === 0) throw new Error(`no models for provider "${providerId}"`);
-    const name = ctx.models.getProvider(providerId)?.name ?? providerId;
-    const modelId = await ctx.prompt({
-      type: "select",
-      message: `Select a model for ${name}`,
-      options: models.map((m) => ({ id: m.id, label: m.name ?? m.id })),
-    });
-    const chosen = models.find((m) => m.id === modelId);
-    if (chosen === undefined) throw new Error(`unknown model: ${modelId}`);
-    saveConfig({ provider: providerId, model: modelId });
-    ctx.select(chosen);
+    await chooseModel(ctx, providerId, available.filter((m) => m.provider === providerId));
   },
 };
 
@@ -162,17 +166,7 @@ const model: Command = {
   async run(ctx): Promise<void> {
     const providerId = ctx.model.provider;
     const models = await ctx.models.getAvailable(providerId, { signal: ctx.signal });
-    if (models.length === 0) throw new Error(`no models for provider "${providerId}"`);
-    const name = ctx.models.getProvider(providerId)?.name ?? providerId;
-    const modelId = await ctx.prompt({
-      type: "select",
-      message: `Select a model for ${name}`,
-      options: models.map((m) => ({ id: m.id, label: m.name ?? m.id })),
-    });
-    const chosen = models.find((m) => m.id === modelId);
-    if (chosen === undefined) throw new Error(`unknown model: ${modelId}`);
-    saveConfig({ provider: providerId, model: modelId });
-    ctx.select(chosen);
+    await chooseModel(ctx, providerId, models);
   },
 };
 

@@ -6,7 +6,7 @@ export const BASH_PARAMS = Type.Object(
   { command: Type.String({ description: "Command to run" }) },
   { additionalProperties: false },
 );
-type BashArgs = Static<typeof BASH_PARAMS>;
+export type BashArgs = Static<typeof BASH_PARAMS>;
 
 const MAX_HEAD = 10_000;
 const MAX_TAIL = 6_000;
@@ -22,7 +22,7 @@ export function bash(args: BashArgs, ctx: ToolContext): Promise<ToolResult> {
 
     let head = "";
     let tail = "";
-    let omitted = 0;
+    let truncated = false;
     const append = (chunk: Buffer) => {
       let text = chunk.toString();
       ctx.onOutput?.(text);
@@ -34,7 +34,7 @@ export function bash(args: BashArgs, ctx: ToolContext): Promise<ToolResult> {
       if (text === "") return;
       tail += text;
       if (tail.length > MAX_TAIL) {
-        omitted += tail.length - MAX_TAIL;
+        truncated = true;
         tail = tail.slice(tail.length - MAX_TAIL);
       }
     };
@@ -48,16 +48,9 @@ export function bash(args: BashArgs, ctx: ToolContext): Promise<ToolResult> {
       ctx.signal.removeEventListener("abort", onAbort);
       clearTimeout(killTimer);
       const exit = code ?? (ctx.signal.aborted ? "aborted" : "unknown");
-      const truncated = omitted > 0;
       const body = truncated ? head + TRUNCATED + tail : head + tail;
       const text = body + (body.endsWith("\n") || body === "" ? "" : "\n") + `exit code: ${exit}`;
-      resolve({
-        text,
-        isError: code !== 0,
-        details: truncated
-          ? { truncated: true, omittedChars: omitted, totalChars: head.length + tail.length + omitted }
-          : undefined,
-      });
+      resolve({ text, isError: code !== 0 });
     };
 
     let killTimer: NodeJS.Timeout | undefined;

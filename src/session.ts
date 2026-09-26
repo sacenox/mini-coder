@@ -7,7 +7,7 @@ import {
 } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";
-import type { Message, Tool } from "@earendil-works/pi-ai";
+import { contentText, type Message, type Tool } from "@earendil-works/pi-ai";
 
 interface SessionHeader {
   type: "session";
@@ -66,10 +66,7 @@ function timestamp(date: Date): string {
 
 function titleFor(message: Message): string {
   if (message.role !== "user") return "session";
-  const text = typeof message.content === "string"
-    ? message.content
-    : message.content.map((block) => (block.type === "text" ? block.text : "")).join(" ");
-  return slugify(text);
+  return slugify(contentText(message.content, " "));
 }
 
 export class Session {

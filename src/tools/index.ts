@@ -1,11 +1,11 @@
-import type { Api, Model, Tool, ToolCall } from "@earendil-works/pi-ai";
+import type { Api, Model, Tool } from "@earendil-works/pi-ai";
 import type { ToolName } from "../config.ts";
-import { parseArgs, type ToolContext, type ToolResult } from "./common.ts";
-import { BASH_PARAMS, bash } from "./bash.ts";
-import { EDIT_PARAMS, edit } from "./edit.ts";
-import { READ_PARAMS, read } from "./read.ts";
+import type { ToolContext, ToolResult } from "./common.ts";
+import { BASH_PARAMS, bash, type BashArgs } from "./bash.ts";
+import { EDIT_PARAMS, edit, type EditArgs } from "./edit.ts";
+import { READ_PARAMS, read, type ReadArgs } from "./read.ts";
 
-export type { ToolDetails, ToolResult } from "./common.ts";
+export type { ToolResult } from "./common.ts";
 
 /** Whether a model accepts image input. Drives `read`'s description and results. */
 export function acceptsImages(model: Model<Api>): boolean {
@@ -40,8 +40,8 @@ export function toolSchemas(names: ToolName[], withImages: boolean): Tool[] {
   return names.map((name) => tools[name]);
 }
 
-export async function executeTool(call: ToolCall, ctx: ToolContext): Promise<ToolResult> {
-  if (call.name === "edit") return edit(parseArgs(EDIT_PARAMS, call.arguments), ctx.signal);
-  if (call.name === "read") return read(parseArgs(READ_PARAMS, call.arguments), ctx);
-  return bash(parseArgs(BASH_PARAMS, call.arguments), ctx);
+export async function executeTool(name: string, args: unknown, ctx: ToolContext): Promise<ToolResult> {
+  if (name === "edit") return edit(args as EditArgs, ctx.signal);
+  if (name === "read") return read(args as ReadArgs, ctx);
+  return bash(args as BashArgs, ctx);
 }

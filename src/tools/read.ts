@@ -7,7 +7,7 @@ export const READ_PARAMS = Type.Object(
   { path: Type.String({ description: "File path" }) },
   { additionalProperties: false },
 );
-type ReadArgs = Static<typeof READ_PARAMS>;
+export type ReadArgs = Static<typeof READ_PARAMS>;
 
 const IMAGE_MIME: Record<string, string> = {
   png: "image/png",

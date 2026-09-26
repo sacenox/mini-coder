@@ -10,10 +10,11 @@ import {
   type ToolCall,
   type ToolResultMessage,
   type UserMessage,
+  validateToolCall,
 } from "@earendil-works/pi-ai";
 import type { Session } from "./session.ts";
 import type { ToolName } from "./config.ts";
-import { acceptsImages, executeTool, type ToolDetails, type ToolResult } from "./tools/index.ts";
+import { acceptsImages, executeTool, type ToolResult } from "./tools/index.ts";
 
 export type Phase = "preparing" | "waitingModel" | "streaming" | "runningTool" | "pausing" | "idle";
 
@@ -59,14 +60,6 @@ interface AgentRun extends AgentOptions {
   signal: AbortSignal;
   interaction: Interaction;
   onEvent: (event: AgentEvent) => void;
-}
-
-/** The concatenated text blocks of an assistant message, ignoring the rest. */
-export function assistantText(message: AssistantMessage): string {
-  return message.content
-    .filter((block) => block.type === "text")
-    .map((block) => block.text)
-    .join("");
 }
 
 export async function runAgentTurn(run: AgentRun): Promise<void> {
@@ -189,28 +182,22 @@ export async function runAgentTurn(run: AgentRun): Promise<void> {
       if (steering !== "") held.push(steering);
       onEvent({ type: "phase", phase: "runningTool", detail: call.name });
 
-      const tool = run.tools.find((candidate) => candidate.name === call.name);
       let result: ToolResult;
-      if (tool === undefined) {
-        result = { text: `unknown tool: ${call.name}`, isError: true };
-      } else {
-        try {
-          result = await executeTool(call, {
-            signal,
-            supportsImages: acceptsImages(run.model),
-            onOutput: (chunk) => onEvent({ type: "toolOutput", chunk }),
-          });
-        } catch (error) {
-          result = { text: (error as Error).message, isError: true };
-        }
+      try {
+        result = await executeTool(call.name, validateToolCall(run.tools, call), {
+          signal,
+          supportsImages: acceptsImages(run.model),
+          onOutput: (chunk) => onEvent({ type: "toolOutput", chunk }),
+        });
+      } catch (error) {
+        result = { text: (error as Error).message, isError: true };
       }
 
-      const toolMessage: ToolResultMessage<ToolDetails> = {
+      const toolMessage: ToolResultMessage = {
         role: "toolResult",
         toolCallId: call.id,
         toolName: call.name,
         content: [{ type: "text", text: result.text }, ...(result.images ?? [])],
-        details: result.details,
         isError: result.isError,
         timestamp: Date.now(),
       };

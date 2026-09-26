@@ -1,6 +1,7 @@
 import process from "node:process";
 import {
   clampThinkingLevel,
+  contentText,
   type Api,
   type AssistantMessage,
   type AuthEvent,
@@ -11,7 +12,7 @@ import {
   type ModelThinkingLevel,
   type UserMessage,
 } from "@earendil-works/pi-ai";
-import { assistantText, runAgentTurn, type AgentEvent, type AgentOptions, type Phase } from "../agent.ts";
+import { runAgentTurn, type AgentEvent, type AgentOptions, type Phase } from "../agent.ts";
 import { acceptsImages, toolSchemas } from "../tools/index.ts";
 import { Terminal, expandTabs, sanitize, wrapLine, type Key } from "./term.ts";
 import { Editor } from "./editor.ts";
@@ -606,7 +607,7 @@ class Tui {
   private commitMessage(message: AssistantMessage): void {
     this.activity.reset();
     this.commitLines(this.reply.flush());
-    const text = assistantText(message);
+    const text = contentText(message.content, "");
     if (text.trim() !== "" && !this.streamed.includes(text)) {
       this.commitLines([...this.reply.feed(text.trimEnd()), ...this.reply.flush()]);
     }
