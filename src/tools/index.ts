@@ -5,7 +5,7 @@ import { BASH_PARAMS, bash, type BashArgs } from "./bash.ts";
 import { EDIT_PARAMS, edit, type EditArgs } from "./edit.ts";
 import { READ_PARAMS, read, type ReadArgs } from "./read.ts";
 
-export type { ToolResult } from "./common.ts";
+export type { FileDiff, ToolResult } from "./common.ts";
 
 /** Whether a model accepts image input. Drives `read`'s description and results. */
 export function acceptsImages(model: Model<Api>): boolean {

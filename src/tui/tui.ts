@@ -13,7 +13,7 @@ import {
   type UserMessage,
 } from "@earendil-works/pi-ai";
 import { runAgentTurn, type AgentEvent, type AgentOptions, type Phase } from "../agent.ts";
-import { acceptsImages, toolSchemas } from "../tools/index.ts";
+import { acceptsImages, toolSchemas, type FileDiff } from "../tools/index.ts";
 import { Terminal, expandTabs, sanitize, wrapLine, type Key } from "./term.ts";
 import { Editor } from "./editor.ts";
 import { completeCommand, findCommand, type Command, type CommandContext } from "./commands.ts";
@@ -86,6 +86,26 @@ function resultLines(name: string, text: string, isError: boolean): BodyLine[] {
     diff = true;
   }
   return lines.map((line) => (diff ? diffLine(line) : { text: line }));
+}
+
+/**
+ * Styled lines for a `bash` call's changed files: one label per file, then its
+ * patch body with the file headers stripped, or a note when no patch exists.
+ * Shown in full, like `edit`.
+ */
+function diffRows(diffs: FileDiff[]): BodyLine[] {
+  const out: BodyLine[] = [];
+  for (const d of diffs) {
+    out.push({ text: d.path, style: cyan });
+    if (d.patch !== undefined) {
+      const lines = d.patch.trimEnd().split("\n");
+      while (lines.length > 0 && EDIT_HEADER.test(lines[0])) lines.shift();
+      for (const line of lines) out.push(diffLine(line));
+    } else if (d.note !== undefined) {
+      out.push({ text: d.note, style: dim });
+    }
+  }
+  return out;
 }
 
 /**
@@ -565,7 +585,7 @@ class Tui {
         break;
       case "toolResult":
         this.activity.reset();
-        this.commitToolResult(event.name, event.text, event.isError);
+        this.commitToolResult(event.name, event.text, event.isError, event.diffs);
         break;
       case "error":
         this.endTurn(red(`! ${event.message}`));
@@ -614,7 +634,7 @@ class Tui {
     this.streamed = "";
   }
 
-  private commitToolResult(name: string, text: string, isError: boolean): void {
+  private commitToolResult(name: string, text: string, isError: boolean, diffs?: FileDiff[]): void {
     const call = this.pendingCalls.shift();
     this.separator = true;
     if (call !== undefined) this.commitLines([call]);
@@ -625,6 +645,10 @@ class Tui {
     for (let i = 0; i < rows.length; i++) {
       const prefix = isError && i === rows.length - 1 ? ERROR_CHROME : BODY_CHROME;
       this.push(prefix + rows[i]);
+    }
+    if (diffs !== undefined && diffs.length > 0) {
+      this.separator = true;
+      for (const row of renderRows(diffRows(diffs), width)) this.push(BODY_CHROME + row);
     }
     this.separator = true;
   }

@@ -14,7 +14,7 @@ import {
 } from "@earendil-works/pi-ai";
 import type { Session } from "./session.ts";
 import type { ToolName } from "./config.ts";
-import { acceptsImages, executeTool, type ToolResult } from "./tools/index.ts";
+import { acceptsImages, executeTool, type FileDiff, type ToolResult } from "./tools/index.ts";
 
 export type Phase = "preparing" | "waitingModel" | "streaming" | "runningTool" | "pausing" | "idle";
 
@@ -25,7 +25,7 @@ export type AgentEvent =
   | { type: "toolCallStart"; name: string }
   | { type: "toolCall"; name: string; arguments: JsonObject }
   | { type: "toolOutput"; chunk: string }
-  | { type: "toolResult"; name: string; text: string; isError: boolean }
+  | { type: "toolResult"; name: string; text: string; isError: boolean; diffs?: FileDiff[] }
   | { type: "message"; message: AssistantMessage }
   | { type: "error"; message: string }
   | { type: "cancelled" }
@@ -203,7 +203,13 @@ export async function runAgentTurn(run: AgentRun): Promise<void> {
       };
       messages.push(toolMessage);
       session.appendMessage(toolMessage);
-      onEvent({ type: "toolResult", name: call.name, text: result.text, isError: result.isError });
+      onEvent({
+        type: "toolResult",
+        name: call.name,
+        text: result.text,
+        isError: result.isError,
+        diffs: result.diffs,
+      });
     }
     steer(held.join("\n"));
   }

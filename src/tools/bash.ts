@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { Type, type Static } from "@earendil-works/pi-ai";
 import type { ToolContext, ToolResult } from "./common.ts";
+import { diffTrees, snapshot } from "./snapshot.ts";
 
 export const BASH_PARAMS = Type.Object(
   { command: Type.String({ description: "Command to run" }) },
@@ -14,6 +15,8 @@ const TRUNCATED = "\n\n... output truncated ...\n\n";
 
 export function bash(args: BashArgs, ctx: ToolContext): Promise<ToolResult> {
   return new Promise((resolve) => {
+    const startMs = Date.now();
+    const before = snapshot();
     const child = spawn("bash", ["-c", args.command], {
       cwd: process.cwd(),
       detached: true,
@@ -50,7 +53,8 @@ export function bash(args: BashArgs, ctx: ToolContext): Promise<ToolResult> {
       const exit = code ?? (ctx.signal.aborted ? "aborted" : "unknown");
       const body = truncated ? head + TRUNCATED + tail : head + tail;
       const text = body + (body.endsWith("\n") || body === "" ? "" : "\n") + `exit code: ${exit}`;
-      resolve({ text, isError: code !== 0 });
+      const diffs = diffTrees(before, snapshot(startMs));
+      resolve({ text, isError: code !== 0, diffs });
     };
 
     let killTimer: NodeJS.Timeout | undefined;
