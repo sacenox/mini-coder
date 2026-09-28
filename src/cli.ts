@@ -1,6 +1,6 @@
 import process from "node:process";
 import { clampThinkingLevel, contentText, type AssistantMessage, type Message, type UserMessage } from "@earendil-works/pi-ai";
-import { loadConfig, resolveModel } from "./config.ts";
+import { configPath, loadConfig, resolveModel } from "./config.ts";
 import { buildSystemPrompt } from "./prompt.ts";
 import { acceptsImages, toolSchemas } from "./tools/index.ts";
 import { Session } from "./session.ts";
@@ -32,6 +32,7 @@ async function runPrint(prompt: string, ctx: AgentOptions): Promise<number> {
 
   let failed = false;
   let cancelled = false;
+  let noModel = false;
   try {
     await runAgentTurn({
       ...ctx,
@@ -41,7 +42,10 @@ async function runPrint(prompt: string, ctx: AgentOptions): Promise<number> {
       onEvent: (event) => {
         if (event.type === "toolCall") process.stderr.write(`[tool] ${event.name}\n`);
         else if (event.type === "toolOutput") process.stderr.write(event.chunk);
-        else if (event.type === "error") {
+        else if (event.type === "noModel") {
+          noModel = true;
+          process.stderr.write(`[error] no model configured; add "provider" and "model" to ${configPath()}\n`);
+        } else if (event.type === "error") {
           failed = true;
           process.stderr.write(`[error] ${event.message}\n`);
         } else if (event.type === "cancelled") {
@@ -60,11 +64,11 @@ async function runPrint(prompt: string, ctx: AgentOptions): Promise<number> {
   }
 
   const last = messages.filter((message): message is AssistantMessage => message.role === "assistant").at(-1);
-  if (!failed && !cancelled && last !== undefined) {
+  if (!failed && !cancelled && !noModel && last !== undefined) {
     const text = contentText(last.content, "");
     if (text !== "") process.stdout.write(text.endsWith("\n") ? text : `${text}\n`);
   }
-  return failed || cancelled ? 1 : 0;
+  return failed || cancelled || noModel ? 1 : 0;
 }
 
 async function main(): Promise<void> {
@@ -76,9 +80,9 @@ async function main(): Promise<void> {
     models,
     model,
     systemPrompt: buildSystemPrompt(config),
-    tools: toolSchemas(config.tools, acceptsImages(model)),
+    tools: toolSchemas(config.tools, model !== null && acceptsImages(model)),
     toolNames: config.tools,
-    thinkingEffort: clampThinkingLevel(model, config.thinkingEffort),
+    thinkingEffort: model === null ? config.thinkingEffort : clampThinkingLevel(model, config.thinkingEffort),
     session,
   };
 

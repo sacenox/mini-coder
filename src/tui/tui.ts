@@ -379,7 +379,12 @@ class Tui {
   /** The startup and selection banner: provider, model, and thinking effort. */
   private pushBanner(): void {
     this.separator = true;
-    this.push(`mini-coder · ${this.opts.model.provider}/${this.opts.model.id} · ${this.opts.thinkingEffort}`);
+    const model = this.opts.model;
+    this.push(
+      model === null
+        ? "mini-coder · no model configured"
+        : `mini-coder · ${model.provider}/${model.id} · ${this.opts.thinkingEffort}`,
+    );
     this.separator = true;
   }
 
@@ -399,7 +404,9 @@ class Tui {
 
   /** Sets the running session's thinking level, clamped to the current model. */
   private setThinking(level: ModelThinkingLevel): void {
-    this.opts.thinkingEffort = clampThinkingLevel(this.opts.model, level);
+    const model = this.opts.model;
+    if (model === null) return;
+    this.opts.thinkingEffort = clampThinkingLevel(model, level);
     this.pushBanner();
     this.render();
   }
@@ -590,6 +597,9 @@ class Tui {
       case "error":
         this.endTurn(red(`! ${event.message}`));
         break;
+      case "noModel":
+        this.endTurn(red("! no model configured"));
+        break;
       case "cancelled":
         this.endTurn(red("! cancelled"));
         break;
@@ -704,9 +714,11 @@ class Tui {
    * emphasis, so only the phase half is dimmed.
    */
   private statusLine(): string {
+    const model = this.opts.model;
+    if (model === null) return dim("no model configured");
     const usage = contextUsageLine(
       estimateContextTokens(this.messages, this.opts.systemPrompt, this.opts.tools),
-      this.opts.model,
+      model,
     );
     if (this.paused || this.phase === "pausing") {
       return `${dim("paused - type steering, Enter to submit")} · ${usage}`;

@@ -4,9 +4,12 @@
 
 # mini-coder
 
-A fast, transparent, config-first terminal coding agent. One provider request at a time, no
-hidden machinery: `edit`, `read`, and `bash`, an append-only JSONL session log, and a config
-file that decides everything.
+Minimalistic terminal coding agent, with an emphasis on giving you control of what is sent to
+the model, and visibility into the model's actions.
+
+Beautiful TUI with Tokyo Night colors, more to come soon.
+
+We try to render diffs when the agent uses bash to edit, only for the current working directory; changes outside it aren't tracked.
 
 ## Install
 
@@ -16,8 +19,10 @@ npm i -g mini-coder
 
 ## Configuration
 
+You can use `/login` and `/provider` to configure in the TUI. Changes are saved to your config.
+
 Global config lives at `~/.config/mini-coder/config.json` (`$XDG_CONFIG_HOME/mini-coder/config.json`
-if set). There is no project-local config and no override flags.
+if set). You can also configure your provider and model there:
 
 ```json
 {
@@ -26,7 +31,7 @@ if set). There is no project-local config and no override flags.
 }
 ```
 
-Only `provider` and `model` are required. Defaults for the rest:
+Defaults for the rest:
 
 ```json
 {
@@ -40,8 +45,9 @@ Only `provider` and `model` are required. Defaults for the rest:
 }
 ```
 
-- `provider` / `model` — any model from the `pi-ai` catalog. Invalid pairs fail with a
-  list of available models for that provider. Requires a discoverable api key from the environment (Like: OPENCODE_API_KEY).
+- `provider` / `model` — any model from the `pi-ai` catalog. Requires a discoverable api key
+  from the environment (like `OPENCODE_API_KEY`). When neither is set, the agent launches;
+  sending a message reports that no model is configured.
 - `sessionsDir` — where append-only session JSONL files are written. (no relative paths for now, absolute paths only).
 - `systemPrompt` — the base of the system prompt. Skills and agent files, if
   enabled, are appended after it.

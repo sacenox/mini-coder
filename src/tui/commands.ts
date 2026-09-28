@@ -15,8 +15,8 @@ import { commonPrefix } from "./complete.ts";
 export interface CommandContext {
   /** The collection the running command may reach, e.g. to start a login. */
   models: Models;
-  /** The model the session is currently running. */
-  model: Model<Api>;
+  /** The model the session is currently running, or null before one is chosen. */
+  model: Model<Api> | null;
   /** Switches the running session to `model`. */
   select(model: Model<Api>): void;
   /** Sets the running session's thinking level. */
@@ -149,6 +149,7 @@ const thinking: Command = {
   name: "thinking",
   description: "set the thinking level",
   async run(ctx): Promise<void> {
+    if (ctx.model === null) throw new Error("no model configured");
     const levels = getSupportedThinkingLevels(ctx.model);
     const level = (await ctx.prompt({
       type: "select",
@@ -164,6 +165,7 @@ const model: Command = {
   name: "model",
   description: "choose a model for the current provider",
   async run(ctx): Promise<void> {
+    if (ctx.model === null) throw new Error("no model configured");
     const providerId = ctx.model.provider;
     const models = await ctx.models.getAvailable(providerId, { signal: ctx.signal });
     await chooseModel(ctx, providerId, models);

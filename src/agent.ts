@@ -27,6 +27,7 @@ export type AgentEvent =
   | { type: "toolOutput"; chunk: string }
   | { type: "toolResult"; name: string; text: string; isError: boolean; diffs?: FileDiff[] }
   | { type: "message"; message: AssistantMessage }
+  | { type: "noModel" }
   | { type: "error"; message: string }
   | { type: "cancelled" }
   | { type: "complete" };
@@ -46,7 +47,8 @@ export const NO_INTERACTION: Interaction = {
 /** What one turn needs, shared by both projections: the TUI and `--print`. */
 export interface AgentOptions {
   models: Models;
-  model: Model<Api>;
+  /** The selected model, or null until one is configured or chosen in the TUI. */
+  model: Model<Api> | null;
   systemPrompt: string;
   tools: Tool[];
   /** The configured tool names, kept so a model switch can rebuild `tools`. */
@@ -64,6 +66,12 @@ interface AgentRun extends AgentOptions {
 
 export async function runAgentTurn(run: AgentRun): Promise<void> {
   const { messages, session, signal, interaction, onEvent } = run;
+
+  const model = run.model;
+  if (model === null) {
+    onEvent({ type: "noModel" });
+    return;
+  }
 
   const cancelled = (): void => onEvent({ type: "cancelled" });
   const failed = (message: string): void => onEvent({ type: "error", message });
@@ -105,9 +113,9 @@ export async function runAgentTurn(run: AgentRun): Promise<void> {
 
     onEvent({ type: "phase", phase: "preparing" });
     session.appendRequest({
-      provider: run.model.provider,
-      model: run.model.id,
-      api: run.model.api,
+      provider: model.provider,
+      model: model.id,
+      api: model.api,
       thinkingEffort: run.thinkingEffort,
       systemPrompt: run.systemPrompt,
       tools: run.tools,
@@ -117,7 +125,7 @@ export async function runAgentTurn(run: AgentRun): Promise<void> {
     const context = { systemPrompt: run.systemPrompt, tools: run.tools, messages };
     let stream;
     try {
-      stream = run.models.streamSimple(run.model, context, {
+      stream = run.models.streamSimple(model, context, {
         reasoning: run.thinkingEffort === "off" ? undefined : run.thinkingEffort,
         signal,
         sessionId: session.id ?? undefined,
@@ -186,7 +194,7 @@ export async function runAgentTurn(run: AgentRun): Promise<void> {
       try {
         result = await executeTool(call.name, validateToolCall(run.tools, call), {
           signal,
-          supportsImages: acceptsImages(run.model),
+          supportsImages: acceptsImages(model),
           onOutput: (chunk) => onEvent({ type: "toolOutput", chunk }),
         });
       } catch (error) {

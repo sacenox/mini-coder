@@ -51,8 +51,8 @@ const ConfigSchema = Type.Object(
     discoverAgentFiles: Type.Boolean({ default: true }),
     skillsDirs: Type.Array(Type.String(), { default: [] }),
     tools: Type.Array(ToolNameSchema, { default: ["edit", "read", "bash"] }),
-    provider: Type.String(),
-    model: Type.String(),
+    provider: Type.Optional(Type.String()),
+    model: Type.Optional(Type.String()),
     thinkingEffort: Type.Union(
       [
         Type.Literal("off"),
@@ -76,7 +76,7 @@ function configDir(): string {
   return join(base, "mini-coder");
 }
 
-function configPath(): string {
+export function configPath(): string {
   return join(configDir(), "config.json");
 }
 
@@ -134,7 +134,7 @@ const API_FACTORY: Record<CustomApi, () => ReturnType<typeof openAICompletionsAp
   "google-generative-ai": googleGenerativeAIApi,
 };
 
-export function resolveModel(config: Config): { models: MutableModels; model: Model<Api> } {
+export function resolveModel(config: Config): { models: MutableModels; model: Model<Api> | null } {
   const models = builtinModels({ credentials: createCredentialStore(config.authFile) });
   for (const provider of config.customProviders) {
     const name = provider.name ?? provider.id;
@@ -166,14 +166,6 @@ export function resolveModel(config: Config): { models: MutableModels; model: Mo
     );
   }
 
-  const model = models.getModel(config.provider, config.model);
-  if (!model) {
-    const known = models
-      .getModels(config.provider)
-      .map((m) => m.id)
-      .slice(0, 12);
-    const hint = known.length ? ` (available: ${known.join(", ")})` : "";
-    throw new Error(`config model: unknown model "${config.model}" for provider "${config.provider}"${hint}`);
-  }
-  return { models, model };
+  if (!config.provider || !config.model) return { models, model: null };
+  return { models, model: models.getModel(config.provider, config.model) ?? null };
 }
