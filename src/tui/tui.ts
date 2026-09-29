@@ -657,7 +657,6 @@ class Tui {
       this.push(prefix + rows[i]);
     }
     if (diffs !== undefined && diffs.length > 0) {
-      this.separator = true;
       for (const row of renderRows(diffRows(diffs), width)) this.push(BODY_CHROME + row);
     }
     this.separator = true;
