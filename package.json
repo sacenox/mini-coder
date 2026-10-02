@@ -1,14 +1,19 @@
 {
   "name": "mini-coder",
-  "version": "0.8.2",
+  "version": "0.8.3",
   "description": "A fast, transparent, config-first terminal coding agent",
   "type": "module",
   "license": "MIT",
   "bin": {
-    "mini-coder": "bin/mini-coder.ts"
+    "mini-coder": "dist/bin/mini-coder.js"
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
-    "start": "node src/cli.ts",
+    "build": "tsc",
+    "prepare": "tsc",
+    "start": "node dist/bin/mini-coder.js",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
