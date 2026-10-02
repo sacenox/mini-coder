@@ -1,6 +1,6 @@
 {
   "name": "mini-coder",
-  "version": "0.8.3",
+  "version": "0.8.4",
   "description": "A fast, transparent, config-first terminal coding agent",
   "type": "module",
   "license": "MIT",
